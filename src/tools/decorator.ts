@@ -13,6 +13,7 @@ export type ToolOptions = {
   name?: string;
   schema?: JsonSchema;
   params?: Record<string, string>;
+  zodSchema?: any;
   ephemeral?: number | boolean;
   dependencies?: Record<string, Depends<any>>;
 };
@@ -34,14 +35,16 @@ export class Tool<TArgs extends Record<string, any> = Record<string, any>> {
     this.description = description;
     this.schema =
       options?.schema ??
-      (options?.params
-        ? schemaFromParams(options.params)
-        : ({
-            type: "object",
-            properties: {},
-            required: [],
-            additionalProperties: false,
-          } as JsonSchema));
+      (options?.zodSchema
+        ? schemaFromZod(options.zodSchema)
+        : options?.params
+          ? schemaFromParams(options.params)
+          : ({
+              type: "object",
+              properties: {},
+              required: [],
+              additionalProperties: false,
+            } as JsonSchema));
     this.handler = handler;
     this.ephemeral = options?.ephemeral ?? false;
     this.dependencies = options?.dependencies ?? {};
@@ -149,4 +152,54 @@ function parseParamType(raw: string): {
     };
 
   return { schema: { type: "string" }, optional };
+}
+
+function schemaFromZod(zodSchema: any): JsonSchema {
+  const result = zodToSchema(zodSchema);
+  if (result.type === "object") {
+    result.additionalProperties = false;
+  }
+  return result;
+}
+
+function zodToSchema(zodSchema: any): Record<string, any> {
+  const def = zodSchema?._def ?? {};
+  const typeName = def.typeName;
+
+  if (typeName === "ZodString") return { type: "string" };
+  if (typeName === "ZodNumber") return { type: "number" };
+  if (typeName === "ZodBoolean") return { type: "boolean" };
+
+  if (typeName === "ZodArray") {
+    return { type: "array", items: zodToSchema(def.type) };
+  }
+
+  if (typeName === "ZodOptional") {
+    return { ...zodToSchema(def.innerType), _optional: true };
+  }
+
+  if (typeName === "ZodObject") {
+    const shapeGetter = def.shape;
+    const shape =
+      typeof shapeGetter === "function" ? shapeGetter() : (def.shape ?? {});
+    const properties: Record<string, any> = {};
+    const required: string[] = [];
+
+    for (const [key, value] of Object.entries(shape)) {
+      const schema = zodToSchema(value);
+      const optional = schema._optional === true;
+      if (optional) delete schema._optional;
+      properties[key] = schema;
+      if (!optional) required.push(key);
+    }
+
+    return {
+      type: "object",
+      properties,
+      required,
+      additionalProperties: false,
+    };
+  }
+
+  return { type: "string" };
 }
