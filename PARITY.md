@@ -55,3 +55,18 @@
 ## Tests
 - [x] Unit tests (core loop, schemas, providers)
 - [x] Integration tests (OpenAI, Anthropic, Google)
+
+## Audit Log (line-by-line sweep)
+
+Date: 2026-01-21
+
+- agent/service: loop, done tool, retries, max-iterations summary, compaction hooks, ephemeral cleanup verified against Python.
+- agent/events: parity with ToolCall/ToolResult/Text/Final/Step events verified.
+- tools/decorator + depends: DI, tool execution, schema inference (params + zod) verified.
+- llm/messages + serializers: OpenAI/Anthropic/Google parity verified (tool results, cache control, grouping).
+- llm/base/views/exceptions: parity verified.
+- llm/providers: OpenAI, Anthropic, Google, Azure deployment path, OpenAI-like providers verified.
+- compaction: threshold logic + summary prompt verified.
+- tokens: pricing cache, cost calc, usage summary verified.
+- docs/examples: README + agent/llm READMEs + examples parity verified.
+- tests: unit + integration coverage verified; integrations default-on when keys present.
