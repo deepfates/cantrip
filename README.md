@@ -175,6 +175,10 @@ for await (const event of agent.query_stream("do something")) {
 - `examples/quick_start.ts`
 - `examples/claude_code.ts`
 
+## Testing
+
+See `TESTING.md`.
+
 ## License
 
 MIT

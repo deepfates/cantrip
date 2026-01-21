@@ -99,6 +99,35 @@ describe("agent", () => {
     expect(result).toBe("all set");
   });
 
+  test("retries on retryable errors", async () => {
+    let calls = 0;
+    const llm = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async ainvoke() {
+        calls += 1;
+        if (calls < 3) {
+          const err: any = new Error("rate limit");
+          err.status_code = 429;
+          throw err;
+        }
+        return { content: "ok", tool_calls: [] };
+      },
+    };
+
+    const agent = new Agent({
+      llm: llm as any,
+      tools: [],
+      llm_max_retries: 3,
+      llm_retry_base_delay: 0,
+      llm_retry_max_delay: 0,
+    });
+
+    const result = await agent.query("hi");
+    expect(result).toBe("ok");
+  });
+
   test("ephemeral tool messages are destroyed", async () => {
     async function ephHandler() {
       return "big output";

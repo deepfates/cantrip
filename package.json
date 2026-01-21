@@ -3,6 +3,13 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./llm": "./src/llm/index.ts",
+    "./agent": "./src/agent/index.ts",
+    "./tools": "./src/tools/index.ts",
+    "./tokens": "./src/tokens/index.ts"
+  },
   "scripts": {
     "test": "bun test",
     "lint": "bun -e 'console.log(\"ok\")'"
