@@ -1,0 +1,10 @@
+{
+  "name": "simple-agent",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "lint": "bun -e 'console.log(\"ok\")'"
+  }
+}
