@@ -51,21 +51,19 @@ export class ChatOpenAI implements BaseChatModel {
     this.service_tier = options.service_tier ?? null;
     this.top_p = options.top_p ?? null;
     this.parallel_tool_calls = options.parallel_tool_calls ?? true;
-    this.prompt_cache_key = options.prompt_cache_key ?? "bu_agent_sdk-agent";
+    this.prompt_cache_key = options.prompt_cache_key ?? null;
     this.prompt_cache_retention = options.prompt_cache_retention ?? null;
-    this.extended_cache_models =
-      options.extended_cache_models ??
-      [
-        "gpt-5.2",
-        "gpt-5.1-codex-max",
-        "gpt-5.1",
-        "gpt-5.1-codex",
-        "gpt-5.1-codex-mini",
-        "gpt-5.1-chat-latest",
-        "gpt-5",
-        "gpt-5-codex",
-        "gpt-4.1",
-      ];
+    this.extended_cache_models = options.extended_cache_models ?? [
+      "gpt-5.2",
+      "gpt-5.1-codex-max",
+      "gpt-5.1",
+      "gpt-5.1-codex",
+      "gpt-5.1-codex-mini",
+      "gpt-5.1-chat-latest",
+      "gpt-5",
+      "gpt-5-codex",
+      "gpt-4.1",
+    ];
     this.api_key = options.api_key ?? process.env.OPENAI_API_KEY ?? null;
     this.base_url = options.base_url ?? "https://api.openai.com/v1";
     this.max_completion_tokens = options.max_completion_tokens ?? 4096;
@@ -91,7 +89,8 @@ export class ChatOpenAI implements BaseChatModel {
   }
 
   private resolvePromptCacheRetention(): "in_memory" | "24h" | null {
-    if (this.prompt_cache_retention !== null) return this.prompt_cache_retention;
+    if (this.prompt_cache_retention !== null)
+      return this.prompt_cache_retention;
     const modelName = String(this.model).toLowerCase();
     if (this.extended_cache_models.some((m) => modelName.includes(m))) {
       return "24h";
@@ -99,7 +98,9 @@ export class ChatOpenAI implements BaseChatModel {
     return null;
   }
 
-  private makeStrictSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  private makeStrictSchema(
+    schema: Record<string, unknown>,
+  ): Record<string, unknown> {
     const copy = JSON.parse(JSON.stringify(schema)) as Record<string, any>;
     const props = (copy.properties ?? {}) as Record<string, any>;
     const required = new Set((copy.required ?? []) as string[]);
@@ -136,7 +137,9 @@ export class ChatOpenAI implements BaseChatModel {
     return copy;
   }
 
-  private serializeTools(tools: ToolDefinition[]): Array<Record<string, unknown>> {
+  private serializeTools(
+    tools: ToolDefinition[],
+  ): Array<Record<string, unknown>> {
     return tools.map((tool) => {
       const params = tool.strict
         ? this.makeStrictSchema(tool.parameters as Record<string, unknown>)
@@ -155,7 +158,7 @@ export class ChatOpenAI implements BaseChatModel {
 
   private getToolChoice(
     tool_choice: ToolChoice | null | undefined,
-    tools: ToolDefinition[] | null | undefined
+    tools: ToolDefinition[] | null | undefined,
   ): unknown {
     if (!tool_choice || !tools) return null;
     if (tool_choice === "auto") return "auto";
@@ -198,13 +201,13 @@ export class ChatOpenAI implements BaseChatModel {
     messages: AnyMessage[],
     tools?: ToolDefinition[] | null,
     tool_choice?: ToolChoice | null,
-    extra?: Record<string, unknown>
+    extra?: Record<string, unknown>,
   ): Promise<ChatInvokeCompletion> {
     if (!this.api_key) {
       throw new ModelProviderError(
         "OPENAI_API_KEY is required",
         401,
-        this.name
+        this.name,
       );
     }
 
@@ -218,16 +221,19 @@ export class ChatOpenAI implements BaseChatModel {
       modelParams.max_completion_tokens = this.max_completion_tokens;
     if (this.top_p !== null) modelParams.top_p = this.top_p;
     if (this.seed !== null) modelParams.seed = this.seed;
-    if (this.service_tier !== null) modelParams.service_tier = this.service_tier;
+    if (this.service_tier !== null)
+      modelParams.service_tier = this.service_tier;
 
     const extraBody: Record<string, unknown> = {};
-    if (this.prompt_cache_key) extraBody.prompt_cache_key = this.prompt_cache_key;
-    const retention = this.resolvePromptCacheRetention();
-    if (retention) extraBody.prompt_cache_retention = retention;
+    if (this.prompt_cache_key) {
+      extraBody.prompt_cache_key = this.prompt_cache_key;
+      const retention = this.resolvePromptCacheRetention();
+      if (retention) extraBody.prompt_cache_retention = retention;
+    }
     if (Object.keys(extraBody).length) modelParams.extra_body = extraBody;
 
     const isReasoningModel = this.reasoning_models.some((m) =>
-      String(this.model).toLowerCase().includes(m)
+      String(this.model).toLowerCase().includes(m),
     );
     if (isReasoningModel) {
       modelParams.reasoning_effort = this.reasoning_effort;
@@ -266,7 +272,7 @@ export class ChatOpenAI implements BaseChatModel {
       throw new ModelProviderError(
         text || `OpenAI error (${response.status})`,
         response.status,
-        this.name
+        this.name,
       );
     }
 
