@@ -174,6 +174,12 @@ for await (const event of agent.query_stream("do something")) {
 
 - `examples/quick_start.ts`
 - `examples/claude_code.ts`
+- `examples/dependency_injection.ts`
+
+## Internal Docs
+
+- `src/agent/README.md`
+- `src/llm/README.md`
 
 ## Testing
 

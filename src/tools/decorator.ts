@@ -12,6 +12,7 @@ export type ToolHandler<TArgs extends Record<string, any>, TResult> = (
 export type ToolOptions = {
   name?: string;
   schema?: JsonSchema;
+  params?: Record<string, string>;
   ephemeral?: number | boolean;
   dependencies?: Record<string, Depends<any>>;
 };
@@ -33,12 +34,14 @@ export class Tool<TArgs extends Record<string, any> = Record<string, any>> {
     this.description = description;
     this.schema =
       options?.schema ??
-      ({
-        type: "object",
-        properties: {},
-        required: [],
-        additionalProperties: false,
-      } as JsonSchema);
+      (options?.params
+        ? schemaFromParams(options.params)
+        : ({
+            type: "object",
+            properties: {},
+            required: [],
+            additionalProperties: false,
+          } as JsonSchema));
     this.handler = handler;
     this.ephemeral = options?.ephemeral ?? false;
     this.dependencies = options?.dependencies ?? {};
@@ -91,4 +94,59 @@ export function serializeToolResult(result: any): ToolContent {
   }
 
   return String(result);
+}
+
+function schemaFromParams(params: Record<string, string>): JsonSchema {
+  const properties: Record<string, any> = {};
+  const required: string[] = [];
+
+  for (const [key, rawType] of Object.entries(params)) {
+    const { schema, optional } = parseParamType(rawType);
+    properties[key] = schema;
+    if (!optional) required.push(key);
+  }
+
+  return {
+    type: "object",
+    properties,
+    required,
+    additionalProperties: false,
+  };
+}
+
+function parseParamType(raw: string): {
+  schema: Record<string, any>;
+  optional: boolean;
+} {
+  let type = raw.trim();
+  let optional = false;
+  if (type.endsWith("?")) {
+    optional = true;
+    type = type.slice(0, -1);
+  }
+
+  if (type.endsWith("[]")) {
+    const itemType = type.slice(0, -2);
+    return {
+      schema: { type: "array", items: parseParamType(itemType).schema },
+      optional,
+    };
+  }
+
+  if (type.startsWith("enum:")) {
+    const values = type.slice("enum:".length).split("|");
+    return { schema: { type: "string", enum: values }, optional };
+  }
+
+  if (type === "string") return { schema: { type: "string" }, optional };
+  if (type === "number") return { schema: { type: "number" }, optional };
+  if (type === "integer") return { schema: { type: "integer" }, optional };
+  if (type === "boolean") return { schema: { type: "boolean" }, optional };
+  if (type === "object")
+    return {
+      schema: { type: "object", additionalProperties: false },
+      optional,
+    };
+
+  return { schema: { type: "string" }, optional };
 }
