@@ -165,6 +165,7 @@ function schemaFromZod(zodSchema: any): JsonSchema {
 function zodToSchema(zodSchema: any): Record<string, any> {
   const def = zodSchema?._def ?? {};
   const typeName = def.typeName;
+  const type = def.type;
 
   if (typeName === "ZodString") return { type: "string" };
   if (typeName === "ZodNumber") return { type: "number" };
@@ -182,6 +183,39 @@ function zodToSchema(zodSchema: any): Record<string, any> {
     const shapeGetter = def.shape;
     const shape =
       typeof shapeGetter === "function" ? shapeGetter() : (def.shape ?? {});
+    const properties: Record<string, any> = {};
+    const required: string[] = [];
+
+    for (const [key, value] of Object.entries(shape)) {
+      const schema = zodToSchema(value);
+      const optional = schema._optional === true;
+      if (optional) delete schema._optional;
+      properties[key] = schema;
+      if (!optional) required.push(key);
+    }
+
+    return {
+      type: "object",
+      properties,
+      required,
+      additionalProperties: false,
+    };
+  }
+
+  if (type === "string") return { type: "string" };
+  if (type === "number") return { type: "number" };
+  if (type === "boolean") return { type: "boolean" };
+
+  if (type === "array") {
+    return { type: "array", items: zodToSchema(def.element) };
+  }
+
+  if (type === "optional") {
+    return { ...zodToSchema(def.innerType), _optional: true };
+  }
+
+  if (type === "object") {
+    const shape = def.shape ?? {};
     const properties: Record<string, any> = {};
     const required: string[] = [];
 
