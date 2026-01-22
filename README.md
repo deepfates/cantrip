@@ -1,13 +1,37 @@
 # simple-agent
 
-_An agent is just a for-loop._
+A TypeScript agent framework that does almost nothing — and that's the point.
 
-The simplest possible agent framework in TypeScript + Bun. No abstractions. No magic. Just a for-loop of tool calls.
+## What This Is
 
-## Install
+An agent is a while loop. You give an LLM some tools, it calls them, you execute them, repeat until it stops. That's it. That's the whole thing.
+
+```ts
+while (true) {
+  const response = await llm.invoke(messages, tools);
+  if (!response.tool_calls) break;
+  for (const call of response.tool_calls) {
+    messages.push(await execute(call));
+  }
+}
+```
+
+This library wraps that loop with the minimal scaffolding needed to make it practical: multi-provider LLM support, tool schema validation, context management, and streaming events. Nothing more.
+
+## Why So Minimal?
+
+In 2019, Rich Sutton published [The Bitter Lesson](http://www.incompleteideas.net/IncIdeas/BitterLesson.html), arguing that 70 years of AI research points to one conclusion: general methods that leverage computation beat hand-crafted human knowledge, every time. Chess engines won with brute-force search, not human chess intuition. Speech recognition won with statistical models, not phoneme rules.
+
+The same pattern is playing out with LLM agents. The industry spent 2023-2024 building elaborate frameworks — planners, verifiers, chain-of-thought orchestrators, memory modules, tool routers — only to discover that better models made most of it unnecessary. Meanwhile, the frameworks became liabilities: rigid abstractions that fought against experimentation, layers of indirection that obscured what was actually happening, and dependency graphs that broke in production.
+
+The most successful agents (Claude Code, Cursor, OpenAI's internal tools) converged on the same architecture: a simple loop with tools. No planning modules. No verification layers. Just the model, doing its thing.
+
+This library is a TypeScript port of [browser-use/agent-sdk](https://github.com/browser-use/agent-sdk), which powers browser automation agents that need to be reliable, fast, and easy to modify. The philosophy: give the model maximum freedom, then restrict based on what actually fails in practice.
+
+## Installation
 
 ```bash
-bun install
+bun add simple-agent
 ```
 
 ## Quick Start
@@ -15,111 +39,77 @@ bun install
 ```ts
 import { Agent, TaskComplete, tool } from "simple-agent";
 import { ChatAnthropic } from "simple-agent/llm";
+import { z } from "zod";
 
+// Define tools with Zod schemas
 const add = tool(
   "Add two numbers",
   async ({ a, b }: { a: number; b: number }) => a + b,
-  {
-    schema: {
-      type: "object",
-      properties: {
-        a: { type: "integer" },
-        b: { type: "integer" },
-      },
-      required: ["a", "b"],
-      additionalProperties: false,
-    },
-  }
+  { name: "add", zodSchema: z.object({ a: z.number(), b: z.number() }) }
 );
 
 const done = tool(
   "Signal task completion",
-  async ({ message }: { message: string }) => {
-    throw new TaskComplete(message);
+  async ({ result }: { result: string }) => {
+    throw new TaskComplete(result);
   },
-  {
-    schema: {
-      type: "object",
-      properties: { message: { type: "string" } },
-      required: ["message"],
-      additionalProperties: false,
-    },
-  }
+  { name: "done", zodSchema: z.object({ result: z.string() }) }
 );
 
+// Create agent and run
 const agent = new Agent({
   llm: new ChatAnthropic({ model: "claude-sonnet-4-20250514" }),
   tools: [add, done],
 });
 
-const result = await agent.query("What is 2 + 3?");
-console.log(result);
+const answer = await agent.query("What is 2 + 3?");
+console.log(answer); // "5"
 ```
 
-## Philosophy
+## The Core Loop
 
-**The Bitter Lesson:** All the value is in the RL'd model, not your 10,000 lines of abstractions.
+Here's what actually happens when you call `agent.query()`:
 
-Agent frameworks fail not because models are weak, but because their action spaces are incomplete. Give the LLM as much freedom as possible, then vibe-restrict based on evals.
+1. Your message gets added to the conversation history
+2. The LLM is called with the history and available tools
+3. If the LLM returns tool calls, each one is executed and results added to history
+4. Repeat until the LLM responds without tool calls (or hits max iterations)
+
+That's the entire architecture. Everything else is details.
 
 ## Features
 
-### Done Tool Pattern
+### Explicit Completion with Done Tool
 
-Force explicit completion:
+By default, the agent stops when the model responds without calling any tools. This works fine for simple tasks, but for complex workflows you often want explicit completion — the model must call a `done` tool to signal it's finished.
 
 ```ts
-const done = tool(
-  "Signal completion",
-  async ({ message }: { message: string }) => {
-    throw new TaskComplete(message);
-  },
-  {
-    schema: {
-      type: "object",
-      properties: { message: { type: "string" } },
-      required: ["message"],
-      additionalProperties: false,
-    },
-  }
-);
-
 const agent = new Agent({
   llm,
-  tools: [...tools, done],
-  require_done_tool: true,
+  tools: [...yourTools, doneToolFromAbove],
+  require_done_tool: true, // Won't stop until done() is called
 });
 ```
 
-### Ephemeral Messages
+The `TaskComplete` exception is a control flow mechanism: throw it from any tool to immediately end the loop and return the message.
 
-Large tool outputs blow up context. Keep only the last N:
+### Context Management
+
+Long-running agents accumulate context. A browser automation agent might generate megabytes of DOM snapshots and screenshots. Without management, you'll hit token limits or degrade model performance (context "rot" typically starts around 25% of the window).
+
+**Ephemeral messages** solve this for repetitive tool outputs. Mark a tool as ephemeral, and only the last N results are kept:
 
 ```ts
-const get_state = tool(
-  "Get browser state",
-  async () => "...",
-  { ephemeral: 3 }
+const screenshot = tool(
+  "Take screenshot",
+  async () => takeScreenshotBase64(),
+  { name: "screenshot", ephemeral: 3 } // Keep only last 3 screenshots in context
 );
 ```
 
-### Simple LLM Primitives
-
-Provider adapters are thin wrappers:
+**Compaction** handles the rest. When context exceeds a threshold (default 80% of model's window), the agent summarizes the conversation and continues with the summary:
 
 ```ts
-import { ChatAnthropic, ChatOpenAI, ChatGoogle } from "simple-agent/llm";
-
-new Agent({ llm: new ChatAnthropic({ model: "claude-sonnet-4-20250514" }), tools });
-new Agent({ llm: new ChatOpenAI({ model: "gpt-4o" }), tools });
-new Agent({ llm: new ChatGoogle({ model: "gemini-2.0-flash" }), tools });
-```
-
-### Context Compaction
-
-```ts
-import { CompactionService } from "simple-agent/agent";
-
 const agent = new Agent({
   llm,
   tools,
@@ -127,63 +117,187 @@ const agent = new Agent({
 });
 ```
 
-### Dependency Injection
+### Providers
+
+Built-in adapters for major providers, all implementing the same interface:
 
 ```ts
-import { Depends, tool } from "simple-agent";
+import {
+  ChatAnthropic,
+  ChatOpenAI,
+  ChatGoogle,
+  ChatAzureOpenAI,
+  ChatGroq,
+  ChatMistral,
+  ChatOllama,
+  ChatDeepSeek,
+  ChatCerebras,
+} from "simple-agent/llm";
 
-function getDb() {
-  return new Database();
-}
+// All work identically
+new Agent({ llm: new ChatAnthropic({ model: "claude-sonnet-4-20250514" }), tools });
+new Agent({ llm: new ChatOpenAI({ model: "gpt-4o" }), tools });
+new Agent({ llm: new ChatGoogle({ model: "gemini-2.0-flash" }), tools });
+```
 
-const query = tool(
-  "Query database",
-  async ({ sql }: { sql: string }, deps) => {
-    const db = deps.db as Database;
-    return db.query(sql);
-  },
+Groq, Mistral, Ollama, DeepSeek, and Cerebras use OpenAI-compatible endpoints under the hood.
+
+### Tool Schemas
+
+Three ways to define tool input schemas, from recommended to quick-and-dirty:
+
+**Zod (recommended)** — full validation, good TypeScript inference:
+
+```ts
+import { z } from "zod";
+
+const search = tool(
+  "Search the codebase",
+  async ({ query, limit }) => searchFiles(query, limit),
   {
-    schema: {
-      type: "object",
-      properties: { sql: { type: "string" } },
-      required: ["sql"],
-      additionalProperties: false,
-    },
-    dependencies: { db: new Depends(getDb) },
+    name: "search",
+    zodSchema: z.object({
+      query: z.string(),
+      limit: z.number().optional(),
+    }),
   }
 );
 ```
 
-### Streaming Events
+**Fluent builder** — no Zod dependency:
 
 ```ts
-import { ToolCallEvent, ToolResultEvent, FinalResponseEvent } from "simple-agent/agent";
+import { ToolSchema } from "simple-agent";
 
-for await (const event of agent.query_stream("do something")) {
+const schema = ToolSchema.create()
+  .addString("query")
+  .addInteger("limit", { optional: true })
+  .build();
+
+const search = tool("Search the codebase", handler, { name: "search", schema });
+```
+
+**Params shorthand** — quick prototyping:
+
+```ts
+const search = tool("Search the codebase", handler, {
+  name: "search",
+  params: { query: "string", limit: "integer?" },
+});
+```
+
+### Dependency Injection
+
+Tools often need shared resources (database connections, API clients). Rather than globals or closures, use dependency injection:
+
+```ts
+import { Depends, tool } from "simple-agent";
+
+function getDatabase() {
+  return new Database(process.env.DATABASE_URL);
+}
+
+const query = tool(
+  "Query database",
+  async ({ sql }, deps) => deps.db.execute(sql),
+  {
+    name: "query",
+    params: { sql: "string" },
+    dependencies: { db: new Depends(getDatabase) },
+  }
+);
+```
+
+Dependencies are resolved at execution time. Override them for testing:
+
+```ts
+const result = await query.execute(
+  { sql: "SELECT 1" },
+  { db: () => mockDatabase }
+);
+```
+
+### Streaming
+
+For UIs and logging, stream events as they happen:
+
+```ts
+import {
+  ToolCallEvent,
+  ToolResultEvent,
+  FinalResponseEvent,
+} from "simple-agent/agent";
+
+for await (const event of agent.query_stream("Do something complex")) {
   if (event instanceof ToolCallEvent) {
-    console.log(`Calling ${event.tool}`);
+    console.log(`Calling: ${event.tool}(${JSON.stringify(event.args)})`);
   } else if (event instanceof ToolResultEvent) {
-    console.log(`${event.tool} -> ${event.result.slice(0, 50)}`);
+    console.log(`Result: ${event.result.slice(0, 100)}...`);
   } else if (event instanceof FinalResponseEvent) {
     console.log(`Done: ${event.content}`);
   }
 }
 ```
 
+Event types: `TextEvent`, `ThinkingEvent`, `ToolCallEvent`, `ToolResultEvent`, `StepStartEvent`, `StepCompleteEvent`, `FinalResponseEvent`.
+
+### Observability
+
+Plug in your own tracing/logging:
+
+```ts
+import { observe, setObserver } from "simple-agent";
+
+setObserver({
+  onStart: (e) => console.log(`[${e.name}] started`),
+  onEnd: (e) => console.log(`[${e.name}] completed in ${e.duration_ms}ms`),
+  onError: (e) => console.error(`[${e.name}] failed:`, e.error),
+});
+
+// Wrap any async function
+const tracedFetch = observe(fetch, { name: "fetch" });
+```
+
+## Configuration Reference
+
+```ts
+new Agent({
+  // Required
+  llm: BaseChatModel,           // LLM provider instance
+  tools: Tool[],                // Available tools
+
+  // Optional
+  system_prompt: string | null, // System message (default: null)
+  max_iterations: number,       // Loop limit (default: 200)
+  require_done_tool: boolean,   // Require explicit completion (default: false)
+  tool_choice: ToolChoice,      // "auto" | "required" | "none" (default: "auto")
+
+  // Context management
+  compaction: {
+    enabled: boolean,           // Enable auto-compaction (default: true)
+    threshold_ratio: number,    // Trigger at this % of context (default: 0.8)
+  } | null,
+
+  // Retries
+  llm_max_retries: number,      // Retry attempts (default: 5)
+  llm_retry_base_delay: number, // Base delay in seconds (default: 1.0)
+  llm_retry_max_delay: number,  // Max delay in seconds (default: 60.0)
+
+  // Advanced
+  dependency_overrides: Map | Record, // DI overrides for testing
+  include_cost: boolean,        // Track token costs (default: false)
+});
+```
+
 ## Examples
 
-- `examples/quick_start.ts`
-- `examples/claude_code.ts`
-- `examples/dependency_injection.ts`
+- [`examples/quick_start.ts`](examples/quick_start.ts) — minimal working example
+- [`examples/claude_code.ts`](examples/claude_code.ts) — CLI agent with bash/read/write tools
+- [`examples/dependency_injection.ts`](examples/dependency_injection.ts) — DI patterns
 
-## Internal Docs
+## Contributing
 
-- `src/agent/README.md`
-- `src/llm/README.md`
-
-## Testing
-
-See `TESTING.md`.
+See [TESTING.md](TESTING.md) for how to run tests.
 
 ## License
 
