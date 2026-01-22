@@ -78,8 +78,8 @@ export class ChatAzureOpenAI extends ChatOpenAILike {
       modelParams.service_tier = this.service_tier;
 
     if (tools && tools.length) {
-      modelParams.tools = this.serializeTools(tools);
-      const mappedChoice = this.getToolChoice(tool_choice ?? "auto", tools);
+      modelParams.tools = this.serializeAzureTools(tools);
+      const mappedChoice = this.getAzureToolChoice(tool_choice ?? "auto", tools);
       if (mappedChoice !== null) modelParams.tool_choice = mappedChoice;
     }
 
@@ -115,10 +115,12 @@ export class ChatAzureOpenAI extends ChatOpenAILike {
     }
 
     const data = await response.json();
-    return this.toCompletion(data);
+    return this.toAzureCompletion(data);
   }
 
-  private serializeTools(tools: ToolDefinition[]): Array<Record<string, any>> {
+  private serializeAzureTools(
+    tools: ToolDefinition[],
+  ): Array<Record<string, any>> {
     return tools.map((tool) => ({
       type: "function",
       function: {
@@ -130,7 +132,7 @@ export class ChatAzureOpenAI extends ChatOpenAILike {
     }));
   }
 
-  private getToolChoice(
+  private getAzureToolChoice(
     tool_choice: ToolChoice | null | undefined,
     tools: ToolDefinition[],
   ): any {
@@ -141,7 +143,7 @@ export class ChatAzureOpenAI extends ChatOpenAILike {
     return { type: "function", function: { name: tool_choice } };
   }
 
-  private extractToolCalls(response: any): ToolCall[] {
+  private extractAzureToolCalls(response: any): ToolCall[] {
     const message = response?.choices?.[0]?.message;
     if (!message?.tool_calls) return [];
     return message.tool_calls.map((tc: any) => ({
@@ -154,7 +156,7 @@ export class ChatAzureOpenAI extends ChatOpenAILike {
     }));
   }
 
-  private extractUsage(response: any): ChatInvokeUsage | null {
+  private extractAzureUsage(response: any): ChatInvokeUsage | null {
     if (!response?.usage) return null;
     return {
       prompt_tokens: response.usage.prompt_tokens ?? 0,
@@ -167,10 +169,10 @@ export class ChatAzureOpenAI extends ChatOpenAILike {
     };
   }
 
-  private toCompletion(response: any): ChatInvokeCompletion {
+  private toAzureCompletion(response: any): ChatInvokeCompletion {
     const content = response?.choices?.[0]?.message?.content ?? null;
-    const toolCalls = this.extractToolCalls(response);
-    const usage = this.extractUsage(response);
+    const toolCalls = this.extractAzureToolCalls(response);
+    const usage = this.extractAzureUsage(response);
     return {
       content,
       tool_calls: toolCalls,
