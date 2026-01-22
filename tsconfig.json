@@ -10,8 +10,8 @@
     "types": ["bun-types"],
     "baseUrl": ".",
     "paths": {
-      "simple-agent/*": ["src/*"]
-    }
+      "simple-agent/*": ["src/*"],
+    },
   },
-  "include": ["src", "examples"]
+  "include": ["src", "examples", "tests"],
 }
