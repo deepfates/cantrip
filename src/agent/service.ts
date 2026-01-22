@@ -39,7 +39,7 @@ export class TaskComplete extends Error {
 
 export type AgentOptions = {
   llm: BaseChatModel;
-  tools: Tool[];
+  tools: Tool<any>[];
   system_prompt?: string | null;
   max_iterations?: number;
   tool_choice?: ToolChoice;
@@ -56,7 +56,7 @@ export type AgentOptions = {
 
 export class Agent {
   llm: BaseChatModel;
-  tools: Tool[];
+  tools: Tool<any>[];
   system_prompt: string | null;
   max_iterations: number;
   tool_choice: ToolChoice;
@@ -71,7 +71,7 @@ export class Agent {
   llm_retryable_status_codes: Set<number>;
 
   private messages: AnyMessage[] = [];
-  private tool_map: Map<string, Tool> = new Map();
+  private tool_map: Map<string, Tool<any>> = new Map();
   private compaction_service: CompactionService;
   private token_cost: TokenCost;
 
