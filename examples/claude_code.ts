@@ -29,7 +29,9 @@ class SandboxContext {
   }
 
   resolvePath(p: string): string {
-    const resolved = path.isAbsolute(p) ? path.resolve(p) : path.resolve(this.working_dir, p);
+    const resolved = path.isAbsolute(p)
+      ? path.resolve(p)
+      : path.resolve(this.working_dir, p);
     if (!resolved.startsWith(this.root_dir)) {
       throw new SecurityError(`Path escapes sandbox: ${p} -> ${resolved}`);
     }
@@ -57,6 +59,7 @@ const bash = tool(
     }
   },
   {
+    name: "bash",
     schema: {
       type: "object",
       properties: {
@@ -67,7 +70,7 @@ const bash = tool(
       additionalProperties: false,
     },
     dependencies: { ctx: new Depends(getSandboxContext) },
-  }
+  },
 );
 
 const read = tool(
@@ -78,12 +81,15 @@ const read = tool(
       const resolved = ctx.resolvePath(file_path);
       const content = await fs.readFile(resolved, "utf8");
       const lines = content.split(/\r?\n/);
-      return lines.map((line, i) => `${String(i + 1).padStart(4)}  ${line}`).join("\n");
+      return lines
+        .map((line, i) => `${String(i + 1).padStart(4)}  ${line}`)
+        .join("\n");
     } catch (err: any) {
       return `Error reading file: ${String(err?.message ?? err)}`;
     }
   },
   {
+    name: "read",
     schema: {
       type: "object",
       properties: { file_path: { type: "string" } },
@@ -91,12 +97,15 @@ const read = tool(
       additionalProperties: false,
     },
     dependencies: { ctx: new Depends(getSandboxContext) },
-  }
+  },
 );
 
 const write = tool(
   "Write content to a file",
-  async ({ file_path, content }: { file_path: string; content: string }, deps) => {
+  async (
+    { file_path, content }: { file_path: string; content: string },
+    deps,
+  ) => {
     const ctx = deps.ctx as SandboxContext;
     try {
       const resolved = ctx.resolvePath(file_path);
@@ -108,6 +117,7 @@ const write = tool(
     }
   },
   {
+    name: "write",
     schema: {
       type: "object",
       properties: {
@@ -118,20 +128,25 @@ const write = tool(
       additionalProperties: false,
     },
     dependencies: { ctx: new Depends(getSandboxContext) },
-  }
+  },
 );
 
 const edit = tool(
   "Replace text in a file",
   async (
-    { file_path, old_string, new_string }: { file_path: string; old_string: string; new_string: string },
-    deps
+    {
+      file_path,
+      old_string,
+      new_string,
+    }: { file_path: string; old_string: string; new_string: string },
+    deps,
   ) => {
     const ctx = deps.ctx as SandboxContext;
     try {
       const resolved = ctx.resolvePath(file_path);
       const content = await fs.readFile(resolved, "utf8");
-      if (!content.includes(old_string)) return `String not found in ${file_path}`;
+      if (!content.includes(old_string))
+        return `String not found in ${file_path}`;
       const count = content.split(old_string).length - 1;
       const updated = content.replaceAll(old_string, new_string);
       await fs.writeFile(resolved, updated, "utf8");
@@ -141,6 +156,7 @@ const edit = tool(
     }
   },
   {
+    name: "edit",
     schema: {
       type: "object",
       properties: {
@@ -152,7 +168,7 @@ const edit = tool(
       additionalProperties: false,
     },
     dependencies: { ctx: new Depends(getSandboxContext) },
-  }
+  },
 );
 
 const glob = tool(
@@ -177,6 +193,7 @@ const glob = tool(
     }
   },
   {
+    name: "glob",
     schema: {
       type: "object",
       properties: {
@@ -187,7 +204,7 @@ const glob = tool(
       additionalProperties: false,
     },
     dependencies: { ctx: new Depends(getSandboxContext) },
-  }
+  },
 );
 
 const done = tool(
@@ -196,13 +213,14 @@ const done = tool(
     throw new TaskComplete(message);
   },
   {
+    name: "done",
     schema: {
       type: "object",
       properties: { message: { type: "string" } },
       required: ["message"],
       additionalProperties: false,
     },
-  }
+  },
 );
 
 async function main() {

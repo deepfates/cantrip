@@ -31,7 +31,14 @@ export class Tool<TArgs extends Record<string, any> = Record<string, any>> {
     handler: ToolHandler<TArgs, any>,
     options?: ToolOptions,
   ) {
-    this.name = options?.name ?? handler.name ?? "tool";
+    const name = options?.name || handler.name;
+    if (!name) {
+      throw new Error(
+        "Tool name is required. Either provide a named function or pass { name: 'tool_name' } in options. " +
+          "Arrow functions like `async () => ...` have no name - use `async function myTool() {...}` or provide an explicit name.",
+      );
+    }
+    this.name = name;
     this.description = description;
     this.schema =
       options?.schema ??

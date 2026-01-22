@@ -6,6 +6,7 @@ const add = tool(
   "Add two numbers",
   async ({ a, b }: { a: number; b: number }) => a + b,
   {
+    name: "add",
     schema: {
       type: "object",
       properties: {
@@ -15,7 +16,7 @@ const add = tool(
       required: ["a", "b"],
       additionalProperties: false,
     },
-  }
+  },
 );
 
 const done = tool(
@@ -24,13 +25,14 @@ const done = tool(
     throw new TaskComplete(message);
   },
   {
+    name: "done",
     schema: {
       type: "object",
       properties: { message: { type: "string" } },
       required: ["message"],
       additionalProperties: false,
     },
-  }
+  },
 );
 
 const agent = new Agent({

@@ -51,6 +51,34 @@ describe("tools", () => {
     });
   });
 
+  test("throws error when arrow function has no explicit name", () => {
+    expect(() => {
+      tool("Anonymous tool", async () => "result", {
+        schema: {
+          type: "object",
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        },
+      });
+    }).toThrow("Tool name is required");
+  });
+
+  test("uses handler.name for named functions", () => {
+    async function myNamedTool() {
+      return "result";
+    }
+    const t = tool("A named tool", myNamedTool, {
+      schema: {
+        type: "object",
+        properties: {},
+        required: [],
+        additionalProperties: false,
+      },
+    });
+    expect(t.name).toBe("myNamedTool");
+  });
+
   test("tool executes with dependencies", async () => {
     const result = await withDeps.execute({});
     expect(result).toBe("42");
