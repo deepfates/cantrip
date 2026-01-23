@@ -1,10 +1,16 @@
 # simple-agent
 
-A TypeScript agent framework that does almost nothing — and that's the point.
+A tiny agent loop you can actually understand, edit, and own.
 
-## What This Is
+## Start Here (for builders)
 
-An agent is a while loop. You give an LLM some tools, it calls them, you execute them, repeat until it stops. That's it. That's the whole thing.
+If you want to build agents fast *and* know what’s going on:
+
+- The loop is the agent. Everything else is optional.
+- Tools are the product. Action space beats abstraction.
+- Start simple, then add reliability features only when you feel the pain.
+
+Here’s the loop in its barest form:
 
 ```ts
 while (true) {
@@ -16,7 +22,7 @@ while (true) {
 }
 ```
 
-This library wraps that loop with the minimal scaffolding needed to make it practical: multi-provider LLM support, tool schema validation, context management, and streaming events. Nothing more.
+This library wraps that loop with the minimum scaffolding needed to make it useful: multi‑provider LLM support, tool schemas, context management, and streaming events. Nothing more.
 
 ## Progressive Walkthrough (Start Here)
 
