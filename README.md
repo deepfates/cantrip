@@ -272,8 +272,7 @@ The model calls `think` to record reasoning, then keeps going. It can chain mult
 
 The most successful agents (Claude Code, Cursor, etc.) converged on this architecture: a loop with tools. No planning modules, no verification layers. This library is that loop, with just enough around it to be practical.
 
-Based on [browser-use/agent-sdk](https://github.com/browser-use/agent-sdk). See also: [The Bitter Lesson](http://www.incompleteideas.net/IncIdeas/BitterLesson.html).
-
+Inspired by [browser-use/agent-sdk](https://github.com/browser-use/agent-sdk).
 ## License
 
 MIT
