@@ -1,4 +1,4 @@
-# cantrip
+# 📜 cantrip
 
 A template for building your own agents. Clone it, learn from it, make it yours.
 
