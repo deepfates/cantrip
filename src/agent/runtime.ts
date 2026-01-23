@@ -8,14 +8,14 @@ import type {
   ToolMessage,
 } from "../llm/messages";
 import type { ChatInvokeCompletion } from "../llm/views";
-import { Tool } from "../tools/decorator";
 import type { DependencyOverrides } from "../tools/depends";
+import type { ToolLike } from "../tools";
 import { UsageTracker } from "../tokens";
 import { TaskComplete } from "./errors";
 
 export async function destroyEphemeralMessages(options: {
   messages: AnyMessage[];
-  tool_map: Map<string, Tool<any>>;
+  tool_map: Map<string, ToolLike>;
   ephemeral_storage_path?: string | null;
 }): Promise<void> {
   const { messages, tool_map, ephemeral_storage_path } = options;
@@ -63,7 +63,7 @@ export async function destroyEphemeralMessages(options: {
 
 export async function executeToolCall(options: {
   tool_call: ToolCall;
-  tool_map: Map<string, Tool<any>>;
+  tool_map: Map<string, ToolLike>;
   dependency_overrides?: DependencyOverrides | null;
 }): Promise<ToolMessage> {
   const { tool_call, tool_map, dependency_overrides } = options;
@@ -134,7 +134,7 @@ export function extractScreenshot(toolMessage: ToolMessage): string | null {
 export async function invokeLLMWithRetries(options: {
   llm: BaseChatModel;
   messages: AnyMessage[];
-  tools: Tool<any>[];
+  tools: ToolLike[];
   tool_definitions: ToolDefinition[];
   tool_choice: ToolChoice;
   usage_tracker: UsageTracker;

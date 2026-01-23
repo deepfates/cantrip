@@ -7,7 +7,7 @@ import type {
 import { extractToolMessageText } from "../llm/messages";
 import type { ChatInvokeCompletion } from "../llm/views";
 import { hasToolCalls } from "../llm/views";
-import { Tool } from "../tools/decorator";
+import type { ToolLike } from "../tools";
 import type { DependencyOverrides } from "../tools/depends";
 import { CompactionService } from "./compaction/service";
 import type { CompactionConfig } from "./compaction/models";
@@ -37,7 +37,7 @@ export { TaskComplete } from "./errors";
 
 export type AgentOptions = {
   llm: BaseChatModel;
-  tools: Tool<any>[];
+  tools: ToolLike[];
   system_prompt?: string | null;
   max_iterations?: number;
   tool_choice?: ToolChoice;
@@ -54,7 +54,7 @@ export type AgentOptions = {
 
 export class Agent {
   llm: BaseChatModel;
-  tools: Tool<any>[];
+  tools: ToolLike[];
   system_prompt: string | null;
   max_iterations: number;
   tool_choice: ToolChoice;
@@ -69,7 +69,7 @@ export class Agent {
   llm_retryable_status_codes: Set<number>;
 
   private messages: AnyMessage[] = [];
-  private tool_map: Map<string, Tool<any>> = new Map();
+  private tool_map: Map<string, ToolLike> = new Map();
   private compaction_service: CompactionService | null;
   private usage_tracker: UsageTracker;
 

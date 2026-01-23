@@ -289,6 +289,26 @@ new Agent({
 });
 ```
 
+## Minimal Core Loop
+
+If you want the bare for-loop (no retries, compaction, or ephemerals), use `CoreAgent`.
+
+```ts
+const agent = new CoreAgent({ llm, tools });
+const result = await agent.query("do the thing");
+```
+
+## Raw Tools
+
+If you don’t want the decorator, use `rawTool` with an explicit schema.
+
+```ts
+const echo = rawTool(
+  { name: "echo", description: "Echo", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false } },
+  async ({ text }) => `hi ${text}`,
+);
+```
+
 ## Examples
 
 - [`examples/quick_start.ts`](examples/quick_start.ts) — minimal working example

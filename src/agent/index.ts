@@ -1,4 +1,5 @@
 export { Agent, TaskComplete } from "./service";
+export { CoreAgent } from "./core";
 export {
   TextEvent,
   ThinkingEvent,
