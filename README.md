@@ -246,25 +246,11 @@ new Agent({
 });
 ```
 
-## The Think Tool
-
-A tool doesn't have to do anything external. It can just extend the model's reasoning:
-
-```ts
-const think = tool(
-  "Think step by step. Your thoughts are recorded but have no external effects.",
-  async ({ thought }: { thought: string }) => thought,
-  { name: "think", params: { thought: "string" } }
-);
-```
-
-The model calls `think` to record reasoning, then keeps going. It can chain multiple thoughts before acting, or call `think` in parallel to explore different angles. See [Anthropic's research on the think tool](https://www.anthropic.com/engineering/claude-think-tool).
-
 ## Examples
 
 - [`examples/quick_start.ts`](examples/quick_start.ts) — minimal example
 - [`examples/claude_code.ts`](examples/claude_code.ts) — CLI agent with bash/read/write
-- [`examples/repl.ts`](examples/repl.ts) — interactive REPL with think tool
+- [`examples/chat.ts`](examples/chat.ts) — interactive chat with think tool
 - [`examples/core_loop.ts`](examples/core_loop.ts) — CoreAgent + rawTool
 - [`examples/batteries_off.ts`](examples/batteries_off.ts) — Agent with extras disabled
 
