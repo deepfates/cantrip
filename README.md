@@ -22,7 +22,7 @@ while (true) {
 }
 ```
 
-This library wraps that loop with the minimum scaffolding needed to make it useful: multi‑provider LLM support, tool schemas, context management, and streaming events. Nothing more.
+This library wraps that loop with just enough scaffolding to be practical: multi‑provider LLM support, tool schemas, context management, and streaming events. Nothing more.
 
 ## Progressive Walkthrough (Start Here)
 
@@ -129,7 +129,7 @@ const answer = await agent.query("What is 2 + 3?");
 console.log(answer); // "5"
 ```
 
-## The Core Loop
+## What the loop actually does
 
 Here's what actually happens when you call `agent.query()`:
 
@@ -138,13 +138,13 @@ Here's what actually happens when you call `agent.query()`:
 3. If the LLM returns tool calls, each one is executed and results added to history
 4. Repeat until the LLM responds without tool calls (or hits max iterations)
 
-That's the entire architecture. Everything else is details.
+That’s the whole architecture. Everything else is just tooling around it.
 
-## Features
+## What you can add (if you want)
 
 ### Explicit Completion with Done Tool
 
-By default, the agent stops when the model responds without calling any tools. This works fine for simple tasks, but for complex workflows you often want explicit completion — the model must call a `done` tool to signal it's finished.
+By default, the agent stops when the model returns no tool calls. This works fine for simple tasks, but for complex workflows you often want explicit completion — the model must call a `done` tool to signal it's finished.
 
 ```ts
 const agent = new Agent({
@@ -154,11 +154,11 @@ const agent = new Agent({
 });
 ```
 
-The `TaskComplete` exception is a control flow mechanism: throw it from any tool to immediately end the loop and return the message.
+`TaskComplete` is just a control‑flow escape hatch: throw it from any tool to end the loop and return the message.
 
 ### Context Management
 
-Long-running agents accumulate context. A browser automation agent might generate megabytes of DOM snapshots and screenshots. Without management, you'll hit token limits or degrade model performance (context "rot" typically starts around 25% of the window).
+Long‑running agents accumulate context. A browser automation agent might generate megabytes of DOM snapshots and screenshots. Without management, you'll hit token limits or degrade model performance (context "rot" typically starts around 25% of the window).
 
 **Ephemeral messages** solve this for repetitive tool outputs. Mark a tool as ephemeral, and only the last N results are kept:
 
@@ -203,9 +203,9 @@ new Agent({ llm: new ChatOpenAI({ model: "gpt-4o" }), tools });
 new Agent({ llm: new ChatGoogle({ model: "gemini-2.0-flash" }), tools });
 ```
 
-Groq, Mistral, Ollama, DeepSeek, and Cerebras use OpenAI-compatible endpoints under the hood.
+Groq, Mistral, Ollama, DeepSeek, and Cerebras use OpenAI‑compatible endpoints under the hood.
 
-### Tool Schemas
+### Tool schemas
 
 Three ways to define tool input schemas, from recommended to quick-and-dirty:
 
@@ -249,7 +249,7 @@ const search = tool("Search the codebase", handler, {
 });
 ```
 
-### Dependency Injection
+### Dependency injection
 
 Tools often need shared resources (database connections, API clients). Rather than globals or closures, use dependency injection:
 
@@ -355,16 +355,16 @@ new Agent({
 });
 ```
 
-## Minimal Core Loop
+## Minimal core loop
 
-If you want the bare for-loop (no retries, compaction, or ephemerals), use `CoreAgent`.
+If you want the bare loop (no retries, compaction, or ephemerals), use `CoreAgent`.
 
 ```ts
 const agent = new CoreAgent({ llm, tools });
 const result = await agent.query("do the thing");
 ```
 
-## Raw Tools
+## Raw tools
 
 If you don’t want the decorator, use `rawTool` with an explicit schema.
 
@@ -375,12 +375,12 @@ const echo = rawTool(
 );
 ```
 
-## Composition Patterns
+## Composition patterns
 
 Pick the layer you want and build upward:
 
 1) Core loop only: `CoreAgent` + `rawTool`
-2) Batteries on: `Agent` + decorator tools
+2) Batteries included: `Agent` + decorator tools
 3) Mixed: `Agent` with retries/ephemerals/compaction toggled off
 
 Examples live in `examples/` and show each style.
