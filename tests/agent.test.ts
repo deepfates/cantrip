@@ -263,4 +263,24 @@ describe("agent", () => {
     expect(toolMessages[0].destroyed).toBe(false);
     expect(toolMessages[1].destroyed).toBe(false);
   });
+
+  test("can disable compaction wiring", async () => {
+    const llm = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async ainvoke() {
+        return { content: "ok", tool_calls: [] };
+      },
+    };
+
+    const agent = new Agent({
+      llm: llm as any,
+      tools: [],
+      compaction_enabled: false,
+    });
+
+    const result = await agent.query("hi");
+    expect(result).toBe("ok");
+  });
 });

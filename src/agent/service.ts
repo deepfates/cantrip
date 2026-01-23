@@ -53,6 +53,7 @@ export type AgentOptions = {
   llm_retryable_status_codes?: Set<number> | number[];
   retry?: { enabled?: boolean };
   ephemerals?: { enabled?: boolean };
+  compaction_enabled?: boolean;
 };
 
 export class Agent {
@@ -72,6 +73,7 @@ export class Agent {
   llm_retryable_status_codes: Set<number>;
   retry_enabled: boolean;
   ephemerals_enabled: boolean;
+  compaction_enabled: boolean;
 
   private messages: AnyMessage[] = [];
   private tool_map: Map<string, ToolLike> = new Map();
@@ -97,6 +99,7 @@ export class Agent {
     );
     this.retry_enabled = options.retry?.enabled ?? true;
     this.ephemerals_enabled = options.ephemerals?.enabled ?? true;
+    this.compaction_enabled = options.compaction_enabled ?? true;
 
     for (const tool of this.tools) {
       this.tool_map.set(tool.name, tool);
@@ -104,7 +107,7 @@ export class Agent {
 
     this.usage_tracker = new UsageTracker();
     this.compaction_service =
-      this.compaction === null
+      this.compaction === null || !this.compaction_enabled
         ? null
         : new CompactionService({
             config: this.compaction ?? undefined,
