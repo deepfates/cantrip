@@ -1,4 +1,4 @@
-# cantrip
+# 📜 cantrip 
 
 A tiny agent loop you can actually understand, edit, and own.
 
