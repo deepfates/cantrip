@@ -1,7 +1,7 @@
 import type { BaseChatModel } from "../../llm/base";
 import type { AnyMessage } from "../../llm/messages";
 import type { ChatInvokeUsage } from "../../llm/views";
-import type { TokenCost } from "../../tokens/service";
+import type { PricingProvider } from "../../tokens";
 import {
   DEFAULT_SUMMARY_PROMPT,
   DEFAULT_THRESHOLD_RATIO,
@@ -14,7 +14,7 @@ const DEFAULT_CONTEXT_WINDOW = 128_000;
 export class CompactionService {
   config: Required<CompactionConfig>;
   llm?: BaseChatModel;
-  token_cost?: TokenCost;
+  pricing_provider?: PricingProvider;
   private last_usage = tokenUsageFromUsage(null);
   private context_limit_cache: Record<string, number> = {};
   private threshold_cache: Record<string, number> = {};
@@ -22,7 +22,7 @@ export class CompactionService {
   constructor(options: {
     config?: CompactionConfig;
     llm?: BaseChatModel;
-    token_cost?: TokenCost;
+    pricing_provider?: PricingProvider;
   }) {
     this.config = {
       enabled: options.config?.enabled ?? true,
@@ -32,7 +32,7 @@ export class CompactionService {
       summary_prompt: options.config?.summary_prompt ?? DEFAULT_SUMMARY_PROMPT,
     };
     this.llm = options.llm;
-    this.token_cost = options.token_cost;
+    this.pricing_provider = options.pricing_provider;
   }
 
   updateUsage(usage?: ChatInvokeUsage | null): void {
@@ -43,9 +43,9 @@ export class CompactionService {
     if (this.context_limit_cache[model]) return this.context_limit_cache[model];
 
     let limit = DEFAULT_CONTEXT_WINDOW;
-    if (this.token_cost) {
+    if (this.pricing_provider) {
       try {
-        const pricing = await this.token_cost.getModelPricing(model);
+        const pricing = await this.pricing_provider.getModelPricing(model);
         if (pricing?.max_input_tokens) limit = pricing.max_input_tokens;
         else if (pricing?.max_tokens) limit = pricing.max_tokens;
       } catch {}

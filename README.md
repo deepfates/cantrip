@@ -285,7 +285,7 @@ new Agent({
 
   // Advanced
   dependency_overrides: Map | Record, // DI overrides for testing
-  include_cost: boolean,        // Track token costs (default: false)
+  pricing_provider: PricingProvider | null, // Optional pricing data
 });
 ```
 
