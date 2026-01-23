@@ -45,12 +45,15 @@ const agent = new CoreAgent({
   tools: [add],
 });
 
-async function main() {
+export async function main() {
   const result = await agent.query("What is 2 + 3?");
   console.log(result);
+  return result;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

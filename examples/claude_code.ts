@@ -223,7 +223,7 @@ const done = tool(
   },
 );
 
-async function main() {
+export async function main() {
   const ctx = await SandboxContext.create();
   const agent = new Agent({
     llm: new ChatOpenAI({ model: "gpt-4o" }),
@@ -247,7 +247,9 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

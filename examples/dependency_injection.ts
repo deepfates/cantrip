@@ -21,15 +21,18 @@ const query = tool(
     name: "query",
     params: { sql: "string" },
     dependencies: { db: new Depends(getDb) },
-  }
+  },
 );
 
-async function main() {
+export async function main() {
   const result = await query.execute({ sql: "SELECT 1" });
   console.log(result);
+  return result;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
