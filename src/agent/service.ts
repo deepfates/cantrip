@@ -70,7 +70,7 @@ export class Agent {
 
   private messages: AnyMessage[] = [];
   private tool_map: Map<string, Tool<any>> = new Map();
-  private compaction_service: CompactionService;
+  private compaction_service: CompactionService | null;
   private usage_tracker: UsageTracker;
 
   constructor(options: AgentOptions) {
@@ -96,11 +96,14 @@ export class Agent {
     }
 
     this.usage_tracker = new UsageTracker();
-    this.compaction_service = new CompactionService({
-      config: this.compaction ?? undefined,
-      llm: this.llm,
-      pricing_provider: this.pricing_provider ?? undefined,
-    });
+    this.compaction_service =
+      this.compaction === null
+        ? null
+        : new CompactionService({
+            config: this.compaction ?? undefined,
+            llm: this.llm,
+            pricing_provider: this.pricing_provider ?? undefined,
+          });
   }
 
   get tool_definitions(): ToolDefinition[] {
@@ -132,6 +135,7 @@ export class Agent {
   private async checkAndCompact(
     response: ChatInvokeCompletion,
   ): Promise<boolean> {
+    if (!this.compaction_service) return false;
     this.compaction_service.updateUsage(response.usage ?? null);
     const { messages, result } = await this.compaction_service.checkAndCompact(
       this.messages,

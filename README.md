@@ -276,7 +276,7 @@ new Agent({
   compaction: {
     enabled: boolean,           // Enable auto-compaction (default: true)
     threshold_ratio: number,    // Trigger at this % of context (default: 0.8)
-  } | null,
+  } | null,                     // null disables compaction (default: null)
 
   // Retries
   llm_max_retries: number,      // Retry attempts (default: 5)
