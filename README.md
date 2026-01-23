@@ -282,6 +282,7 @@ new Agent({
   llm_max_retries: number,      // Retry attempts (default: 5)
   llm_retry_base_delay: number, // Base delay in seconds (default: 1.0)
   llm_retry_max_delay: number,  // Max delay in seconds (default: 60.0)
+  retry: { enabled: boolean },  // Disable retry logic when false (default: true)
 
   // Advanced
   dependency_overrides: Map | Record, // DI overrides for testing

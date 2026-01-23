@@ -19,6 +19,7 @@ import {
   executeToolCall,
   extractScreenshot,
   generateMaxIterationsSummary,
+  invokeLLMOnce,
   invokeLLMWithRetries,
 } from "./runtime";
 import {
@@ -50,6 +51,7 @@ export type AgentOptions = {
   llm_retry_base_delay?: number;
   llm_retry_max_delay?: number;
   llm_retryable_status_codes?: Set<number> | number[];
+  retry?: { enabled?: boolean };
 };
 
 export class Agent {
@@ -67,6 +69,7 @@ export class Agent {
   llm_retry_base_delay: number;
   llm_retry_max_delay: number;
   llm_retryable_status_codes: Set<number>;
+  retry_enabled: boolean;
 
   private messages: AnyMessage[] = [];
   private tool_map: Map<string, ToolLike> = new Map();
@@ -90,6 +93,7 @@ export class Agent {
     this.llm_retryable_status_codes = new Set(
       options.llm_retryable_status_codes ?? [429, 500, 502, 503, 504],
     );
+    this.retry_enabled = options.retry?.enabled ?? true;
 
     for (const tool of this.tools) {
       this.tool_map.set(tool.name, tool);
@@ -170,18 +174,27 @@ export class Agent {
         ephemeral_storage_path: this.ephemeral_storage_path,
       });
 
-      const response = await invokeLLMWithRetries({
-        llm: this.llm,
-        messages: this.messages,
-        tools: this.tools,
-        tool_definitions: this.tool_definitions,
-        tool_choice: this.tool_choice,
-        usage_tracker: this.usage_tracker,
-        llm_max_retries: this.llm_max_retries,
-        llm_retry_base_delay: this.llm_retry_base_delay,
-        llm_retry_max_delay: this.llm_retry_max_delay,
-        llm_retryable_status_codes: this.llm_retryable_status_codes,
-      });
+      const response = this.retry_enabled
+        ? await invokeLLMWithRetries({
+            llm: this.llm,
+            messages: this.messages,
+            tools: this.tools,
+            tool_definitions: this.tool_definitions,
+            tool_choice: this.tool_choice,
+            usage_tracker: this.usage_tracker,
+            llm_max_retries: this.llm_max_retries,
+            llm_retry_base_delay: this.llm_retry_base_delay,
+            llm_retry_max_delay: this.llm_retry_max_delay,
+            llm_retryable_status_codes: this.llm_retryable_status_codes,
+          })
+        : await invokeLLMOnce({
+            llm: this.llm,
+            messages: this.messages,
+            tools: this.tools,
+            tool_definitions: this.tool_definitions,
+            tool_choice: this.tool_choice,
+            usage_tracker: this.usage_tracker,
+          });
 
       const assistantMessage: AssistantMessage = {
         role: "assistant",
@@ -264,18 +277,27 @@ export class Agent {
         ephemeral_storage_path: this.ephemeral_storage_path,
       });
 
-      const response = await invokeLLMWithRetries({
-        llm: this.llm,
-        messages: this.messages,
-        tools: this.tools,
-        tool_definitions: this.tool_definitions,
-        tool_choice: this.tool_choice,
-        usage_tracker: this.usage_tracker,
-        llm_max_retries: this.llm_max_retries,
-        llm_retry_base_delay: this.llm_retry_base_delay,
-        llm_retry_max_delay: this.llm_retry_max_delay,
-        llm_retryable_status_codes: this.llm_retryable_status_codes,
-      });
+      const response = this.retry_enabled
+        ? await invokeLLMWithRetries({
+            llm: this.llm,
+            messages: this.messages,
+            tools: this.tools,
+            tool_definitions: this.tool_definitions,
+            tool_choice: this.tool_choice,
+            usage_tracker: this.usage_tracker,
+            llm_max_retries: this.llm_max_retries,
+            llm_retry_base_delay: this.llm_retry_base_delay,
+            llm_retry_max_delay: this.llm_retry_max_delay,
+            llm_retryable_status_codes: this.llm_retryable_status_codes,
+          })
+        : await invokeLLMOnce({
+            llm: this.llm,
+            messages: this.messages,
+            tools: this.tools,
+            tool_definitions: this.tool_definitions,
+            tool_choice: this.tool_choice,
+            usage_tracker: this.usage_tracker,
+          });
 
       if (response.thinking) {
         yield new ThinkingEvent(response.thinking);

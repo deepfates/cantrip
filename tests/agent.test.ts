@@ -128,6 +128,30 @@ describe("agent", () => {
     expect(result).toBe("ok");
   });
 
+  test("can disable retries", async () => {
+    let calls = 0;
+    const llm = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async ainvoke() {
+        calls += 1;
+        const err: any = new Error("rate limit");
+        err.status_code = 429;
+        throw err;
+      },
+    };
+
+    const agent = new Agent({
+      llm: llm as any,
+      tools: [],
+      retry: { enabled: false },
+    });
+
+    await expect(agent.query("hi")).rejects.toThrow("rate limit");
+    expect(calls).toBe(1);
+  });
+
   test("ephemeral tool messages are destroyed", async () => {
     async function ephHandler() {
       return "big output";
