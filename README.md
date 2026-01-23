@@ -379,6 +379,17 @@ Pick the layer you want and build upward:
 
 Examples live in `examples/` and show each style.
 
+## Claude Code‑Style Toolset (Case Study)
+
+The blog post that motivated this repo calls out Claude Code as the “simple loop + tools” reference point and argues that action space matters more than framework abstractions. citeturn0view0
+
+If you want a “Claude Code‑ish” setup (shell + read/write/edit + sandbox), start with:
+
+- `examples/claude_code.ts` — a runnable, tool‑heavy CLI agent
+- `examples/dependency_injection.ts` — how to safely inject resources like sandboxes
+
+This is intentionally not a framework inside a framework — it’s meant to be code you can read, edit, and fork.
+
 ## Examples
 
 - [`examples/quick_start.ts`](examples/quick_start.ts) — minimal working example
