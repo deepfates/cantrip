@@ -6,6 +6,7 @@ import { main as diMain } from "../examples/dependency_injection";
 import { main as quickStartMain } from "../examples/quick_start";
 import { main as batteriesOffMain } from "../examples/batteries_off";
 import { main as claudeCodeMain } from "../examples/claude_code";
+import { main as replMain } from "../examples/repl";
 
 loadEnv();
 
@@ -43,5 +44,9 @@ describe("examples", () => {
 
   test("claude_code example is importable", () => {
     expect(typeof claudeCodeMain).toBe("function");
+  });
+
+  test("repl example is importable", () => {
+    expect(typeof replMain).toBe("function");
   });
 });

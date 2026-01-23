@@ -1,5 +1,11 @@
 export { Agent, TaskComplete } from "./service";
 export { CoreAgent } from "./core";
+export { createConsoleRenderer } from "./console";
+export type {
+  ConsoleRenderer,
+  ConsoleRendererOptions,
+  ConsoleRendererState,
+} from "./console";
 export {
   TextEvent,
   ThinkingEvent,

@@ -4,7 +4,10 @@ export class TextEvent {
     this.content = content;
   }
   toString(): string {
-    const preview = this.content.length > 100 ? `${this.content.slice(0, 100)}...` : this.content;
+    const preview =
+      this.content.length > 100
+        ? `${this.content.slice(0, 100)}...`
+        : this.content;
     return `💬 ${preview}`;
   }
 }
@@ -15,7 +18,10 @@ export class ThinkingEvent {
     this.content = content;
   }
   toString(): string {
-    const preview = this.content.length > 80 ? `${this.content.slice(0, 80)}...` : this.content;
+    const preview =
+      this.content.length > 80
+        ? `${this.content.slice(0, 80)}...`
+        : this.content;
     return `🧠 ${preview}`;
   }
 }
@@ -26,7 +32,12 @@ export class ToolCallEvent {
   tool_call_id: string;
   display_name: string;
 
-  constructor(tool: string, args: Record<string, any>, tool_call_id: string, display_name = "") {
+  constructor(
+    tool: string,
+    args: Record<string, any>,
+    tool_call_id: string,
+    display_name = "",
+  ) {
     this.tool = tool;
     this.args = args;
     this.tool_call_id = tool_call_id;
@@ -53,7 +64,7 @@ export class ToolResultEvent {
     result: string,
     tool_call_id: string,
     is_error = false,
-    screenshot_base64?: string | null
+    screenshot_base64?: string | null,
   ) {
     this.tool = tool;
     this.result = result;
@@ -64,7 +75,8 @@ export class ToolResultEvent {
 
   toString(): string {
     const prefix = this.is_error ? "❌" : "✓";
-    const preview = this.result.length > 80 ? `${this.result.slice(0, 80)}...` : this.result;
+    const preview =
+      this.result.length > 80 ? `${this.result.slice(0, 80)}...` : this.result;
     const screenshot = this.screenshot_base64 ? " 📸" : "";
     return `   ${prefix} ${this.tool}: ${preview}${screenshot}`;
   }
@@ -76,7 +88,9 @@ export class FinalResponseEvent {
     this.content = content;
   }
   toString(): string {
-    return this.content.length > 100 ? `✅ Final: ${this.content.slice(0, 100)}...` : `✅ Final: ${this.content}`;
+    return this.content.length > 100
+      ? `✅ Final: ${this.content.slice(0, 100)}...`
+      : `✅ Final: ${this.content}`;
   }
 }
 
@@ -100,7 +114,10 @@ export class MessageCompleteEvent {
     this.content = content;
   }
   toString(): string {
-    const preview = this.content.length > 80 ? `${this.content.slice(0, 80)}...` : this.content;
+    const preview =
+      this.content.length > 80
+        ? `${this.content.slice(0, 80)}...`
+        : this.content;
     return `📩 Message complete: ${preview}`;
   }
 }
@@ -140,7 +157,10 @@ export class HiddenUserMessageEvent {
     this.content = content;
   }
   toString(): string {
-    const preview = this.content.length > 80 ? `${this.content.slice(0, 80)}...` : this.content;
+    const preview =
+      this.content.length > 80
+        ? `${this.content.slice(0, 80)}...`
+        : this.content;
     return `👻 Hidden: ${preview}`;
   }
 }

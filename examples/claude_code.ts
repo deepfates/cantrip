@@ -2,8 +2,10 @@ import { promises as fs } from "fs";
 import path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
+import readline from "readline";
 
 import { Agent, TaskComplete } from "../src/agent/service";
+import { createConsoleRenderer } from "../src/agent/console";
 import { ChatOpenAI } from "../src/llm/openai/chat";
 import { Depends } from "../src/tools/depends";
 import { tool } from "../src/tools/decorator";
@@ -225,6 +227,10 @@ const done = tool(
 
 export async function main() {
   const ctx = await SandboxContext.create();
+  const verbose = (() => {
+    const value = process.env.VERBOSE?.toLowerCase();
+    return value === "1" || value === "true" || value === "yes";
+  })();
   const agent = new Agent({
     llm: new ChatOpenAI({ model: "gpt-4o" }),
     tools: [bash, read, write, edit, glob, done],
@@ -233,18 +239,50 @@ export async function main() {
   });
 
   console.log("Agent ready. Ctrl+C to exit.");
-  process.stdin.setEncoding("utf8");
-  process.stdin.on("data", async (chunk) => {
-    const task = chunk.toString().trim();
-    if (!task) return;
-    for await (const event of agent.query_stream(task)) {
-      if ((event as any).tool) {
-        console.log(`  → ${(event as any).tool}`);
-      } else if ((event as any).content) {
-        console.log(`\n${(event as any).content}`);
-      }
+
+  const isTty = Boolean(process.stdin.isTTY);
+
+  const renderer = createConsoleRenderer({ verbose });
+
+  if (!isTty) {
+    let input = "";
+    process.stdin.setEncoding("utf8");
+    for await (const chunk of process.stdin) {
+      input += chunk;
     }
+    const task = input.trim();
+    if (!task) return;
+    const text = (await agent.query(task)).replace(/\s+$/, "");
+    if (text) console.log(text);
+    return;
+  }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: "› ",
   });
+
+  let pending = Promise.resolve();
+  rl.on("line", (line) => {
+    pending = pending.then(async () => {
+      const task = line.trim();
+      if (!task) {
+        rl.prompt();
+        return;
+      }
+      rl.pause();
+      const state = renderer.createState();
+      for await (const event of agent.query_stream(task)) {
+        renderer.handle(event, state);
+      }
+      console.log("─");
+      rl.resume();
+      rl.prompt();
+    });
+  });
+
+  rl.prompt();
 }
 
 if (import.meta.main) {

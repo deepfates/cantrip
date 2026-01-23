@@ -385,9 +385,11 @@ Pick the layer you want and build upward:
 
 Examples live in `examples/` and show each style.
 
+For an interactive, TTY‑aware REPL with minimal output formatting, see `examples/repl.ts`.
+
 ## Claude Code‑Style Toolset (Case Study)
 
-The blog post that motivated this repo calls out Claude Code as the “simple loop + tools” reference point and argues that action space matters more than framework abstractions. citeturn0view0
+The [blog post that motivated this repo](https://browser-use.com/posts/bitter-lesson-agent-frameworks) calls out Claude Code as the “simple loop + tools” reference point and argues that action space matters more than framework abstractions.
 
 If you want a “Claude Code‑ish” setup (shell + read/write/edit + sandbox), start with:
 
@@ -400,6 +402,7 @@ This is intentionally not a framework inside a framework — it’s meant to be 
 
 - [`examples/quick_start.ts`](examples/quick_start.ts) — minimal working example
 - [`examples/claude_code.ts`](examples/claude_code.ts) — CLI agent with bash/read/write tools
+- [`examples/repl.ts`](examples/repl.ts) — interactive REPL (TTY‑aware)
 - [`examples/dependency_injection.ts`](examples/dependency_injection.ts) — DI patterns
 - [`examples/core_loop.ts`](examples/core_loop.ts) — CoreAgent + rawTool (no extras)
 - [`examples/batteries_off.ts`](examples/batteries_off.ts) — Agent with retries/ephemerals/compaction off
