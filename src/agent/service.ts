@@ -21,6 +21,7 @@ import {
   generateMaxIterationsSummary,
   invokeLLMOnce,
   invokeLLMWithRetries,
+  runAgentLoop,
 } from "./runtime";
 import {
   type AgentEvent,
@@ -159,60 +160,54 @@ export class Agent {
   }
 
   async query(message: string): Promise<string> {
-    if (!this.messages.length && this.system_prompt) {
-      this.messages.push({
-        role: "system",
-        content: this.system_prompt,
-        cache: true,
-      } as AnyMessage);
-    }
-
     this.messages.push({ role: "user", content: message } as AnyMessage);
 
-    let iterations = 0;
     let incomplete_todos_prompted = false;
 
-    while (iterations < this.max_iterations) {
-      iterations += 1;
-      if (this.ephemerals_enabled) {
-        await destroyEphemeralMessages({
-          messages: this.messages,
-          tool_map: this.tool_map,
-          ephemeral_storage_path: this.ephemeral_storage_path,
-        });
-      }
-
-      const response = this.retry_enabled
-        ? await invokeLLMWithRetries({
-            llm: this.llm,
+    const result = await runAgentLoop({
+      llm: this.llm,
+      tools: this.tools,
+      tool_map: this.tool_map,
+      tool_definitions: this.tool_definitions,
+      tool_choice: this.tool_choice,
+      messages: this.messages,
+      system_prompt: this.system_prompt,
+      max_iterations: this.max_iterations,
+      require_done_tool: this.require_done_tool,
+      dependency_overrides: this.dependency_overrides,
+      before_step: async () => {
+        if (this.ephemerals_enabled) {
+          await destroyEphemeralMessages({
             messages: this.messages,
-            tools: this.tools,
-            tool_definitions: this.tool_definitions,
-            tool_choice: this.tool_choice,
-            usage_tracker: this.usage_tracker,
-            llm_max_retries: this.llm_max_retries,
-            llm_retry_base_delay: this.llm_retry_base_delay,
-            llm_retry_max_delay: this.llm_retry_max_delay,
-            llm_retryable_status_codes: this.llm_retryable_status_codes,
-          })
-        : await invokeLLMOnce({
-            llm: this.llm,
-            messages: this.messages,
-            tools: this.tools,
-            tool_definitions: this.tool_definitions,
-            tool_choice: this.tool_choice,
-            usage_tracker: this.usage_tracker,
+            tool_map: this.tool_map,
+            ephemeral_storage_path: this.ephemeral_storage_path,
           });
-
-      const assistantMessage: AssistantMessage = {
-        role: "assistant",
-        content: response.content ?? null,
-        tool_calls: response.tool_calls ?? null,
-      };
-      this.messages.push(assistantMessage);
-
-      if (!hasToolCalls(response)) {
-        if (!this.require_done_tool) {
+        }
+      },
+      invoke_llm: async () =>
+        this.retry_enabled
+          ? await invokeLLMWithRetries({
+              llm: this.llm,
+              messages: this.messages,
+              tools: this.tools,
+              tool_definitions: this.tool_definitions,
+              tool_choice: this.tool_choice,
+              usage_tracker: this.usage_tracker,
+              llm_max_retries: this.llm_max_retries,
+              llm_retry_base_delay: this.llm_retry_base_delay,
+              llm_retry_max_delay: this.llm_retry_max_delay,
+              llm_retryable_status_codes: this.llm_retryable_status_codes,
+            })
+          : await invokeLLMOnce({
+              llm: this.llm,
+              messages: this.messages,
+              tools: this.tools,
+              tool_definitions: this.tool_definitions,
+              tool_choice: this.tool_choice,
+              usage_tracker: this.usage_tracker,
+            }),
+      after_response: async (response, context) => {
+        if (!context.has_tool_calls && !this.require_done_tool) {
           if (!incomplete_todos_prompted) {
             const prompt = await this.get_incomplete_todos_prompt();
             if (prompt) {
@@ -221,46 +216,21 @@ export class Agent {
                 role: "user",
                 content: prompt,
               } as AnyMessage);
-              continue;
+              return true;
             }
           }
-          await this.checkAndCompact(response);
-          return response.content ?? "";
         }
-        continue;
-      }
-
-      for (const toolCall of response.tool_calls ?? []) {
-        try {
-          const toolResult = await executeToolCall({
-            tool_call: toolCall,
-            tool_map: this.tool_map,
-            dependency_overrides: this.dependency_overrides,
-          });
-          this.messages.push(toolResult);
-        } catch (err) {
-          if (err instanceof TaskComplete) {
-            this.messages.push({
-              role: "tool",
-              tool_call_id: toolCall.id,
-              tool_name: toolCall.function.name,
-              content: `Task completed: ${err.message}`,
-              is_error: false,
-            } as ToolMessage);
-            return err.message;
-          }
-          throw err;
-        }
-      }
-
-      await this.checkAndCompact(response);
-    }
-
-    return await generateMaxIterationsSummary({
-      llm: this.llm,
-      messages: this.messages,
-      max_iterations: this.max_iterations,
+        await this.checkAndCompact(response);
+        return false;
+      },
+      on_max_iterations: async () =>
+        generateMaxIterationsSummary({
+          llm: this.llm,
+          messages: this.messages,
+          max_iterations: this.max_iterations,
+        }),
     });
+    return result;
   }
 
   async *query_stream(message: string): AsyncGenerator<AgentEvent> {

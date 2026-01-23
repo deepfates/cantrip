@@ -3,11 +3,13 @@ import path from "path";
 import type { BaseChatModel, ToolChoice, ToolDefinition } from "../llm/base";
 import type {
   AnyMessage,
+  AssistantMessage,
   ContentPartImage,
   ToolCall,
   ToolMessage,
 } from "../llm/messages";
 import type { ChatInvokeCompletion } from "../llm/views";
+import { hasToolCalls } from "../llm/views";
 import type { DependencyOverrides } from "../tools/depends";
 import type { ToolLike } from "../tools";
 import { UsageTracker } from "../tokens";
@@ -253,4 +255,111 @@ Keep the summary brief but informative.`;
   } finally {
     messages.pop();
   }
+}
+
+export async function runAgentLoop(options: {
+  llm: BaseChatModel;
+  tools: ToolLike[];
+  tool_map: Map<string, ToolLike>;
+  tool_definitions: ToolDefinition[];
+  tool_choice: ToolChoice;
+  messages: AnyMessage[];
+  system_prompt: string | null;
+  max_iterations: number;
+  require_done_tool: boolean;
+  dependency_overrides?: DependencyOverrides | null;
+  before_step?: () => Promise<void>;
+  invoke_llm: () => Promise<ChatInvokeCompletion>;
+  after_response?: (
+    response: ChatInvokeCompletion,
+    context: { has_tool_calls: boolean },
+  ) => Promise<boolean | void>;
+  on_max_iterations?: () => Promise<string>;
+  on_tool_result?: (toolMessage: ToolMessage) => void;
+}): Promise<string> {
+  const {
+    llm,
+    tools,
+    tool_map,
+    tool_definitions,
+    tool_choice,
+    messages,
+    system_prompt,
+    max_iterations,
+    require_done_tool,
+    dependency_overrides,
+    before_step,
+    invoke_llm,
+    after_response,
+    on_max_iterations,
+    on_tool_result,
+  } = options;
+
+  if (!messages.length && system_prompt) {
+    messages.push({
+      role: "system",
+      content: system_prompt,
+      cache: true,
+    } as AnyMessage);
+  }
+
+  let iterations = 0;
+
+  while (iterations < max_iterations) {
+    iterations += 1;
+    if (before_step) await before_step();
+
+    const response = await invoke_llm();
+
+    const assistantMessage: AssistantMessage = {
+      role: "assistant",
+      content: response.content ?? null,
+      tool_calls: response.tool_calls ?? null,
+    };
+    messages.push(assistantMessage);
+
+    if (!hasToolCalls(response)) {
+      if (!require_done_tool) {
+        const shouldContinue = after_response
+          ? await after_response(response, { has_tool_calls: false })
+          : false;
+        if (shouldContinue) {
+          continue;
+        }
+        return response.content ?? "";
+      }
+      continue;
+    }
+
+    for (const toolCall of response.tool_calls ?? []) {
+      try {
+        const toolResult = await executeToolCall({
+          tool_call: toolCall,
+          tool_map,
+          dependency_overrides,
+        });
+        messages.push(toolResult);
+        if (on_tool_result) on_tool_result(toolResult);
+      } catch (err) {
+        if (err instanceof TaskComplete) {
+          messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            tool_name: toolCall.function.name,
+            content: `Task completed: ${err.message}`,
+            is_error: false,
+          } as ToolMessage);
+          return err.message;
+        }
+        throw err;
+      }
+    }
+
+    if (after_response) {
+      await after_response(response, { has_tool_calls: true });
+    }
+  }
+
+  if (on_max_iterations) return await on_max_iterations();
+  return `Task stopped after ${max_iterations} iterations.`;
 }

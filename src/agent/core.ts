@@ -1,14 +1,8 @@
 import type { BaseChatModel, ToolChoice, ToolDefinition } from "../llm/base";
-import type {
-  AnyMessage,
-  AssistantMessage,
-  ToolMessage,
-} from "../llm/messages";
-import { hasToolCalls } from "../llm/views";
+import type { AnyMessage } from "../llm/messages";
 import type { DependencyOverrides } from "../tools/depends";
 import type { ToolLike } from "../tools/types";
-import { TaskComplete } from "./errors";
-import { executeToolCall } from "./runtime";
+import { runAgentLoop } from "./runtime";
 
 export type CoreAgentOptions = {
   llm: BaseChatModel;
@@ -59,65 +53,24 @@ export class CoreAgent {
   }
 
   async query(message: string): Promise<string> {
-    if (!this.messages.length && this.system_prompt) {
-      this.messages.push({
-        role: "system",
-        content: this.system_prompt,
-        cache: true,
-      } as AnyMessage);
-    }
-
     this.messages.push({ role: "user", content: message } as AnyMessage);
-
-    let iterations = 0;
-
-    while (iterations < this.max_iterations) {
-      iterations += 1;
-
-      const response = await this.llm.ainvoke(
-        this.messages,
-        this.tools.length ? this.tool_definitions : null,
-        this.tools.length ? this.tool_choice : null,
-      );
-
-      const assistantMessage: AssistantMessage = {
-        role: "assistant",
-        content: response.content ?? null,
-        tool_calls: response.tool_calls ?? null,
-      };
-      this.messages.push(assistantMessage);
-
-      if (!hasToolCalls(response)) {
-        if (!this.require_done_tool) {
-          return response.content ?? "";
-        }
-        continue;
-      }
-
-      for (const toolCall of response.tool_calls ?? []) {
-        try {
-          const toolResult = await executeToolCall({
-            tool_call: toolCall,
-            tool_map: this.tool_map,
-            dependency_overrides: this.dependency_overrides,
-          });
-          this.messages.push(toolResult);
-        } catch (err) {
-          if (err instanceof TaskComplete) {
-            this.messages.push({
-              role: "tool",
-              tool_call_id: toolCall.id,
-              tool_name: toolCall.function.name,
-              content: `Task completed: ${err.message}`,
-              is_error: false,
-            } as ToolMessage);
-            return err.message;
-          }
-          throw err;
-        }
-      }
-    }
-
-    return `Task stopped after ${this.max_iterations} iterations.`;
+    return runAgentLoop({
+      llm: this.llm,
+      tools: this.tools,
+      tool_map: this.tool_map,
+      tool_definitions: this.tool_definitions,
+      tool_choice: this.tool_choice,
+      messages: this.messages,
+      system_prompt: this.system_prompt,
+      max_iterations: this.max_iterations,
+      require_done_tool: this.require_done_tool,
+      dependency_overrides: this.dependency_overrides,
+      invoke_llm: async () =>
+        this.llm.ainvoke(
+          this.messages,
+          this.tools.length ? this.tool_definitions : null,
+          this.tools.length ? this.tool_choice : null,
+        ),
+    });
   }
 }
