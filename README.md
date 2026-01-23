@@ -18,6 +18,63 @@ while (true) {
 
 This library wraps that loop with the minimal scaffolding needed to make it practical: multi-provider LLM support, tool schema validation, context management, and streaming events. Nothing more.
 
+## Progressive Walkthrough (Start Here)
+
+**1) The loop (bare minimum):** use `CoreAgent` + `rawTool`.
+
+```ts
+import { CoreAgent, rawTool } from "simple-agent";
+
+const add = rawTool(
+  {
+    name: "add",
+    description: "Add",
+    parameters: {
+      type: "object",
+      properties: { a: { type: "integer" }, b: { type: "integer" } },
+      required: ["a", "b"],
+      additionalProperties: false,
+    },
+  },
+  async ({ a, b }) => a + b,
+);
+
+const agent = new CoreAgent({ llm, tools: [add] });
+const result = await agent.query("What is 2 + 3?");
+```
+
+See `examples/core_loop.ts` for a runnable version.
+
+**2) Explicit exit (done tool):** for long tasks, make completion explicit.
+
+```ts
+import { TaskComplete } from "simple-agent";
+import { tool } from "simple-agent";
+
+const done = tool("Done", async ({ message }) => {
+  throw new TaskComplete(message);
+});
+```
+
+**3) Action space > framework:** build the tools you need. Don’t over‑abstract.
+
+- If you want raw control surfaces, stick to `rawTool`.
+- If you want convenience, use the decorator.
+
+**4) Ops (optional):** retries, ephemerals, compaction, token tracking.
+
+These are utilities, not the agent. Turn them on only when they solve a real problem.
+
+```ts
+const agent = new Agent({
+  llm,
+  tools,
+  retry: { enabled: true },
+  ephemerals: { enabled: true },
+  compaction_enabled: true,
+});
+```
+
 ## Why So Minimal?
 
 In 2019, Rich Sutton published [The Bitter Lesson](http://www.incompleteideas.net/IncIdeas/BitterLesson.html), arguing that 70 years of AI research points to one conclusion: general methods that leverage computation beat hand-crafted human knowledge, every time. Chess engines won with brute-force search, not human chess intuition. Speech recognition won with statistical models, not phoneme rules.
