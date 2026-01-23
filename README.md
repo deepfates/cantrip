@@ -312,11 +312,23 @@ const echo = rawTool(
 );
 ```
 
+## Composition Patterns
+
+Pick the layer you want and build upward:
+
+1) Core loop only: `CoreAgent` + `rawTool`
+2) Batteries on: `Agent` + decorator tools
+3) Mixed: `Agent` with retries/ephemerals/compaction toggled off
+
+Examples live in `examples/` and show each style.
+
 ## Examples
 
 - [`examples/quick_start.ts`](examples/quick_start.ts) — minimal working example
 - [`examples/claude_code.ts`](examples/claude_code.ts) — CLI agent with bash/read/write tools
 - [`examples/dependency_injection.ts`](examples/dependency_injection.ts) — DI patterns
+- [`examples/core_loop.ts`](examples/core_loop.ts) — CoreAgent + rawTool (no extras)
+- [`examples/batteries_off.ts`](examples/batteries_off.ts) — Agent with retries/ephemerals/compaction off
 
 ## Contributing
 
