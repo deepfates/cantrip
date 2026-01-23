@@ -205,4 +205,62 @@ describe("agent", () => {
     expect(toolMessages[0].destroyed).toBe(true);
     expect(toolMessages[1].destroyed).toBe(false);
   });
+
+  test("can disable ephemeral cleanup", async () => {
+    async function ephHandler() {
+      return "big output";
+    }
+
+    const eph = tool("Ephemeral", ephHandler, {
+      name: "ephemeral",
+      schema: {
+        type: "object",
+        properties: {},
+        required: [],
+        additionalProperties: false,
+      },
+      ephemeral: 1,
+    });
+
+    let step = 0;
+    const llm = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async ainvoke(messages: any[]) {
+        step += 1;
+        if (step <= 2) {
+          return {
+            content: null,
+            tool_calls: [
+              {
+                id: `call_${step}`,
+                type: "function",
+                function: {
+                  name: "ephemeral",
+                  arguments: "{}",
+                },
+              },
+            ],
+          };
+        }
+        return { content: "done", tool_calls: [] };
+      },
+    };
+
+    const agent = new Agent({
+      llm: llm as any,
+      tools: [eph],
+      ephemerals: { enabled: false },
+    });
+    const result = await agent.query("run twice");
+    expect(result).toBe("done");
+
+    const toolMessages = agent.history.filter(
+      (m) => m.role === "tool",
+    ) as any[];
+    expect(toolMessages.length).toBe(2);
+    expect(toolMessages[0].destroyed).toBe(false);
+    expect(toolMessages[1].destroyed).toBe(false);
+  });
 });

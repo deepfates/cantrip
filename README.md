@@ -287,6 +287,7 @@ new Agent({
   // Advanced
   dependency_overrides: Map | Record, // DI overrides for testing
   pricing_provider: PricingProvider | null, // Optional pricing data
+  ephemerals: { enabled: boolean },   // Disable ephemeral cleanup when false (default: true)
 });
 ```
 

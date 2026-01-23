@@ -52,6 +52,7 @@ export type AgentOptions = {
   llm_retry_max_delay?: number;
   llm_retryable_status_codes?: Set<number> | number[];
   retry?: { enabled?: boolean };
+  ephemerals?: { enabled?: boolean };
 };
 
 export class Agent {
@@ -70,6 +71,7 @@ export class Agent {
   llm_retry_max_delay: number;
   llm_retryable_status_codes: Set<number>;
   retry_enabled: boolean;
+  ephemerals_enabled: boolean;
 
   private messages: AnyMessage[] = [];
   private tool_map: Map<string, ToolLike> = new Map();
@@ -94,6 +96,7 @@ export class Agent {
       options.llm_retryable_status_codes ?? [429, 500, 502, 503, 504],
     );
     this.retry_enabled = options.retry?.enabled ?? true;
+    this.ephemerals_enabled = options.ephemerals?.enabled ?? true;
 
     for (const tool of this.tools) {
       this.tool_map.set(tool.name, tool);
@@ -168,11 +171,13 @@ export class Agent {
 
     while (iterations < this.max_iterations) {
       iterations += 1;
-      await destroyEphemeralMessages({
-        messages: this.messages,
-        tool_map: this.tool_map,
-        ephemeral_storage_path: this.ephemeral_storage_path,
-      });
+      if (this.ephemerals_enabled) {
+        await destroyEphemeralMessages({
+          messages: this.messages,
+          tool_map: this.tool_map,
+          ephemeral_storage_path: this.ephemeral_storage_path,
+        });
+      }
 
       const response = this.retry_enabled
         ? await invokeLLMWithRetries({
@@ -271,11 +276,13 @@ export class Agent {
 
     while (iterations < this.max_iterations) {
       iterations += 1;
-      await destroyEphemeralMessages({
-        messages: this.messages,
-        tool_map: this.tool_map,
-        ephemeral_storage_path: this.ephemeral_storage_path,
-      });
+      if (this.ephemerals_enabled) {
+        await destroyEphemeralMessages({
+          messages: this.messages,
+          tool_map: this.tool_map,
+          ephemeral_storage_path: this.ephemeral_storage_path,
+        });
+      }
 
       const response = this.retry_enabled
         ? await invokeLLMWithRetries({
