@@ -54,12 +54,15 @@ export class CoreAgent {
 
   async query(message: string): Promise<string> {
     this.messages.push({ role: "user", content: message } as AnyMessage);
+    const effectiveToolChoice = this.require_done_tool
+      ? "required"
+      : this.tool_choice;
     return runAgentLoop({
       llm: this.llm,
       tools: this.tools,
       tool_map: this.tool_map,
       tool_definitions: this.tool_definitions,
-      tool_choice: this.tool_choice,
+      tool_choice: effectiveToolChoice,
       messages: this.messages,
       system_prompt: this.system_prompt,
       max_iterations: this.max_iterations,
@@ -69,7 +72,7 @@ export class CoreAgent {
         this.llm.ainvoke(
           this.messages,
           this.tools.length ? this.tool_definitions : null,
-          this.tools.length ? this.tool_choice : null,
+          this.tools.length ? effectiveToolChoice : null,
         ),
     });
   }

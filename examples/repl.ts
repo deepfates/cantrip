@@ -4,19 +4,38 @@ import { Agent } from "../src/agent/service";
 import { createConsoleRenderer } from "../src/agent/console";
 import { ChatOpenAI } from "../src/llm/openai/chat";
 import { rawTool } from "../src/tools/raw";
+import { TaskComplete } from "../src/agent/errors";
 
-const echo = rawTool(
+const think = rawTool(
   {
-    name: "echo",
-    description: "Echo input",
+    name: "think",
+    description:
+      "Use this tool to think through a problem step by step. Record your reasoning, analyze tool outputs, or work through decisions before acting. Your thoughts are recorded in context but have no external effects.",
     parameters: {
       type: "object",
-      properties: { text: { type: "string" } },
-      required: ["text"],
+      properties: { thought: { type: "string" } },
+      required: ["thought"],
       additionalProperties: false,
     },
   },
-  async ({ text }: { text: string }) => text,
+  async ({ thought }: { thought: string }) => thought,
+);
+
+const done = rawTool(
+  {
+    name: "done",
+    description:
+      "Signal that you've completed the task. Call this when you have a final answer.",
+    parameters: {
+      type: "object",
+      properties: { result: { type: "string" } },
+      required: ["result"],
+      additionalProperties: false,
+    },
+  },
+  async ({ result }: { result: string }) => {
+    throw new TaskComplete(result);
+  },
 );
 
 export async function main() {
@@ -27,7 +46,8 @@ export async function main() {
 
   const agent = new Agent({
     llm: new ChatOpenAI({ model: "gpt-4o" }),
-    tools: [echo],
+    tools: [think, done],
+    require_done_tool: true,
   });
 
   const isTty = Boolean(process.stdin.isTTY);
@@ -41,8 +61,10 @@ export async function main() {
     }
     const task = input.trim();
     if (!task) return;
-    const text = (await agent.query(task)).replace(/\s+$/, "");
-    if (text) console.log(text);
+    const state = renderer.createState();
+    for await (const event of agent.query_stream(task)) {
+      renderer.handle(event, state);
+    }
     return;
   }
 

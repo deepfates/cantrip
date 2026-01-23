@@ -163,13 +163,16 @@ export class Agent {
     this.messages.push({ role: "user", content: message } as AnyMessage);
 
     let incomplete_todos_prompted = false;
+    const effectiveToolChoice = this.require_done_tool
+      ? "required"
+      : this.tool_choice;
 
     const result = await runAgentLoop({
       llm: this.llm,
       tools: this.tools,
       tool_map: this.tool_map,
       tool_definitions: this.tool_definitions,
-      tool_choice: this.tool_choice,
+      tool_choice: effectiveToolChoice,
       messages: this.messages,
       system_prompt: this.system_prompt,
       max_iterations: this.max_iterations,
@@ -191,7 +194,7 @@ export class Agent {
               messages: this.messages,
               tools: this.tools,
               tool_definitions: this.tool_definitions,
-              tool_choice: this.tool_choice,
+              tool_choice: effectiveToolChoice,
               usage_tracker: this.usage_tracker,
               llm_max_retries: this.llm_max_retries,
               llm_retry_base_delay: this.llm_retry_base_delay,
@@ -203,7 +206,7 @@ export class Agent {
               messages: this.messages,
               tools: this.tools,
               tool_definitions: this.tool_definitions,
-              tool_choice: this.tool_choice,
+              tool_choice: effectiveToolChoice,
               usage_tracker: this.usage_tracker,
             }),
       after_response: async (response, context) => {
@@ -246,6 +249,9 @@ export class Agent {
 
     let iterations = 0;
     let incomplete_todos_prompted = false;
+    const effectiveToolChoice = this.require_done_tool
+      ? "required"
+      : this.tool_choice;
 
     while (iterations < this.max_iterations) {
       iterations += 1;
@@ -263,7 +269,7 @@ export class Agent {
             messages: this.messages,
             tools: this.tools,
             tool_definitions: this.tool_definitions,
-            tool_choice: this.tool_choice,
+            tool_choice: effectiveToolChoice,
             usage_tracker: this.usage_tracker,
             llm_max_retries: this.llm_max_retries,
             llm_retry_base_delay: this.llm_retry_base_delay,
@@ -275,7 +281,7 @@ export class Agent {
             messages: this.messages,
             tools: this.tools,
             tool_definitions: this.tool_definitions,
-            tool_choice: this.tool_choice,
+            tool_choice: effectiveToolChoice,
             usage_tracker: this.usage_tracker,
           });
 

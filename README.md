@@ -1,16 +1,12 @@
-# simple-agent
+# cantrip
 
 A tiny agent loop you can actually understand, edit, and own.
 
-## Start Here (for builders)
-
-If you want to build agents fast *and* know what’s going on:
-
 - The loop is the agent. Everything else is optional.
 - Tools are the product. Action space beats abstraction.
-- Start simple, then add reliability features only when you feel the pain.
+- Start simple, add reliability only when you feel the pain.
 
-Here’s the loop in its barest form:
+The loop:
 
 ```ts
 while (true) {
@@ -22,89 +18,21 @@ while (true) {
 }
 ```
 
-This library wraps that loop with just enough scaffolding to be practical: multi‑provider LLM support, tool schemas, context management, and streaming events. Nothing more.
+This library wraps that loop with just enough to be practical: multi-provider LLM support, tool schemas, context management, streaming. Nothing more.
 
-## Progressive Walkthrough (Start Here)
-
-**1) The loop (bare minimum):** use `CoreAgent` + `rawTool`.
-
-```ts
-import { CoreAgent, rawTool } from "simple-agent";
-
-const add = rawTool(
-  {
-    name: "add",
-    description: "Add",
-    parameters: {
-      type: "object",
-      properties: { a: { type: "integer" }, b: { type: "integer" } },
-      required: ["a", "b"],
-      additionalProperties: false,
-    },
-  },
-  async ({ a, b }) => a + b,
-);
-
-const agent = new CoreAgent({ llm, tools: [add] });
-const result = await agent.query("What is 2 + 3?");
-```
-
-See `examples/core_loop.ts` for a runnable version.
-
-**2) Explicit exit (done tool):** for long tasks, make completion explicit.
-
-```ts
-import { TaskComplete } from "simple-agent";
-import { tool } from "simple-agent";
-
-const done = tool("Done", async ({ message }) => {
-  throw new TaskComplete(message);
-});
-```
-
-**3) Action space > framework:** build the tools you need. Don’t over‑abstract.
-
-- If you want raw control surfaces, stick to `rawTool`.
-- If you want convenience, use the decorator.
-
-**4) Ops (optional):** retries, ephemerals, compaction, token tracking.
-
-These are utilities, not the agent. Turn them on only when they solve a real problem.
-
-```ts
-const agent = new Agent({
-  llm,
-  tools,
-  retry: { enabled: true },
-  ephemerals: { enabled: true },
-  compaction_enabled: true,
-});
-```
-
-## Why So Minimal?
-
-In 2019, Rich Sutton published [The Bitter Lesson](http://www.incompleteideas.net/IncIdeas/BitterLesson.html), arguing that 70 years of AI research points to one conclusion: general methods that leverage computation beat hand-crafted human knowledge, every time. Chess engines won with brute-force search, not human chess intuition. Speech recognition won with statistical models, not phoneme rules.
-
-The same pattern is playing out with LLM agents. The industry spent 2023-2024 building elaborate frameworks — planners, verifiers, chain-of-thought orchestrators, memory modules, tool routers — only to discover that better models made most of it unnecessary. Meanwhile, the frameworks became liabilities: rigid abstractions that fought against experimentation, layers of indirection that obscured what was actually happening, and dependency graphs that broke in production.
-
-The most successful agents (Claude Code, Cursor, OpenAI's internal tools) converged on the same architecture: a simple loop with tools. No planning modules. No verification layers. Just the model, doing its thing.
-
-This library is a TypeScript port of [browser-use/agent-sdk](https://github.com/browser-use/agent-sdk), which powers browser automation agents that need to be reliable, fast, and easy to modify. The philosophy: give the model maximum freedom, then restrict based on what actually fails in practice.
-
-## Installation
+## Install
 
 ```bash
-bun add simple-agent
+bun add cantrip
 ```
 
 ## Quick Start
 
 ```ts
-import { Agent, TaskComplete, tool } from "simple-agent";
-import { ChatAnthropic } from "simple-agent/llm";
+import { Agent, TaskComplete, tool } from "cantrip";
+import { ChatAnthropic } from "cantrip/llm";
 import { z } from "zod";
 
-// Define tools with Zod schemas
 const add = tool(
   "Add two numbers",
   async ({ a, b }: { a: number; b: number }) => a + b,
@@ -119,101 +47,54 @@ const done = tool(
   { name: "done", zodSchema: z.object({ result: z.string() }) }
 );
 
-// Create agent and run
 const agent = new Agent({
   llm: new ChatAnthropic({ model: "claude-sonnet-4-20250514" }),
   tools: [add, done],
 });
 
 const answer = await agent.query("What is 2 + 3?");
-console.log(answer); // "5"
 ```
 
-## What the loop actually does
-
-Here's what actually happens when you call `agent.query()`:
+## What the loop does
 
 1. Your message gets added to the conversation history
 2. The LLM is called with the history and available tools
 3. If the LLM returns tool calls, each one is executed and results added to history
 4. Repeat until the LLM responds without tool calls (or hits max iterations)
 
-That’s the whole architecture. Everything else is just tooling around it.
+That's the architecture.
 
-## What you can add (if you want)
+## Layers
 
-### Explicit Completion with Done Tool
-
-By default, the agent stops when the model returns no tool calls. This works fine for simple tasks, but for complex workflows you often want explicit completion — the model must call a `done` tool to signal it's finished.
+**CoreAgent** — the bare loop:
 
 ```ts
-const agent = new Agent({
-  llm,
-  tools: [...yourTools, doneToolFromAbove],
-  require_done_tool: true, // Won't stop until done() is called
-});
+import { CoreAgent, rawTool } from "cantrip";
+
+const agent = new CoreAgent({ llm, tools: [add] });
+const result = await agent.query("What is 2 + 3?");
 ```
 
-`TaskComplete` is just a control‑flow escape hatch: throw it from any tool to end the loop and return the message.
-
-### Context Management
-
-Long‑running agents accumulate context. A browser automation agent might generate megabytes of DOM snapshots and screenshots. Without management, you'll hit token limits or degrade model performance (context "rot" typically starts around 25% of the window).
-
-**Ephemeral messages** solve this for repetitive tool outputs. Mark a tool as ephemeral, and only the last N results are kept:
-
-```ts
-const screenshot = tool(
-  "Take screenshot",
-  async () => takeScreenshotBase64(),
-  { name: "screenshot", ephemeral: 3 } // Keep only last 3 screenshots in context
-);
-```
-
-**Compaction** handles the rest. When context exceeds a threshold (default 80% of model's window), the agent summarizes the conversation and continues with the summary:
+**Agent** — adds retries, context management, token tracking:
 
 ```ts
 const agent = new Agent({
   llm,
   tools,
+  retry: { enabled: true },
   compaction: { threshold_ratio: 0.8 },
 });
 ```
 
-### Providers
+Pick the layer you need and build upward.
 
-Built-in adapters for major providers, all implementing the same interface:
+## Tools
 
-```ts
-import {
-  ChatAnthropic,
-  ChatOpenAI,
-  ChatGoogle,
-  ChatAzureOpenAI,
-  ChatGroq,
-  ChatMistral,
-  ChatOllama,
-  ChatDeepSeek,
-  ChatCerebras,
-} from "simple-agent/llm";
+Three ways to define schemas:
 
-// All work identically
-new Agent({ llm: new ChatAnthropic({ model: "claude-sonnet-4-20250514" }), tools });
-new Agent({ llm: new ChatOpenAI({ model: "gpt-4o" }), tools });
-new Agent({ llm: new ChatGoogle({ model: "gemini-2.0-flash" }), tools });
-```
-
-Groq, Mistral, Ollama, DeepSeek, and Cerebras use OpenAI‑compatible endpoints under the hood.
-
-### Tool schemas
-
-Three ways to define tool input schemas, from recommended to quick-and-dirty:
-
-**Zod (recommended)** — full validation, good TypeScript inference:
+**Zod (recommended):**
 
 ```ts
-import { z } from "zod";
-
 const search = tool(
   "Search the codebase",
   async ({ query, limit }) => searchFiles(query, limit),
@@ -227,38 +108,82 @@ const search = tool(
 );
 ```
 
-**Fluent builder** — no Zod dependency:
+**Fluent builder:**
 
 ```ts
-import { ToolSchema } from "simple-agent";
+import { ToolSchema } from "cantrip";
 
 const schema = ToolSchema.create()
   .addString("query")
   .addInteger("limit", { optional: true })
   .build();
-
-const search = tool("Search the codebase", handler, { name: "search", schema });
 ```
 
-**Params shorthand** — quick prototyping:
+**Params shorthand:**
 
 ```ts
-const search = tool("Search the codebase", handler, {
+const search = tool("Search", handler, {
   name: "search",
   params: { query: "string", limit: "integer?" },
 });
 ```
 
-### Dependency injection
+## Context Management
 
-Tools often need shared resources (database connections, API clients). Rather than globals or closures, use dependency injection:
+**Ephemeral messages** — keep only last N results from repetitive tools:
 
 ```ts
-import { Depends, tool } from "simple-agent";
+const screenshot = tool(
+  "Take screenshot",
+  async () => takeScreenshotBase64(),
+  { name: "screenshot", ephemeral: 3 }
+);
+```
 
-function getDatabase() {
-  return new Database(process.env.DATABASE_URL);
-}
+**Compaction** — summarize conversation when context exceeds threshold:
+
+```ts
+const agent = new Agent({
+  llm,
+  tools,
+  compaction: { threshold_ratio: 0.8 },
+});
+```
+
+## Explicit Completion
+
+For complex workflows, require explicit completion:
+
+```ts
+const agent = new Agent({
+  llm,
+  tools: [...yourTools, done],
+  require_done_tool: true,
+});
+```
+
+`TaskComplete` is a control-flow escape hatch: throw it from any tool to end the loop.
+
+## Providers
+
+```ts
+import {
+  ChatAnthropic,
+  ChatOpenAI,
+  ChatGoogle,
+  ChatAzureOpenAI,
+  ChatGroq,
+  ChatMistral,
+  ChatOllama,
+  ChatDeepSeek,
+  ChatCerebras,
+} from "cantrip/llm";
+```
+
+## Dependency Injection
+
+```ts
+import { Depends, tool } from "cantrip";
 
 const query = tool(
   "Query database",
@@ -266,150 +191,94 @@ const query = tool(
   {
     name: "query",
     params: { sql: "string" },
-    dependencies: { db: new Depends(getDatabase) },
+    dependencies: { db: new Depends(() => new Database(process.env.DB_URL)) },
   }
 );
+
+// Override for testing
+const result = await query.execute({ sql: "SELECT 1" }, { db: () => mockDb });
 ```
 
-Dependencies are resolved at execution time. Override them for testing:
+## Streaming
 
 ```ts
-const result = await query.execute(
-  { sql: "SELECT 1" },
-  { db: () => mockDatabase }
-);
-```
+import { ToolCallEvent, ToolResultEvent, FinalResponseEvent } from "cantrip/agent";
 
-### Streaming
-
-For UIs and logging, stream events as they happen:
-
-```ts
-import {
-  ToolCallEvent,
-  ToolResultEvent,
-  FinalResponseEvent,
-} from "simple-agent/agent";
-
-for await (const event of agent.query_stream("Do something complex")) {
+for await (const event of agent.query_stream("Do something")) {
   if (event instanceof ToolCallEvent) {
-    console.log(`Calling: ${event.tool}(${JSON.stringify(event.args)})`);
-  } else if (event instanceof ToolResultEvent) {
-    console.log(`Result: ${event.result.slice(0, 100)}...`);
+    console.log(`Calling: ${event.tool}`);
   } else if (event instanceof FinalResponseEvent) {
     console.log(`Done: ${event.content}`);
   }
 }
 ```
 
-Event types: `TextEvent`, `ThinkingEvent`, `ToolCallEvent`, `ToolResultEvent`, `StepStartEvent`, `StepCompleteEvent`, `FinalResponseEvent`.
-
-### Observability
-
-Plug in your own tracing/logging:
+## Observability
 
 ```ts
-import { observe, setObserver } from "simple-agent";
+import { observe, setObserver } from "cantrip";
 
 setObserver({
   onStart: (e) => console.log(`[${e.name}] started`),
   onEnd: (e) => console.log(`[${e.name}] completed in ${e.duration_ms}ms`),
   onError: (e) => console.error(`[${e.name}] failed:`, e.error),
 });
-
-// Wrap any async function
-const tracedFetch = observe(fetch, { name: "fetch" });
 ```
 
-## Configuration Reference
+## Configuration
 
 ```ts
 new Agent({
   // Required
-  llm: BaseChatModel,           // LLM provider instance
-  tools: Tool[],                // Available tools
+  llm: BaseChatModel,
+  tools: Tool[],
 
   // Optional
-  system_prompt: string | null, // System message (default: null)
-  max_iterations: number,       // Loop limit (default: 200)
-  require_done_tool: boolean,   // Require explicit completion (default: false)
-  tool_choice: ToolChoice,      // "auto" | "required" | "none" (default: "auto")
+  system_prompt: string | null,
+  max_iterations: number,             // default: 200
+  require_done_tool: boolean,         // default: false
+  tool_choice: ToolChoice,            // default: "auto"
 
-  // Context management
-  compaction: {
-    enabled: boolean,           // Enable auto-compaction (default: true)
-    threshold_ratio: number,    // Trigger at this % of context (default: 0.8)
-  } | null,                     // null disables compaction (default: null)
+  // Context
+  compaction: { threshold_ratio: number } | null,
+  ephemerals: { enabled: boolean },
 
   // Retries
-  llm_max_retries: number,      // Retry attempts (default: 5)
-  llm_retry_base_delay: number, // Base delay in seconds (default: 1.0)
-  llm_retry_max_delay: number,  // Max delay in seconds (default: 60.0)
-  retry: { enabled: boolean },  // Disable retry logic when false (default: true)
+  llm_max_retries: number,            // default: 5
+  retry: { enabled: boolean },
 
-  // Advanced
-  dependency_overrides: Map | Record, // DI overrides for testing
-  pricing_provider: PricingProvider | null, // Optional pricing data
-  ephemerals: { enabled: boolean },   // Disable ephemeral cleanup when false (default: true)
-  compaction_enabled: boolean,        // Disable compaction wiring when false (default: true)
+  // Testing
+  dependency_overrides: Map | Record,
 });
 ```
 
-## Minimal core loop
+## The Think Tool
 
-If you want the bare loop (no retries, compaction, or ephemerals), use `CoreAgent`.
-
-```ts
-const agent = new CoreAgent({ llm, tools });
-const result = await agent.query("do the thing");
-```
-
-## Raw tools
-
-If you don’t want the decorator, use `rawTool` with an explicit schema.
+A tool doesn't have to do anything external. It can just extend the model's reasoning:
 
 ```ts
-const echo = rawTool(
-  { name: "echo", description: "Echo", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false } },
-  async ({ text }) => `hi ${text}`,
+const think = tool(
+  "Think step by step. Your thoughts are recorded but have no external effects.",
+  async ({ thought }: { thought: string }) => thought,
+  { name: "think", params: { thought: "string" } }
 );
 ```
 
-## Composition patterns
-
-Pick the layer you want and build upward:
-
-1) Core loop only: `CoreAgent` + `rawTool`
-2) Batteries included: `Agent` + decorator tools
-3) Mixed: `Agent` with retries/ephemerals/compaction toggled off
-
-Examples live in `examples/` and show each style.
-
-For an interactive, TTY‑aware REPL with minimal output formatting, see `examples/repl.ts`.
-
-## Claude Code‑Style Toolset (Case Study)
-
-The [blog post that motivated this repo](https://browser-use.com/posts/bitter-lesson-agent-frameworks) calls out Claude Code as the “simple loop + tools” reference point and argues that action space matters more than framework abstractions.
-
-If you want a “Claude Code‑ish” setup (shell + read/write/edit + sandbox), start with:
-
-- `examples/claude_code.ts` — a runnable, tool‑heavy CLI agent
-- `examples/dependency_injection.ts` — how to safely inject resources like sandboxes
-
-This is intentionally not a framework inside a framework — it’s meant to be code you can read, edit, and fork.
+The model calls `think` to record reasoning, then keeps going. It can chain multiple thoughts before acting, or call `think` in parallel to explore different angles. See [Anthropic's research on the think tool](https://www.anthropic.com/engineering/claude-think-tool).
 
 ## Examples
 
-- [`examples/quick_start.ts`](examples/quick_start.ts) — minimal working example
-- [`examples/claude_code.ts`](examples/claude_code.ts) — CLI agent with bash/read/write tools
-- [`examples/repl.ts`](examples/repl.ts) — interactive REPL (TTY‑aware)
-- [`examples/dependency_injection.ts`](examples/dependency_injection.ts) — DI patterns
-- [`examples/core_loop.ts`](examples/core_loop.ts) — CoreAgent + rawTool (no extras)
-- [`examples/batteries_off.ts`](examples/batteries_off.ts) — Agent with retries/ephemerals/compaction off
+- [`examples/quick_start.ts`](examples/quick_start.ts) — minimal example
+- [`examples/claude_code.ts`](examples/claude_code.ts) — CLI agent with bash/read/write
+- [`examples/repl.ts`](examples/repl.ts) — interactive REPL with think tool
+- [`examples/core_loop.ts`](examples/core_loop.ts) — CoreAgent + rawTool
+- [`examples/batteries_off.ts`](examples/batteries_off.ts) — Agent with extras disabled
 
-## Contributing
+## Background
 
-See [TESTING.md](TESTING.md) for how to run tests.
+The most successful agents (Claude Code, Cursor, etc.) converged on this architecture: a loop with tools. No planning modules, no verification layers. This library is that loop, with just enough around it to be practical.
+
+Based on [browser-use/agent-sdk](https://github.com/browser-use/agent-sdk). See also: [The Bitter Lesson](http://www.incompleteideas.net/IncIdeas/BitterLesson.html).
 
 ## License
 

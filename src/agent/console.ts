@@ -37,7 +37,11 @@ export const createConsoleRenderer = (
     createState: () => ({ sawText: false }),
     handle: (event, state) => {
       if (event instanceof ToolCallEvent) {
-        if (verbose) writeLine(stderr, `» ${event.tool}`);
+        if (verbose) {
+          writeLine(stderr, `» ${event.tool}(${JSON.stringify(event.args)})`);
+        } else {
+          writeLine(stderr, `» ${event.tool}`);
+        }
         return;
       }
       if (event instanceof ToolResultEvent) {

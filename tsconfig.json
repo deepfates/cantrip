@@ -10,7 +10,7 @@
     "types": ["bun-types", "node"],
     "baseUrl": ".",
     "paths": {
-      "simple-agent/*": ["src/*"],
+      "cantrip/*": ["src/*"],
     },
   },
   "include": ["src", "examples", "tests"],
