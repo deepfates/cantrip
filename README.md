@@ -105,8 +105,18 @@ If you don't need these, use `CoreAgent` instead, or disable them in `Agent`.
 ## Providers
 
 ```ts
-import { ChatAnthropic, ChatOpenAI, ChatGoogle } from "cantrip/llm";
+import {
+  ChatAnthropic,
+  ChatOpenAI,
+  ChatGoogle,
+  ChatLMStudio,
+  ChatOpenRouter,
+} from "cantrip/llm";
 ```
+
+- **ChatLMStudio** — points at the LM Studio local OpenAI-compatible server (`http://localhost:1234/v1` by default) and doesn’t require an API key unless you provide one via `LM_STUDIO_API_KEY`.
+- **ChatOpenRouter** — speaks to `https://openrouter.ai/api/v1`, automatically adding the attribution headers OpenRouter expects (`HTTP-Referer`, `X-Title`) from env vars (`OPENROUTER_HTTP_REFERER`, `OPENROUTER_TITLE`). Set `OPENROUTER_API_KEY` or pass `api_key`; you can disable the attribution headers with `attribution_headers: false` if you manage them yourself.
+- **ChatOpenAI** (and friends) merge any custom `headers` you pass; `require_api_key` controls whether missing keys throw (default `true`). Passing `api_key: null` still falls back to the relevant env var for compatibility.
 
 ## The philosophy
 
