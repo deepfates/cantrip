@@ -10,13 +10,13 @@ import {
   browser,
   browser_interactive,
   browser_readonly,
-} from "../src/tools/examples/browser";
+} from "../src/tools/builtins/browser";
 import {
   BrowserContext,
   getBrowserContext,
   getBrowserContextInteractive,
   getBrowserContextReadonly,
-} from "../src/tools/examples/browser_context";
+} from "../src/tools/builtins/browser_context";
 
 describe("browser tool", () => {
   let ctx: BrowserContext;

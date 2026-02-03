@@ -7,14 +7,14 @@ import {
   browser,
   browser_interactive,
   browser_readonly,
-} from "../src/tools/examples/browser";
+} from "../src/tools/builtins/browser";
 import {
   BrowserContext,
   getBrowserContext,
   getBrowserContextInteractive,
   getBrowserContextReadonly,
-} from "../src/tools/examples/browser_context";
-import { done } from "../src/tools/examples/default";
+} from "../src/tools/builtins/browser_context";
+import { done } from "../src/tools/builtins/default";
 
 function createLazyBrowserContext(
   profile: "full" | "interactive" | "readonly",
@@ -77,7 +77,9 @@ Always return values from the browser tool if you need to see them.`,
     ]),
   });
 
-  console.log("Browser Agent ready. Type a request (e.g., 'Go to google.com and search for cantrip agents').");
+  console.log(
+    "Browser Agent ready. Type a request (e.g., 'Go to google.com and search for cantrip agents').",
+  );
   console.log("Ctrl+C to exit.");
 
   const renderer = createConsoleRenderer({ verbose });
@@ -110,9 +112,9 @@ Always return values from the browser tool if you need to see them.`,
         }
       } catch (err: any) {
         if (err instanceof TaskComplete) {
-            console.log(`\nCompleted: ${err.result}`);
+          console.log(`\nCompleted: ${err.result}`);
         } else {
-            console.error(`\nError: ${err.message}`);
+          console.error(`\nError: ${err.message}`);
         }
       }
       console.log("─");

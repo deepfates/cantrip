@@ -84,11 +84,11 @@ The examples build on each other. Work through them in order.
 
 While you can write your own tools, Cantrip comes with "batteries-included" modules for common complex tasks:
 
-**FileSystem (`src/tools/examples/fs`)** — Safe, sandboxed access to the filesystem. Includes `read` (with pagination), `write` (with size limits), `edit`, `glob`, and `bash`.
+**FileSystem (`src/tools/builtins/fs`)** — Safe, sandboxed access to the filesystem. Includes `read` (with pagination), `write` (with size limits), `edit`, `glob`, and `bash`.
 
-**Browser (`src/tools/examples/browser`)** — Headless browser automation built on Taiko. Persists session state across tool calls.
+**Browser (`src/tools/builtins/browser`)** — Headless browser automation built on Taiko. Persists session state across tool calls.
 
-**JavaScript Sandbox (`src/tools/examples/js`)** — Secure WASM-based JavaScript runtime (QuickJS). Perfect for agents that need to perform calculations or data processing without risking the host machine.
+**JavaScript Sandbox (`src/tools/builtins/js`)** — Secure WASM-based JavaScript runtime (QuickJS). Perfect for agents that need to perform calculations or data processing without risking the host machine.
 
 ## Optional features
 

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { createJsRunTool, js_run } from "../src/tools/examples/js_run";
+import { createJsRunTool, js_run } from "../src/tools/builtins/js_run";
 import type { ToolContent } from "../src/tools/decorator";
 
 describe("js_run tool", () => {
