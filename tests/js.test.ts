@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { js } from "../src/tools/builtins/js";
-import { getJsContext, JsContext } from "../src/tools/builtins/js_context";
+import { js } from "../src/tools/builtin/js";
+import { getJsContext, JsContext } from "../src/tools/builtin/js_context";
 import type { ToolContent } from "../src/tools/decorator";
 
 describe("js tool", () => {

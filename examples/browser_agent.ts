@@ -7,14 +7,14 @@ import {
   browser,
   browser_interactive,
   browser_readonly,
-} from "../src/tools/builtins/browser";
+} from "../src/tools/builtin/browser";
 import {
   BrowserContext,
   getBrowserContext,
   getBrowserContextInteractive,
   getBrowserContextReadonly,
-} from "../src/tools/builtins/browser_context";
-import { done } from "../src/tools/builtins/default";
+} from "../src/tools/builtin/browser_context";
+import { done } from "../src/tools/builtin/default";
 
 function createLazyBrowserContext(
   profile: "full" | "interactive" | "readonly",

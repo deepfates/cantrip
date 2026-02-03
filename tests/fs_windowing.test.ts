@@ -7,7 +7,7 @@ import {
   glob,
   edit,
   getSandboxContextDepends,
-} from "../src/tools/builtins/fs";
+} from "../src/tools/builtin/fs";
 import * as fs from "fs/promises";
 import * as path from "path";
 
