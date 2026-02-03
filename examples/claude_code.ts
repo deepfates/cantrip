@@ -7,8 +7,8 @@ import {
   SandboxContext,
   getSandboxContext,
   unsafeFsTools,
-} from "../src/tools/builtins/fs";
-import { done } from "../src/tools/builtins/default";
+} from "../src/tools/builtin/fs";
+import { done } from "../src/tools/builtin/default";
 
 export async function main() {
   const ctx = await SandboxContext.create();
