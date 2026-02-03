@@ -1,9 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { js } from "../src/tools/examples/js";
-import {
-  getJsContext,
-  JsContext,
-} from "../src/tools/examples/js_context";
+import { js } from "../src/tools/builtins/js";
+import { getJsContext, JsContext } from "../src/tools/builtins/js_context";
 import type { ToolContent } from "../src/tools/decorator";
 
 describe("js tool", () => {
@@ -15,15 +12,10 @@ describe("js tool", () => {
 
   test("executes simple code and returns the result", async () => {
     const vm_context = await JsContext.create();
-    const dependency_overrides = new Map([
-      [getJsContext, () => vm_context],
-    ]);
+    const dependency_overrides = new Map([[getJsContext, () => vm_context]]);
 
     try {
-      const result = await js.execute(
-        { code: "2 + 2" },
-        dependency_overrides,
-      );
+      const result = await js.execute({ code: "2 + 2" }, dependency_overrides);
       expectString(result);
       expect(result).toBe("4");
     } finally {
@@ -33,9 +25,7 @@ describe("js tool", () => {
 
   test("maintains state between calls", async () => {
     const vm_context = await JsContext.create();
-    const dependency_overrides = new Map([
-      [getJsContext, () => vm_context],
-    ]);
+    const dependency_overrides = new Map([[getJsContext, () => vm_context]]);
 
     try {
       const first = await js.execute(
@@ -45,10 +35,7 @@ describe("js tool", () => {
       expectString(first);
       expect(first).toBe("undefined");
 
-      const second = await js.execute(
-        { code: "x * 5" },
-        dependency_overrides,
-      );
+      const second = await js.execute({ code: "x * 5" }, dependency_overrides);
       expectString(second);
       expect(second).toBe("50");
     } finally {
@@ -58,9 +45,7 @@ describe("js tool", () => {
 
   test("returns formatted errors", async () => {
     const vm_context = await JsContext.create();
-    const dependency_overrides = new Map([
-      [getJsContext, () => vm_context],
-    ]);
+    const dependency_overrides = new Map([[getJsContext, () => vm_context]]);
 
     try {
       const result = await js.execute(
@@ -76,9 +61,7 @@ describe("js tool", () => {
 
   test("truncates large output", async () => {
     const vm_context = await JsContext.create();
-    const dependency_overrides = new Map([
-      [getJsContext, () => vm_context],
-    ]);
+    const dependency_overrides = new Map([[getJsContext, () => vm_context]]);
 
     try {
       const result = await js.execute(
@@ -94,9 +77,7 @@ describe("js tool", () => {
 
   test("times out long-running code", async () => {
     const vm_context = await JsContext.create();
-    const dependency_overrides = new Map([
-      [getJsContext, () => vm_context],
-    ]);
+    const dependency_overrides = new Map([[getJsContext, () => vm_context]]);
 
     try {
       const result = await js.execute(

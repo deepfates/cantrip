@@ -6,8 +6,8 @@ import {
   bash,
   glob,
   edit,
-  getSandboxContextDepends
-} from "../src/tools/examples/fs";
+  getSandboxContextDepends,
+} from "../src/tools/builtins/fs";
 import * as fs from "fs/promises";
 import * as path from "path";
 
@@ -29,7 +29,10 @@ describe("File System Windowing", () => {
 
   describe("read tool", () => {
     it("shows line range metadata", async () => {
-      const content = Array.from({ length: 500 }, (_, i) => `line ${i + 1}`).join("\n");
+      const content = Array.from(
+        { length: 500 },
+        (_, i) => `line ${i + 1}`,
+      ).join("\n");
       await write.execute({ file_path: "test.txt", content }, deps);
 
       const result = await read.execute({ file_path: "test.txt" }, deps);
@@ -38,12 +41,15 @@ describe("File System Windowing", () => {
     });
 
     it("supports start_line parameter", async () => {
-      const content = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join("\n");
+      const content = Array.from(
+        { length: 100 },
+        (_, i) => `line ${i + 1}`,
+      ).join("\n");
       await write.execute({ file_path: "test.txt", content }, deps);
 
       const result = await read.execute(
         { file_path: "test.txt", start_line: 50 },
-        deps
+        deps,
       );
 
       expect(result).toMatch(/^Lines 50-100 of 100/);
@@ -51,12 +57,15 @@ describe("File System Windowing", () => {
     });
 
     it("supports max_lines parameter", async () => {
-      const content = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join("\n");
+      const content = Array.from(
+        { length: 100 },
+        (_, i) => `line ${i + 1}`,
+      ).join("\n");
       await write.execute({ file_path: "test.txt", content }, deps);
 
       const result = await read.execute(
         { file_path: "test.txt", max_lines: 10 },
-        deps
+        deps,
       );
 
       expect(result).toMatch(/^Lines 1-10 of 100/);
@@ -73,7 +82,7 @@ describe("File System Windowing", () => {
     });
 
     it("detects binary files", async () => {
-      const buffer = Buffer.from([0x00, 0x01, 0x02, 0xFF]);
+      const buffer = Buffer.from([0x00, 0x01, 0x02, 0xff]);
       await fs.writeFile(path.join(testDir, "binary.bin"), buffer);
 
       const result = await read.execute({ file_path: "binary.bin" }, deps);
@@ -82,11 +91,14 @@ describe("File System Windowing", () => {
     });
 
     it("handles start_line beyond EOF", async () => {
-      await write.execute({ file_path: "test.txt", content: "line 1\nline 2" }, deps);
+      await write.execute(
+        { file_path: "test.txt", content: "line 1\nline 2" },
+        deps,
+      );
 
       const result = await read.execute(
         { file_path: "test.txt", start_line: 100 },
-        deps
+        deps,
       );
 
       expect(result).toContain("empty - file has 2 lines");
@@ -97,7 +109,7 @@ describe("File System Windowing", () => {
     it("truncates long output", async () => {
       const result = await bash.execute(
         { command: `node -e "console.log('x'.repeat(15000))"` },
-        deps
+        deps,
       );
 
       expect(result).toContain("[output truncated");
@@ -114,8 +126,11 @@ describe("File System Windowing", () => {
 
     it("supports max_output_chars parameter", async () => {
       const result = await bash.execute(
-        { command: `node -e "console.log('x'.repeat(5000))"`, max_output_chars: 100 },
-        deps
+        {
+          command: `node -e "console.log('x'.repeat(5000))"`,
+          max_output_chars: 100,
+        },
+        deps,
       );
 
       expect(result.length).toBeLessThan(200);
@@ -128,7 +143,7 @@ describe("File System Windowing", () => {
 
       const result = await write.execute(
         { file_path: "test.txt", content: bigContent },
-        deps
+        deps,
       );
 
       expect(result).toContain("Content too large");
@@ -139,7 +154,7 @@ describe("File System Windowing", () => {
 
       const result = await write.execute(
         { file_path: "test.txt", content },
-        deps
+        deps,
       );
 
       expect(result).toContain("Wrote 40000 bytes");
@@ -154,9 +169,9 @@ describe("File System Windowing", () => {
         {
           file_path: "test.txt",
           old_string: "x".repeat(11000),
-          new_string: "y"
+          new_string: "y",
         },
-        deps
+        deps,
       );
 
       expect(result).toContain("Search string too large");
@@ -169,9 +184,9 @@ describe("File System Windowing", () => {
         {
           file_path: "test.txt",
           old_string: "hello",
-          new_string: "x".repeat(11000)
+          new_string: "x".repeat(11000),
         },
-        deps
+        deps,
       );
 
       expect(result).toContain("Replacement string too large");
@@ -184,7 +199,7 @@ describe("File System Windowing", () => {
       for (let i = 0; i < 150; i++) {
         await write.execute(
           { file_path: `file${i}.txt`, content: "test" },
-          deps
+          deps,
         );
       }
     });
@@ -198,18 +213,18 @@ describe("File System Windowing", () => {
     it("supports offset parameter", async () => {
       const result = await glob.execute(
         { pattern: "*.txt", offset: 100 },
-        deps
+        deps,
       );
 
       expect(result).toMatch(/^Results 100-149 of 150/);
       // Files are sorted alphabetically, so offset 100 will be around file5x-6x range
-      expect(result.split('\n').length).toBeGreaterThan(40); // Should have ~50 results
+      expect(result.split("\n").length).toBeGreaterThan(40); // Should have ~50 results
     });
 
     it("supports max_results parameter", async () => {
       const result = await glob.execute(
         { pattern: "*.txt", max_results: 10 },
-        deps
+        deps,
       );
 
       expect(result).toMatch(/^Results 0-9 of 150/);
@@ -218,7 +233,7 @@ describe("File System Windowing", () => {
     it("handles offset beyond total", async () => {
       const result = await glob.execute(
         { pattern: "*.txt", offset: 200 },
-        deps
+        deps,
       );
 
       expect(result).toContain("offset beyond end");
@@ -227,7 +242,10 @@ describe("File System Windowing", () => {
 
   describe("output size guarantees", () => {
     it("read never exceeds 10k", async () => {
-      const content = Array.from({ length: 10000 }, (_, i) => `line ${i + 1}`).join("\n");
+      const content = Array.from(
+        { length: 10000 },
+        (_, i) => `line ${i + 1}`,
+      ).join("\n");
       await write.execute({ file_path: "huge.txt", content }, deps);
 
       const result = await read.execute({ file_path: "huge.txt" }, deps);
@@ -237,8 +255,11 @@ describe("File System Windowing", () => {
 
     it("bash never exceeds specified limit", async () => {
       const result = await bash.execute(
-        { command: `node -e "console.log('x'.repeat(20000))"`, max_output_chars: 5000 },
-        deps
+        {
+          command: `node -e "console.log('x'.repeat(20000))"`,
+          max_output_chars: 5000,
+        },
+        deps,
       );
 
       expect(result.length).toBeLessThan(5500); // with metadata
@@ -249,7 +270,7 @@ describe("File System Windowing", () => {
       for (let i = 0; i < 200; i++) {
         await write.execute(
           { file_path: `${"x".repeat(100)}${i}.txt`, content: "test" },
-          deps
+          deps,
         );
       }
 

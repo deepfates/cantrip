@@ -3,10 +3,10 @@ import readline from "readline";
 import { Agent, TaskComplete } from "../src/agent/service";
 import { createConsoleRenderer } from "../src/agent/console";
 import { ChatOpenAI } from "../src/llm/openai/chat";
-import { js } from "../src/tools/examples/js";
-import { js_run } from "../src/tools/examples/js_run";
-import { JsContext, getJsContext } from "../src/tools/examples/js_context";
-import { done } from "../src/tools/examples/default";
+import { js } from "../src/tools/builtins/js";
+import { js_run } from "../src/tools/builtins/js_run";
+import { JsContext, getJsContext } from "../src/tools/builtins/js_context";
+import { done } from "../src/tools/builtins/default";
 
 export async function main() {
   const verbose = (() => {
