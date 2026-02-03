@@ -47,7 +47,7 @@ const add = tool(
 );
 ```
 
-The tools you give an agent define what it can do. An agent with `bash`, `read`, and `write` tools can interact with your filesystem. An agent with an `http` tool can make API calls. An agent with just `add` and `done` can do arithmetic. The tools are the agent's capabilities.
+The tools you give an agent define what it can do. An agent with `bash`, `read`, and `write` tools can interact with your filesystem. An agent with a `browser` tool can surf the web. An agent with just `add` and `done` can do arithmetic. The tools are the agent's capabilities.
 
 ## Get started
 
@@ -72,9 +72,23 @@ The examples build on each other. Work through them in order.
 
 **[`chat.ts`](examples/chat.ts)** — An interactive terminal chat. Uses streaming to show tool calls as they happen. Includes a `think` tool that lets the model reason step by step.
 
-**[`claude_code.ts`](examples/claude_code.ts)** — A coding agent with bash, read, write, edit, and glob tools. Shows how to sandbox filesystem access and inject dependencies into tools.
+**[`claude_code.ts`](examples/claude_code.ts)** — A coding agent with production-grade filesystem tools. Shows how to use the included `fs` tools module and sandbox access.
+
+**[`browser_agent.ts`](examples/browser_agent.ts)** — A web surfing agent using the included `browser` tools (via Taiko). Navigates, interacts, and extracts data from websites.
+
+**[`js_agent.ts`](examples/js_agent.ts)** — A computational agent using the included `js` tools (via QuickJS). Can run code in a persistent sandbox or safe ephemeral environments.
 
 **[`dependency_injection.ts`](examples/dependency_injection.ts)** — How to give tools access to databases, API clients, or test mocks.
+
+## Included Tools Library
+
+While you can write your own tools, Cantrip comes with "batteries-included" modules for common complex tasks:
+
+**FileSystem (`src/tools/examples/fs`)** — Safe, sandboxed access to the filesystem. Includes `read` (with pagination), `write` (with size limits), `edit`, `glob`, and `bash`.
+
+**Browser (`src/tools/examples/browser`)** — Headless browser automation built on Taiko. Persists session state across tool calls.
+
+**JavaScript Sandbox (`src/tools/examples/js`)** — Secure WASM-based JavaScript runtime (QuickJS). Perfect for agents that need to perform calculations or data processing without risking the host machine.
 
 ## Optional features
 
