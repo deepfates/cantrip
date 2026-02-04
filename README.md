@@ -57,7 +57,7 @@ This is a GitHub template. Clone it to start your own project:
 gh repo create my-agent --template deepfates/cantrip
 cd my-agent
 bun install
-bun run examples/quick_start.ts
+bun run examples/02_quick_start.ts
 ```
 
 ## Learn by example
