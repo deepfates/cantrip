@@ -68,7 +68,7 @@ export async function main() {
 - browser: control a headless browser via Taiko commands
 
 Use the right tool for each task. Prefer simpler tools when they suffice.`,
-    dependency_overrides: new Map([
+    dependency_overrides: new Map<any, any>([
       [getSandboxContext, () => fsCtx],
       [getJsContext, () => jsCtx],
       [getBrowserContext, lazyGetBrowser],
