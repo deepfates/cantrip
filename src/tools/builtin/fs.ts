@@ -9,7 +9,6 @@ import { tool } from "../../tools/decorator";
 const execAsync = promisify(exec);
 
 // Loria node size constraints
-const MAX_NODE_CHARS = 10_000;
 const SAFE_OUTPUT_LIMIT = 9_500;
 
 class SecurityError extends Error {}
@@ -57,13 +56,13 @@ export const bash = tool(
     {
       command,
       timeout,
-      max_output_chars
+      max_output_chars,
     }: {
       command: string;
       timeout?: number;
       max_output_chars?: number;
     },
-    deps
+    deps,
   ) => {
     const ctx = deps.ctx as SandboxContext;
     const maxChars = max_output_chars ?? 9000;
@@ -85,7 +84,7 @@ export const bash = tool(
       // Truncate if needed
       if (output.length > maxChars) {
         // Try to truncate at last newline
-        const lastNewline = output.lastIndexOf('\n', maxChars);
+        const lastNewline = output.lastIndexOf("\n", maxChars);
         if (lastNewline > maxChars / 2) {
           output = output.substring(0, lastNewline);
         } else {
@@ -121,13 +120,13 @@ export const read = tool(
     {
       file_path,
       start_line,
-      max_lines
+      max_lines,
     }: {
       file_path: string;
       start_line?: number;
       max_lines?: number;
     },
-    deps
+    deps,
   ) => {
     const ctx = deps.ctx as SandboxContext;
     const startLine = start_line ?? 1;
@@ -142,7 +141,7 @@ export const read = tool(
         return `Error: Binary file detected (${buffer.length} bytes)`;
       }
 
-      const content = buffer.toString('utf8');
+      const content = buffer.toString("utf8");
       const allLines = content.split(/\r?\n/);
       const totalLines = allLines.length;
 
@@ -164,7 +163,9 @@ export const read = tool(
 
         // Truncate individual lines if too long
         if (line.length > 500) {
-          line = line.substring(0, 500) + `... [line truncated - ${line.length} chars total]`;
+          line =
+            line.substring(0, 500) +
+            `... [line truncated - ${line.length} chars total]`;
         }
 
         const lineStr = `${String(lineNum).padStart(4)}  ${line}\n`;
@@ -292,14 +293,14 @@ export const glob = tool(
       pattern,
       cwd,
       offset,
-      max_results
+      max_results,
     }: {
       pattern: string;
       cwd?: string;
       offset?: number;
       max_results?: number;
     },
-    deps
+    deps,
   ) => {
     const ctx = deps.ctx as SandboxContext;
     const startOffset = offset ?? 0;
@@ -339,7 +340,7 @@ export const glob = tool(
       let shownCount = 0;
 
       for (const result of windowResults) {
-        const line = result + '\n';
+        const line = result + "\n";
         if (output.length + line.length > SAFE_OUTPUT_LIMIT) {
           output += `\n(limited by output size - showing ${shownCount} of ${windowResults.length} results)`;
           break;
