@@ -11,6 +11,8 @@ export type ChatOpenAIOptions = {
   model: string;
   api_key?: string | null;
   base_url?: string | null;
+  headers?: Record<string, string> | null;
+  require_api_key?: boolean;
   temperature?: number | null;
   frequency_penalty?: number | null;
   reasoning_effort?: ReasoningEffort;
@@ -39,6 +41,8 @@ export class ChatOpenAI implements BaseChatModel {
   extended_cache_models: string[];
   api_key: string | null;
   base_url: string;
+  headers: Record<string, string>;
+  require_api_key: boolean;
   max_completion_tokens: number | null;
   reasoning_models: string[];
 
@@ -64,8 +68,19 @@ export class ChatOpenAI implements BaseChatModel {
       "gpt-5-codex",
       "gpt-4.1",
     ];
-    this.api_key = options.api_key ?? process.env.OPENAI_API_KEY ?? null;
+    const envApiKey = process.env.OPENAI_API_KEY ?? null;
+    if (options.api_key === undefined) {
+      this.api_key = envApiKey;
+    } else if (options.api_key === null && options.require_api_key !== false) {
+      // Preserve backward-compatible fallback: explicit null still uses env key unless caller
+      // has explicitly disabled key requirements.
+      this.api_key = envApiKey;
+    } else {
+      this.api_key = options.api_key;
+    }
     this.base_url = options.base_url ?? "https://api.openai.com/v1";
+    this.headers = options.headers ?? {};
+    this.require_api_key = options.require_api_key ?? true;
     this.max_completion_tokens = options.max_completion_tokens ?? 4096;
     this.reasoning_models = options.reasoning_models ?? [
       "o4-mini",
@@ -203,7 +218,7 @@ export class ChatOpenAI implements BaseChatModel {
     tool_choice?: ToolChoice | null,
     extra?: Record<string, unknown>,
   ): Promise<ChatInvokeCompletion> {
-    if (!this.api_key) {
+    if (this.require_api_key && !this.api_key) {
       throw new ModelProviderError(
         "OPENAI_API_KEY is required",
         401,
@@ -259,7 +274,8 @@ export class ChatOpenAI implements BaseChatModel {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.api_key}`,
+        ...(this.api_key ? { Authorization: `Bearer ${this.api_key}` } : {}),
+        ...this.headers,
       },
       body: JSON.stringify(body),
     });

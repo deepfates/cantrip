@@ -63,7 +63,7 @@ describe("console renderer", () => {
     renderer.handle(new ToolResultEvent("bash", "ok", "call_1"), state);
 
     expect(stdout.getOutput()).toBe("");
-    expect(stderr.getOutput()).toBe("");
+    expect(stderr.getOutput()).toBe("» bash\n");
   });
 
   test("tool events are printed to stderr when verbose is true", () => {
@@ -77,6 +77,6 @@ describe("console renderer", () => {
     renderer.handle(new ToolCallEvent("bash", {}, "call_1"), state);
     renderer.handle(new ToolResultEvent("bash", "ok", "call_1"), state);
 
-    expect(stderr.getOutput()).toBe("» bash\n│ ok\n");
+    expect(stderr.getOutput()).toBe("» bash({})\n│ ok\n");
   });
 });
