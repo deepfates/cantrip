@@ -1,6 +1,8 @@
 export { Agent, TaskComplete } from "./service";
 export { CoreAgent } from "./core";
 export { createConsoleRenderer } from "./console";
+export { runRepl } from "./repl";
+export type { ReplOptions } from "./repl";
 export type {
   ConsoleRenderer,
   ConsoleRendererOptions,

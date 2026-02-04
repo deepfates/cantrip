@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
 import { loadEnv } from "./helpers/env";
-import { main as coreLoopMain } from "../examples/core_loop";
-import { main as diMain } from "../examples/dependency_injection";
-import { main as quickStartMain } from "../examples/quick_start";
-import { main as batteriesOffMain } from "../examples/batteries_off";
-import { main as claudeCodeMain } from "../examples/claude_code";
-import { main as chatMain } from "../examples/chat";
+import { main as coreLoopMain } from "../examples/01_core_loop";
+import { main as quickStartMain } from "../examples/02_quick_start";
+import { main as providersMain } from "../examples/03_providers";
+import { main as diMain } from "../examples/04_dependency_injection";
+import { main as fsAgentMain } from "../examples/05_fs_agent";
+import { main as jsAgentMain } from "../examples/06_js_agent";
+import { main as browserAgentMain } from "../examples/07_browser_agent";
+import { main as fullAgentMain } from "../examples/08_full_agent";
 
 loadEnv();
 
@@ -34,19 +36,28 @@ describe("examples", () => {
   );
 
   itAnthropic(
-    "batteries_off runs with Anthropic key",
+    "providers example runs with Anthropic key",
     async () => {
-      const result = await batteriesOffMain();
-      expect(result).toBeTruthy();
+      const result = await providersMain();
+      expect(result).toBeUndefined(); // logs to console, returns void
     },
     { timeout: 20_000 },
   );
 
-  test("claude_code example is importable", () => {
-    expect(typeof claudeCodeMain).toBe("function");
+  // These are interactive REPLs, so we just check they're importable
+  test("fs_agent example is importable", () => {
+    expect(typeof fsAgentMain).toBe("function");
   });
 
-  test("chat example is importable", () => {
-    expect(typeof chatMain).toBe("function");
+  test("js_agent example is importable", () => {
+    expect(typeof jsAgentMain).toBe("function");
+  });
+
+  test("browser_agent example is importable", () => {
+    expect(typeof browserAgentMain).toBe("function");
+  });
+
+  test("full_agent example is importable", () => {
+    expect(typeof fullAgentMain).toBe("function");
   });
 });
