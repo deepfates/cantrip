@@ -3,6 +3,28 @@ import readline from "readline";
 import { Agent } from "./service";
 import { createConsoleRenderer, type ConsoleRendererOptions } from "./console";
 
+export type ExecOptions = {
+  agent: Agent;
+  task: string;
+  verbose?: boolean;
+};
+
+/**
+ * Run an agent once with a task and print the result to stdout.
+ * Unix-friendly: no prompts, no decoration, just output.
+ */
+export async function exec(options: ExecOptions): Promise<void> {
+  const { agent, task } = options;
+  const verbose = options.verbose ?? false;
+
+  const renderer = createConsoleRenderer({ verbose });
+  const state = renderer.createState();
+
+  for await (const event of agent.query_stream(task)) {
+    renderer.handle(event, state);
+  }
+}
+
 export type ReplOptions = {
   agent: Agent;
   prompt?: string;
@@ -14,18 +36,29 @@ export type ReplOptions = {
 /**
  * Run an interactive REPL for the given agent.
  *
- * Handles stdin (TTY or piped), streaming output, and cleanup.
+ * Handles three modes:
+ * - CLI args: `bun run agent.ts "What is 2+2?"` runs once and exits
+ * - Piped input: `echo "What is 2+2?" | bun run agent.ts` runs once and exits
+ * - Interactive: opens a REPL prompt
  */
 export async function runRepl(options: ReplOptions): Promise<void> {
   const { agent, onClose } = options;
   const prompt = options.prompt ?? "› ";
-  const verbose = options.verbose ?? (() => {
-    const value = process.env.VERBOSE?.toLowerCase();
-    return value === "1" || value === "true" || value === "yes";
-  })();
+  const verbose =
+    options.verbose ??
+    (() => {
+      const value = process.env.VERBOSE?.toLowerCase();
+      return value === "1" || value === "true" || value === "yes";
+    })();
 
-  const rendererOptions: ConsoleRendererOptions = { verbose };
-  const renderer = createConsoleRenderer(rendererOptions);
+  // CLI args: run once and exit
+  const args = process.argv.slice(2);
+  if (args.length > 0) {
+    const task = args.join(" ");
+    await exec({ agent, task, verbose });
+    if (onClose) await onClose();
+    return;
+  }
 
   const isTty = Boolean(process.stdin.isTTY);
 
@@ -38,10 +71,8 @@ export async function runRepl(options: ReplOptions): Promise<void> {
     }
     const task = input.trim();
     if (!task) return;
-    const state = renderer.createState();
-    for await (const event of agent.query_stream(task)) {
-      renderer.handle(event, state);
-    }
+    await exec({ agent, task, verbose });
+    if (onClose) await onClose();
     return;
   }
 
@@ -89,5 +120,6 @@ export async function runRepl(options: ReplOptions): Promise<void> {
     process.exit(0);
   });
 
+  const renderer = createConsoleRenderer({ verbose });
   rl.prompt();
 }
