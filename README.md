@@ -64,27 +64,33 @@ bun run examples/quick_start.ts
 
 The examples build on each other. Work through them in order.
 
-**[`core_loop.ts`](examples/core_loop.ts)** — The loop with a fake LLM that returns hardcoded responses. No API keys needed. Start here to see how the pieces fit together.
+### The basics
 
-**[`quick_start.ts`](examples/quick_start.ts)** — A real agent using Claude. Has an `add` tool and a `done` tool. Your first working agent.
+**[`01_core_loop.ts`](examples/01_core_loop.ts)** — The loop with a fake LLM that returns hardcoded responses. No API keys needed. Start here to see how the pieces fit together.
 
-**[`batteries_off.ts`](examples/batteries_off.ts)** — The same agent but with the optional features (retries, ephemerals, compaction) turned off. Helps you see what's core vs. what's extra.
+**[`02_quick_start.ts`](examples/02_quick_start.ts)** — A real agent using Claude. Has an `add` tool and a `done` tool. Your first working agent.
 
-**[`chat.ts`](examples/chat.ts)** — An interactive terminal chat. Uses streaming to show tool calls as they happen. Includes a `think` tool that lets the model reason step by step.
+**[`03_providers.ts`](examples/03_providers.ts)** — Shows how to swap between Anthropic, OpenAI, Google, OpenRouter, and local models.
 
-**[`claude_code.ts`](examples/claude_code.ts)** — A coding agent with production-grade filesystem tools. Shows how to use the included `fs` tools module and sandbox access.
+**[`04_dependency_injection.ts`](examples/04_dependency_injection.ts)** — How to give tools access to databases, API clients, or test mocks.
 
-**[`browser_agent.ts`](examples/browser_agent.ts)** — A web surfing agent using the included `browser` tools (via Taiko). Navigates, interacts, and extracts data from websites.
+### Builtin tool modules
 
-**[`js_agent.ts`](examples/js_agent.ts)** — A computational agent using the included `js` tools (via QuickJS). Can run code in a persistent sandbox or safe ephemeral environments.
+**[`05_fs_agent.ts`](examples/05_fs_agent.ts)** — A coding agent with sandboxed filesystem tools (`read`, `write`, `edit`, `glob`, `bash`).
 
-**[`dependency_injection.ts`](examples/dependency_injection.ts)** — How to give tools access to databases, API clients, or test mocks.
+**[`06_js_agent.ts`](examples/06_js_agent.ts)** — A computational agent with two JavaScript tools: `js` (persistent REPL, no I/O) and `js_run` (fresh sandbox with fetch and virtual fs).
+
+**[`07_browser_agent.ts`](examples/07_browser_agent.ts)** — A web browsing agent with a persistent headless browser (via Taiko).
+
+### Putting it together
+
+**[`08_full_agent.ts`](examples/08_full_agent.ts)** — Combines filesystem, JavaScript, and browser tools into one agent. Use this as a starting point for your own agent.
 
 ## Included Tools Library
 
-While you can write your own tools, Cantrip comes with "batteries-included" modules for common complex tasks:
+While you can write your own tools, Cantrip comes with a few "batteries-included" modules:
 
-**FileSystem (`src/tools/builtin/fs`)** — Safe, sandboxed access to the filesystem. Includes `read` (with pagination), `write` (with size limits), `edit`, `glob`, and `bash`.
+**FileSystem (`src/tools/builtin/fs`)** — Lightly sandboxed access to the filesystem. Includes `read` (with pagination), `write` (with size limits), `edit`, `glob`, and `bash`.
 
 **Browser (`src/tools/builtin/browser`)** — Headless browser automation built on Taiko. Persists session state across tool calls.
 
