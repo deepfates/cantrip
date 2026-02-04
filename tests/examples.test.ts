@@ -1,12 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import { loadEnv } from "./helpers/env";
-import { main as coreLoopMain } from "../examples/core_loop";
-import { main as diMain } from "../examples/dependency_injection";
-import { main as quickStartMain } from "../examples/quick_start";
-import { main as batteriesOffMain } from "../examples/batteries_off";
-import { main as claudeCodeMain } from "../examples/claude_code";
-import { main as replMain } from "../examples/repl";
+import { main as coreLoopMain } from "../examples/01_core_loop";
+import { main as quickStartMain } from "../examples/02_quick_start";
+import { main as providersMain } from "../examples/03_providers";
+import { main as diMain } from "../examples/04_dependency_injection";
 
 loadEnv();
 
@@ -14,18 +12,18 @@ const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY);
 const itAnthropic = hasAnthropicKey ? test : test.skip;
 
 describe("examples", () => {
-  test("core loop runs", async () => {
+  test("01_core_loop runs", async () => {
     const result = await coreLoopMain();
     expect(result).toBe("Result is 5");
   });
 
-  test("dependency injection runs", async () => {
+  test("04_dependency_injection runs", async () => {
     const result = await diMain();
     expect(result).toContain("Executed:");
   });
 
   itAnthropic(
-    "quick_start runs with Anthropic key",
+    "02_quick_start runs",
     async () => {
       const result = await quickStartMain();
       expect(result).toBeTruthy();
@@ -34,19 +32,11 @@ describe("examples", () => {
   );
 
   itAnthropic(
-    "batteries_off runs with Anthropic key",
+    "03_providers runs",
     async () => {
-      const result = await batteriesOffMain();
-      expect(result).toBeTruthy();
+      const result = await providersMain();
+      expect(result).toBeUndefined(); // logs to console, returns void
     },
     { timeout: 20_000 },
   );
-
-  test("claude_code example is importable", () => {
-    expect(typeof claudeCodeMain).toBe("function");
-  });
-
-  test("repl example is importable", () => {
-    expect(typeof replMain).toBe("function");
-  });
 });

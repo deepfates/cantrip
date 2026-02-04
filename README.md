@@ -47,7 +47,7 @@ const add = tool(
 );
 ```
 
-The tools you give an agent define what it can do. An agent with `bash`, `read`, and `write` tools can interact with your filesystem. An agent with an `http` tool can make API calls. An agent with just `add` and `done` can do arithmetic. The tools are the agent's capabilities.
+The tools you give an agent define what it can do. An agent with `bash`, `read`, and `write` tools can interact with your filesystem. An agent with a `browser` tool can surf the web. An agent with just `add` and `done` can do arithmetic. The tools are the agent's capabilities.
 
 ## Get started
 
@@ -57,24 +57,44 @@ This is a GitHub template. Clone it to start your own project:
 gh repo create my-agent --template deepfates/cantrip
 cd my-agent
 bun install
-bun run examples/quick_start.ts
+bun run examples/02_quick_start.ts
 ```
 
 ## Learn by example
 
 The examples build on each other. Work through them in order.
 
-**[`core_loop.ts`](examples/core_loop.ts)** — The loop with a fake LLM that returns hardcoded responses. No API keys needed. Start here to see how the pieces fit together.
+### The basics
 
-**[`quick_start.ts`](examples/quick_start.ts)** — A real agent using Claude. Has an `add` tool and a `done` tool. Your first working agent.
+**[`01_core_loop.ts`](examples/01_core_loop.ts)** — The loop with a fake LLM that returns hardcoded responses. No API keys needed. Start here to see how the pieces fit together.
 
-**[`batteries_off.ts`](examples/batteries_off.ts)** — The same agent but with the optional features (retries, ephemerals, compaction) turned off. Helps you see what's core vs. what's extra.
+**[`02_quick_start.ts`](examples/02_quick_start.ts)** — A real agent using Claude. Has an `add` tool and a `done` tool. Your first working agent.
 
-**[`chat.ts`](examples/chat.ts)** — An interactive terminal chat. Uses streaming to show tool calls as they happen. Includes a `think` tool that lets the model reason step by step.
+**[`03_providers.ts`](examples/03_providers.ts)** — Shows how to swap between Anthropic, OpenAI, Google, OpenRouter, and local models.
 
-**[`claude_code.ts`](examples/claude_code.ts)** — A coding agent with bash, read, write, edit, and glob tools. Shows how to sandbox filesystem access and inject dependencies into tools.
+**[`04_dependency_injection.ts`](examples/04_dependency_injection.ts)** — How to give tools access to databases, API clients, or test mocks.
 
-**[`dependency_injection.ts`](examples/dependency_injection.ts)** — How to give tools access to databases, API clients, or test mocks.
+### Builtin tool modules
+
+**[`05_fs_agent.ts`](examples/05_fs_agent.ts)** — A coding agent with sandboxed filesystem tools (`read`, `write`, `edit`, `glob`, `bash`).
+
+**[`06_js_agent.ts`](examples/06_js_agent.ts)** — A computational agent with two JavaScript tools: `js` (persistent REPL, no I/O) and `js_run` (fresh sandbox with fetch and virtual fs).
+
+**[`07_browser_agent.ts`](examples/07_browser_agent.ts)** — A web browsing agent with a persistent headless browser (via Taiko).
+
+### Putting it together
+
+**[`08_full_agent.ts`](examples/08_full_agent.ts)** — Combines filesystem, JavaScript, and browser tools into one agent. Use this as a starting point for your own agent.
+
+## Included Tools Library
+
+While you can write your own tools, Cantrip comes with a few "batteries-included" modules:
+
+**FileSystem (`src/tools/builtin/fs`)** — Lightly sandboxed access to the filesystem. Includes `read` (with pagination), `write` (with size limits), `edit`, `glob`, and `bash`.
+
+**Browser (`src/tools/builtin/browser`)** — Headless browser automation built on Taiko. Persists session state across tool calls.
+
+**JavaScript Sandbox (`src/tools/builtin/js`)** — Secure WASM-based JavaScript runtime (QuickJS). Perfect for agents that need to perform calculations or data processing without risking the host machine.
 
 ## Optional features
 
@@ -91,8 +111,18 @@ If you don't need these, use `CoreAgent` instead, or disable them in `Agent`.
 ## Providers
 
 ```ts
-import { ChatAnthropic, ChatOpenAI, ChatGoogle } from "cantrip/llm";
+import {
+  ChatAnthropic,
+  ChatOpenAI,
+  ChatGoogle,
+  ChatLMStudio,
+  ChatOpenRouter,
+} from "cantrip/llm";
 ```
+
+- **ChatLMStudio** — points at the LM Studio local OpenAI-compatible server (`http://localhost:1234/v1` by default) and doesn’t require an API key unless you provide one via `LM_STUDIO_API_KEY`.
+- **ChatOpenRouter** — speaks to `https://openrouter.ai/api/v1`, automatically adding the attribution headers OpenRouter expects (`HTTP-Referer`, `X-Title`) from env vars (`OPENROUTER_HTTP_REFERER`, `OPENROUTER_TITLE`). Set `OPENROUTER_API_KEY` or pass `api_key`; you can disable the attribution headers with `attribution_headers: false` if you manage them yourself.
+- **ChatOpenAI** (and friends) merge any custom `headers` you pass; `require_api_key` controls whether missing keys throw (default `true`). Passing `api_key: null` still falls back to the relevant env var for compatibility.
 
 ## The philosophy
 
