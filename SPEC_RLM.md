@@ -9,152 +9,100 @@ termination semantics, while keeping the **context outside the LLM prompt**.
 - Do **not** implement RLM as an `Agent` subclass.
 - Do **not** use tool calls or ReAct-style loops.
 - Do **not** put full context into the LLM prompt.
-- Do **not** add `llm_query_batched`.
+- Do **not** add `llm_query_batched` (keep it simple first).
 
-## Prior Art Alignment
-Matches the original RLM loop structure:
-- Model outputs **free text + code blocks**.
-- Code blocks are executed in an environment.
-- Execution output is appended to history (truncated).
-- Termination requires `FINAL(...)` or `FINAL_VAR(...)`.
-- Recursion is **nested RLMs**, not just plain LLM calls.
+## Research Alignment (Zhang et al. 2026)
+Matches the RLM loop structure proven to scale to 10M+ tokens:
+- **Environment Isolation**: Prompt contains only metadata; data lives in the REPL.
+- **Symbolic Recursion**: LLM writes code that calls itself on programmatic snippets.
+- **Iteration-0 Safeguard**: Prompting logic prevents immediate termination before exploration.
+- **Answer Diffusion**: The model builds the answer in sandbox variables (`FINAL_VAR`).
 
 ## Public API
+
+### Core RLM
 ```ts
 const rlm = createRLM({
   llm,            // root model (BaseChatModel)
   subLlm?,        // optional cheaper model for sub-calls
-  maxDepth?,      // default 2
-  maxIterations?,// default 20
-  persistent?,    // default true
-  systemPrompt?,  // optional override
+  maxDepth: 2,    // recursion limit
+  maxIterations: 20,
+  persistent: true,
+  usage: new UsageTracker(), // aggregate token counts
 });
 
+// context can be string, array, or object
 const answer = await rlm.query(query, context);
 ```
 
-Optional streaming:
+### BaseChatModel Adapter (Phase 2)
+The RLM will also be available as a `BaseChatModel` drop-in.
 ```ts
-for await (const event of rlm.query_stream(query, context)) {
-  // render events
-}
+const model = new RlmAdapter({
+  rlm,
+  contextSelector: (msgs) => msgs[0].content // Logic to pick context
+});
 ```
 
-## CLI / REPL UX
-- Keep existing REPL semantics: one query per line / run.
-- Add a `--context <path>` flag to load context out of band.
-- Context is loaded once at startup and injected into the RLM environment.
-- Example:
-  ```
-  bun run examples/rlm_repl.ts --context data/corpus.txt
-  › What are the key risks?
-  ```
-### CLI Context Details (Recommended)
-- **Precedence**: `--context` (or `--context-dir`) always wins; stdin/args are query only.
-- **Types**:
-  - `.txt` / `.md` → string context
-  - `.json` → object or list context
-- **Directories**: `--context-dir <path>` loads multiple files in lexical order.
-  - Default: list of file contents (array of strings)
-  - Alternative: concatenate into one string (configurable)
-- **Encoding**: assume UTF-8; fail fast on decode errors.
-- **Size limit**: enforce a max byte size with a clear error (configurable).
-- **Metadata**: include total char count, type, and a short preview in the prompt.
-- **Failure mode**: invalid path or unreadable context aborts before REPL starts.
+## Core Loop Logic
+1.  **Initialize**: Create a `JsAsyncContext` with a fresh WASM module (per depth).
+2.  **Inject**: Set `context` as a global variable. Register `llm_query` host function.
+3.  **Iteration**:
+    - Build prompt: System + Metadata (type, size, preview) + History.
+    - LLM call: Extract ` ```repl ` blocks.
+    - **Execute**: Run blocks sequentially. Collect `stdout`.
+    - **Truncate**: If output > 25% of context or 10k chars, redact.
+    - **Terminate**: Search non-code text for `FINAL()` or `FINAL_VAR()`.
+4.  **Fallback**: At `maxIterations`, issue a forced completion prompt.
 
-## Core Loop (RLM, not Agent)
-1. Build prompt = system + metadata + history.
-2. Ask LLM for next action.
-3. Parse any ` ```repl ``` ` blocks (JS code).
-4. Execute each block in a persistent `JsAsyncContext`.
-5. Append truncated execution output to history as a user message.
-6. Check for `FINAL(...)` or `FINAL_VAR(...)` in the LLM response text (outside code).
-7. If FINAL found, return. Otherwise, continue until `maxIterations`.
-8. On max iterations, issue a final prompt to force completion.
+## JS Environment Contract (Globals)
+- `context`: The large input data (String | Array | Object).
+- `llm_query(query, context?)`: 
+  - If `context` omitted, uses child's parent's context.
+  - If `depth < maxDepth`, spawns nested RLM.
+  - If `depth == maxDepth`, calls plain LLM.
+- `FINAL_VAR(name)`: Helper to return a variable by name.
+- `print(...)`: Maps to `console.log` for stdout history.
 
-## Context Isolation
-- The **full context** is placed only in the JS environment as `context`.
-- The LLM prompt contains **only metadata**:
-  - total character length
-  - type (string | list | object)
-  - optional short preview
-- The LLM also sees prior **(code, truncated output)** history only.
+## Technical Implementation Details
 
-## JS Environment Contract
-Globals injected into the `JsAsyncContext`:
-- `context`: the input context
-- `history`: prior conversation history summaries (for persistent mode)
-- `FINAL_VAR(name)`: helper to return a named variable
-- `SHOW_VARS()`: helper to list user-defined variables (optional but recommended)
-- `sub_rlm(query, context?)`: **async host function** that spawns a nested RLM
+### WASM Module Per Depth
+Because `quickjs-emscripten` with `asyncify` supports only one suspension per instance, each recursion level MUST use a fresh WASM module.
+- `JsAsyncContext.create({ module: createAsyncModule() })`
 
-### `sub_rlm` semantics
-- Spawns a **full RLM** with its own `JsAsyncContext` and depth+1.
-- At `maxDepth`, `sub_rlm` falls back to a plain LLM call.
-- Each nested RLM preserves the same loop semantics and termination rules.
+### Parser & Termination
+- **Regex**: `FINAL\((.*?)\)` and `FINAL_VAR\((.*?)\)` (Multiline/Dotall).
+- **Scope**: Only search text *outside* of code blocks to avoid false positives in comments.
+- **Return Type**: `FINAL_VAR` should `JSON.stringify` non-string values.
 
-## Code Block Parsing
-- Execute only fenced blocks:
-  ```
-  ```repl
-  // JS code
-  ```
-  ```
-- All other model text is preserved as normal assistant content.
-- `FINAL(...)` and `FINAL_VAR(...)` are only recognized in **non-code text**.
-
-## Termination Rules
-- Only terminate on explicit `FINAL(...)` or `FINAL_VAR(...)`.
-- If `FINAL_VAR(x)` is used, evaluate `x` in the JS environment and return it.
-- If no final answer after `maxIterations`, issue a final prompt to force completion.
-
-## Truncation / History Formatting
-For each code block, append:
+### History Formatting
+Each iteration is stored as:
 ```
 Code executed:
 ```js
-<code>
+// model's code
 ```
 
-REPL output:
-<truncated output>
+Output:
+// (truncated/redacted result)
 ```
 
-- Default max output chars: 20k (configurable)
-- Truncation should be stable and explicit.
-### Redaction Guard (Recommended)
-- If REPL output length exceeds **25% of context length**, replace output with:
-  `[redacted: output too large]`
-- Threshold should be configurable.
-- Purpose: prevent accidental context dumps into the prompt history.
+## Event Streaming
+RLM emits `AgentEvent`-compatible objects:
+- `RlmTextEvent` (Thinking)
+- `RlmCodeEvent` (ToolCall: repl)
+- `RlmExecEvent` (ToolResult: stdout)
+- `RlmFinalEvent` (FinalResponse)
 
-## Persistence & Multi-Turn History
-- `persistent=true` keeps a JS context alive across multiple `query()` calls.
-- Each new query adds a new `context` slot and appends prior histories to `history`.
-- Prompt metadata should expose context count/history count to the model.
+## CLI / REPL UX
+```bash
+bun run examples/rlm_repl.ts --context data/huge_corpus.txt
+```
+- Supports `.json`, `.md`, `.txt`, and directories (lexical order).
+- Enforces a 100MB safety limit (configurable).
 
-## Event Streaming (Optional)
-Events for `query_stream` should mirror agent streams:
-- `RlmTextEvent`: assistant free text
-- `RlmCodeEvent`: raw code block
-- `RlmExecEvent`: execution output (truncated)
-- `RlmStepStartEvent` / `RlmStepCompleteEvent`: timing/status
-- `RlmFinalEvent`: final answer
-
-## Tests
-Unit:
-- `FINAL` and `FINAL_VAR` detection.
-- Code block parsing (only `repl` fences).
-- Execution output truncation.
-- Max iteration fallback prompt.
-- Depth-limited recursion (sub_rlm becomes plain LLM at max depth).
-- Persistent history accumulation.
-
-Integration (mocked LLM):
-- Multi-step loop with code blocks and final answer.
-- Nested sub_rlm calls produce isolated environments.
-
-## Open Questions (Resolve Before Implementation)
-- Should `FINAL_VAR` return JSON or stringified values?
-- Do we want to allow ` ```js ``` ` fences in addition to ` ```repl ``` `?
-- Exact metadata format and preview length.
+## Testing Strategy
+1. **Parser Tests**: Validate extraction and FINAL detection across complex text.
+2. **Sandbox Tests**: Ensure `llm_query` correctly bridges data between isolated VM instances.
+3. **Loop Tests**: Mock LLM to verify iteration-0 safeguard and max-iteration fallback.
+4. **Integration Tests**: Oolong-style tasks (Needle in Haystack, counting) to verify "lift".
