@@ -123,25 +123,46 @@ export async function registerRlmFunctions(options: {
   });
 
   // 4. llm_batch: Parallel delegation for processing multiple snippets.
+  // Limit concurrency to avoid resource exhaustion from LLM-controlled input
+  const MAX_BATCH_CONCURRENCY = 8;
+
   sandbox.registerAsyncFunction("llm_batch", async (tasks) => {
     if (!Array.isArray(tasks)) {
       throw new Error("llm_batch(tasks) requires an array of task objects.");
     }
 
-    console.error(`[llm_batch] spawning ${tasks.length} sub-agents...`);
+    // Cap array size to prevent DoS
+    const MAX_BATCH_SIZE = 50;
+    if (tasks.length > MAX_BATCH_SIZE) {
+      throw new Error(
+        `llm_batch: array too large (${tasks.length} > ${MAX_BATCH_SIZE}). Split into smaller batches.`,
+      );
+    }
 
-    const results = await Promise.all(
-      tasks.map(async (task: any, i: number) => {
-        const q = typeof task === "string" ? task : (task.query ?? task.input);
-        const c =
-          typeof task === "object"
-            ? (task.context ?? task.subContext)
-            : undefined;
-        const result = await onLlmQuery(q, c);
-        console.error(`[llm_batch] ${i + 1}/${tasks.length} complete`);
-        return result;
-      }),
+    console.error(
+      `[llm_batch] spawning ${tasks.length} sub-agents (max ${MAX_BATCH_CONCURRENCY} concurrent)...`,
     );
+
+    // Process in chunks to limit concurrency
+    const results: string[] = [];
+    for (let i = 0; i < tasks.length; i += MAX_BATCH_CONCURRENCY) {
+      const chunk = tasks.slice(i, i + MAX_BATCH_CONCURRENCY);
+      const chunkResults = await Promise.all(
+        chunk.map(async (task: any, j: number) => {
+          const idx = i + j;
+          const q =
+            typeof task === "string" ? task : (task.query ?? task.input);
+          const c =
+            typeof task === "object"
+              ? (task.context ?? task.subContext)
+              : undefined;
+          const result = await onLlmQuery(q, c);
+          console.error(`[llm_batch] ${idx + 1}/${tasks.length} complete`);
+          return result;
+        }),
+      );
+      results.push(...chunkResults);
+    }
 
     console.error(`[llm_batch] all ${tasks.length} done`);
     return results;
