@@ -36,7 +36,7 @@ const done = tool(
 );
 
 const agent = new Agent({
-  llm: new ChatAnthropic({ model: "claude-sonnet-4-20250514" }),
+  llm: new ChatAnthropic({ model: "claude-sonnet-4-5" }),
   tools: [add, done],
 });
 

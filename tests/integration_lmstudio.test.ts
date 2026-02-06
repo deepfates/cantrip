@@ -11,7 +11,7 @@ const runLive =
 
 const it = runLive ? test : test.skip;
 
-const model = process.env.LM_STUDIO_MODEL ?? "gpt-5-mini-compat";
+const model = process.env.LM_STUDIO_MODEL ?? "gpt-oss-20b";
 const base_url = process.env.LM_STUDIO_BASE_URL ?? "http://localhost:1234/v1";
 
 const echoTool: ToolDefinition = {
