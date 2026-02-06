@@ -67,10 +67,20 @@ export async function createRlmAgent(
 
       if (depth >= maxDepth) {
         // Fallback to a plain LLM completion at the maximum recursion depth level
+        // Truncate context to avoid blowing up the prompt at leaf level
+        const contextStr =
+          typeof contextToPass === "string"
+            ? contextToPass
+            : JSON.stringify(contextToPass, null, 2);
+        const truncated =
+          contextStr.length > 10000
+            ? contextStr.slice(0, 10000) + "\n... [truncated]"
+            : contextStr;
+
         const res = await subLlm.ainvoke([
           {
             role: "user",
-            content: `Task: ${query}\n\nContext Snippet:\n${typeof contextToPass === "string" ? contextToPass : JSON.stringify(contextToPass, null, 2)}`,
+            content: `Task: ${query}\n\nContext Snippet:\n${truncated}`,
           },
         ]);
         return res.content ?? "";
@@ -217,6 +227,7 @@ export async function createRlmAgentWithMemory(
   });
 
   // 3. Register RLM functions with the unified context
+  // Memory agent is always at depth 0, children start at depth 1
   await registerRlmFunctions({
     sandbox,
     context,
@@ -224,21 +235,33 @@ export async function createRlmAgentWithMemory(
       const contextToPass = subContext !== undefined ? subContext : context;
 
       if (maxDepth <= 0) {
+        // At max depth, fall back to plain LLM completion
+        // Truncate context to avoid blowing up the prompt at leaf level
+        const contextStr =
+          typeof contextToPass === "string"
+            ? contextToPass
+            : JSON.stringify(contextToPass, null, 2);
+        const truncated =
+          contextStr.length > 10000
+            ? contextStr.slice(0, 10000) + "\n... [truncated]"
+            : contextStr;
+
         const res = await subLlm.ainvoke([
           {
             role: "user",
-            content: `Task: ${query}\n\nContext:\n${typeof contextToPass === "string" ? contextToPass : JSON.stringify(contextToPass, null, 2)}`,
+            content: `Task: ${query}\n\nContext:\n${truncated}`,
           },
         ]);
         return res.content ?? "";
       }
 
+      // Spawn child RLM agent at depth 1
       const child = await createRlmAgent({
         llm: subLlm,
         subLlm,
         context: contextToPass,
-        maxDepth: maxDepth - 1,
-        depth: 1,
+        maxDepth,
+        depth: 1, // Memory agent is depth 0, child is depth 1
         usage,
       });
 
