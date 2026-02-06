@@ -16,13 +16,25 @@ type JavascriptVMOptions = {
   executionTimeoutMs?: number;
   memoryLimitBytes?: number;
   maxStackSizeBytes?: number;
+  module?: QuickJSAsyncWASMModule;
 };
 
 let asyncModulePromise: Promise<QuickJSAsyncWASMModule> | null = null;
 
-async function getAsyncModule(): Promise<QuickJSAsyncWASMModule> {
+/**
+ * Creates a fresh QuickJS Async WASM module.
+ * Use this for recursion safety (Asyncify allows one suspension per module).
+ */
+export async function createAsyncModule(): Promise<QuickJSAsyncWASMModule> {
+  return await newQuickJSAsyncWASMModuleFromVariant(variant);
+}
+
+/**
+ * Returns a shared QuickJS Async WASM module.
+ */
+export async function getSharedAsyncModule(): Promise<QuickJSAsyncWASMModule> {
   if (!asyncModulePromise) {
-    asyncModulePromise = newQuickJSAsyncWASMModuleFromVariant(variant);
+    asyncModulePromise = createAsyncModule();
   }
   return asyncModulePromise;
 }
@@ -34,9 +46,7 @@ type EvalResult = { ok: true; output: string } | { ok: false; error: string };
  * The sandbox code calls it synchronously, but the WASM suspends
  * while the host-side Promise resolves.
  */
-export type AsyncHostFunction = (
-  ...args: unknown[]
-) => Promise<unknown>;
+export type AsyncHostFunction = (...args: unknown[]) => Promise<unknown>;
 
 /**
  * Manages the execution of code within a persistent QuickJS sandbox session
@@ -69,8 +79,10 @@ export class JsAsyncContext {
     this.installConsole();
   }
 
-  static async create(options: JavascriptVMOptions = {}): Promise<JsAsyncContext> {
-    const module = await getAsyncModule();
+  static async create(
+    options: JavascriptVMOptions = {},
+  ): Promise<JsAsyncContext> {
+    const module = options.module ?? (await getSharedAsyncModule());
     const ctx = module.newContext();
     const resolved: Required<JavascriptVMOptions> = {
       executionTimeoutMs:
@@ -78,6 +90,7 @@ export class JsAsyncContext {
       memoryLimitBytes: options.memoryLimitBytes ?? DEFAULT_MEMORY_LIMIT_BYTES,
       maxStackSizeBytes:
         options.maxStackSizeBytes ?? DEFAULT_MAX_STACK_SIZE_BYTES,
+      module,
     };
     return new JsAsyncContext(ctx, resolved);
   }
