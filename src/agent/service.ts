@@ -33,6 +33,7 @@ import {
   ThinkingEvent,
   ToolCallEvent,
   ToolResultEvent,
+  UsageEvent,
 } from "./events";
 
 export { TaskComplete } from "./errors";
@@ -297,6 +298,19 @@ export class Agent {
 
       if (response.thinking) {
         yield new ThinkingEvent(response.thinking);
+      }
+
+      // Emit usage event after each LLM call
+      if (response.usage) {
+        const summary = await this.usage_tracker.getUsageSummary();
+        yield new UsageEvent({
+          prompt_tokens: response.usage.prompt_tokens,
+          completion_tokens: response.usage.completion_tokens,
+          total_tokens:
+            response.usage.prompt_tokens + response.usage.completion_tokens,
+          cached_tokens: response.usage.prompt_cached_tokens ?? 0,
+          cumulative_tokens: summary.total_tokens,
+        });
       }
 
       const assistantMessage: AssistantMessage = {

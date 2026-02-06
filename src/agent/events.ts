@@ -165,6 +165,43 @@ export class HiddenUserMessageEvent {
   }
 }
 
+export class UsageEvent {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cached_tokens: number;
+  cost: number | null;
+  cumulative_tokens: number;
+  cumulative_cost: number | null;
+
+  constructor(options: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    cached_tokens?: number;
+    cost?: number | null;
+    cumulative_tokens?: number;
+    cumulative_cost?: number | null;
+  }) {
+    this.prompt_tokens = options.prompt_tokens;
+    this.completion_tokens = options.completion_tokens;
+    this.total_tokens = options.total_tokens;
+    this.cached_tokens = options.cached_tokens ?? 0;
+    this.cost = options.cost ?? null;
+    this.cumulative_tokens = options.cumulative_tokens ?? options.total_tokens;
+    this.cumulative_cost = options.cumulative_cost ?? options.cost ?? null;
+  }
+
+  toString(): string {
+    const costStr = this.cost !== null ? ` $${this.cost.toFixed(4)}` : "";
+    const cumulativeStr =
+      this.cumulative_tokens !== this.total_tokens
+        ? ` (cumulative: ${this.cumulative_tokens} tokens${this.cumulative_cost !== null ? ` $${this.cumulative_cost.toFixed(4)}` : ""})`
+        : "";
+    return `📊 ${this.total_tokens} tokens${costStr}${cumulativeStr}`;
+  }
+}
+
 export type AgentEvent =
   | TextEvent
   | ThinkingEvent
@@ -175,4 +212,5 @@ export type AgentEvent =
   | MessageCompleteEvent
   | StepStartEvent
   | StepCompleteEvent
-  | HiddenUserMessageEvent;
+  | HiddenUserMessageEvent
+  | UsageEvent;
