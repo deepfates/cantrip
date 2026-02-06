@@ -55,6 +55,7 @@ export type AgentOptions = {
   retry?: { enabled?: boolean };
   ephemerals?: { enabled?: boolean };
   compaction_enabled?: boolean;
+  usage_tracker?: UsageTracker;
 };
 
 export class Agent {
@@ -106,7 +107,7 @@ export class Agent {
       this.tool_map.set(tool.name, tool);
     }
 
-    this.usage_tracker = new UsageTracker();
+    this.usage_tracker = options.usage_tracker ?? new UsageTracker();
     this.compaction_service =
       this.compaction === null || !this.compaction_enabled
         ? null
@@ -160,6 +161,15 @@ export class Agent {
   }
 
   async query(message: string): Promise<string> {
+    // Add system prompt first if this is a fresh conversation
+    if (!this.messages.length && this.system_prompt) {
+      this.messages.push({
+        role: "system",
+        content: this.system_prompt,
+        cache: true,
+      } as AnyMessage);
+    }
+
     this.messages.push({ role: "user", content: message } as AnyMessage);
 
     let incomplete_todos_prompted = false;
