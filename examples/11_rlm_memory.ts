@@ -7,7 +7,7 @@
  *
  * The context object has two parts:
  * - context.data: External data you provide (optional)
- * - context.history: Older conversation messages (auto-managed)
+ * - context.conversation: Older conversation messages (auto-managed)
  *
  * Usage:
  *   bun run examples/11_rlm_memory.ts                    # interactive chat
@@ -26,7 +26,7 @@ async function main() {
   let contextPath = "";
   let useOpenAI = false;
   let verbose = false;
-  let windowSize = 5; // Default: keep 5 turns in active prompt
+  let windowSize = 1; // Default: keep 1 turn in active prompt
   const queryArgs: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -79,13 +79,16 @@ async function main() {
     maxDepth: 1,
   });
 
-  console.error(`Memory window: ${windowSize} turns (older messages move to context.history)`);
+  console.error(
+    `Memory window: ${windowSize} turns (older messages move to context.conversation)`,
+  );
 
   await runRepl({
     agent,
     prompt: "memory › ",
     verbose,
-    greeting: "RLM agent with memory ready. Older messages will be searchable via context.history.",
+    greeting:
+      "RLM agent with memory ready. Older messages will be searchable via context.conversation.",
     onTurn: manageMemory,
     onClose: () => sandbox.dispose(),
   });
