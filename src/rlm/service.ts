@@ -61,6 +61,7 @@ export async function createRlmAgent(
   await registerRlmFunctions({
     sandbox,
     context,
+    depth,
     onLlmQuery: async (query, subContext) => {
       // If subContext is omitted, the child receives the current parent context
       const contextToPass = subContext !== undefined ? subContext : context;
@@ -231,6 +232,7 @@ export async function createRlmAgentWithMemory(
   await registerRlmFunctions({
     sandbox,
     context,
+    depth: 0,
     onLlmQuery: async (query, subContext) => {
       const contextToPass = subContext !== undefined ? subContext : context;
 
