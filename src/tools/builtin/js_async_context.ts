@@ -9,7 +9,7 @@ import variant from "@jitl/quickjs-ng-wasmfile-release-asyncify";
 import { Depends } from "../depends";
 
 const DEFAULT_EXECUTION_TIMEOUT_MS = 30_000; // longer default for LLM calls
-const DEFAULT_MEMORY_LIMIT_BYTES = 64 * 1024 * 1024;
+const DEFAULT_MEMORY_LIMIT_BYTES = 256 * 1024 * 1024; // 256MB for large contexts
 const DEFAULT_MAX_STACK_SIZE_BYTES = 1024 * 1024;
 
 type JavascriptVMOptions = {
