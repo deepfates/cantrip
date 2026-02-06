@@ -1,11 +1,11 @@
-import { Agent } from "../agent/service";
+import { Agent, AnyMessage } from "../agent/service";
 import { BaseChatModel } from "../llm/base";
 import {
   JsAsyncContext,
   createAsyncModule,
 } from "../tools/builtin/js_async_context";
 import { js_rlm, getRlmSandbox, registerRlmFunctions } from "./tools";
-import { getRlmSystemPrompt } from "./prompt";
+import { getRlmSystemPrompt, getRlmMemorySystemPrompt } from "./prompt";
 import { UsageTracker } from "../tokens/usage";
 
 export type RlmOptions = {
@@ -16,6 +16,8 @@ export type RlmOptions = {
   depth?: number;
   usage?: UsageTracker;
   dependency_overrides?: Map<any, any>;
+  /** Number of recent turns to keep in active prompt (rest moves to context.history) */
+  windowSize?: number;
 };
 
 /**
@@ -149,4 +151,168 @@ function analyzeContext(context: unknown): {
     length: String(context).length,
     preview: String(context).slice(0, 200),
   };
+}
+
+export type RlmMemoryOptions = {
+  llm: BaseChatModel;
+  /** User-provided data context (optional) */
+  data?: unknown;
+  subLlm?: BaseChatModel;
+  maxDepth?: number;
+  usage?: UsageTracker;
+  /** Number of user turns to keep in active prompt window */
+  windowSize: number;
+};
+
+export type RlmMemoryAgent = {
+  agent: Agent;
+  sandbox: JsAsyncContext;
+  /** Call after each turn to manage the sliding window */
+  manageMemory: () => void;
+};
+
+/**
+ * Creates an RLM agent with auto-managed conversation history.
+ *
+ * The context object has two parts:
+ * - `context.data`: User-provided data (optional)
+ * - `context.history`: Older messages that have been moved out of the active prompt
+ *
+ * After windowSize user turns, older messages are moved from the agent's
+ * active message history into context.history, where the agent can search them.
+ */
+export async function createRlmAgentWithMemory(
+  options: RlmMemoryOptions,
+): Promise<RlmMemoryAgent> {
+  const {
+    llm,
+    data,
+    subLlm = llm,
+    maxDepth = 2,
+    usage = new UsageTracker(),
+    windowSize,
+  } = options;
+
+  // The unified context object
+  const context: { data: unknown; history: AnyMessage[] } = {
+    data: data ?? null,
+    history: [],
+  };
+
+  // Track user turns for windowing
+  let userTurnCount = 0;
+
+  // 1. Prepare Sandbox
+  const module = await createAsyncModule();
+  const sandbox = await JsAsyncContext.create({ module });
+
+  // 2. Generate system prompt that explains the memory feature
+  const dataMetadata = data ? analyzeContext(data) : null;
+  const systemPrompt = getRlmMemorySystemPrompt({
+    hasData: !!data,
+    dataType: dataMetadata?.type,
+    dataLength: dataMetadata?.length,
+    dataPreview: dataMetadata?.preview,
+    windowSize,
+  });
+
+  // 3. Register RLM functions with the unified context
+  await registerRlmFunctions({
+    sandbox,
+    context,
+    onLlmQuery: async (query, subContext) => {
+      const contextToPass = subContext !== undefined ? subContext : context;
+
+      if (maxDepth <= 0) {
+        const res = await subLlm.ainvoke([
+          {
+            role: "user",
+            content: `Task: ${query}\n\nContext:\n${typeof contextToPass === "string" ? contextToPass : JSON.stringify(contextToPass, null, 2)}`,
+          },
+        ]);
+        return res.content ?? "";
+      }
+
+      const child = await createRlmAgent({
+        llm: subLlm,
+        subLlm,
+        context: contextToPass,
+        maxDepth: maxDepth - 1,
+        depth: 1,
+        usage,
+      });
+
+      try {
+        return await child.agent.query(query);
+      } finally {
+        child.sandbox.dispose();
+      }
+    },
+  });
+
+  // 4. Create agent
+  const overrides = new Map();
+  overrides.set(getRlmSandbox, () => sandbox);
+
+  const agent = new Agent({
+    llm,
+    tools: [js_rlm],
+    system_prompt: systemPrompt,
+    dependency_overrides: overrides,
+    max_iterations: 20,
+    usage_tracker: usage,
+    require_done_tool: true,
+  });
+
+  // 5. Memory management function
+  const manageMemory = () => {
+    // Keep slicing until active user count is within window
+    while (true) {
+      const activeUserCount = agent.messages.filter(
+        (m) => m.role === "user",
+      ).length;
+      if (activeUserCount <= windowSize) break;
+      // Find the end of the first turn (from first user message to next user message)
+      const startIndex = agent.messages[0]?.role === "system" ? 1 : 0;
+      let cutIndex = startIndex;
+
+      // Find first user message
+      while (
+        cutIndex < agent.messages.length &&
+        agent.messages[cutIndex].role !== "user"
+      ) {
+        cutIndex++;
+      }
+
+      if (cutIndex >= agent.messages.length) break;
+
+      // Skip past the user message
+      cutIndex++;
+
+      // Find end of turn (next user message or end of messages)
+      while (
+        cutIndex < agent.messages.length &&
+        agent.messages[cutIndex].role !== "user"
+      ) {
+        cutIndex++;
+      }
+
+      if (cutIndex <= startIndex) break;
+
+      // Move messages to history
+      const toMove = agent.messages.slice(startIndex, cutIndex);
+      context.history.push(...toMove);
+
+      // Remove from active messages (keep system prompt)
+      agent.messages = [
+        ...(startIndex === 1 ? [agent.messages[0]] : []),
+        ...agent.messages.slice(cutIndex),
+      ];
+    }
+
+    // Update sandbox with new context
+    sandbox.setGlobal("context", context);
+  };
+
+  return { agent, sandbox, manageMemory };
 }
