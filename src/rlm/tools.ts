@@ -82,8 +82,10 @@ export async function registerRlmFunctions(options: {
   sandbox: JsAsyncContext;
   context: unknown;
   onLlmQuery: (query: string, subContext?: unknown) => Promise<string>;
+  /** Current recursion depth (0 = top-level agent) */
+  depth?: number;
 }) {
-  const { sandbox, context, onLlmQuery } = options;
+  const { sandbox, context, onLlmQuery, depth = 0 } = options;
 
   // 1. Inject the data context as a global variable.
   sandbox.setGlobal("context", context);
@@ -111,14 +113,17 @@ export async function registerRlmFunctions(options: {
     }
 
     // Log to stderr so user sees progress (stdout is captured for LLM)
+    const childDepth = depth + 1;
     const contextSize = c ? JSON.stringify(c).length : 0;
+    const indent = "  ".repeat(depth);
+    const preview = q.slice(0, 50) + (q.length > 50 ? "..." : "");
     console.error(
-      `[llm_query] "${q.slice(0, 60)}${q.length > 60 ? "..." : ""}" (${contextSize} chars)`,
+      `${indent}├─ [depth:${childDepth}] "${preview}" (${contextSize} chars)`,
     );
 
     const result = await onLlmQuery(q, c);
 
-    console.error(`[llm_query] done`);
+    console.error(`${indent}└─ [depth:${childDepth}] done`);
     return result;
   });
 
@@ -139,8 +144,10 @@ export async function registerRlmFunctions(options: {
       );
     }
 
+    const childDepth = depth + 1;
+    const indent = "  ".repeat(depth);
     console.error(
-      `[llm_batch] spawning ${tasks.length} sub-agents (max ${MAX_BATCH_CONCURRENCY} concurrent)...`,
+      `${indent}├─ [depth:${childDepth}] llm_batch(${tasks.length} tasks)`,
     );
 
     // Process in chunks to limit concurrency
@@ -156,15 +163,18 @@ export async function registerRlmFunctions(options: {
             typeof task === "object"
               ? (task.context ?? task.subContext)
               : undefined;
+          const taskPreview = q.slice(0, 30) + (q.length > 30 ? "..." : "");
+          console.error(
+            `${indent}│  ├─ [${idx + 1}/${tasks.length}] "${taskPreview}"`,
+          );
           const result = await onLlmQuery(q, c);
-          console.error(`[llm_batch] ${idx + 1}/${tasks.length} complete`);
           return result;
         }),
       );
       results.push(...chunkResults);
     }
 
-    console.error(`[llm_batch] all ${tasks.length} done`);
+    console.error(`${indent}└─ [depth:${childDepth}] batch complete`);
     return results;
   });
 }
