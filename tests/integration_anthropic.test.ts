@@ -9,7 +9,7 @@ loadEnv();
 const hasKey = Boolean(process.env.ANTHROPIC_API_KEY);
 const it = hasKey ? test : test.skip;
 
-const model = process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-20240620";
+const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5";
 
 const echoTool: ToolDefinition = {
   name: "echo",
@@ -37,7 +37,7 @@ describe("integration: anthropic", () => {
     const response = await llm.ainvoke(
       [{ role: "user", content: "Call the echo tool with text ping." } as any],
       [echoTool],
-      "required"
+      "required",
     );
     expect(response.tool_calls?.length ?? 0).toBeGreaterThan(0);
   });

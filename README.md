@@ -86,6 +86,12 @@ The examples build on each other. Work through them in order.
 
 **[`08_full_agent.ts`](examples/08_full_agent.ts)** — Combines filesystem, JavaScript, and browser tools into one agent. Use this as a starting point for your own agent.
 
+### Advanced patterns
+
+**[`09_rlm.ts`](examples/09_rlm.ts)** — Recursive Language Model. Handle massive contexts (10M+ tokens) by keeping data in a sandbox instead of the prompt. The LLM writes code to explore it and can spawn sub-agents to analyze chunks.
+
+**[`10_rlm.ts`](examples/10_rlm.ts)** — Interactive RLM REPL. Load a file as context and query it conversationally.
+
 ## Included Tools Library
 
 While you can write your own tools, Cantrip comes with a few "batteries-included" modules:
@@ -95,6 +101,8 @@ While you can write your own tools, Cantrip comes with a few "batteries-included
 **Browser (`src/tools/builtin/browser`)** — Headless browser automation built on Taiko. Persists session state across tool calls.
 
 **JavaScript Sandbox (`src/tools/builtin/js`)** — Secure WASM-based JavaScript runtime (QuickJS). Perfect for agents that need to perform calculations or data processing without risking the host machine.
+
+**RLM (`src/rlm`)** — Recursive Language Model pattern. Offload massive contexts to a JavaScript sandbox and let the LLM explore them programmatically. Supports recursive sub-agents for divide-and-conquer on huge datasets. Based on [Zhang et al. 2026](https://arxiv.org/abs/2512.24601).
 
 ## Optional features
 
