@@ -90,7 +90,7 @@ The examples build on each other. Work through them in order.
 
 **[`09_rlm.ts`](examples/09_rlm.ts)** — Recursive Language Model. Handle massive contexts (10M+ tokens) by keeping data in a sandbox instead of the prompt. The LLM writes code to explore it and can spawn sub-agents to analyze chunks.
 
-**[`10_rlm.ts`](examples/10_rlm.ts)** — Interactive RLM REPL. Load a file as context and query it conversationally.
+**[`10_rlm_chat.ts`](examples/10_rlm_chat.ts)** — Interactive RLM REPL. Load a file as context and query it conversationally.
 
 ## Included Tools Library
 
