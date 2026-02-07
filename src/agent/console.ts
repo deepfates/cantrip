@@ -3,6 +3,7 @@ import {
   TextEvent,
   ToolCallEvent,
   ToolResultEvent,
+  UsageEvent,
   type AgentEvent,
 } from "./events";
 
@@ -61,6 +62,17 @@ export const createConsoleRenderer = (
         if (!state.sawText) {
           const text = trimTrailingWhitespace(event.content);
           if (text) writeLine(stdout, text);
+        }
+        return;
+      }
+      if (event instanceof UsageEvent) {
+        if (verbose) {
+          const thisCall = `${event.total_tokens} tokens`;
+          const cumulative =
+            event.cumulative_tokens !== event.total_tokens
+              ? ` | cumulative: ${event.cumulative_tokens}`
+              : "";
+          writeLine(stderr, `  [${thisCall}${cumulative}]`);
         }
       }
     },

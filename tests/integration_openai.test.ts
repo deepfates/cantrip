@@ -9,7 +9,7 @@ loadEnv();
 const hasKey = Boolean(process.env.OPENAI_API_KEY);
 const it = hasKey ? test : test.skip;
 
-const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+const model = process.env.OPENAI_MODEL ?? "gpt-5-mini";
 
 const echoTool: ToolDefinition = {
   name: "echo",
@@ -37,7 +37,7 @@ describe("integration: openai", () => {
     const response = await llm.ainvoke(
       [{ role: "user", content: "Call the echo tool with text ping." } as any],
       [echoTool],
-      "required"
+      "required",
     );
     expect(response.tool_calls?.length ?? 0).toBeGreaterThan(0);
   });

@@ -33,6 +33,7 @@ import {
   ThinkingEvent,
   ToolCallEvent,
   ToolResultEvent,
+  UsageEvent,
 } from "./events";
 
 export { TaskComplete } from "./errors";
@@ -55,6 +56,7 @@ export type AgentOptions = {
   retry?: { enabled?: boolean };
   ephemerals?: { enabled?: boolean };
   compaction_enabled?: boolean;
+  usage_tracker?: UsageTracker;
 };
 
 export class Agent {
@@ -106,7 +108,7 @@ export class Agent {
       this.tool_map.set(tool.name, tool);
     }
 
-    this.usage_tracker = new UsageTracker();
+    this.usage_tracker = options.usage_tracker ?? new UsageTracker();
     this.compaction_service =
       this.compaction === null || !this.compaction_enabled
         ? null
@@ -160,6 +162,15 @@ export class Agent {
   }
 
   async query(message: string): Promise<string> {
+    // Add system prompt first if this is a fresh conversation
+    if (!this.messages.length && this.system_prompt) {
+      this.messages.push({
+        role: "system",
+        content: this.system_prompt,
+        cache: true,
+      } as AnyMessage);
+    }
+
     this.messages.push({ role: "user", content: message } as AnyMessage);
 
     let incomplete_todos_prompted = false;
@@ -287,6 +298,19 @@ export class Agent {
 
       if (response.thinking) {
         yield new ThinkingEvent(response.thinking);
+      }
+
+      // Emit usage event after each LLM call
+      if (response.usage) {
+        const summary = await this.usage_tracker.getUsageSummary();
+        yield new UsageEvent({
+          prompt_tokens: response.usage.prompt_tokens,
+          completion_tokens: response.usage.completion_tokens,
+          total_tokens:
+            response.usage.prompt_tokens + response.usage.completion_tokens,
+          cached_tokens: response.usage.prompt_cached_tokens ?? 0,
+          cumulative_tokens: summary.total_tokens,
+        });
       }
 
       const assistantMessage: AssistantMessage = {

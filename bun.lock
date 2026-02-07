@@ -4,6 +4,7 @@
     "": {
       "name": "cantrip",
       "dependencies": {
+        "@jitl/quickjs-ng-wasmfile-release-asyncify": "^0.31.0",
         "@jitl/quickjs-ng-wasmfile-release-sync": "^0.31.0",
         "@sebastianwessel/quickjs": "^3.0.0",
         "quickjs-emscripten-core": "^0.29.0",
@@ -50,6 +51,8 @@
     "@babel/types": ["@babel/types@7.29.0", "", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A=="],
 
     "@jitl/quickjs-ffi-types": ["@jitl/quickjs-ffi-types@0.31.0", "", {}, "sha512-1yrgvXlmXH2oNj3eFTrkwacGJbmM0crwipA3ohCrjv52gBeDaD7PsTvFYinlAnqU8iPME3LGP437yk05a2oejw=="],
+
+    "@jitl/quickjs-ng-wasmfile-release-asyncify": ["@jitl/quickjs-ng-wasmfile-release-asyncify@0.31.0", "", { "dependencies": { "@jitl/quickjs-ffi-types": "0.31.0" } }, "sha512-g/yFBenancWcbDqMMlJJljZBXzFBoqxQhvDoElwTfLNbfLSn+dYXUzHzs36DkX/OEWRWnnu0lS0KSfQ8/wl+QQ=="],
 
     "@jitl/quickjs-ng-wasmfile-release-sync": ["@jitl/quickjs-ng-wasmfile-release-sync@0.31.0", "", { "dependencies": { "@jitl/quickjs-ffi-types": "0.31.0" } }, "sha512-D99G2Re2e4GmJM0NZIALmp0kwb1upUYbhlA6bTdwSSzMBovh+Elagfe2bGgR9pUsqeH/hDD913TRERQi077iqA=="],
 
