@@ -58,12 +58,22 @@ ANTHROPIC_API_KEY=sk-ant-...
 GOOGLE_API_KEY=AIza...
 
 # Optional: override default models
-OPENAI_MODEL=gpt-4o-mini
-ANTHROPIC_MODEL=claude-3-5-sonnet-20240620
-GOOGLE_MODEL=gemini-2.0-flash
+OPENAI_MODEL=gpt-5.2
+ANTHROPIC_MODEL=claude-opus-4-6
+GOOGLE_MODEL=gemini-2-pro-preview
 ```
 
 When a key is missing, tests for that provider skip with a message. You don't need all providers to contribute.
+
+## Evals
+
+Evals are gated behind `RUN_EVALS=1` and require `OPENAI_API_KEY`.
+
+```bash
+RUN_EVALS=1 bun test tests/evals/bench_oolong.test.ts
+```
+
+Generated logs are written to `tests/evals/results/` and are ignored by git.
 
 ## Writing Tests
 
@@ -105,7 +115,7 @@ const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
 describe.skipIf(!OPENAI_KEY)("OpenAI Integration", () => {
   it("completes a simple prompt", async () => {
-    const llm = new ChatOpenAI({ model: "gpt-4o-mini" });
+    const llm = new ChatOpenAI({ model: "gpt-5-mini" });
     const response = await llm.ainvoke([
       { role: "user", content: "Say 'test'" }
     ]);

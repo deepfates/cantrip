@@ -31,6 +31,8 @@ export type ReplOptions = {
   verbose?: boolean;
   greeting?: string;
   onClose?: () => void | Promise<void>;
+  /** Called after each turn completes */
+  onTurn?: () => void | Promise<void>;
 };
 
 /**
@@ -42,7 +44,7 @@ export type ReplOptions = {
  * - Interactive: opens a REPL prompt
  */
 export async function runRepl(options: ReplOptions): Promise<void> {
-  const { agent, onClose } = options;
+  const { agent, onClose, onTurn } = options;
   const prompt = options.prompt ?? "› ";
   const verbose =
     options.verbose ??
@@ -56,6 +58,7 @@ export async function runRepl(options: ReplOptions): Promise<void> {
   if (args.length > 0) {
     const task = args.join(" ");
     await exec({ agent, task, verbose });
+    if (onTurn) await onTurn();
     if (onClose) await onClose();
     return;
   }
@@ -72,6 +75,7 @@ export async function runRepl(options: ReplOptions): Promise<void> {
     const task = input.trim();
     if (!task) return;
     await exec({ agent, task, verbose });
+    if (onTurn) await onTurn();
     if (onClose) await onClose();
     return;
   }
@@ -107,6 +111,7 @@ export async function runRepl(options: ReplOptions): Promise<void> {
       for await (const event of agent.query_stream(task)) {
         renderer.handle(event, state);
       }
+      if (onTurn) await onTurn();
       console.log("─");
       rl.resume();
       rl.prompt();
