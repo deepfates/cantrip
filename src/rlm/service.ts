@@ -54,6 +54,7 @@ export async function createRlmAgent(
     contextType: metadata.type,
     contextLength: metadata.length,
     contextPreview: metadata.preview,
+    hasRecursion: depth < maxDepth,
   });
 
   // 3. Register RLM Host Functions (The Recursive Bridge)
@@ -84,6 +85,9 @@ export async function createRlmAgent(
             content: `Task: ${query}\n\nContext Snippet:\n${truncated}`,
           },
         ]);
+        if (res.usage) {
+          usage.add(subLlm.model, res.usage);
+        }
         return res.content ?? "";
       }
 
@@ -127,7 +131,7 @@ export async function createRlmAgent(
 /**
  * Extracts structural metadata from the context variable for the LLM.
  */
-function analyzeContext(context: unknown): {
+export function analyzeContext(context: unknown): {
   type: string;
   length: number;
   preview: string;
@@ -254,6 +258,9 @@ export async function createRlmAgentWithMemory(
             content: `Task: ${query}\n\nContext:\n${truncated}`,
           },
         ]);
+        if (res.usage) {
+          usage.add(subLlm.model, res.usage);
+        }
         return res.content ?? "";
       }
 

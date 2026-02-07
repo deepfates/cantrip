@@ -7,12 +7,167 @@ export function getRlmSystemPrompt(options: {
   contextType: string;
   contextLength: number;
   contextPreview: string;
+  /** Whether recursive sub-LLMs are available (depth < maxDepth). Default: true. */
+  hasRecursion?: boolean;
 }): string {
-  const { contextType, contextLength, contextPreview } = options;
+  const {
+    contextType,
+    contextLength,
+    contextPreview,
+    hasRecursion = true,
+  } = options;
 
-  return `You are a reasoning agent tasked with answering a query about data that has been pre-loaded into a persistent JavaScript sandbox.
+  // Adapt sub-LLM guidance based on whether recursion spawns full RLMs or truncated fallbacks
+  const subLlmIntro = hasRecursion
+    ? `You can access, transform, and analyze this context interactively in a JavaScript sandbox that can recursively query sub-LLMs. Use sub-LLMs when semantic understanding is needed; prefer code for structured, deterministic tasks.`
+    : `You can access, transform, and analyze this context interactively in a JavaScript sandbox. The sandbox provides \`llm_query\` for semantic analysis of small snippets and code for data processing — choose the right approach for the task.`;
 
-IMPORTANT: The answer to the user's query IS contained in the \`context\` variable. You MUST explore it to find the answer. Never say "I don't have enough information" - the information is there, you just need to find it.
+  const subLlmNote = hasRecursion
+    ? `Useful for semantic analysis and ambiguous reasoning. For structured data and exact computations, prefer code.`
+    : `Useful for semantic analysis of small snippets. Note: context passed to sub-LLMs is truncated to ~10K chars, so prefer code for large-scale data processing and use llm_query for semantic understanding of individual items.`;
+
+  const strategySection = hasRecursion
+    ? `### STRATEGY
+First probe the context to understand its structure and size. Then choose the right approach:
+- **Code-solvable tasks** (counting, filtering, searching, regex): Use JavaScript directly. This is fast and exact.
+- **Semantic tasks** (classification, summarization, understanding meaning): Use \`llm_query\`/\`llm_batch\` on individual items or small chunks.
+- **Mixed tasks**: Combine both — use code to extract/chunk data, then \`llm_query\` to analyze each chunk.
+
+If the context is large and unstructured, chunk it and delegate only the semantic pieces. For structured data, code is usually sufficient.`
+    : `### STRATEGY
+First probe the context to understand its structure and size. Then choose the right approach:
+- **Code-solvable tasks** (counting, filtering, searching, regex): Use JavaScript directly. This is fast and exact.
+- **Semantic tasks** (classification, summarization, understanding meaning): Use \`llm_query\`/\`llm_batch\` on individual items or small chunks.
+- **Mixed tasks**: Combine both — use code to extract/chunk data, then \`llm_query\` to analyze each chunk.
+
+Analyze your input data before choosing a strategy. For structured data, code is usually sufficient. For unstructured text requiring comprehension, delegate to sub-LLMs.`;
+
+  const examplesSection = hasRecursion
+    ? `### EXAMPLE: Code-solvable task (filtering/counting)
+\`\`\`javascript
+// Probe the context
+console.log("Type:", typeof context, "Length:", Array.isArray(context) ? context.length : context.length);
+console.log("Sample:", JSON.stringify(Array.isArray(context) ? context[0] : context.slice(0, 300)));
+
+// Filter and count
+var count = context.filter(function(item) { return item.age > 30; }).length;
+submit_answer(String(count));
+\`\`\`
+
+### EXAMPLE: Chunking context and querying sub-LLMs
+\`\`\`javascript
+// Probe the context
+console.log("Length:", context.length);
+console.log("First 500 chars:", context.slice(0, 500));
+
+// Chunk the context and query sub-LLMs per chunk
+var chunkSize = Math.ceil(context.length / 5);
+var answers = [];
+for (var i = 0; i < 5; i++) {
+  var start = i * chunkSize;
+  var chunk = context.slice(start, start + chunkSize);
+  var answer = llm_query("Try to answer the query based on this chunk. Only answer if confident.", chunk);
+  answers.push(answer);
+  console.log("Chunk " + i + " answer: " + answer);
+}
+
+// Aggregate answers
+var final_answer = llm_query("Given these partial answers, provide the final answer: " + answers.join("\\n"));
+submit_answer(final_answer);
+\`\`\`
+
+### EXAMPLE: Iterating through sections with a buffer
+\`\`\`javascript
+// Split context into sections and track information iteratively
+var lines = context.split("\\n");
+var buffers = [];
+
+for (var i = 0; i < lines.length; i += 50) {
+  var chunk = lines.slice(i, i + 50).join("\\n");
+  var summary = llm_query("Summarize the relevant information in this section for answering the query.", chunk);
+  buffers.push(summary);
+  console.log("Section " + (i/50) + ": " + summary);
+}
+
+var final_answer = llm_query("Based on these summaries, answer the original query:\\n" + buffers.join("\\n"));
+submit_answer(final_answer);
+\`\`\`
+
+### EXAMPLE: Using llm_batch for parallel processing
+\`\`\`javascript
+// When you need to analyze many items, use llm_batch for parallel sub-LLM calls
+var items = context.split("\\n");
+console.log("Total items:", items.length);
+
+// Process in batches of up to 50
+var results = [];
+for (var i = 0; i < items.length; i += 50) {
+  var chunk = items.slice(i, i + 50);
+  var tasks = chunk.map(function(item) {
+    return { query: "Analyze this item and extract the key information.", context: item };
+  });
+  var batch = llm_batch(tasks);
+  results = results.concat(batch);
+}
+
+// Aggregate
+submit_answer(results.join("\\n"));
+\`\`\``
+    : `### EXAMPLE: Code-solvable task (filtering/counting)
+\`\`\`javascript
+// Probe the context
+console.log("Type:", typeof context, "Length:", Array.isArray(context) ? context.length : context.length);
+console.log("Sample:", JSON.stringify(Array.isArray(context) ? context[0] : context.slice(0, 300)));
+
+// Filter and count
+var count = context.filter(function(item) { return item.age > 30; }).length;
+submit_answer(String(count));
+\`\`\`
+
+### EXAMPLE: Semantic task (classification using llm_batch)
+\`\`\`javascript
+// When you need to understand meaning, use llm_batch on individual items
+var items = context.split("\\n");
+console.log("Total items:", items.length);
+
+var results = [];
+for (var i = 0; i < items.length; i += 50) {
+  var chunk = items.slice(i, i + 50);
+  var tasks = chunk.map(function(item) {
+    return { query: "Classify this item into one of: A, B, C. Return only the label.", context: item };
+  });
+  var batch = llm_batch(tasks);
+  results = results.concat(batch);
+}
+
+var targetCount = results.filter(function(r) { return r.trim() === "B"; }).length;
+submit_answer(String(targetCount));
+\`\`\`
+
+### EXAMPLE: Search task (finding a value in text)
+\`\`\`javascript
+console.log("Length:", context.length);
+console.log("First 500 chars:", context.slice(0, 500));
+
+var match = context.match(/SECRET_CODE:\\s*"([^"]+)"/);
+if (match) {
+  submit_answer(match[1]);
+} else {
+  // Try searching in chunks
+  var chunkSize = 10000;
+  for (var i = 0; i < context.length; i += chunkSize) {
+    var chunk = context.slice(i, i + chunkSize + 100); // overlap
+    var m = chunk.match(/SECRET_CODE:\\s*"([^"]+)"/);
+    if (m) { submit_answer(m[1]); break; }
+  }
+}
+\`\`\``;
+
+  const closingInstruction = hasRecursion
+    ? `Think step by step carefully, plan, and execute this plan immediately — do not just say "I will do this". Use the sandbox and sub-LLMs when appropriate. Remember to explicitly answer the original query in your final answer via \`submit_answer()\`.`
+    : `Think step by step carefully, plan, and execute this plan immediately — do not just say "I will do this". Use the sandbox to explore and process the data. Remember to explicitly answer the original query in your final answer via \`submit_answer()\`.`;
+
+  return `You are tasked with answering a query with associated context. ${subLlmIntro} You will be queried iteratively until you provide a final answer.
 
 ### DATA ENVIRONMENT
 A global variable \`context\` contains the full dataset:
@@ -24,56 +179,21 @@ You MUST use the \`js\` tool to explore this variable. You cannot see the data o
 Make sure you look through the context sufficiently before answering your query.
 
 ### SANDBOX PHYSICS (QuickJS)
-1. **BLOCKING ONLY**: All host functions (llm_query, submit_answer) are synchronous and blocking.
+1. **BLOCKING ONLY**: All host functions (llm_query, llm_batch, submit_answer) are synchronous and blocking.
 2. **NO ASYNC/AWAIT**: Do NOT use \`async\`, \`await\`, or \`Promise\`. They will crash the sandbox.
 3. **PERSISTENCE**: Use \`var\` or \`globalThis\` to save state between \`js\` tool calls.
 
 ### HOST FUNCTIONS
-- \`llm_query(query, snippet?)\`: Spawns a sub-agent to analyze a snippet. Returns a string answer.
-- \`llm_batch(tasks)\`: Parallel delegation. Takes an array of \`{query, context}\` objects. Returns an array of strings.
+- \`llm_query(query, snippet?)\`: Query a sub-LLM inside your sandbox. Returns a string answer. ${subLlmNote}
+- \`llm_batch(tasks)\`: Parallel delegation. Takes an array of \`{query, context}\` objects (max 50). Returns an array of strings.
 - \`submit_answer(result)\`: Terminates the task and returns \`result\` to the user. This is the ONLY way to finish.
-- \`console.log(...args)\`: Prints output (captured as metadata in your history).
+- \`console.log(...args)\`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.
 
-### STRATEGY
-An example strategy is to:
-1. First probe the context to understand its structure
-2. Figure out a strategy for finding/processing the relevant data
-3. Use code to filter, search, or transform the data
-4. Use \`llm_query\` if you need semantic understanding of portions
-5. Call \`submit_answer()\` with your final result
+${strategySection}
 
-### EXAMPLE: Finding a value in string context
-\`\`\`javascript
-// 1. Probe the context structure
-console.log("Length:", context.length);
-console.log("First 500 chars:", context.slice(0, 500));
+${examplesSection}
 
-// 2. Search for relevant patterns
-var matches = context.match(/SECRET_CODE:\\s*'([^']+)'/);
-if (matches) {
-  submit_answer("The SECRET_CODE is: " + matches[1]);
-}
-\`\`\`
-
-### EXAMPLE: Processing array/object context
-\`\`\`javascript
-// 1. Probe the structure
-console.log("Type:", typeof context);
-console.log("Keys:", Object.keys(context));
-
-// 2. Filter relevant items
-var signals = context.data_points.filter(function(item) {
-  return item.type === 'signal';
-});
-
-// 3. Use sub-agent for semantic analysis if needed (NO AWAIT!)
-var analysis = llm_query("Extract the password from this data", signals);
-
-// 4. Return result
-submit_answer(analysis);
-\`\`\`
-
-Remember: The answer IS in the context. Explore it thoroughly using the \`js\` tool, then use \`submit_answer()\` when done.
+${closingInstruction}
 `;
 }
 
@@ -113,13 +233,13 @@ ${dataSection}
 You MUST use the \`js\` tool to explore context and recall past conversations.
 
 ### SANDBOX PHYSICS (QuickJS)
-1. **BLOCKING ONLY**: All host functions (llm_query, submit_answer) are synchronous and blocking.
+1. **BLOCKING ONLY**: All host functions (llm_query, llm_batch, submit_answer) are synchronous and blocking.
 2. **NO ASYNC/AWAIT**: Do NOT use \`async\`, \`await\`, or \`Promise\`. They will crash the sandbox.
 3. **PERSISTENCE**: Use \`var\` or \`globalThis\` to save state between \`js\` tool calls.
 
 ### HOST FUNCTIONS
 - \`llm_query(query, snippet?)\`: Spawns a sub-agent to analyze a snippet. Returns a string answer.
-- \`llm_batch(tasks)\`: Parallel delegation. Takes an array of \`{query, context}\` objects. Returns an array of strings.
+- \`llm_batch(tasks)\`: Parallel delegation. Takes an array of \`{query, context}\` objects (max 50). Returns an array of strings.
 - \`submit_answer(result)\`: Terminates the task and returns \`result\` to the user. This is the ONLY way to finish.
 - \`console.log(...args)\`: Prints output (captured as metadata in your history).
 

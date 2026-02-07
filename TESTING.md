@@ -65,6 +65,16 @@ GOOGLE_MODEL=gemini-2-pro-preview
 
 When a key is missing, tests for that provider skip with a message. You don't need all providers to contribute.
 
+## Evals
+
+Evals are gated behind `RUN_EVALS=1` and require `OPENAI_API_KEY`.
+
+```bash
+RUN_EVALS=1 bun test tests/evals/bench_oolong.test.ts
+```
+
+Generated logs are written to `tests/evals/results/` and are ignored by git.
+
 ## Writing Tests
 
 ### Unit Tests
