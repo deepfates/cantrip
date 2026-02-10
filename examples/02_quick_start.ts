@@ -38,6 +38,7 @@ const done = tool(
 const agent = new Agent({
   llm: new ChatAnthropic({ model: "claude-sonnet-4-5" }),
   tools: [add, done],
+  system_prompt: "You are a helpful assistant. When you complete a task, call the done tool with your answer.",
 });
 
 export async function main() {

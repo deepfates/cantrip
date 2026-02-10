@@ -99,6 +99,19 @@ describe("ACP tool classification", () => {
       expect(getToolTitle("done", {})).toBe("Completing task");
     });
 
+    test("shows message preview for done tool", () => {
+      expect(getToolTitle("done", { message: "Task completed!" })).toBe(
+        "Done: Task completed!",
+      );
+      expect(
+        getToolTitle("done", {
+          message: "This is a very long message that should be truncated because it exceeds the maximum length",
+        }),
+      ).toBe(
+        "Done: This is a very long message that should be truncated because...",
+      );
+    });
+
     test("returns tool name for unknown tools", () => {
       expect(getToolTitle("custom_tool", {})).toBe("custom_tool");
     });

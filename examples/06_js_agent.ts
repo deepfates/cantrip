@@ -17,7 +17,9 @@ export async function main() {
 1. 'js' - Persistent REPL. Variables survive between calls. No fetch or filesystem.
 2. 'js_run' - Fresh sandbox each time. Use 'export default' to return values. Has fetch and virtual fs.
 
-Use these to solve problems, run calculations, or process data.`,
+Use these to solve problems, run calculations, or process data.
+
+When you complete the task, call the done tool with your answer. Be concise.`,
     dependency_overrides: new Map([[getJsContext, () => jsCtx]]),
   });
 
