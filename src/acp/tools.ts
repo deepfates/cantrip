@@ -67,8 +67,17 @@ export function getToolTitle(
       }
       return `Running JavaScript`;
     }
-    case "done":
+    case "done": {
+      const message = args.message;
+      if (typeof message === "string" && message.length > 0) {
+        // Show first line or first 60 chars of the message
+        const preview = message.split("\n")[0].slice(0, 60);
+        return preview.length < message.length 
+          ? `Done: ${preview}...`
+          : `Done: ${preview}`;
+      }
       return `Completing task`;
+    }
     default:
       return toolName;
   }

@@ -34,7 +34,9 @@ Common commands:
 - await write('text', into(textBox('label')))
 - return await text('selector').text()
 
-Always return values if you need to see them.`,
+Always return values if you need to see them.
+
+When you complete the task, call the done tool with your findings. Be efficient.`,
     dependency_overrides: new Map([[getBrowserContext, lazyGetBrowser]]),
   });
 

@@ -289,6 +289,29 @@ describe("ACP event mapping", () => {
     expect(conn.updates).toHaveLength(0);
   });
 
+  test("ToolCallEvent for done includes message content block", async () => {
+    const conn = mockConnection();
+    const result = await mapEvent(
+      sid,
+      new ToolCallEvent("done", { message: "Task completed successfully!" }, "tc-done"),
+      conn as any,
+    );
+
+    expect(result).toBe(false);
+    expect(conn.updates).toHaveLength(1);
+    
+    const update = conn.updates[0];
+    expect(update.update.sessionUpdate).toBe("tool_call");
+    expect(update.update.toolCallId).toBe("tc-done");
+    expect(update.update.content).toBeDefined();
+    expect(update.update.content).toEqual([
+      {
+        type: "content",
+        content: { type: "text", text: "Task completed successfully!" },
+      },
+    ]);
+  });
+
   test("unmapped events return false with no updates", async () => {
     const conn = mockConnection();
 
