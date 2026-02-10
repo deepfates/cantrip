@@ -92,6 +92,16 @@ The examples build on each other. Work through them in order.
 
 **[`10_rlm_chat.ts`](examples/10_rlm_chat.ts)** — Interactive RLM REPL. Load a file as context and query it conversationally.
 
+**[`11_rlm_memory.ts`](examples/11_rlm_memory.ts)** — RLM with auto-managed conversation history. Older turns slide into searchable context while keeping the active prompt window small.
+
+**[`12_acp_agent.ts`](examples/12_acp_agent.ts)** — Basic agent served over [Agent Client Protocol](https://github.com/agentclientprotocol/spec). Connect from any ACP-compatible editor (VS Code, Claude Desktop, etc.).
+
+**[`13_acp_rlm_memory.ts`](examples/13_acp_rlm_memory.ts)** — RLM memory agent over ACP. Combines sliding window memory management with editor integration.
+
+**[`14_rlm_browser.ts`](examples/14_rlm_browser.ts)** — RLM with browser automation. Interactive REPL where the agent can browse the web and delegate to sub-agents.
+
+**[`15_acp_rlm_browser.ts`](examples/15_acp_rlm_browser.ts)** — RLM browser agent over ACP. The most powerful setup: browser automation, sub-agent delegation, optional memory management, all accessible from your editor. Use `--headed` for visible browser, `--memory N` for sliding window.
+
 ## Included Tools Library
 
 While you can write your own tools, Cantrip comes with a few "batteries-included" modules:
@@ -131,6 +141,48 @@ import {
 - **ChatLMStudio** — points at the LM Studio local OpenAI-compatible server (`http://localhost:1234/v1` by default) and doesn’t require an API key unless you provide one via `LM_STUDIO_API_KEY`.
 - **ChatOpenRouter** — speaks to `https://openrouter.ai/api/v1`, automatically adding the attribution headers OpenRouter expects (`HTTP-Referer`, `X-Title`) from env vars (`OPENROUTER_HTTP_REFERER`, `OPENROUTER_TITLE`). Set `OPENROUTER_API_KEY` or pass `api_key`; you can disable the attribution headers with `attribution_headers: false` if you manage them yourself.
 - **ChatOpenAI** (and friends) merge any custom `headers` you pass; `require_api_key` controls whether missing keys throw (default `true`). Passing `api_key: null` still falls back to the relevant env var for compatibility.
+
+## Agent Client Protocol (ACP)
+
+Cantrip can serve agents over [Agent Client Protocol](https://github.com/agentclientprotocol/spec), making them accessible from any ACP-compatible editor (VS Code with the ACP extension, Claude Desktop, etc.).
+
+### Quick setup
+
+1. Create an ACP agent script (see examples 12, 13, or 15)
+2. Configure your editor to launch it
+
+**For VS Code with ACP extension**, add to `.vscode/settings.json`:
+
+```json
+{
+  "acp.agents": [
+    {
+      "name": "cantrip-browser",
+      "command": "bun",
+      "args": ["run", "examples/15_acp_rlm_browser.ts", "--headed"],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}
+```
+
+**For Claude Desktop**, add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "agentProtocol": {
+    "agents": [
+      {
+        "name": "cantrip-browser",
+        "command": "bun",
+        "args": ["run", "/path/to/cantrip/examples/15_acp_rlm_browser.ts"]
+      }
+    ]
+  }
+}
+```
+
+The agent will start when you send it a message and will have access to your working directory. For browser agents, add `--headed` to see the browser window. For memory-managed agents, add `--memory 5` to keep only the last 5 turns in the active prompt.
 
 ## The philosophy
 

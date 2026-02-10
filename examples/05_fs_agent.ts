@@ -14,7 +14,9 @@ export async function main() {
   const agent = new Agent({
     llm: new ChatAnthropic({ model: "claude-sonnet-4-5" }),
     tools: [...unsafeFsTools, done],
-    system_prompt: `Coding assistant. Working dir: ${ctx.working_dir}`,
+    system_prompt: `Coding assistant. Working dir: ${ctx.working_dir}
+
+When you complete a task, call the done tool with a summary. Be concise and efficient.`,
     dependency_overrides: new Map([[getSandboxContext, () => ctx]]),
   });
 

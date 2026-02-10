@@ -67,7 +67,9 @@ export async function main() {
 **Browser tool**
 - browser: control a headless browser via Taiko commands
 
-Use the right tool for each task. Prefer simpler tools when they suffice.`,
+Use the right tool for each task. Prefer simpler tools when they suffice.
+
+When you complete the user's request, call the done tool with a summary. Be efficient and don't over-elaborate.`,
     dependency_overrides: new Map<any, any>([
       [getSandboxContext, () => fsCtx],
       [getJsContext, () => jsCtx],
