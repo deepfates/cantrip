@@ -1,4 +1,185 @@
 /**
+ * Build browser automation docs filtered by what's actually registered.
+ * If allowedFns is undefined, documents everything (full profile).
+ */
+function buildBrowserDocs(allowedFns?: Set<string>): string {
+  const has = (name: string) => !allowedFns || allowedFns.has(name);
+
+  const sections: string[] = [];
+
+  // Selectors
+  const selectorFns = [
+    "button",
+    "link",
+    "text",
+    "textBox",
+    "dropDown",
+    "checkBox",
+    "radioButton",
+    "image",
+    "$",
+    "listItem",
+    "fileField",
+  ];
+  const availableSelectors = selectorFns.filter(has);
+  if (availableSelectors.length > 0) {
+    sections.push(`**Selectors** — return element handles with methods:
+- \`${availableSelectors.map((s) => s + "(text)").join("\\`, \\`")}\`
+- Methods: \`.text()\` → string, \`.exists()\` → boolean, \`.value()\` → string, \`.isVisible()\` → boolean, \`.attribute(name)\` → string`);
+  }
+
+  // Proximity
+  const proximityFns = [
+    "near",
+    "above",
+    "below",
+    "toLeftOf",
+    "toRightOf",
+    "within",
+  ];
+  const availableProximity = proximityFns.filter(has);
+  if (availableProximity.length > 0) {
+    sections.push(`**Proximity** — refine selectors (accept handles or strings, return handles):
+- \`${availableProximity.map((s) => s + "(selector)").join("\\`, \\`")}\``);
+  }
+
+  // Actions
+  const actionLines: string[] = [];
+  const clickFns = ["click", "doubleClick", "rightClick"].filter(has);
+  if (clickFns.length > 0)
+    actionLines.push(
+      `- \`${clickFns.map((s) => s + "(selector)").join("\\`, \\`")}\``,
+    );
+  const writeFns = ["write", "clear", "press"].filter(has);
+  if (writeFns.length > 0)
+    actionLines.push(
+      `- \`${writeFns.map((s) => (s === "write" ? "write(text, into(selector)?)" : s === "press" ? "press(key)" : s + "(selector)")).join("\\`, \\`")}\``,
+    );
+  const interactFns = ["hover", "focus", "scrollTo", "tap"].filter(has);
+  if (interactFns.length > 0)
+    actionLines.push(
+      `- \`${interactFns.map((s) => s + "(selector)").join("\\`, \\`")}\``,
+    );
+  const scrollFns = ["scrollDown", "scrollUp"].filter(has);
+  const dragFns = ["dragAndDrop"].filter(has);
+  if (scrollFns.length > 0 || dragFns.length > 0) {
+    const parts = [
+      ...scrollFns.map((s) => s + "(pixels?)"),
+      ...dragFns.map(() => "dragAndDrop(source, target)"),
+    ];
+    actionLines.push(`- \`${parts.join("\\`, \\`")}\``);
+  }
+  if (actionLines.length > 0) {
+    sections.push(
+      `**Actions** — interact with elements (accept handles or strings):\n${actionLines.join("\n")}`,
+    );
+  }
+
+  // Navigation
+  const navFns = ["goto", "reload", "goBack", "goForward"].filter(has);
+  const infoFns = ["currentURL", "title"].filter(has);
+  if (navFns.length > 0 || infoFns.length > 0) {
+    const navParts = navFns.map((s) =>
+      s === "goto" ? "goto(url) → {url, status}" : s + "()",
+    );
+    const infoParts = infoFns.map((s) => s + "() → string");
+    sections.push(`**Navigation** — return primitives:
+- \`${[...navParts, ...infoParts].join("\\`, \\`")}\``);
+  }
+
+  // Tabs
+  const tabFns = ["openTab", "closeTab", "switchTo"].filter(has);
+  if (tabFns.length > 0) {
+    sections.push(
+      `**Tabs**: \`${tabFns.map((s) => (s === "openTab" ? "openTab(url)" : s === "closeTab" ? "closeTab(url?)" : "switchTo(urlOrTitle)")).join("\\`, \\`")}\``,
+    );
+  }
+
+  // Cookies
+  const cookieFns = ["setCookie", "getCookies", "deleteCookies"].filter(has);
+  if (cookieFns.length > 0) {
+    sections.push(
+      `**Cookies**: \`${cookieFns.map((s) => (s === "setCookie" ? "setCookie(name, value, options?)" : s === "getCookies" ? "getCookies(url?)" : "deleteCookies(name?)")).join("\\`, \\`")}\``,
+    );
+  }
+
+  // Emulation
+  const emuFns = [
+    "emulateDevice",
+    "emulateNetwork",
+    "emulateTimezone",
+    "setViewPort",
+    "setLocation",
+  ].filter(has);
+  if (emuFns.length > 0) {
+    sections.push(
+      `**Emulation**: \`${emuFns.map((s) => s + "(...)").join("\\`, \\`")}\``,
+    );
+  }
+
+  // Other
+  const otherParts: string[] = [];
+  if (has("evaluate"))
+    otherParts.push(
+      'evaluate("js") — run JS in the browser page (pass a string; objects auto-stringified to JSON; the last expression is auto-returned)',
+    );
+  if (has("waitFor")) otherParts.push("waitFor(selectorOrMs)");
+  if (has("screenshot")) otherParts.push("screenshot()");
+  if (has("accept")) otherParts.push("accept(text?)");
+  if (has("dismiss")) otherParts.push("dismiss()");
+  otherParts.push("into(selector)", "to(selector)");
+  if (has("highlight")) otherParts.push("highlight(selector)");
+  if (has("clearHighlights")) otherParts.push("clearHighlights()");
+  if (has("attach")) otherParts.push("attach(filePath, to(selector))");
+  sections.push(`**Other**: \`${otherParts.join("\\`, \\`")}\``);
+
+  return sections.join("\n\n");
+}
+
+/**
+ * Build browser examples section. Only include multi-tab example if tabs are available.
+ */
+function buildBrowserExamples(allowedFns?: Set<string>): string {
+  const has = (name: string) => !allowedFns || allowedFns.has(name);
+  const examples: string[] = [];
+
+  if (has("openTab") && has("switchTo") && has("closeTab")) {
+    examples.push(`**Multi-tab example** — open pages in parallel, then extract from each:
+\\\`\\\`\\\`javascript
+var urls = ["https://example.com/a", "https://example.com/b", "https://example.com/c"];
+for (var i = 0; i < urls.length; i++) openTab(urls[i]);
+var contents = [];
+for (var i = 0; i < urls.length; i++) {
+  switchTo(urls[i]);
+  contents.push(evaluate("document.body.innerText"));
+  closeTab();
+}
+var summaries = llm_batch(contents.map(function(c) {
+  return { query: "Summarize this page in one sentence.", context: c };
+}));
+submit_answer(summaries.join("\\\\n"));
+\\\`\\\`\\\``);
+  }
+
+  if (has("evaluate")) {
+    examples.push(`**DOM extraction example** — multi-statement evaluate (last expression auto-returned):
+\\\`\\\`\\\`javascript
+var data = evaluate("var links = document.querySelectorAll('a'); var result = []; for (var i = 0; i < links.length; i++) { result.push({text: links[i].innerText, href: links[i].href}); } JSON.stringify(result)");
+var parsed = JSON.parse(data);
+\\\`\\\`\\\``);
+  }
+
+  examples.push(`**Basic example**:
+\\\`\\\`\\\`javascript
+goto("https://example.com");${has("write") ? '\nwrite("admin", into(textBox("Username")));' : ""}${has("click") ? '\nclick(button("Login"), near(text("Sign in")));' : ""}
+var msg = text("Welcome").text();
+submit_answer(msg);
+\\\`\\\`\\\``);
+
+  return examples.join("\n\n");
+}
+
+/**
  * Generates the RLM system prompt.
  * Provides a clean, technical manual for the JavaScript sandbox environment.
  * Based on the RLM paper (Zhang et al., arxiv:2512.24601).
@@ -9,12 +190,18 @@ export function getRlmSystemPrompt(options: {
   contextPreview: string;
   /** Whether recursive sub-LLMs are available (depth < maxDepth). Default: true. */
   hasRecursion?: boolean;
+  /** Whether browser automation functions are available. Default: false. */
+  hasBrowser?: boolean;
+  /** Set of allowed browser function names (from BrowserContext.getAllowedFunctions()). */
+  browserAllowedFunctions?: Set<string>;
 }): string {
   const {
     contextType,
     contextLength,
     contextPreview,
     hasRecursion = true,
+    hasBrowser = false,
+    browserAllowedFunctions,
   } = options;
 
   // Adapt sub-LLM guidance based on whether recursion spawns full RLMs or truncated fallbacks
@@ -186,8 +373,19 @@ Make sure you look through the context sufficiently before answering your query.
 ### HOST FUNCTIONS
 - \`llm_query(query, snippet?)\`: Query a sub-LLM inside your sandbox. Returns a string answer. ${subLlmNote}
 - \`llm_batch(tasks)\`: Parallel delegation. Takes an array of \`{query, context}\` objects (max 50). Returns an array of strings.
-- \`submit_answer(result)\`: Terminates the task and returns \`result\` as your final response. The result string is displayed directly as markdown to the user — write clear, human-readable prose (not JSON or data structures). This is the ONLY way to finish.
-- \`console.log(...args)\`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.
+- \`submit_answer(result)\`: Terminates the task and returns \`result\` to the user. This is the ONLY way to finish.
+- \`console.log(...args)\`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.${
+    hasBrowser
+      ? `
+
+### BROWSER AUTOMATION
+Taiko browser functions are available directly in the sandbox. All functions are blocking (no await needed).
+
+${buildBrowserDocs(browserAllowedFunctions)}
+
+${buildBrowserExamples(browserAllowedFunctions)}`
+      : ""
+  }
 
 ${strategySection}
 
@@ -206,8 +404,20 @@ export function getRlmMemorySystemPrompt(options: {
   dataLength?: number;
   dataPreview?: string;
   windowSize: number;
+  /** Whether browser automation functions are available. Default: false. */
+  hasBrowser?: boolean;
+  /** Set of allowed browser function names (from BrowserContext.getAllowedFunctions()). */
+  browserAllowedFunctions?: Set<string>;
 }): string {
-  const { hasData, dataType, dataLength, dataPreview, windowSize } = options;
+  const {
+    hasData,
+    dataType,
+    dataLength,
+    dataPreview,
+    windowSize,
+    hasBrowser = false,
+    browserAllowedFunctions,
+  } = options;
 
   const dataSection = hasData
     ? `
@@ -240,8 +450,19 @@ You MUST use the \`js\` tool to explore context and recall past conversations.
 ### HOST FUNCTIONS
 - \`llm_query(query, snippet?)\`: Spawns a sub-agent to analyze a snippet. Returns a string answer.
 - \`llm_batch(tasks)\`: Parallel delegation. Takes an array of \`{query, context}\` objects (max 50). Returns an array of strings.
-- \`submit_answer(result)\`: Terminates the task and returns \`result\` as your final response. The result string is displayed directly as markdown in the user's editor — write clear, human-readable prose (not JSON or data structures). This is the ONLY way to finish.
-- \`console.log(...args)\`: Prints output (captured as metadata in your history).
+- \`submit_answer(result)\`: Terminates the task and returns \`result\` to the user. This is the ONLY way to finish.
+- \`console.log(...args)\`: Prints output (captured as metadata in your history).${
+    hasBrowser
+      ? `
+
+### BROWSER AUTOMATION
+Taiko browser functions are available directly in the sandbox. All functions are blocking (no await needed).
+
+${buildBrowserDocs(browserAllowedFunctions)}
+
+${buildBrowserExamples(browserAllowedFunctions)}`
+      : ""
+  }
 
 ### RECALLING PAST CONVERSATIONS
 When you need to remember something from earlier in the conversation:

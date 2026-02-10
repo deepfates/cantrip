@@ -17,7 +17,7 @@ describe("rlm: real integration", () => {
     const llm = new ChatOpenAI({ model: modelName });
 
     // Construct a large context (~50k chars) that should remain isolated in the sandbox
-    const needle = " SECRET_CODE: 'X-99' ";
+    const needle = ' SECRET_CODE: "X-99" ';
     const context =
       "Filler text. ".repeat(2000) + needle + "More filler. ".repeat(2000);
 

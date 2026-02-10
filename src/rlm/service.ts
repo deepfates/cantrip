@@ -4,7 +4,12 @@ import {
   JsAsyncContext,
   createAsyncModule,
 } from "../tools/builtin/js_async_context";
-import { js_rlm, getRlmSandbox, registerRlmFunctions } from "./tools";
+import {
+  js_rlm,
+  getRlmSandbox,
+  registerRlmFunctions,
+  safeStringify,
+} from "./tools";
 import type { RlmProgressCallback } from "./tools";
 import { getRlmSystemPrompt, getRlmMemorySystemPrompt } from "./prompt";
 import { UsageTracker } from "../tokens/usage";
@@ -19,6 +24,8 @@ export type RlmOptions = {
   dependency_overrides?: Map<any, any>;
   /** Number of recent turns to keep in active prompt (rest moves to context.history) */
   windowSize?: number;
+  /** Optional browser context — enables browser(code) host function in the sandbox. */
+  browserContext?: import("../tools/builtin/browser_context").BrowserContext;
   /** Progress callback for sub-agent activity. Defaults to console.error logging. */
   onProgress?: RlmProgressCallback;
 };
@@ -45,6 +52,7 @@ export async function createRlmAgent(
     depth = 0,
     usage = new UsageTracker(),
     dependency_overrides = new Map(),
+    browserContext,
     onProgress,
   } = options;
 
@@ -59,6 +67,10 @@ export async function createRlmAgent(
     contextLength: metadata.length,
     contextPreview: metadata.preview,
     hasRecursion: depth < maxDepth,
+    hasBrowser: !!browserContext,
+    browserAllowedFunctions: browserContext
+      ? new Set(browserContext.getAllowedFunctions())
+      : undefined,
   });
 
   // 3. Register RLM Host Functions (The Recursive Bridge)
@@ -67,6 +79,7 @@ export async function createRlmAgent(
     sandbox,
     context,
     depth,
+    browserContext,
     onProgress,
     onLlmQuery: async (query, subContext) => {
       // If subContext is omitted, the child receives the current parent context
@@ -78,7 +91,7 @@ export async function createRlmAgent(
         const contextStr =
           typeof contextToPass === "string"
             ? contextToPass
-            : JSON.stringify(contextToPass, null, 2);
+            : safeStringify(contextToPass, 2);
         const truncated =
           contextStr.length > 10000
             ? contextStr.slice(0, 10000) + "\n... [truncated]"
@@ -105,6 +118,7 @@ export async function createRlmAgent(
         depth: depth + 1,
         usage,
         dependency_overrides,
+        browserContext,
         onProgress,
       });
 
@@ -153,17 +167,18 @@ export function analyzeContext(context: unknown): {
   if (Array.isArray(context)) {
     return {
       type: `Array [${context.length} items] (Explore via context.filter(), context.find(), context[0])`,
-      length: JSON.stringify(context).length,
-      preview: JSON.stringify(context.slice(0, 3)),
+      length: safeStringify(context).length,
+      preview: safeStringify(context.slice(0, 3)),
     };
   }
 
   if (typeof context === "object" && context !== null) {
     const keys = Object.keys(context);
+    const serialized = safeStringify(context);
     return {
       type: `Object {${keys.length} keys} (Explore via Object.keys(context), context.property)`,
-      length: JSON.stringify(context).length,
-      preview: JSON.stringify(context).slice(0, 200),
+      length: serialized.length,
+      preview: serialized.slice(0, 200),
     };
   }
 
@@ -183,6 +198,8 @@ export type RlmMemoryOptions = {
   usage?: UsageTracker;
   /** Number of user turns to keep in active prompt window */
   windowSize: number;
+  /** Optional browser context — enables browser(code) host function in the sandbox. */
+  browserContext?: import("../tools/builtin/browser_context").BrowserContext;
   /** Progress callback for sub-agent activity. Defaults to console.error logging. */
   onProgress?: RlmProgressCallback;
 };
@@ -214,6 +231,7 @@ export async function createRlmAgentWithMemory(
     maxDepth = 2,
     usage = new UsageTracker(),
     windowSize,
+    browserContext,
     onProgress,
   } = options;
 
@@ -238,6 +256,10 @@ export async function createRlmAgentWithMemory(
     dataLength: dataMetadata?.length,
     dataPreview: dataMetadata?.preview,
     windowSize,
+    hasBrowser: !!browserContext,
+    browserAllowedFunctions: browserContext
+      ? new Set(browserContext.getAllowedFunctions())
+      : undefined,
   });
 
   // 3. Register RLM functions with the unified context
@@ -246,6 +268,7 @@ export async function createRlmAgentWithMemory(
     sandbox,
     context,
     depth: 0,
+    browserContext,
     onProgress,
     onLlmQuery: async (query, subContext) => {
       const contextToPass = subContext !== undefined ? subContext : context;
@@ -256,7 +279,7 @@ export async function createRlmAgentWithMemory(
         const contextStr =
           typeof contextToPass === "string"
             ? contextToPass
-            : JSON.stringify(contextToPass, null, 2);
+            : safeStringify(contextToPass, 2);
         const truncated =
           contextStr.length > 10000
             ? contextStr.slice(0, 10000) + "\n... [truncated]"
@@ -282,6 +305,7 @@ export async function createRlmAgentWithMemory(
         maxDepth,
         depth: 1, // Memory agent is depth 0, child is depth 1
         usage,
+        browserContext,
         onProgress,
       });
 
