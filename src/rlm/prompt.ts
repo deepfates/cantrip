@@ -9,12 +9,15 @@ export function getRlmSystemPrompt(options: {
   contextPreview: string;
   /** Whether recursive sub-LLMs are available (depth < maxDepth). Default: true. */
   hasRecursion?: boolean;
+  /** Whether browser automation functions are available. Default: false. */
+  hasBrowser?: boolean;
 }): string {
   const {
     contextType,
     contextLength,
     contextPreview,
     hasRecursion = true,
+    hasBrowser = false,
   } = options;
 
   // Adapt sub-LLM guidance based on whether recursion spawns full RLMs or truncated fallbacks
@@ -187,7 +190,71 @@ Make sure you look through the context sufficiently before answering your query.
 - \`llm_query(query, snippet?)\`: Query a sub-LLM inside your sandbox. Returns a string answer. ${subLlmNote}
 - \`llm_batch(tasks)\`: Parallel delegation. Takes an array of \`{query, context}\` objects (max 50). Returns an array of strings.
 - \`submit_answer(result)\`: Terminates the task and returns \`result\` to the user. This is the ONLY way to finish.
-- \`console.log(...args)\`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.
+- \`console.log(...args)\`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.${
+    hasBrowser
+      ? `
+
+### BROWSER AUTOMATION
+Taiko browser functions are available directly in the sandbox. All functions are blocking (no await needed).
+
+**Selectors** — return element handles with methods:
+- \`button(text)\`, \`link(text)\`, \`text(text)\`, \`textBox(text)\`, \`dropDown(text)\`, \`checkBox(text)\`, \`radioButton(text)\`, \`image(text)\`, \`$(cssSelector)\`, \`listItem(text)\`, \`fileField(text)\`
+- Methods: \`.text()\` → string, \`.exists()\` → boolean, \`.value()\` → string, \`.isVisible()\` → boolean, \`.attribute(name)\` → string
+
+**Proximity** — refine selectors (accept handles or strings, return handles):
+- \`near(selector)\`, \`above(selector)\`, \`below(selector)\`, \`toLeftOf(selector)\`, \`toRightOf(selector)\`, \`within(selector)\`
+
+**Actions** — interact with elements (accept handles or strings):
+- \`click(selector, ...proximity)\`, \`doubleClick(selector)\`, \`rightClick(selector)\`
+- \`write(text, into(selector)?)\`, \`clear(selector)\`, \`press(key)\`
+- \`hover(selector)\`, \`focus(selector)\`, \`scrollTo(selector)\`, \`tap(selector)\`
+- \`scrollDown(pixels?)\`, \`scrollUp(pixels?)\`, \`dragAndDrop(source, target)\`
+
+**Navigation** — return primitives:
+- \`goto(url)\` → \`{url, status}\`, \`reload()\`, \`goBack()\`, \`goForward()\`
+- \`currentURL()\` → string, \`title()\` → string
+
+**Tabs**: \`openTab(url)\`, \`closeTab(url?)\`, \`switchTo(urlOrTitle)\`
+
+**Cookies**: \`setCookie(name, value, options?)\`, \`getCookies(url?)\`, \`deleteCookies(name?)\`
+
+**Emulation**: \`emulateDevice(model)\`, \`emulateNetwork(type)\`, \`emulateTimezone(id)\`, \`setViewPort(options)\`, \`setLocation({latitude, longitude})\`
+
+**Other**: \`evaluate("js")\` — run JS in the browser page (pass a string; objects auto-stringified to JSON; the last expression is auto-returned), \`waitFor(selectorOrMs)\`, \`screenshot()\`, \`accept(text?)\`, \`dismiss()\`, \`into(selector)\`, \`to(selector)\`, \`highlight(selector)\`, \`clearHighlights()\`, \`attach(filePath, to(selector))\`
+
+**Multi-tab example** — open pages in parallel, then extract from each:
+\`\`\`javascript
+var urls = ["https://example.com/a", "https://example.com/b", "https://example.com/c"];
+for (var i = 0; i < urls.length; i++) openTab(urls[i]);
+var contents = [];
+for (var i = 0; i < urls.length; i++) {
+  switchTo(urls[i]);
+  contents.push(evaluate("document.body.innerText"));
+  closeTab();
+}
+var summaries = llm_batch(contents.map(function(c) {
+  return { query: "Summarize this page in one sentence.", context: c };
+}));
+submit_answer(summaries.join("\\n"));
+\`\`\`
+
+**DOM extraction example** — multi-statement evaluate (last expression auto-returned):
+\`\`\`javascript
+var data = evaluate("var links = document.querySelectorAll('a'); var result = []; for (var i = 0; i < links.length; i++) { result.push({text: links[i].innerText, href: links[i].href}); } JSON.stringify(result)");
+var parsed = JSON.parse(data);
+\`\`\`
+
+**Basic example**:
+\`\`\`javascript
+goto("https://example.com");
+write("admin", into(textBox("Username")));
+click(button("Login"), near(text("Sign in")));
+var msg = text("Welcome").text();
+var pageText = evaluate("document.body.innerText");
+submit_answer(msg);
+\`\`\``
+      : ""
+  }
 
 ${strategySection}
 
@@ -206,8 +273,17 @@ export function getRlmMemorySystemPrompt(options: {
   dataLength?: number;
   dataPreview?: string;
   windowSize: number;
+  /** Whether browser automation functions are available. Default: false. */
+  hasBrowser?: boolean;
 }): string {
-  const { hasData, dataType, dataLength, dataPreview, windowSize } = options;
+  const {
+    hasData,
+    dataType,
+    dataLength,
+    dataPreview,
+    windowSize,
+    hasBrowser = false,
+  } = options;
 
   const dataSection = hasData
     ? `
@@ -241,7 +317,61 @@ You MUST use the \`js\` tool to explore context and recall past conversations.
 - \`llm_query(query, snippet?)\`: Spawns a sub-agent to analyze a snippet. Returns a string answer.
 - \`llm_batch(tasks)\`: Parallel delegation. Takes an array of \`{query, context}\` objects (max 50). Returns an array of strings.
 - \`submit_answer(result)\`: Terminates the task and returns \`result\` to the user. This is the ONLY way to finish.
-- \`console.log(...args)\`: Prints output (captured as metadata in your history).
+- \`console.log(...args)\`: Prints output (captured as metadata in your history).${
+    hasBrowser
+      ? `
+
+### BROWSER AUTOMATION
+Taiko browser functions are available directly in the sandbox. All functions are blocking (no await needed).
+
+**Selectors** — return element handles with methods:
+- \`button(text)\`, \`link(text)\`, \`text(text)\`, \`textBox(text)\`, \`dropDown(text)\`, \`checkBox(text)\`, \`radioButton(text)\`, \`image(text)\`, \`$(cssSelector)\`, \`listItem(text)\`, \`fileField(text)\`
+- Methods: \`.text()\` → string, \`.exists()\` → boolean, \`.value()\` → string, \`.isVisible()\` → boolean, \`.attribute(name)\` → string
+
+**Proximity** — refine selectors (accept handles or strings, return handles):
+- \`near(selector)\`, \`above(selector)\`, \`below(selector)\`, \`toLeftOf(selector)\`, \`toRightOf(selector)\`, \`within(selector)\`
+
+**Actions** — interact with elements (accept handles or strings):
+- \`click(selector, ...proximity)\`, \`doubleClick(selector)\`, \`rightClick(selector)\`
+- \`write(text, into(selector)?)\`, \`clear(selector)\`, \`press(key)\`
+- \`hover(selector)\`, \`focus(selector)\`, \`scrollTo(selector)\`, \`tap(selector)\`
+- \`scrollDown(pixels?)\`, \`scrollUp(pixels?)\`, \`dragAndDrop(source, target)\`
+
+**Navigation** — return primitives:
+- \`goto(url)\` → \`{url, status}\`, \`reload()\`, \`goBack()\`, \`goForward()\`
+- \`currentURL()\` → string, \`title()\` → string
+
+**Tabs**: \`openTab(url)\`, \`closeTab(url?)\`, \`switchTo(urlOrTitle)\`
+
+**Cookies**: \`setCookie(name, value, options?)\`, \`getCookies(url?)\`, \`deleteCookies(name?)\`
+
+**Emulation**: \`emulateDevice(model)\`, \`emulateNetwork(type)\`, \`emulateTimezone(id)\`, \`setViewPort(options)\`, \`setLocation({latitude, longitude})\`
+
+**Other**: \`evaluate("js")\` — run JS in the browser page (pass a string; objects auto-stringified to JSON; the last expression is auto-returned), \`waitFor(selectorOrMs)\`, \`screenshot()\`, \`accept(text?)\`, \`dismiss()\`, \`into(selector)\`, \`to(selector)\`, \`highlight(selector)\`, \`clearHighlights()\`, \`attach(filePath, to(selector))\`
+
+**Multi-tab example** — open pages in parallel, then extract from each:
+\`\`\`javascript
+var urls = ["https://example.com/a", "https://example.com/b"];
+for (var i = 0; i < urls.length; i++) openTab(urls[i]);
+var contents = [];
+for (var i = 0; i < urls.length; i++) {
+  switchTo(urls[i]);
+  contents.push(evaluate("document.body.innerText"));
+  closeTab();
+}
+submit_answer(contents.join("\\n---\\n"));
+\`\`\`
+
+**Basic example**:
+\`\`\`javascript
+goto("https://example.com");
+write("admin", into(textBox("Username")));
+click(button("Login"), near(text("Sign in")));
+var msg = text("Welcome").text();
+submit_answer(msg);
+\`\`\``
+      : ""
+  }
 
 ### RECALLING PAST CONVERSATIONS
 When you need to remember something from earlier in the conversation:
