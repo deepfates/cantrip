@@ -14,6 +14,55 @@ export function safeStringify(value: unknown, indent?: number): string {
   }
 }
 
+export type RlmProgressEvent =
+  | { type: "sub_agent_start"; depth: number; query: string }
+  | { type: "sub_agent_end"; depth: number }
+  | { type: "batch_start"; depth: number; count: number }
+  | {
+      type: "batch_item";
+      depth: number;
+      index: number;
+      total: number;
+      query: string;
+    }
+  | { type: "batch_end"; depth: number };
+
+export type RlmProgressCallback = (event: RlmProgressEvent) => void;
+
+/** Default progress callback: logs to stderr in the tree format used by the REPL. */
+function defaultProgress(depth: number): RlmProgressCallback {
+  const indent = "  ".repeat(depth);
+  return (event) => {
+    switch (event.type) {
+      case "sub_agent_start": {
+        const preview =
+          event.query.slice(0, 50) + (event.query.length > 50 ? "..." : "");
+        console.error(`${indent}├─ [depth:${event.depth}] "${preview}"`);
+        break;
+      }
+      case "sub_agent_end":
+        console.error(`${indent}└─ [depth:${event.depth}] done`);
+        break;
+      case "batch_start":
+        console.error(
+          `${indent}├─ [depth:${event.depth}] llm_batch(${event.count} tasks)`,
+        );
+        break;
+      case "batch_item": {
+        const preview =
+          event.query.slice(0, 30) + (event.query.length > 30 ? "..." : "");
+        console.error(
+          `${indent}│  ├─ [${event.index + 1}/${event.total}] "${preview}"`,
+        );
+        break;
+      }
+      case "batch_end":
+        console.error(`${indent}└─ [depth:${event.depth}] batch complete`);
+        break;
+    }
+  };
+}
+
 /**
  * Formats sandbox execution results into a compact metadata string.
  * This prevents the Agent's prompt history from being flooded with large data dumps.
@@ -94,10 +143,13 @@ export async function registerRlmFunctions(options: {
   onLlmQuery: (query: string, subContext?: unknown) => Promise<string>;
   /** Current recursion depth (0 = top-level agent) */
   depth?: number;
-  /** Optional browser context — enables browser(code) host function in the sandbox. */
+  /** Progress callback for sub-agent activity. Defaults to console.error logging. */
+  onProgress?: RlmProgressCallback;
   browserContext?: BrowserContext;
+
 }) {
-  const { sandbox, context, onLlmQuery, depth = 0, browserContext } = options;
+  const { sandbox, context, onLlmQuery, depth = 0 } = options;
+  const progress = options.onProgress ?? defaultProgress(depth);
 
   // 1. Inject the data context as a global variable.
   sandbox.setGlobal("context", context);
@@ -124,18 +176,12 @@ export async function registerRlmFunctions(options: {
       throw new Error("llm_query(query, context) requires a string query.");
     }
 
-    // Log to stderr so user sees progress (stdout is captured for LLM)
     const childDepth = depth + 1;
-    const contextSize = c ? safeStringify(c).length : 0;
-    const indent = "  ".repeat(depth);
-    const preview = q.slice(0, 50) + (q.length > 50 ? "..." : "");
-    console.error(
-      `${indent}├─ [depth:${childDepth}] "${preview}" (${contextSize} chars)`,
-    );
+    progress({ type: "sub_agent_start", depth: childDepth, query: q });
 
     const result = await onLlmQuery(q, c);
 
-    console.error(`${indent}└─ [depth:${childDepth}] done`);
+    progress({ type: "sub_agent_end", depth: childDepth });
     return result;
   });
 
@@ -157,10 +203,7 @@ export async function registerRlmFunctions(options: {
     }
 
     const childDepth = depth + 1;
-    const indent = "  ".repeat(depth);
-    console.error(
-      `${indent}├─ [depth:${childDepth}] llm_batch(${tasks.length} tasks)`,
-    );
+    progress({ type: "batch_start", depth: childDepth, count: tasks.length });
 
     // Process in chunks to limit concurrency
     const results: string[] = [];
@@ -174,15 +217,13 @@ export async function registerRlmFunctions(options: {
             typeof task === "object"
               ? (task.context ?? task.subContext)
               : undefined;
-          if (typeof q !== "string") {
-            throw new Error(
-              `llm_batch: task[${idx}] has no string query. Each task must be a string or {query, context}.`,
-            );
-          }
-          const taskPreview = q.slice(0, 30) + (q.length > 30 ? "..." : "");
-          console.error(
-            `${indent}│  ├─ [${idx + 1}/${tasks.length}] "${taskPreview}"`,
-          );
+          progress({
+            type: "batch_item",
+            depth: childDepth,
+            index: idx,
+            total: tasks.length,
+            query: q,
+          });
           const result = await onLlmQuery(q, c);
           return result;
         }),
@@ -190,7 +231,7 @@ export async function registerRlmFunctions(options: {
       results.push(...chunkResults);
     }
 
-    console.error(`${indent}└─ [depth:${childDepth}] batch complete`);
+    progress({ type: "batch_end", depth: childDepth });
     return results;
   });
 
