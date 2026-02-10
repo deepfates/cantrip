@@ -186,7 +186,7 @@ Make sure you look through the context sufficiently before answering your query.
 ### HOST FUNCTIONS
 - \`llm_query(query, snippet?)\`: Query a sub-LLM inside your sandbox. Returns a string answer. ${subLlmNote}
 - \`llm_batch(tasks)\`: Parallel delegation. Takes an array of \`{query, context}\` objects (max 50). Returns an array of strings.
-- \`submit_answer(result)\`: Terminates the task and returns \`result\` to the user. This is the ONLY way to finish.
+- \`submit_answer(result)\`: Terminates the task and returns \`result\` as your final response. The result string is displayed directly as markdown to the user — write clear, human-readable prose (not JSON or data structures). This is the ONLY way to finish.
 - \`console.log(...args)\`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.
 
 ${strategySection}
@@ -240,7 +240,7 @@ You MUST use the \`js\` tool to explore context and recall past conversations.
 ### HOST FUNCTIONS
 - \`llm_query(query, snippet?)\`: Spawns a sub-agent to analyze a snippet. Returns a string answer.
 - \`llm_batch(tasks)\`: Parallel delegation. Takes an array of \`{query, context}\` objects (max 50). Returns an array of strings.
-- \`submit_answer(result)\`: Terminates the task and returns \`result\` to the user. This is the ONLY way to finish.
+- \`submit_answer(result)\`: Terminates the task and returns \`result\` as your final response. The result string is displayed directly as markdown in the user's editor — write clear, human-readable prose (not JSON or data structures). This is the ONLY way to finish.
 - \`console.log(...args)\`: Prints output (captured as metadata in your history).
 
 ### RECALLING PAST CONVERSATIONS

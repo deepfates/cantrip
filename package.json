@@ -8,13 +8,15 @@
     "./llm": "./src/llm/index.ts",
     "./agent": "./src/agent/index.ts",
     "./tools": "./src/tools/index.ts",
-    "./tokens": "./src/tokens/index.ts"
+    "./tokens": "./src/tokens/index.ts",
+    "./acp": "./src/acp/index.ts"
   },
   "scripts": {
     "test": "bun test",
     "lint": "bun -e 'console.log(\"ok\")'"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.14.1",
     "@jitl/quickjs-ng-wasmfile-release-asyncify": "^0.31.0",
     "@jitl/quickjs-ng-wasmfile-release-sync": "^0.31.0",
     "@sebastianwessel/quickjs": "^3.0.0",
