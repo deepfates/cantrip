@@ -5,6 +5,15 @@ import { TaskComplete } from "../agent/errors";
 import { Depends } from "../tools/depends";
 import type { BrowserContext } from "../tools/builtin/browser_context";
 
+/** JSON.stringify that tolerates circular references. */
+export function safeStringify(value: unknown, indent?: number): string {
+  try {
+    return JSON.stringify(value, null, indent);
+  } catch {
+    return "[unserializable]";
+  }
+}
+
 /**
  * Formats sandbox execution results into a compact metadata string.
  * This prevents the Agent's prompt history from being flooded with large data dumps.
@@ -117,7 +126,7 @@ export async function registerRlmFunctions(options: {
 
     // Log to stderr so user sees progress (stdout is captured for LLM)
     const childDepth = depth + 1;
-    const contextSize = c ? JSON.stringify(c).length : 0;
+    const contextSize = c ? safeStringify(c).length : 0;
     const indent = "  ".repeat(depth);
     const preview = q.slice(0, 50) + (q.length > 50 ? "..." : "");
     console.error(
@@ -160,12 +169,16 @@ export async function registerRlmFunctions(options: {
       const chunkResults = await Promise.all(
         chunk.map(async (task: any, j: number) => {
           const idx = i + j;
-          const q =
-            typeof task === "string" ? task : (task.query ?? task.input);
+          let q = typeof task === "string" ? task : (task.query ?? task.input);
           const c =
             typeof task === "object"
               ? (task.context ?? task.subContext)
               : undefined;
+          if (typeof q !== "string") {
+            throw new Error(
+              `llm_batch: task[${idx}] has no string query. Each task must be a string or {query, context}.`,
+            );
+          }
           const taskPreview = q.slice(0, 30) + (q.length > 30 ? "..." : "");
           console.error(
             `${indent}│  ├─ [${idx + 1}/${tasks.length}] "${taskPreview}"`,

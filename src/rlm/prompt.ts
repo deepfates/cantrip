@@ -1,4 +1,185 @@
 /**
+ * Build browser automation docs filtered by what's actually registered.
+ * If allowedFns is undefined, documents everything (full profile).
+ */
+function buildBrowserDocs(allowedFns?: Set<string>): string {
+  const has = (name: string) => !allowedFns || allowedFns.has(name);
+
+  const sections: string[] = [];
+
+  // Selectors
+  const selectorFns = [
+    "button",
+    "link",
+    "text",
+    "textBox",
+    "dropDown",
+    "checkBox",
+    "radioButton",
+    "image",
+    "$",
+    "listItem",
+    "fileField",
+  ];
+  const availableSelectors = selectorFns.filter(has);
+  if (availableSelectors.length > 0) {
+    sections.push(`**Selectors** — return element handles with methods:
+- \`${availableSelectors.map((s) => s + "(text)").join("\\`, \\`")}\`
+- Methods: \`.text()\` → string, \`.exists()\` → boolean, \`.value()\` → string, \`.isVisible()\` → boolean, \`.attribute(name)\` → string`);
+  }
+
+  // Proximity
+  const proximityFns = [
+    "near",
+    "above",
+    "below",
+    "toLeftOf",
+    "toRightOf",
+    "within",
+  ];
+  const availableProximity = proximityFns.filter(has);
+  if (availableProximity.length > 0) {
+    sections.push(`**Proximity** — refine selectors (accept handles or strings, return handles):
+- \`${availableProximity.map((s) => s + "(selector)").join("\\`, \\`")}\``);
+  }
+
+  // Actions
+  const actionLines: string[] = [];
+  const clickFns = ["click", "doubleClick", "rightClick"].filter(has);
+  if (clickFns.length > 0)
+    actionLines.push(
+      `- \`${clickFns.map((s) => s + "(selector)").join("\\`, \\`")}\``,
+    );
+  const writeFns = ["write", "clear", "press"].filter(has);
+  if (writeFns.length > 0)
+    actionLines.push(
+      `- \`${writeFns.map((s) => (s === "write" ? "write(text, into(selector)?)" : s === "press" ? "press(key)" : s + "(selector)")).join("\\`, \\`")}\``,
+    );
+  const interactFns = ["hover", "focus", "scrollTo", "tap"].filter(has);
+  if (interactFns.length > 0)
+    actionLines.push(
+      `- \`${interactFns.map((s) => s + "(selector)").join("\\`, \\`")}\``,
+    );
+  const scrollFns = ["scrollDown", "scrollUp"].filter(has);
+  const dragFns = ["dragAndDrop"].filter(has);
+  if (scrollFns.length > 0 || dragFns.length > 0) {
+    const parts = [
+      ...scrollFns.map((s) => s + "(pixels?)"),
+      ...dragFns.map(() => "dragAndDrop(source, target)"),
+    ];
+    actionLines.push(`- \`${parts.join("\\`, \\`")}\``);
+  }
+  if (actionLines.length > 0) {
+    sections.push(
+      `**Actions** — interact with elements (accept handles or strings):\n${actionLines.join("\n")}`,
+    );
+  }
+
+  // Navigation
+  const navFns = ["goto", "reload", "goBack", "goForward"].filter(has);
+  const infoFns = ["currentURL", "title"].filter(has);
+  if (navFns.length > 0 || infoFns.length > 0) {
+    const navParts = navFns.map((s) =>
+      s === "goto" ? "goto(url) → {url, status}" : s + "()",
+    );
+    const infoParts = infoFns.map((s) => s + "() → string");
+    sections.push(`**Navigation** — return primitives:
+- \`${[...navParts, ...infoParts].join("\\`, \\`")}\``);
+  }
+
+  // Tabs
+  const tabFns = ["openTab", "closeTab", "switchTo"].filter(has);
+  if (tabFns.length > 0) {
+    sections.push(
+      `**Tabs**: \`${tabFns.map((s) => (s === "openTab" ? "openTab(url)" : s === "closeTab" ? "closeTab(url?)" : "switchTo(urlOrTitle)")).join("\\`, \\`")}\``,
+    );
+  }
+
+  // Cookies
+  const cookieFns = ["setCookie", "getCookies", "deleteCookies"].filter(has);
+  if (cookieFns.length > 0) {
+    sections.push(
+      `**Cookies**: \`${cookieFns.map((s) => (s === "setCookie" ? "setCookie(name, value, options?)" : s === "getCookies" ? "getCookies(url?)" : "deleteCookies(name?)")).join("\\`, \\`")}\``,
+    );
+  }
+
+  // Emulation
+  const emuFns = [
+    "emulateDevice",
+    "emulateNetwork",
+    "emulateTimezone",
+    "setViewPort",
+    "setLocation",
+  ].filter(has);
+  if (emuFns.length > 0) {
+    sections.push(
+      `**Emulation**: \`${emuFns.map((s) => s + "(...)").join("\\`, \\`")}\``,
+    );
+  }
+
+  // Other
+  const otherParts: string[] = [];
+  if (has("evaluate"))
+    otherParts.push(
+      'evaluate("js") — run JS in the browser page (pass a string; objects auto-stringified to JSON; the last expression is auto-returned)',
+    );
+  if (has("waitFor")) otherParts.push("waitFor(selectorOrMs)");
+  if (has("screenshot")) otherParts.push("screenshot()");
+  if (has("accept")) otherParts.push("accept(text?)");
+  if (has("dismiss")) otherParts.push("dismiss()");
+  otherParts.push("into(selector)", "to(selector)");
+  if (has("highlight")) otherParts.push("highlight(selector)");
+  if (has("clearHighlights")) otherParts.push("clearHighlights()");
+  if (has("attach")) otherParts.push("attach(filePath, to(selector))");
+  sections.push(`**Other**: \`${otherParts.join("\\`, \\`")}\``);
+
+  return sections.join("\n\n");
+}
+
+/**
+ * Build browser examples section. Only include multi-tab example if tabs are available.
+ */
+function buildBrowserExamples(allowedFns?: Set<string>): string {
+  const has = (name: string) => !allowedFns || allowedFns.has(name);
+  const examples: string[] = [];
+
+  if (has("openTab") && has("switchTo") && has("closeTab")) {
+    examples.push(`**Multi-tab example** — open pages in parallel, then extract from each:
+\\\`\\\`\\\`javascript
+var urls = ["https://example.com/a", "https://example.com/b", "https://example.com/c"];
+for (var i = 0; i < urls.length; i++) openTab(urls[i]);
+var contents = [];
+for (var i = 0; i < urls.length; i++) {
+  switchTo(urls[i]);
+  contents.push(evaluate("document.body.innerText"));
+  closeTab();
+}
+var summaries = llm_batch(contents.map(function(c) {
+  return { query: "Summarize this page in one sentence.", context: c };
+}));
+submit_answer(summaries.join("\\\\n"));
+\\\`\\\`\\\``);
+  }
+
+  if (has("evaluate")) {
+    examples.push(`**DOM extraction example** — multi-statement evaluate (last expression auto-returned):
+\\\`\\\`\\\`javascript
+var data = evaluate("var links = document.querySelectorAll('a'); var result = []; for (var i = 0; i < links.length; i++) { result.push({text: links[i].innerText, href: links[i].href}); } JSON.stringify(result)");
+var parsed = JSON.parse(data);
+\\\`\\\`\\\``);
+  }
+
+  examples.push(`**Basic example**:
+\\\`\\\`\\\`javascript
+goto("https://example.com");${has("write") ? '\nwrite("admin", into(textBox("Username")));' : ""}${has("click") ? '\nclick(button("Login"), near(text("Sign in")));' : ""}
+var msg = text("Welcome").text();
+submit_answer(msg);
+\\\`\\\`\\\``);
+
+  return examples.join("\n\n");
+}
+
+/**
  * Generates the RLM system prompt.
  * Provides a clean, technical manual for the JavaScript sandbox environment.
  * Based on the RLM paper (Zhang et al., arxiv:2512.24601).
@@ -11,6 +192,8 @@ export function getRlmSystemPrompt(options: {
   hasRecursion?: boolean;
   /** Whether browser automation functions are available. Default: false. */
   hasBrowser?: boolean;
+  /** Set of allowed browser function names (from BrowserContext.getAllowedFunctions()). */
+  browserAllowedFunctions?: Set<string>;
 }): string {
   const {
     contextType,
@@ -18,6 +201,7 @@ export function getRlmSystemPrompt(options: {
     contextPreview,
     hasRecursion = true,
     hasBrowser = false,
+    browserAllowedFunctions,
   } = options;
 
   // Adapt sub-LLM guidance based on whether recursion spawns full RLMs or truncated fallbacks
@@ -197,62 +381,9 @@ Make sure you look through the context sufficiently before answering your query.
 ### BROWSER AUTOMATION
 Taiko browser functions are available directly in the sandbox. All functions are blocking (no await needed).
 
-**Selectors** — return element handles with methods:
-- \`button(text)\`, \`link(text)\`, \`text(text)\`, \`textBox(text)\`, \`dropDown(text)\`, \`checkBox(text)\`, \`radioButton(text)\`, \`image(text)\`, \`$(cssSelector)\`, \`listItem(text)\`, \`fileField(text)\`
-- Methods: \`.text()\` → string, \`.exists()\` → boolean, \`.value()\` → string, \`.isVisible()\` → boolean, \`.attribute(name)\` → string
+${buildBrowserDocs(browserAllowedFunctions)}
 
-**Proximity** — refine selectors (accept handles or strings, return handles):
-- \`near(selector)\`, \`above(selector)\`, \`below(selector)\`, \`toLeftOf(selector)\`, \`toRightOf(selector)\`, \`within(selector)\`
-
-**Actions** — interact with elements (accept handles or strings):
-- \`click(selector, ...proximity)\`, \`doubleClick(selector)\`, \`rightClick(selector)\`
-- \`write(text, into(selector)?)\`, \`clear(selector)\`, \`press(key)\`
-- \`hover(selector)\`, \`focus(selector)\`, \`scrollTo(selector)\`, \`tap(selector)\`
-- \`scrollDown(pixels?)\`, \`scrollUp(pixels?)\`, \`dragAndDrop(source, target)\`
-
-**Navigation** — return primitives:
-- \`goto(url)\` → \`{url, status}\`, \`reload()\`, \`goBack()\`, \`goForward()\`
-- \`currentURL()\` → string, \`title()\` → string
-
-**Tabs**: \`openTab(url)\`, \`closeTab(url?)\`, \`switchTo(urlOrTitle)\`
-
-**Cookies**: \`setCookie(name, value, options?)\`, \`getCookies(url?)\`, \`deleteCookies(name?)\`
-
-**Emulation**: \`emulateDevice(model)\`, \`emulateNetwork(type)\`, \`emulateTimezone(id)\`, \`setViewPort(options)\`, \`setLocation({latitude, longitude})\`
-
-**Other**: \`evaluate("js")\` — run JS in the browser page (pass a string; objects auto-stringified to JSON; the last expression is auto-returned), \`waitFor(selectorOrMs)\`, \`screenshot()\`, \`accept(text?)\`, \`dismiss()\`, \`into(selector)\`, \`to(selector)\`, \`highlight(selector)\`, \`clearHighlights()\`, \`attach(filePath, to(selector))\`
-
-**Multi-tab example** — open pages in parallel, then extract from each:
-\`\`\`javascript
-var urls = ["https://example.com/a", "https://example.com/b", "https://example.com/c"];
-for (var i = 0; i < urls.length; i++) openTab(urls[i]);
-var contents = [];
-for (var i = 0; i < urls.length; i++) {
-  switchTo(urls[i]);
-  contents.push(evaluate("document.body.innerText"));
-  closeTab();
-}
-var summaries = llm_batch(contents.map(function(c) {
-  return { query: "Summarize this page in one sentence.", context: c };
-}));
-submit_answer(summaries.join("\\n"));
-\`\`\`
-
-**DOM extraction example** — multi-statement evaluate (last expression auto-returned):
-\`\`\`javascript
-var data = evaluate("var links = document.querySelectorAll('a'); var result = []; for (var i = 0; i < links.length; i++) { result.push({text: links[i].innerText, href: links[i].href}); } JSON.stringify(result)");
-var parsed = JSON.parse(data);
-\`\`\`
-
-**Basic example**:
-\`\`\`javascript
-goto("https://example.com");
-write("admin", into(textBox("Username")));
-click(button("Login"), near(text("Sign in")));
-var msg = text("Welcome").text();
-var pageText = evaluate("document.body.innerText");
-submit_answer(msg);
-\`\`\``
+${buildBrowserExamples(browserAllowedFunctions)}`
       : ""
   }
 
@@ -275,6 +406,8 @@ export function getRlmMemorySystemPrompt(options: {
   windowSize: number;
   /** Whether browser automation functions are available. Default: false. */
   hasBrowser?: boolean;
+  /** Set of allowed browser function names (from BrowserContext.getAllowedFunctions()). */
+  browserAllowedFunctions?: Set<string>;
 }): string {
   const {
     hasData,
@@ -283,6 +416,7 @@ export function getRlmMemorySystemPrompt(options: {
     dataPreview,
     windowSize,
     hasBrowser = false,
+    browserAllowedFunctions,
   } = options;
 
   const dataSection = hasData
@@ -324,52 +458,9 @@ You MUST use the \`js\` tool to explore context and recall past conversations.
 ### BROWSER AUTOMATION
 Taiko browser functions are available directly in the sandbox. All functions are blocking (no await needed).
 
-**Selectors** — return element handles with methods:
-- \`button(text)\`, \`link(text)\`, \`text(text)\`, \`textBox(text)\`, \`dropDown(text)\`, \`checkBox(text)\`, \`radioButton(text)\`, \`image(text)\`, \`$(cssSelector)\`, \`listItem(text)\`, \`fileField(text)\`
-- Methods: \`.text()\` → string, \`.exists()\` → boolean, \`.value()\` → string, \`.isVisible()\` → boolean, \`.attribute(name)\` → string
+${buildBrowserDocs(browserAllowedFunctions)}
 
-**Proximity** — refine selectors (accept handles or strings, return handles):
-- \`near(selector)\`, \`above(selector)\`, \`below(selector)\`, \`toLeftOf(selector)\`, \`toRightOf(selector)\`, \`within(selector)\`
-
-**Actions** — interact with elements (accept handles or strings):
-- \`click(selector, ...proximity)\`, \`doubleClick(selector)\`, \`rightClick(selector)\`
-- \`write(text, into(selector)?)\`, \`clear(selector)\`, \`press(key)\`
-- \`hover(selector)\`, \`focus(selector)\`, \`scrollTo(selector)\`, \`tap(selector)\`
-- \`scrollDown(pixels?)\`, \`scrollUp(pixels?)\`, \`dragAndDrop(source, target)\`
-
-**Navigation** — return primitives:
-- \`goto(url)\` → \`{url, status}\`, \`reload()\`, \`goBack()\`, \`goForward()\`
-- \`currentURL()\` → string, \`title()\` → string
-
-**Tabs**: \`openTab(url)\`, \`closeTab(url?)\`, \`switchTo(urlOrTitle)\`
-
-**Cookies**: \`setCookie(name, value, options?)\`, \`getCookies(url?)\`, \`deleteCookies(name?)\`
-
-**Emulation**: \`emulateDevice(model)\`, \`emulateNetwork(type)\`, \`emulateTimezone(id)\`, \`setViewPort(options)\`, \`setLocation({latitude, longitude})\`
-
-**Other**: \`evaluate("js")\` — run JS in the browser page (pass a string; objects auto-stringified to JSON; the last expression is auto-returned), \`waitFor(selectorOrMs)\`, \`screenshot()\`, \`accept(text?)\`, \`dismiss()\`, \`into(selector)\`, \`to(selector)\`, \`highlight(selector)\`, \`clearHighlights()\`, \`attach(filePath, to(selector))\`
-
-**Multi-tab example** — open pages in parallel, then extract from each:
-\`\`\`javascript
-var urls = ["https://example.com/a", "https://example.com/b"];
-for (var i = 0; i < urls.length; i++) openTab(urls[i]);
-var contents = [];
-for (var i = 0; i < urls.length; i++) {
-  switchTo(urls[i]);
-  contents.push(evaluate("document.body.innerText"));
-  closeTab();
-}
-submit_answer(contents.join("\\n---\\n"));
-\`\`\`
-
-**Basic example**:
-\`\`\`javascript
-goto("https://example.com");
-write("admin", into(textBox("Username")));
-click(button("Login"), near(text("Sign in")));
-var msg = text("Welcome").text();
-submit_answer(msg);
-\`\`\``
+${buildBrowserExamples(browserAllowedFunctions)}`
       : ""
   }
 

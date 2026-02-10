@@ -4,7 +4,12 @@ import {
   JsAsyncContext,
   createAsyncModule,
 } from "../tools/builtin/js_async_context";
-import { js_rlm, getRlmSandbox, registerRlmFunctions } from "./tools";
+import {
+  js_rlm,
+  getRlmSandbox,
+  registerRlmFunctions,
+  safeStringify,
+} from "./tools";
 import { getRlmSystemPrompt, getRlmMemorySystemPrompt } from "./prompt";
 import { UsageTracker } from "../tokens/usage";
 
@@ -59,6 +64,9 @@ export async function createRlmAgent(
     contextPreview: metadata.preview,
     hasRecursion: depth < maxDepth,
     hasBrowser: !!browserContext,
+    browserAllowedFunctions: browserContext
+      ? new Set(browserContext.getAllowedFunctions())
+      : undefined,
   });
 
   // 3. Register RLM Host Functions (The Recursive Bridge)
@@ -78,7 +86,7 @@ export async function createRlmAgent(
         const contextStr =
           typeof contextToPass === "string"
             ? contextToPass
-            : JSON.stringify(contextToPass, null, 2);
+            : safeStringify(contextToPass, 2);
         const truncated =
           contextStr.length > 10000
             ? contextStr.slice(0, 10000) + "\n... [truncated]"
@@ -153,17 +161,18 @@ export function analyzeContext(context: unknown): {
   if (Array.isArray(context)) {
     return {
       type: `Array [${context.length} items] (Explore via context.filter(), context.find(), context[0])`,
-      length: JSON.stringify(context).length,
-      preview: JSON.stringify(context.slice(0, 3)),
+      length: safeStringify(context).length,
+      preview: safeStringify(context.slice(0, 3)),
     };
   }
 
   if (typeof context === "object" && context !== null) {
     const keys = Object.keys(context);
+    const serialized = safeStringify(context);
     return {
       type: `Object {${keys.length} keys} (Explore via Object.keys(context), context.property)`,
-      length: JSON.stringify(context).length,
-      preview: JSON.stringify(context).slice(0, 200),
+      length: serialized.length,
+      preview: serialized.slice(0, 200),
     };
   }
 
@@ -239,6 +248,9 @@ export async function createRlmAgentWithMemory(
     dataPreview: dataMetadata?.preview,
     windowSize,
     hasBrowser: !!browserContext,
+    browserAllowedFunctions: browserContext
+      ? new Set(browserContext.getAllowedFunctions())
+      : undefined,
   });
 
   // 3. Register RLM functions with the unified context
@@ -257,7 +269,7 @@ export async function createRlmAgentWithMemory(
         const contextStr =
           typeof contextToPass === "string"
             ? contextToPass
-            : JSON.stringify(contextToPass, null, 2);
+            : safeStringify(contextToPass, 2);
         const truncated =
           contextStr.length > 10000
             ? contextStr.slice(0, 10000) + "\n... [truncated]"
