@@ -146,9 +146,8 @@ export async function registerRlmFunctions(options: {
   /** Progress callback for sub-agent activity. Defaults to console.error logging. */
   onProgress?: RlmProgressCallback;
   browserContext?: BrowserContext;
-
 }) {
-  const { sandbox, context, onLlmQuery, depth = 0 } = options;
+  const { sandbox, context, onLlmQuery, depth = 0, browserContext } = options;
   const progress = options.onProgress ?? defaultProgress(depth);
 
   // 1. Inject the data context as a global variable.
