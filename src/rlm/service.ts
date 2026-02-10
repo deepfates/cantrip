@@ -5,6 +5,7 @@ import {
   createAsyncModule,
 } from "../tools/builtin/js_async_context";
 import { js_rlm, getRlmSandbox, registerRlmFunctions } from "./tools";
+import type { RlmProgressCallback } from "./tools";
 import { getRlmSystemPrompt, getRlmMemorySystemPrompt } from "./prompt";
 import { UsageTracker } from "../tokens/usage";
 
@@ -18,6 +19,8 @@ export type RlmOptions = {
   dependency_overrides?: Map<any, any>;
   /** Number of recent turns to keep in active prompt (rest moves to context.history) */
   windowSize?: number;
+  /** Progress callback for sub-agent activity. Defaults to console.error logging. */
+  onProgress?: RlmProgressCallback;
 };
 
 /**
@@ -42,6 +45,7 @@ export async function createRlmAgent(
     depth = 0,
     usage = new UsageTracker(),
     dependency_overrides = new Map(),
+    onProgress,
   } = options;
 
   // 1. Prepare Sandbox with a recursion-safe WASM module instance
@@ -63,6 +67,7 @@ export async function createRlmAgent(
     sandbox,
     context,
     depth,
+    onProgress,
     onLlmQuery: async (query, subContext) => {
       // If subContext is omitted, the child receives the current parent context
       const contextToPass = subContext !== undefined ? subContext : context;
@@ -100,6 +105,7 @@ export async function createRlmAgent(
         depth: depth + 1,
         usage,
         dependency_overrides,
+        onProgress,
       });
 
       try {
@@ -177,6 +183,8 @@ export type RlmMemoryOptions = {
   usage?: UsageTracker;
   /** Number of user turns to keep in active prompt window */
   windowSize: number;
+  /** Progress callback for sub-agent activity. Defaults to console.error logging. */
+  onProgress?: RlmProgressCallback;
 };
 
 export type RlmMemoryAgent = {
@@ -206,6 +214,7 @@ export async function createRlmAgentWithMemory(
     maxDepth = 2,
     usage = new UsageTracker(),
     windowSize,
+    onProgress,
   } = options;
 
   // The unified context object
@@ -237,6 +246,7 @@ export async function createRlmAgentWithMemory(
     sandbox,
     context,
     depth: 0,
+    onProgress,
     onLlmQuery: async (query, subContext) => {
       const contextToPass = subContext !== undefined ? subContext : context;
 
@@ -272,6 +282,7 @@ export async function createRlmAgentWithMemory(
         maxDepth,
         depth: 1, // Memory agent is depth 0, child is depth 1
         usage,
+        onProgress,
       });
 
       try {
