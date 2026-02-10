@@ -260,7 +260,7 @@ export class BrowserContext {
     return null;
   }
 
-  private getAllowedFunctions(): string[] {
+  getAllowedFunctions(): string[] {
     const full = getTaikoFunctionList();
     if (this.profile === "full") return full;
     const blocked = new Set<string>();
@@ -296,7 +296,7 @@ export class BrowserContext {
     return full.filter((fn) => !blocked.has(fn));
   }
 
-  private buildTaikoScope(allowed: string[]) {
+  buildTaikoScope(allowed: string[]) {
     const scope: Record<string, any> = {};
     for (const fn of allowed) {
       const original = (taiko as any)[fn];
@@ -319,7 +319,7 @@ export class BrowserContext {
     };
   }
 
-  private assertUrlAllowed(url: string) {
+  assertUrlAllowed(url: string) {
     if (!this.domainPolicy) return;
     let hostname = "";
     try {
@@ -369,7 +369,7 @@ export class BrowserContext {
   }
 }
 
-function getTaikoFunctionList(): string[] {
+export function getTaikoFunctionList(): string[] {
   return [
     // Browser actions
     "goto",

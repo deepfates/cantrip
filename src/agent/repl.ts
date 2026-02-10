@@ -1,12 +1,21 @@
 import readline from "readline";
 
 import { Agent } from "./service";
-import { createConsoleRenderer, type ConsoleRendererOptions } from "./console";
+import {
+  createConsoleRenderer,
+  type ConsoleRenderer,
+  type ConsoleRendererOptions,
+} from "./console";
 
 export type ExecOptions = {
   agent: Agent;
   task: string;
   verbose?: boolean;
+  /** Custom renderer — overrides the default console renderer */
+  renderer?: {
+    createState: () => any;
+    handle: (event: any, state: any) => void;
+  };
 };
 
 /**
@@ -17,7 +26,7 @@ export async function exec(options: ExecOptions): Promise<void> {
   const { agent, task } = options;
   const verbose = options.verbose ?? false;
 
-  const renderer = createConsoleRenderer({ verbose });
+  const renderer = options.renderer ?? createConsoleRenderer({ verbose });
   const state = renderer.createState();
 
   for await (const event of agent.query_stream(task)) {
@@ -33,6 +42,11 @@ export type ReplOptions = {
   onClose?: () => void | Promise<void>;
   /** Called after each turn completes */
   onTurn?: () => void | Promise<void>;
+  /** Custom renderer — overrides the default console renderer */
+  renderer?: {
+    createState: () => any;
+    handle: (event: any, state: any) => void;
+  };
 };
 
 /**
@@ -57,7 +71,7 @@ export async function runRepl(options: ReplOptions): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length > 0) {
     const task = args.join(" ");
-    await exec({ agent, task, verbose });
+    await exec({ agent, task, verbose, renderer: options.renderer });
     if (onTurn) await onTurn();
     if (onClose) await onClose();
     return;
@@ -74,7 +88,7 @@ export async function runRepl(options: ReplOptions): Promise<void> {
     }
     const task = input.trim();
     if (!task) return;
-    await exec({ agent, task, verbose });
+    await exec({ agent, task, verbose, renderer: options.renderer });
     if (onTurn) await onTurn();
     if (onClose) await onClose();
     return;
@@ -125,6 +139,6 @@ export async function runRepl(options: ReplOptions): Promise<void> {
     process.exit(0);
   });
 
-  const renderer = createConsoleRenderer({ verbose });
+  const renderer = options.renderer ?? createConsoleRenderer({ verbose });
   rl.prompt();
 }
