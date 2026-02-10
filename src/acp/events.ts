@@ -21,6 +21,18 @@ function getToolCallContent(
   args: Record<string, any>,
 ): ToolCallContent[] | undefined {
   switch (toolName) {
+    case "done": {
+      const message = args.message;
+      if (typeof message === "string" && message.length > 0) {
+        return [
+          {
+            type: "content",
+            content: { type: "text", text: message },
+          },
+        ];
+      }
+      return undefined;
+    }
     case "bash": {
       const cmd = args.command;
       if (typeof cmd === "string" && cmd.length > 0) {

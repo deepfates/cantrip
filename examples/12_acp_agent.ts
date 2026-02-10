@@ -32,7 +32,9 @@ serveCantripACP(async ({ params }) => {
   const agent = new Agent({
     llm: new ChatAnthropic({ model: "claude-sonnet-4-5" }),
     tools: [...unsafeFsTools, browser, done],
-    system_prompt: `You are a helpful coding assistant. Working directory: ${ctx.working_dir}`,
+    system_prompt: `You are a helpful coding assistant. Working directory: ${ctx.working_dir}
+
+When you complete the user's request, call the done tool with a clear summary of what you accomplished. Don't keep working or adding extra documentation unless explicitly asked.`,
     dependency_overrides: new Map([
       [getSandboxContext, () => ctx],
       [getBrowserContext, lazyGetBrowser],
