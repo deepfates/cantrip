@@ -19,12 +19,14 @@
  *   bun run examples/14_rlm_browser.ts --headed          # visible browser
  *   bun run examples/14_rlm_browser.ts --context data.json
  *   bun run examples/14_rlm_browser.ts --openai
+ *   bun run examples/14_rlm_browser.ts --gemini
  */
 
 import { createRlmAgent } from "../src/rlm/service";
 import { runRepl } from "../src/agent/repl";
 import { ChatAnthropic } from "../src/llm/anthropic/chat";
 import { ChatOpenAI } from "../src/llm/openai/chat";
+import { ChatGoogle } from "../src/llm/google/chat";
 import { BrowserContext } from "../src/tools/builtin/browser_context";
 import {
   createRlmConsoleRenderer,
@@ -36,6 +38,7 @@ async function main() {
   const args = process.argv.slice(2);
   let contextPath = "";
   let useOpenAI = false;
+  let useGemini = false;
   let headed = false;
   let verbose = false;
   const queryArgs: string[] = [];
@@ -46,6 +49,8 @@ async function main() {
       i++;
     } else if (args[i] === "--openai") {
       useOpenAI = true;
+    } else if (args[i] === "--gemini") {
+      useGemini = true;
     } else if (args[i] === "--headed") {
       headed = true;
     } else if (args[i] === "--verbose" || args[i] === "-v") {
@@ -75,11 +80,15 @@ async function main() {
     console.error(`Data file not found: ${contextPath}`);
   }
 
-  const llm = useOpenAI
-    ? new ChatOpenAI({ model: process.env.OPENAI_MODEL ?? "gpt-5-mini" })
-    : new ChatAnthropic({
-        model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
-      });
+  const llm = useGemini
+    ? new ChatGoogle({
+        model: process.env.GOOGLE_MODEL ?? "gemini-3-flash-preview",
+      })
+    : useOpenAI
+      ? new ChatOpenAI({ model: process.env.OPENAI_MODEL ?? "gpt-5-mini" })
+      : new ChatAnthropic({
+          model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
+        });
 
   // Launch browser
   console.error(`Launching ${headed ? "headed" : "headless"} browser...`);
