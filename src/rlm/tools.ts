@@ -211,7 +211,17 @@ export async function registerRlmFunctions(options: {
       const chunkResults = await Promise.all(
         chunk.map(async (task: any, j: number) => {
           const idx = i + j;
-          let q = typeof task === "string" ? task : (task.query ?? task.input);
+          let q =
+            typeof task === "string"
+              ? task
+              : task != null
+                ? (task.query ?? task.input)
+                : undefined;
+          if (typeof q !== "string") {
+            throw new Error(
+              `llm_batch: task[${idx}].query must be a string, got ${typeof q}`,
+            );
+          }
           const c =
             typeof task === "object"
               ? (task.context ?? task.subContext)

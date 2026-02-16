@@ -5,7 +5,7 @@
  * The agent can browse the web, interact with pages, and use the full RLM
  * toolkit (code execution, sub-agent delegation) via your ACP-enabled editor.
  *
- * Optional memory management: Older conversation turns are moved to a 
+ * Optional memory management: Older conversation turns are moved to a
  * searchable sandbox context, keeping the active prompt window small.
  *
  * Browser functions are available directly in the sandbox as blocking calls:
@@ -22,6 +22,8 @@
  *   bun run examples/15_acp_rlm_browser.ts
  *   bun run examples/15_acp_rlm_browser.ts --headed  # visible browser
  *   bun run examples/15_acp_rlm_browser.ts --memory 5  # sliding window with 5 turn history
+ *   bun run examples/15_acp_rlm_browser.ts --gemini  # use Google Gemini instead of Claude
+ *   bun run examples/15_acp_rlm_browser.ts --openai  # use OpenAI instead of Claude
  *
  * Example VS Code settings.json:
  * {
@@ -36,6 +38,8 @@
 
 import "./env";
 import { ChatAnthropic } from "../src/llm/anthropic/chat";
+import { ChatOpenAI } from "../src/llm/openai/chat";
+import { ChatGoogle } from "../src/llm/google/chat";
 import { createRlmAgent, createRlmAgentWithMemory } from "../src/rlm/service";
 import { serveCantripACP, createAcpProgressCallback } from "../src/acp";
 import { BrowserContext } from "../src/tools/builtin/browser_context";
@@ -44,6 +48,8 @@ import { BrowserContext } from "../src/tools/builtin/browser_context";
 const args = process.argv.slice(2);
 let headed = false;
 let windowSize: number | null = null;
+let useOpenAI = false;
+let useGemini = false;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--headed") {
@@ -51,13 +57,23 @@ for (let i = 0; i < args.length; i++) {
   } else if (args[i] === "--memory" && args[i + 1]) {
     windowSize = parseInt(args[i + 1], 10);
     i++;
+  } else if (args[i] === "--openai") {
+    useOpenAI = true;
+  } else if (args[i] === "--gemini") {
+    useGemini = true;
   }
 }
 
 serveCantripACP(async ({ params, sessionId, connection }) => {
-  const llm = new ChatAnthropic({
-    model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
-  });
+  const llm = useGemini
+    ? new ChatGoogle({
+        model: process.env.GOOGLE_MODEL ?? "gemini-3-flash-preview",
+      })
+    : useOpenAI
+      ? new ChatOpenAI({ model: process.env.OPENAI_MODEL ?? "gpt-5-mini" })
+      : new ChatAnthropic({
+          model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
+        });
 
   const onProgress = createAcpProgressCallback(sessionId, connection);
 
@@ -91,7 +107,9 @@ serveCantripACP(async ({ params, sessionId, connection }) => {
     console.error("No memory window (full history retained)");
     const { agent, sandbox } = await createRlmAgent({
       llm,
-      context: { note: "No external data loaded. Use browser to gather information." },
+      context: {
+        note: "No external data loaded. Use browser to gather information.",
+      },
       maxDepth: 1,
       browserContext,
       onProgress,
