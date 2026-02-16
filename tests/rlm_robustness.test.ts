@@ -1,12 +1,20 @@
 /**
- * Tests for the correctness fixes surfaced by Codex review:
+ * RLM robustness tests:
  * 1. safeStringify — handles cyclic/non-serializable data
  * 2. llm_batch — validates task queries before calling .slice()
  * 3. Browser profile filtering in system prompts
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, afterEach } from "bun:test";
 import { safeStringify } from "../src/rlm/tools";
-import { getRlmSystemPrompt, getRlmMemorySystemPrompt } from "../src/rlm/prompt";
+import {
+  getRlmSystemPrompt,
+  getRlmMemorySystemPrompt,
+} from "../src/rlm/prompt";
+import { createRlmAgent } from "../src/rlm/service";
+import { JsAsyncContext } from "../src/tools/builtin/js_async_context";
+import type { BaseChatModel } from "../src/llm/base";
+import type { AnyMessage } from "../src/llm/messages";
+import type { ChatInvokeCompletion } from "../src/llm/views";
 
 // ---------------------------------------------------------------------------
 // 1. safeStringify
@@ -71,10 +79,20 @@ describe("browser profile filtering in system prompts", () => {
   test("readonly profile omits write actions and tabs", () => {
     // A restricted set: only selectors, navigation, and read-only functions
     const readonlyFns = new Set([
-      "button", "link", "text", "textBox", "$",
-      "near", "above", "below",
-      "goto", "currentURL", "title",
-      "evaluate", "waitFor", "screenshot",
+      "button",
+      "link",
+      "text",
+      "textBox",
+      "$",
+      "near",
+      "above",
+      "below",
+      "goto",
+      "currentURL",
+      "title",
+      "evaluate",
+      "waitFor",
+      "screenshot",
     ]);
 
     const prompt = getRlmSystemPrompt({
@@ -110,8 +128,12 @@ describe("browser profile filtering in system prompts", () => {
 
   test("memory prompt respects browser profile filtering", () => {
     const readonlyFns = new Set([
-      "button", "link", "text",
-      "goto", "currentURL", "title",
+      "button",
+      "link",
+      "text",
+      "goto",
+      "currentURL",
+      "title",
       "evaluate",
     ]);
 
@@ -147,13 +169,37 @@ describe("browser profile filtering in system prompts", () => {
   test("interactive profile includes actions but not emulation", () => {
     // Interactive profile: selectors, actions, navigation, but no emulation/cookies
     const interactiveFns = new Set([
-      "button", "link", "text", "textBox", "$",
-      "near", "above", "below", "toLeftOf", "toRightOf",
-      "click", "doubleClick", "write", "clear", "press",
-      "hover", "focus", "scrollTo", "scrollDown", "scrollUp",
-      "goto", "reload", "goBack", "goForward", "currentURL", "title",
-      "evaluate", "waitFor", "screenshot",
-      "accept", "dismiss",
+      "button",
+      "link",
+      "text",
+      "textBox",
+      "$",
+      "near",
+      "above",
+      "below",
+      "toLeftOf",
+      "toRightOf",
+      "click",
+      "doubleClick",
+      "write",
+      "clear",
+      "press",
+      "hover",
+      "focus",
+      "scrollTo",
+      "scrollDown",
+      "scrollUp",
+      "goto",
+      "reload",
+      "goBack",
+      "goForward",
+      "currentURL",
+      "title",
+      "evaluate",
+      "waitFor",
+      "screenshot",
+      "accept",
+      "dismiss",
     ]);
 
     const prompt = getRlmSystemPrompt({
@@ -170,5 +216,116 @@ describe("browser profile filtering in system prompts", () => {
     expect(prompt).not.toContain("emulateDevice");
     expect(prompt).not.toContain("setCookie");
     expect(prompt).not.toContain("openTab(url)");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2. llm_batch — validates task queries before calling .slice()
+// ---------------------------------------------------------------------------
+
+class MockLlm implements BaseChatModel {
+  model = "mock";
+  provider = "mock";
+  name = "mock";
+  private callCount = 0;
+
+  constructor(
+    private responses: ((messages: AnyMessage[]) => ChatInvokeCompletion)[],
+  ) {}
+
+  async ainvoke(messages: AnyMessage[]): Promise<ChatInvokeCompletion> {
+    const idx = Math.min(this.callCount, this.responses.length - 1);
+    this.callCount++;
+    const res = this.responses[idx](messages);
+    return {
+      ...res,
+      usage: res.usage ?? {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      },
+    };
+  }
+}
+
+describe("llm_batch input validation", () => {
+  let activeSandbox: JsAsyncContext | null = null;
+
+  afterEach(() => {
+    if (activeSandbox) {
+      activeSandbox.dispose();
+      activeSandbox = null;
+    }
+  });
+
+  test("rejects batch tasks with missing query", async () => {
+    const mockLlm = new MockLlm([
+      // First call: the agent emits sandbox code with a malformed batch
+      (_msgs) => ({
+        content: "Batching",
+        tool_calls: [
+          {
+            id: "t1",
+            type: "function" as const,
+            function: {
+              name: "js",
+              arguments: JSON.stringify({
+                code: `try {
+  llm_batch([{context: "no query here"}]);
+  submit_answer("should not reach");
+} catch(e) {
+  submit_answer("caught: " + e.message);
+}`,
+              }),
+            },
+          },
+        ],
+      }),
+    ]);
+
+    const { agent, sandbox } = await createRlmAgent({
+      llm: mockLlm,
+      context: "test",
+      maxDepth: 1,
+    });
+    activeSandbox = sandbox;
+
+    const result = await agent.query("Start");
+    expect(result).toContain("llm_batch: task[0].query must be a string");
+  });
+
+  test("rejects null batch task", async () => {
+    const mockLlm = new MockLlm([
+      (_msgs) => ({
+        content: "Batching",
+        tool_calls: [
+          {
+            id: "t1",
+            type: "function" as const,
+            function: {
+              name: "js",
+              arguments: JSON.stringify({
+                code: `try {
+  llm_batch([null]);
+  submit_answer("should not reach");
+} catch(e) {
+  submit_answer("caught: " + e.message);
+}`,
+              }),
+            },
+          },
+        ],
+      }),
+    ]);
+
+    const { agent, sandbox } = await createRlmAgent({
+      llm: mockLlm,
+      context: "test",
+      maxDepth: 1,
+    });
+    activeSandbox = sandbox;
+
+    const result = await agent.query("Start");
+    expect(result).toContain("llm_batch: task[0].query must be a string");
   });
 });
