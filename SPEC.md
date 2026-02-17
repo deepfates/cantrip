@@ -45,6 +45,7 @@ If the entity produces a text-only response (no code, no gate calls) and `done` 
 - **LOOP-3**: When the `done` gate is called, the loop MUST stop after processing that gate. Any remaining gate calls in the same utterance MAY be skipped.
 - **LOOP-4**: When a ward triggers truncation, the loop MUST stop. The implementation SHOULD generate a summary of what was accomplished before the entity was cut off.
 - **LOOP-5**: The entity MUST receive the full context (call + all prior turns) on every iteration. The context grows monotonically within a thread (but see Chapter 6 on folding).
+- **LOOP-6**: If `done` is NOT required and the entity produces a text-only response (no gate calls), the loop MUST treat that as implicit termination. If `done` IS required, a text-only response MUST NOT terminate the loop.
 
 ### 1.4 The cantrip (the recipe)
 
