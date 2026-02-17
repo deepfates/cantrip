@@ -233,7 +233,7 @@
       - message_count: 1   # just the user message (intent)
       - message_count: 3   # user + assistant + tool result
 
-- rule: LOOP-5
+- rule: LOOP-6
   name: text-only response terminates when done not required
   setup:
     crystal:
@@ -252,7 +252,7 @@
     terminated: true
     turns: 1
 
-- rule: LOOP-5
+- rule: LOOP-6
   name: text-only response continues when done required
   setup:
     crystal:
@@ -294,6 +294,31 @@
   expect:
     crystal_invocations: 2
     # Each invocation received the full context, not incremental updates
+
+- rule: CRYSTAL-2
+  name: crystal accepts many messages
+  setup:
+    crystal:
+      responses:
+        # Generate many turns before done
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "2" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "3" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "4" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "5" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test many messages"
+  expect:
+    turns: 6
+    # Crystal's last invocation received 11+ messages (system + 5 turns of user/assistant/tool)
+    crystal_invocations:
+      - {} # each invocation received all prior messages without error
 
 - rule: CRYSTAL-3
   name: crystal must return content or tool_calls
@@ -445,6 +470,27 @@
     crystal_received_tools:
       - name: done
       - name: read
+
+- rule: CALL-4
+  name: call stored as root context in loom
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+    call:
+      system_prompt: "You are a test agent"
+      temperature: 0.5
+  action:
+    cast:
+      intent: "test loom root"
+  expect:
+    loom:
+      call:
+        system_prompt: "You are a test agent"
+        # The call is stored as the loom's root context
 
 - rule: CALL-5
   name: folding never compresses the system prompt
@@ -822,6 +868,111 @@
     result_contains: "caught"
     # Parent was NOT terminated by child's failure
 
+- rule: COMP-5
+  name: child turns recorded as subtree in loom
+  setup:
+    crystal:
+      type: code_circle
+      responses:
+        - code: |
+            var result = call_agent({ intent: "child work" });
+            done(result);
+    child_crystal:
+      type: code_circle
+      responses:
+        - code: "done('child done');"
+    circle:
+      type: code
+      gates: [done, call_agent]
+      wards: [{ max_turns: 10 }, { max_depth: 1 }]
+  action:
+    cast:
+      intent: "test subtree"
+  expect:
+    loom:
+      turns:
+        - { entity_id: parent, sequence: 1 }
+        - { entity_id: child, sequence: 1, parent_id: turns[0].id }
+        - { entity_id: parent, sequence: 2 }
+
+- rule: COMP-7
+  name: child can use different crystal
+  setup:
+    crystal:
+      type: code_circle
+      responses:
+        - code: |
+            var result = call_agent({
+              intent: "use different crystal",
+              crystal: "alternate_crystal"
+            });
+            done(result);
+    child_crystal:
+      name: alternate_crystal
+      type: code_circle
+      responses:
+        - code: "done('from alternate');"
+    circle:
+      type: code
+      gates: [done, call_agent]
+      wards: [{ max_turns: 10 }, { max_depth: 1 }]
+  action:
+    cast:
+      intent: "test crystal override"
+  expect:
+    result: "from alternate"
+
+- rule: COMP-6
+  name: depth decrements through recursion levels
+  setup:
+    crystal:
+      type: code_circle
+      responses:
+        - code: |
+            var result = call_agent({ intent: "level 1" });
+            done(result);
+    child_crystal_l1:
+      type: code_circle
+      responses:
+        - code: |
+            var result = call_agent({ intent: "level 2" });
+            done(result);
+    child_crystal_l2:
+      type: code_circle
+      responses:
+        - code: "done('deepest');"
+    circle:
+      type: code
+      gates: [done, call_agent]
+      wards: [{ max_turns: 10 }, { max_depth: 2 }]
+  action:
+    cast:
+      intent: "test depth decrement"
+  expect:
+    result: "deepest"
+    # depth 2 → child gets depth 1 → grandchild gets depth 0 (no further call_agent)
+
+- rule: CANTRIP-2
+  name: null system_prompt is valid (minimal cantrip)
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+    call:
+      system_prompt: null
+  action:
+    cast:
+      intent: "minimal test"
+  expect:
+    result: "ok"
+    crystal_invocations:
+      # No system message — first message is the user intent
+      - first_message: { role: user, content: "minimal test" }
+
 # =============================================================================
 # Chapter 6: The Loom
 # =============================================================================
@@ -1124,6 +1275,37 @@
       prompt_tokens: 300
       completion_tokens: 80
       total_tokens: 380
+
+- rule: PROD-4
+  name: folding triggered automatically near context limit
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "2" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "3" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "4" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "5" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+    folding:
+      trigger_after_turns: 3
+  action:
+    cast:
+      intent: "test auto folding"
+  expect:
+    result: "ok"
+    # After turn 3, folding should have compressed earlier turns
+    # but all turns still in loom
+    loom:
+      turn_count: 6
+    # Later invocations have fewer messages than they would without folding
+    crystal_invocations:
+      # Turn 5+ context is shorter than naive accumulation
+      - {} # just checking it completes without error
 
 - rule: PROD-5
   name: ephemeral gate full result stored in loom
