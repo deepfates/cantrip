@@ -1,6 +1,8 @@
 # Cantrip Specification
 
-> *"Neither science nor sorcery have defeated Goliath. Perhaps a combination of the two will be more effective. The cantrips have been spoken. The patterns of force are aligned. Now it is up to your machine, Xanatos."*
+>"Neither science nor sorcery have defeated Goliath. Perhaps a combination of the two will be more effective. 
+>
+>The cantrips have been spoken. The patterns of force are aligned. Now it is up to your machine, Xanatos."
 >
 > — Gargoyles: Reawakening (1995)
 
@@ -17,7 +19,7 @@ To make it do things, you close the loop. You take the model's output, run it as
 
 This is call and response. You draw a circle, you speak into it, something answers. The answer changes what you say next. The repetition is the mechanism — each turn through the loop brings the model closer to the task or reveals why the task is harder than it looked. The loop continues until the work is done or a limit is reached.
 
-This document describes the parts of that loop — what they are, what they're called, how they compose, and what you can build with them. There are eleven terms. Three are fundamental: the **crystal** (the model), the **call** (the invocation that shapes it), and the **circle** (the environment it acts in). Everything else is what happens when you put those three together and let the loop run.
+This document describes the parts of that loop — what they are, what they're called, how they compose, and what you can build with them. There are eleven terms. Three are fundamental: the **crystal** (the model), the **call** (the invocation that shapes it), and the **circle** (the environment it acts in). Everything else is what happens when you put those three together and let the loop run. Existing terms — "agent," "tool," "environment" — are overloaded across frameworks and carry assumptions from specific implementations. These eleven terms are introduced to be unambiguous within this system.
 
 Cantrip's vocabulary describes hierarchical agent architectures naturally — from a chat interface to a code-executing RLM (Recursive Language Model — the pattern where data lives in the environment as program state and the entity explores it through code, rather than cramming context into the prompt) to a multi-agent system where parent entities delegate to children. The same eleven terms apply across this range. Only the circle's design changes. A chat window where you talk to a model is a cantrip with a human circle. A tool-calling agent that invokes JSON functions is a cantrip whose action space is just its gates. A code circle — where the entity writes and runs arbitrary programs in a sandbox — is the most expressive case, the largest action space, and gets the most coverage in this document. Peer-to-peer and non-tree topologies are possible extensions but not the focus here.
 
@@ -139,6 +141,41 @@ The mapping is structural, not formal. Cantrip's terms parallel RL concepts in t
 | Environment reset | New entity, clean circle | Forking is NOT a reset — it continues from prior state |
 
 The loom's relationship to modern RL methods is developed fully in Chapter 6.
+
+### 1.6 A complete example
+
+Here is one cantrip lifecycle, end to end. A file-processing task: count the words in every `.txt` file in a directory and report the total.
+
+**The cantrip.** Crystal: any model that supports tool calling. Call: a system prompt ("You are a file-processing assistant. Use code to solve tasks efficiently."), default hyperparameters, and three gate definitions: `read(path) -> string`, `list_dir(path) -> string[]`, and `done(answer)`. Circle: a code sandbox with those three gates, a ward of max 10 turns, and `require_done: true`. The circle's filesystem root is `/data`.
+
+**The intent.** "Count the total number of words across all .txt files in /data and return the count."
+
+**Turn 1.** The entity is cast. It receives the call and intent. It produces an utterance:
+```
+const files = list_dir("/data");
+```
+The circle executes the gate call. Observation: `GateResult { tool_call_id: "tc_1", gate: "list_dir", ok: true, result: ["a.txt", "b.txt", "c.txt"] }`.
+
+**Turn 2.** The entity sees three files. It reads all of them:
+```
+const a = read("/data/a.txt");
+const b = read("/data/b.txt");
+const c = read("/data/c.txt");
+```
+Observation: three `GateResult` objects, each with `ok: true` and the file contents in `result`. The sandbox now holds variables `files`, `a`, `b`, `c`.
+
+**Turn 3.** The entity counts words and terminates:
+```
+const total = [a, b, c]
+  .map(text => text.split(/\s+/).filter(w => w.length > 0).length)
+  .reduce((sum, n) => sum + n, 0);
+done(total);
+```
+Observation: `GateResult { tool_call_id: "tc_7", gate: "done", ok: true, result: 1547 }`. The loop terminates.
+
+**The loom.** Three turns, one thread. Turn 1: `parent_id: null`, `terminated: false`. Turn 2: `parent_id: turn_1`, `terminated: false`. Turn 3: `parent_id: turn_2`, `terminated: true`. Each turn records token usage, duration, utterance, and observation. The thread is a complete, terminated episode — usable as training data, a debugging trace, or a template for forking.
+
+The same eleven terms, applied to a simple task: a crystal in a circle, shaped by a call, pursuing an intent, producing turns recorded in a loom. The entity appeared at turn 1 and vanished at turn 3. The thread persists.
 
 ---
 
@@ -331,6 +368,20 @@ The entity never has to wonder whether a gate has finished. It calls a gate, rec
 
 Swallowing errors is a common implementation mistake that silently cripples the entity. If a file does not exist, the entity needs to see the error so it can try a different path. If a network request times out, the entity needs to know so it can retry or adjust its strategy. Errors are observations. They carry information.
 
+The canonical shape of a gate result is:
+
+```
+GateResult {
+  tool_call_id: string   // correlates to the crystal's tool_call
+  gate: string           // gate name
+  ok: boolean            // success or failure
+  result?: any           // return value on success
+  error?: { name: string, message: string }  // on failure
+}
+```
+
+The observation per turn is an ordered list of `GateResult` objects — one per gate call in the utterance. This is what the entity sees when it looks at what happened. The `tool_call_id` links each result back to the crystal's original invocation, so the entity (and the crystal on the next turn) can match responses to requests unambiguously. When a gate succeeds, `ok` is true and `result` contains the return value. When a gate fails, `ok` is false and `error` carries a structured description of what went wrong.
+
 > **CIRCLE-7**: If multiple gate calls appear in a single utterance, the circle MUST execute them in order and return each result as an entry within that turn's single composite observation. The observation is one object per turn (preserving LOOP-1's strict alternation), with an ordered list of per-gate results inside it. Implementations MAY execute independent gate calls in parallel.
 
 ### 4.4 Wards
@@ -387,6 +438,10 @@ The canonical threat is the lethal trifecta: a circle that has access to private
 
 The defense is subtractive. Remove one leg of the trifecta by warding off the relevant gate. A circle that processes untrusted content and reads private data but cannot make network requests is safe against exfiltration. A circle that has network access and reads private data but never processes untrusted input is also safe. Alternatively, isolate capabilities across separate circles — one circle handles untrusted content with network access but no private data, another handles private data with no network access.
 
+**Prompt injection** is the specific threat that makes circle design non-optional. Untrusted content processed by the entity — user-supplied documents, web pages, emails, any data the entity did not generate itself — may contain instructions that attempt to override the call. The entity cannot reliably distinguish between its own instructions and adversarial text embedded in its input. This is not a bug in any particular model. It is a structural property of systems that process natural language: the control channel and the data channel are the same channel.
+
+Wards cannot prevent the entity from being influenced by its input — they can only prevent the entity's actions from reaching dangerous gates. The defense against prompt injection is circle design: isolate the processing of untrusted content from circles that have access to sensitive data or external communication. A child entity that summarizes untrusted documents should not have the `fetch` gate. A circle that handles outbound email should not process unvetted attachments. The trifecta framework above gives the pattern: remove one leg, and the injection has no path to harm.
+
 Security is not a feature you bolt on. It is what you carve away. Drawing good circles — choosing which gates belong together and which must be separated — is the practitioner's art.
 
 ---
@@ -429,6 +484,8 @@ The parent blocks while the child runs. This is synchronous from the parent's pe
 If the child fails — throws an error rather than calling `done` — the error comes back as the gate result. The parent sees it as an observation and decides what to do. A child's failure does not kill the parent.
 
 > **COMP-8**: If a child entity fails (throws an error, not `done`), the error MUST be returned to the parent as the gate result. The parent MUST NOT be terminated by a child's failure.
+
+> **COMP-9**: When a parent entity is terminated or truncated, all active child entities MUST be truncated with reason `parent_terminated`. Child turns up to the cancellation point are preserved in the loom. The child's truncation is recorded as any other truncation — the loom distinguishes it only by the reason field.
 
 ### 5.2 Batch composition
 
@@ -626,6 +683,8 @@ A forked entity starts with the context from the fork point — all turns from r
 
 > **LOOM-4**: Forking from turn N MUST produce a new entity whose initial context is the path from root to turn N. The original thread MUST be unaffected.
 
+Implementations MUST declare how sandbox state is captured at fork points. Two strategies are valid. **Snapshot** serializes the sandbox's current state — variables, data structures, file contents — into a portable image that the forked entity inherits. **Replay** re-executes the entity's code from the root turn up to the fork point, reconstructing the sandbox state from scratch. Both produce the same logical state; they differ in cost and in what they can capture. Snapshot is fast but may struggle with imperative state that resists serialization — open file handles, live network connections, mutable objects with circular references. Replay is slow but faithful, because it reconstructs state through the same code that built it. The loom MUST record which strategy was used for each fork, so that consumers know how the forked entity's initial state was established.
+
 Forking is not an environment reset. The forked entity continues from the accumulated state at the fork point. It has the same context the original entity had at that moment — the same variables in the sandbox, the same history of actions and observations. What differs is the future. The original entity went one way from turn 3. The forked entity goes another. Both paths are recorded. Both threads persist.
 
 This is where the loom's tree structure earns its keep. A flat log could record one thread. A tree records every branch, every alternative path, every "what if we had gone left instead of right." The loom is a map of the roads taken and not taken, and forking is how you explore new roads from old waypoints.
@@ -665,6 +724,30 @@ There are two responses to this pressure, and they are not the same thing.
 
 Both techniques preserve the loom — neither destroys history. The difference is in how the entity relates to its past. Folding gives the entity programmatic access to its history through code. Compaction gives the entity a lossy summary in the prompt. Folding is a design choice. Compaction is a pressure valve.
 
+**Who triggers folding.** The circle or harness triggers folding automatically, per PROD-4. The entity does not decide when to fold — it may not even know it has happened, though it MUST be able to tell (see fidelity below). The circle monitors context size against the crystal's advertised window and folds when the threshold is crossed.
+
+**Trigger threshold.** Folding SHOULD trigger when the entity's accumulated context exceeds 80% of the crystal's advertised window. The remaining 20% provides headroom for the next turn's utterance and observation. Implementations MAY use a different threshold, but MUST document it.
+
+**What form the folded state takes.** Folding replaces a range of detailed turns in the entity's working context with a summary node — a single message that captures the substance of those turns in compressed form. The full turns remain in the loom, untouched. The summary node is injected into the prompt in place of the turns it replaces. In a code circle, folding MAY also encode summarized state as variables in the sandbox, giving the entity programmatic access to its compressed history.
+
+**Fidelity guarantees.** The entity MUST be able to distinguish folded context from unfolded context. A folded summary MUST be explicitly marked as such — for example, by a prefix like `[Folded: turns 1-20]` or an equivalent structural marker. The entity should never mistake a summary for a verbatim record of what happened. This marking is what preserves the entity's epistemic honesty: it knows what it remembers directly and what it knows only through summary.
+
+**Worked example.** An entity has run for 30 turns. The crystal's window is 128k tokens. At turn 25, the accumulated context — call, intent, and 24 turns of history — reaches 102k tokens (80% of 128k). The circle triggers folding.
+
+```
+// Before folding (entity's working context):
+// [call] [intent] [turn 1] [turn 2] ... [turn 24] [turn 25 utterance]
+// Total: ~102k tokens
+
+// After folding:
+// [call] [intent] [folded summary: turns 1-18] [turn 19] ... [turn 25 utterance]
+// Total: ~45k tokens
+//
+// The summary replaces turns 1-18 with a ~3k token digest.
+// Turns 19-25 remain verbatim — recent context is preserved in full.
+// The loom still contains every turn in complete detail.
+```
+
 The call is exempt from both. The system prompt, the hyperparameters, the gate definitions — these survive intact regardless of how aggressively the context is managed. The entity may lose detailed memory of what it did on turn three, but it never loses its sense of who it is and what it can do.
 
 ### 6.9 The loom as entity-readable state
@@ -689,7 +772,7 @@ This chapter states the rules for that discipline. The conceptual ideas — ephe
 
 For context management strategies including folding and compaction, see §6.8. The rules below govern production behavior.
 
-> **PROD-4**: Folding MUST be triggered automatically when context approaches the crystal's limit. The trigger threshold is implementation-defined.
+> **PROD-4**: Folding MUST be triggered automatically when context approaches the crystal's limit. Implementations SHOULD trigger folding when context exceeds 80% of the crystal's advertised window (see §6.8 for the rationale). Implementations that use a different threshold MUST document it.
 
 ### 7.2 Ephemeral gates
 
@@ -727,7 +810,7 @@ The remaining production concerns — protocols, retries, token tracking, stream
 
 > **PROD-1**: Protocol adapters MUST NOT alter the entity's behavior. The same cantrip MUST produce the same behavior regardless of whether it is accessed via CLI, HTTP, or ACP.
 
-> **PROD-2**: Retry logic MUST be transparent to the entity. A retried crystal invocation MUST appear as a single turn, not multiple turns. Implementations SHOULD retry rate limits (429) and server errors (5xx) with exponential backoff. Client errors (4xx except 429) MUST NOT be retried.
+> **PROD-2**: Retry logic MUST be transparent to the entity. A retried crystal invocation MUST appear as a single turn, not multiple turns. Implementations SHOULD retry rate limits (429) and server errors (5xx) with exponential backoff starting at 1 second, up to a maximum of 3 retries. Client errors (4xx except 429) MUST NOT be retried.
 
 > **PROD-3**: Token usage MUST be tracked per-turn and cumulatively per-entity.
 
@@ -741,19 +824,19 @@ Implementations SHOULD emit streaming events as they occur — reasoning traces,
 
 Quick reference. Terms are defined in context throughout the spec; this table is for lookup.
 
-| # | Term | Definition |
-|---|------|-----------|
-| 1 | **Crystal** | The model. Stateless: messages in, response out. |
-| 2 | **Call** | Immutable conditioning: system prompt + hyperparameters + gate definitions as text. |
-| 3 | **Gate** | Host function that crosses the circle's boundary. |
-| 4 | **Ward** | Subtractive restriction on the action space. |
-| 5 | **Circle** | The environment: sandbox + gates + wards. |
-| 6 | **Intent** | The goal. What the entity is trying to achieve. |
-| 7 | **Cantrip** | The recipe: crystal + call + circle. A value, not a process. |
-| 8 | **Entity** | What emerges when you cast a cantrip on an intent. The living instance. |
-| 9 | **Turn** | One cycle: entity acts, circle responds, state accumulates. |
-| 10 | **Thread** | One root-to-leaf path through the loom. A trajectory. |
-| 11 | **Loom** | The tree of all turns across all runs. Append-only. |
+| # | Term | Common alias | Definition |
+|---|------|-------------|-----------|
+| 1 | **Crystal** | model | The model. Stateless: messages in, response out. |
+| 2 | **Call** | config, conditioning | Immutable conditioning: system prompt + hyperparameters + gate definitions as text. |
+| 3 | **Gate** | tool, function | Host function that crosses the circle's boundary. |
+| 4 | **Ward** | constraint, restriction | Subtractive restriction on the action space. |
+| 5 | **Circle** | environment, sandbox | The environment: sandbox + gates + wards. |
+| 6 | **Intent** | task, goal | The goal. What the entity is trying to achieve. |
+| 7 | **Cantrip** | agent config | The recipe: crystal + call + circle. A value, not a process. |
+| 8 | **Entity** | agent instance | What emerges when you cast a cantrip on an intent. The living instance. |
+| 9 | **Turn** | step | One cycle: entity acts, circle responds, state accumulates. |
+| 10 | **Thread** | trajectory, trace | One root-to-leaf path through the loom. A trajectory. |
+| 11 | **Loom** | execution tree, replay buffer | The tree of all turns across all runs. Append-only. |
 
 The eleven terms have an internal structure: three primaries (crystal, call, circle), one emergent (entity — what appears when the three primaries are in relationship), and derived concepts that pair naturally (gate/ward, intent/thread, turn/loom). The cantrip is the manifest whole that contains all of them. This structure is not accidental. It reflects which concepts are fundamental, which are derived, and how they relate.
 
