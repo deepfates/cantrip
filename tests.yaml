@@ -1,0 +1,1001 @@
+# Cantrip Test Suite
+# Language-agnostic behavioral tests derived from SPEC.md
+#
+# Each test specifies:
+#   - rule: which behavioral rule it tests (e.g., LOOP-1)
+#   - name: human-readable description
+#   - setup: what to construct (crystal, circle, cantrip)
+#   - action: what to do (cast, query, fork, etc.)
+#   - expect: what must be true afterward
+#
+# Crystals in tests are deterministic fakes that return hardcoded responses.
+# This makes the tests reproducible without API keys.
+
+---
+
+# =============================================================================
+# Chapter 1: The Loop
+# =============================================================================
+
+- rule: LOOP-1
+  name: turns alternate between entity and circle
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "hello" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "say hello"
+  expect:
+    thread:
+      - role: entity
+      - role: circle
+    terminated: true
+
+- rule: LOOP-2
+  name: cantrip without max_turns ward is invalid
+  setup:
+    crystal:
+      responses:
+        - content: "hi"
+    circle:
+      gates: [done]
+      wards: []
+  action:
+    construct_cantrip: true
+  expect:
+    error: "cantrip must have at least one truncation ward"
+
+- rule: LOOP-2
+  name: cantrip without done gate and require_done is invalid
+  setup:
+    crystal:
+      responses:
+        - content: "stuck forever"
+    circle:
+      gates: []
+      wards: [{ max_turns: 10 }]
+    call:
+      require_done_tool: true
+  action:
+    construct_cantrip: true
+  expect:
+    error: "cantrip with require_done must have a done gate"
+
+- rule: LOOP-3
+  name: done gate stops the loop immediately
+  setup:
+    crystal:
+      responses:
+        - tool_calls:
+            - { gate: "echo", args: { text: "before" } }
+            - { gate: "done", args: { answer: "finished" } }
+            - { gate: "echo", args: { text: "after" } }
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test done ordering"
+  expect:
+    result: "finished"
+    gate_calls_executed: ["echo", "done"]
+    # "echo" with "after" was skipped because done was called
+
+- rule: LOOP-4
+  name: max turns ward truncates the loop
+  setup:
+    crystal:
+      responses:
+        # Crystal never calls done — just keeps going
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "2" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "3" } }]
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 2 }]
+  action:
+    cast:
+      intent: "count"
+  expect:
+    turns: 2
+    truncated: true
+    terminated: false
+
+- rule: LOOP-5
+  name: entity receives all prior turns as context
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "first" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      # The crystal records what messages it received on each invocation
+      record_inputs: true
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test context growth"
+  expect:
+    crystal_invocations:
+      - message_count: 1   # just the user message (intent)
+      - message_count: 3   # user + assistant + tool result
+
+- rule: LOOP-5
+  name: text-only response terminates when done not required
+  setup:
+    crystal:
+      responses:
+        - content: "The answer is 42"
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+    call:
+      require_done_tool: false
+  action:
+    cast:
+      intent: "what is the answer?"
+  expect:
+    result: "The answer is 42"
+    terminated: true
+    turns: 1
+
+- rule: LOOP-5
+  name: text-only response continues when done required
+  setup:
+    crystal:
+      responses:
+        - content: "thinking..."
+        - content: "still thinking..."
+        - tool_calls: [{ gate: "done", args: { answer: "42" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+    call:
+      require_done_tool: true
+  action:
+    cast:
+      intent: "what is the answer?"
+  expect:
+    result: "42"
+    turns: 3
+
+# =============================================================================
+# Chapter 2: The Crystal
+# =============================================================================
+
+- rule: CRYSTAL-1
+  name: crystal is stateless between invocations
+  setup:
+    crystal:
+      # A crystal that would behave differently if it had state
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "call 1" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "done" } }]
+      stateless: true  # implementation must verify no state leaks
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test statelessness"
+  expect:
+    crystal_invocations: 2
+    # Each invocation received the full context, not incremental updates
+
+- rule: CRYSTAL-3
+  name: crystal must return content or tool_calls
+  setup:
+    crystal:
+      responses:
+        - content: null
+          tool_calls: null
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test empty response"
+  expect:
+    error: "crystal returned neither content nor tool_calls"
+
+- rule: CRYSTAL-4
+  name: tool calls must have unique IDs
+  setup:
+    crystal:
+      responses:
+        - tool_calls:
+            - { id: "call_1", gate: "echo", args: { text: "a" } }
+            - { id: "call_1", gate: "echo", args: { text: "b" } }
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test duplicate IDs"
+  expect:
+    error: "duplicate tool call ID"
+
+- rule: CRYSTAL-5
+  name: required tool_choice forces gate use
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+    call:
+      tool_choice: "required"
+  action:
+    cast:
+      intent: "test required"
+  expect:
+    # Crystal was invoked with tool_choice="required"
+    crystal_received_tool_choice: "required"
+    terminated: true
+
+- rule: CRYSTAL-6
+  name: provider responses normalized to crystal contract
+  setup:
+    crystal:
+      provider: "mock_openai"
+      raw_response:
+        choices:
+          - message:
+              content: "hello"
+              tool_calls: []
+            finish_reason: "stop"
+        usage:
+          prompt_tokens: 10
+          completion_tokens: 5
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test normalization"
+  expect:
+    # Response was normalized to the crystal contract
+    result: "hello"
+    usage:
+      prompt_tokens: 10
+      completion_tokens: 5
+
+# =============================================================================
+# Chapter 3: The Call
+# =============================================================================
+
+- rule: CALL-1
+  name: call is immutable after construction
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+    call:
+      system_prompt: "You are helpful"
+      temperature: 0.7
+  action:
+    cast:
+      intent: "test immutability"
+    then:
+      mutate_call:
+        system_prompt: "You are evil"
+  expect:
+    error: "call is immutable"
+
+- rule: CALL-2
+  name: system prompt is first message on every invocation
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+    call:
+      system_prompt: "You are a test agent"
+  action:
+    cast:
+      intent: "test system prompt presence"
+  expect:
+    crystal_invocations:
+      - first_message:
+          role: system
+          content: "You are a test agent"
+      - first_message:
+          role: system
+          content: "You are a test agent"
+
+- rule: CALL-3
+  name: gate definitions derived from circle
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates:
+        - name: done
+          parameters: { type: object, properties: { answer: { type: string } } }
+        - name: read
+          parameters: { type: object, properties: { path: { type: string } } }
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test gate definitions"
+  expect:
+    crystal_received_tools:
+      - name: done
+      - name: read
+
+- rule: CALL-5
+  name: folding never compresses the system prompt
+  setup:
+    crystal:
+      responses:
+        # Generate enough turns to trigger folding
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "2" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "3" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "4" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "5" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+    call:
+      system_prompt: "Never forget this prompt"
+    folding:
+      trigger_after_turns: 3
+  action:
+    cast:
+      intent: "test folding preserves call"
+  expect:
+    # After folding, the system prompt is still the first message
+    crystal_invocations:
+      - first_message: { role: system, content: "Never forget this prompt" }
+      # invocation after folding still has the system prompt
+      - first_message: { role: system, content: "Never forget this prompt" }
+
+# =============================================================================
+# Chapter 4: The Circle
+# =============================================================================
+
+- rule: CIRCLE-1
+  name: circle must have done gate
+  setup:
+    crystal:
+      responses:
+        - content: "hi"
+    circle:
+      gates: []  # no done gate
+      wards: [{ max_turns: 10 }]
+  action:
+    construct_cantrip: true
+  expect:
+    error: "circle must have a done gate"
+
+- rule: CIRCLE-2
+  name: circle must have termination ward
+  # Same as LOOP-2 — tested above
+
+- rule: CIRCLE-5
+  name: gate errors returned as observations
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "failing_gate", args: {} }]
+        - tool_calls: [{ gate: "done", args: { answer: "recovered" } }]
+    circle:
+      gates:
+        - name: done
+        - name: failing_gate
+          behavior: throw
+          error: "something went wrong"
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test error handling"
+  expect:
+    result: "recovered"
+    turns: 2
+    turn_1_observation:
+      is_error: true
+      content_contains: "something went wrong"
+
+- rule: CIRCLE-6
+  name: wards enforced by circle not entity
+  setup:
+    crystal:
+      responses:
+        # Crystal tries to call a warded gate
+        - tool_calls: [{ gate: "fetch", args: { url: "http://evil.com" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done, fetch]
+      wards:
+        - { max_turns: 10 }
+        - { remove_gate: "fetch" }  # ward removes fetch
+  action:
+    cast:
+      intent: "test ward enforcement"
+  expect:
+    turn_1_observation:
+      is_error: true
+      content_contains: "gate not available"
+
+- rule: CIRCLE-7
+  name: multiple gate calls in one utterance executed in order
+  setup:
+    crystal:
+      responses:
+        - tool_calls:
+            - { gate: "echo", args: { text: "first" } }
+            - { gate: "echo", args: { text: "second" } }
+            - { gate: "done", args: { answer: "ok" } }
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test ordering"
+  expect:
+    gate_call_order: ["echo", "echo", "done"]
+    gate_results:
+      - "first"
+      - "second"
+      - "ok"
+
+- rule: CIRCLE-8
+  name: done gate returns its argument as the result
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "the final answer" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test done result"
+  expect:
+    result: "the final answer"
+
+- rule: CIRCLE-9
+  name: sandbox state persists across turns in code circle
+  setup:
+    crystal:
+      type: code_circle
+      responses:
+        - code: "var x = 42;"
+        - code: "done(x);"
+    circle:
+      type: code
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test state persistence"
+  expect:
+    result: 42
+
+- rule: CIRCLE-10
+  name: gate dependencies injected at construction
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "read", args: { path: "test.txt" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates:
+        - name: done
+        - name: read
+          dependencies:
+            root: "/test/data"
+      wards: [{ max_turns: 10 }]
+    filesystem:
+      "/test/data/test.txt": "hello world"
+  action:
+    cast:
+      intent: "read test.txt"
+  expect:
+    turn_1_observation:
+      content: "hello world"
+
+# =============================================================================
+# Chapter 5: Composition
+# =============================================================================
+
+- rule: COMP-1
+  name: child circle is subset of parent
+  setup:
+    crystal:
+      type: code_circle
+      responses:
+        - code: |
+            call_agent({
+              intent: "sub task",
+              gates: ["fetch"]  // parent doesn't have fetch
+            });
+    circle:
+      type: code
+      gates: [done, call_agent]  # no fetch
+      wards: [{ max_turns: 10 }, { max_depth: 1 }]
+  action:
+    cast:
+      intent: "test gate inheritance"
+  expect:
+    turn_1_observation:
+      is_error: true
+      content_contains: "cannot grant gate"
+
+- rule: COMP-2
+  name: call_agent blocks parent until child completes
+  setup:
+    crystal:
+      type: code_circle
+      responses:
+        - code: |
+            var result = call_agent({ intent: "compute 6*7" });
+            done(result);
+    child_crystal:
+      type: code_circle
+      responses:
+        - code: "done(42);"
+    circle:
+      type: code
+      gates: [done, call_agent]
+      wards: [{ max_turns: 10 }, { max_depth: 1 }]
+  action:
+    cast:
+      intent: "test blocking"
+  expect:
+    result: 42
+    # Parent received child's result synchronously
+
+- rule: COMP-3
+  name: call_agent_batch returns results in request order
+  setup:
+    crystal:
+      type: code_circle
+      responses:
+        - code: |
+            var results = call_agent_batch([
+              { intent: "return A" },
+              { intent: "return B" },
+              { intent: "return C" }
+            ]);
+            done(results.join(","));
+    child_crystal:
+      type: code_circle
+      # Children complete in reverse order (C, B, A)
+      # but results must be returned in request order
+      responses:
+        - code: "done('A');"
+        - code: "done('B');"
+        - code: "done('C');"
+    circle:
+      type: code
+      gates: [done, call_agent, call_agent_batch]
+      wards: [{ max_turns: 10 }, { max_depth: 1 }]
+  action:
+    cast:
+      intent: "test batch ordering"
+  expect:
+    result: "A,B,C"
+
+- rule: COMP-4
+  name: child entity has independent context
+  setup:
+    crystal:
+      type: code_circle
+      responses:
+        - code: "var secret = 'parent_data';"
+        - code: |
+            var result = call_agent({ intent: "read secret variable" });
+            done(result);
+    child_crystal:
+      type: code_circle
+      responses:
+        # Child tries to access parent's variable — should fail
+        - code: |
+            try { done(secret); }
+            catch(e) { done("undefined"); }
+    circle:
+      type: code
+      gates: [done, call_agent]
+      wards: [{ max_turns: 10 }, { max_depth: 1 }]
+  action:
+    cast:
+      intent: "test context isolation"
+  expect:
+    result: "undefined"
+
+- rule: COMP-6
+  name: max_depth 0 removes call_agent gate
+  setup:
+    crystal:
+      type: code_circle
+      responses:
+        - code: |
+            try { call_agent({ intent: "sub" }); done("should not reach"); }
+            catch(e) { done("blocked: " + e.message); }
+    circle:
+      type: code
+      gates: [done, call_agent]
+      wards: [{ max_turns: 10 }, { max_depth: 0 }]
+  action:
+    cast:
+      intent: "test depth limit"
+  expect:
+    result_contains: "blocked"
+
+- rule: COMP-8
+  name: child failure returns error to parent
+  setup:
+    crystal:
+      type: code_circle
+      responses:
+        - code: |
+            try {
+              var result = call_agent({ intent: "will fail" });
+              done("got: " + result);
+            } catch(e) {
+              done("caught: " + e.message);
+            }
+    child_crystal:
+      type: code_circle
+      responses:
+        - code: "throw new Error('child exploded');"
+    circle:
+      type: code
+      gates: [done, call_agent]
+      wards: [{ max_turns: 10 }, { max_depth: 1 }]
+  action:
+    cast:
+      intent: "test child failure"
+  expect:
+    result_contains: "caught"
+    # Parent was NOT terminated by child's failure
+
+# =============================================================================
+# Chapter 6: The Loom
+# =============================================================================
+
+- rule: LOOM-1
+  name: every turn recorded before next begins
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "2" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test recording"
+  expect:
+    loom:
+      turn_count: 3
+      turns:
+        - { sequence: 1, gate_calls: ["echo"] }
+        - { sequence: 2, gate_calls: ["echo"] }
+        - { sequence: 3, gate_calls: ["done"], terminated: true }
+
+- rule: LOOM-2
+  name: turns have unique IDs and parent references
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test turn structure"
+  expect:
+    loom:
+      turns:
+        - id: not_null
+          parent_id: null  # root turn
+        - id: not_null
+          parent_id: turns[0].id  # references previous turn
+
+- rule: LOOM-3
+  name: loom is append-only
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test append-only"
+    then:
+      delete_turn: 0
+  expect:
+    error: "loom is append-only"
+
+- rule: LOOM-3
+  name: reward can be assigned after creation
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test reward annotation"
+    then:
+      annotate_reward:
+        turn: 0
+        reward: 1.0
+  expect:
+    loom:
+      turns:
+        - reward: 1.0
+
+- rule: LOOM-4
+  name: fork from turn N preserves context up to N
+  setup:
+    crystal:
+      responses:
+        # Original run
+        - tool_calls: [{ gate: "echo", args: { text: "A" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "B" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "original" } }]
+      record_inputs: true
+    fork_crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "forked" } }]
+      record_inputs: true
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test forking"
+    then:
+      fork:
+        from_turn: 1  # fork after turn 1 (the "A" turn)
+        crystal: fork_crystal
+        intent: "continue from fork"
+  expect:
+    threads: 2
+    thread_0:
+      turns: 3
+      result: "original"
+    thread_1:
+      turns: 2  # turn 1 (shared) + forked turn
+      result: "forked"
+      # Forked crystal received context including turn 1 but not turns 2-3
+    fork_crystal_invocations:
+      - message_count_includes: "A"
+        message_count_excludes: "B"
+
+- rule: LOOM-5
+  name: folding preserves full history
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "2" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "3" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "4" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+    folding:
+      trigger_after_turns: 2
+  action:
+    cast:
+      intent: "test folding preserves history"
+  expect:
+    loom:
+      turn_count: 5  # all turns still in loom
+    # Even though folding compressed the working context,
+    # the full loom has all 5 turns
+
+- rule: LOOM-7
+  name: loom records terminated vs truncated
+  setup:
+    crystal_terminated:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    crystal_truncated:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "2" } }]
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 1 }]
+  action:
+    - cast:
+        crystal: crystal_terminated
+        intent: "will terminate"
+    - cast:
+        crystal: crystal_truncated
+        intent: "will be truncated"
+  expect:
+    thread_0:
+      last_turn: { terminated: true, truncated: false }
+    thread_1:
+      last_turn: { terminated: false, truncated: true }
+
+- rule: LOOM-8
+  name: child turns stored in parent loom
+  setup:
+    crystal:
+      type: code_circle
+      responses:
+        - code: |
+            var result = call_agent({ intent: "sub" });
+            done(result);
+    child_crystal:
+      type: code_circle
+      responses:
+        - code: "done(42);"
+    circle:
+      type: code
+      gates: [done, call_agent]
+      wards: [{ max_turns: 10 }, { max_depth: 1 }]
+  action:
+    cast:
+      intent: "test child in loom"
+  expect:
+    loom:
+      turn_count: 3  # parent turn 1, child turn 1, parent turn 2
+      turns:
+        - entity_id: parent
+          parent_id: null
+        - entity_id: child
+          parent_id: turns[0].id  # child's root references parent turn
+        - entity_id: parent
+          parent_id: turns[0].id  # parent continues from its own turn
+
+- rule: LOOM-9
+  name: turns record token usage and timing
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      usage: { prompt_tokens: 100, completion_tokens: 50 }
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test metadata"
+  expect:
+    loom:
+      turns:
+        - metadata:
+            tokens_prompt: 100
+            tokens_completion: 50
+            duration_ms: greater_than(0)
+            timestamp: not_null
+
+- rule: LOOM-10
+  name: thread extraction produces trajectory
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "2" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test extraction"
+    then:
+      extract_thread: 0
+  expect:
+    thread:
+      length: 3
+      - { utterance: not_null, observation: not_null }
+      - { utterance: not_null, observation: not_null }
+      - { utterance: not_null, observation: not_null, terminated: true }
+
+# =============================================================================
+# Chapter 7: Production
+# =============================================================================
+
+- rule: PROD-1
+  name: protocol does not alter entity behavior
+  # This is a design rule, not easily testable with I/O pairs.
+  # Implementations should verify this through integration tests.
+  skip: true
+
+- rule: PROD-2
+  name: retried invocation appears as single turn
+  setup:
+    crystal:
+      responses:
+        - error: { status: 429, message: "rate limited" }  # first attempt fails
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]   # retry succeeds
+      retry_behavior: true
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+    retry:
+      max_retries: 3
+      retryable_status_codes: [429]
+  action:
+    cast:
+      intent: "test retry"
+  expect:
+    turns: 1  # one turn, not two
+    result: "ok"
+    loom:
+      turn_count: 1
+
+- rule: PROD-3
+  name: cumulative token tracking
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+          usage: { prompt_tokens: 100, completion_tokens: 50 }
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+          usage: { prompt_tokens: 200, completion_tokens: 30 }
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test usage tracking"
+  expect:
+    cumulative_usage:
+      prompt_tokens: 300
+      completion_tokens: 80
+      total_tokens: 380
+
+- rule: PROD-5
+  name: ephemeral gate full result stored in loom
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "read_ephemeral", args: { path: "big.txt" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates:
+        - name: done
+        - name: read_ephemeral
+          ephemeral: true
+          result: "very large content here..."
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test ephemeral"
+  expect:
+    # Turn 2's context should NOT contain the full ephemeral result
+    crystal_invocations:
+      - {} # turn 1 — normal
+      - messages_exclude: "very large content here..."
+    # But the loom still has it
+    loom:
+      turns:
+        - observation_contains: "very large content here..."
