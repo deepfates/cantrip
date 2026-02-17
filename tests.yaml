@@ -14,8 +14,116 @@
 ---
 
 # =============================================================================
-# Chapter 1: The Loop
+# Chapter 1: The Loop — Cantrip, Intent, Entity
 # =============================================================================
+
+- rule: CANTRIP-1
+  name: cantrip requires crystal, call, and circle
+  setup:
+    crystal: null
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    construct_cantrip: true
+  expect:
+    error: "cantrip requires a crystal"
+
+- rule: CANTRIP-2
+  name: cantrip is reusable across intents
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "first" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "second" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    - cast: { intent: "first task" }
+    - cast: { intent: "second task" }
+  expect:
+    results: ["first", "second"]
+    entities: 2  # two independent entities produced
+
+- rule: CANTRIP-3
+  name: cantrip validates circle has done gate and truncation ward
+  # Same as CIRCLE-1 and CIRCLE-2 — tested below
+
+- rule: INTENT-1
+  name: casting without intent is invalid
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: null
+  expect:
+    error: "intent is required"
+
+- rule: INTENT-2
+  name: intent appears as first user message
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+    call:
+      system_prompt: "You are helpful"
+  action:
+    cast:
+      intent: "my task"
+  expect:
+    crystal_invocations:
+      - messages:
+          - { role: system, content: "You are helpful" }
+          - { role: user, content: "my task" }
+
+- rule: ENTITY-1
+  name: entity only created by casting cantrip
+  # Structural — no freestanding entity constructor exists.
+  # Verified by API design rather than I/O test.
+  skip: true
+
+- rule: ENTITY-2
+  name: each entity has unique ID
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "a" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "b" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    - cast: { intent: "task a" }
+    - cast: { intent: "task b" }
+  expect:
+    entity_ids_unique: true
+
+- rule: ENTITY-4
+  name: entity thread persists after termination
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "persist test"
+  expect:
+    loom:
+      turn_count: 1
+      # Thread persists even though entity is done
 
 - rule: LOOP-1
   name: turns alternate between entity and circle
@@ -389,6 +497,51 @@
 - rule: CIRCLE-2
   name: circle must have termination ward
   # Same as LOOP-2 — tested above
+
+- rule: CIRCLE-3
+  name: gate execution is synchronous from entity perspective
+  setup:
+    crystal:
+      responses:
+        - tool_calls:
+            - { gate: "slow_gate", args: { delay_ms: 100 } }
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates:
+        - name: done
+        - name: slow_gate
+          behavior: delay
+          delay_ms: 100
+          result: "completed"
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test sync"
+  expect:
+    # Turn 2's context includes the slow_gate result — it waited
+    crystal_invocations:
+      - {} # turn 1
+      - messages_include: "completed"  # turn 2 sees the result
+
+- rule: CIRCLE-4
+  name: gate results visible in context
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "visible result" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test visibility"
+  expect:
+    crystal_invocations:
+      - {} # turn 1
+      - messages_include: "visible result"  # entity sees its gate result
 
 - rule: CIRCLE-5
   name: gate errors returned as observations
