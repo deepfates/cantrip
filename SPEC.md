@@ -46,7 +46,49 @@ If the entity produces a text-only response (no code, no gate calls) and `done` 
 - **LOOP-4**: When a ward triggers truncation, the loop MUST stop. The implementation SHOULD generate a summary of what was accomplished before the entity was cut off.
 - **LOOP-5**: The entity MUST receive the full context (call + all prior turns) on every iteration. The context grows monotonically within a thread (but see Chapter 6 on folding).
 
-### 1.4 Minimal cantrip
+### 1.4 The cantrip (the recipe)
+
+A cantrip is the recipe that binds a crystal to a circle through a call. It is a value, not a running process. You cast a cantrip on an intent to produce an entity.
+
+```
+cantrip = crystal + call + circle
+entity = cast(cantrip, intent)
+```
+
+A cantrip can be cast multiple times on different intents, producing different entities with different episodes. The cantrip itself doesn't change.
+
+**Behavioral rules:**
+
+- **CANTRIP-1**: A cantrip MUST contain a crystal, a call, and a circle. Missing any of these is invalid.
+- **CANTRIP-2**: A cantrip is a value. It MUST be reusable — casting it multiple times on different intents MUST produce independent entities.
+- **CANTRIP-3**: Constructing a cantrip MUST validate that the circle has a `done` gate (CIRCLE-1) and at least one truncation ward (CIRCLE-2).
+
+### 1.5 The intent
+
+The intent is what the entity is trying to achieve — the reason the cantrip was cast. It is the `q` in `RLM_M(q, C)`.
+
+Same cantrip + different intent = different episode with different success criteria.
+
+**Behavioral rules:**
+
+- **INTENT-1**: The intent MUST be provided when casting a cantrip. A cantrip cannot be cast without an intent.
+- **INTENT-2**: The intent MUST appear as the first user message in the entity's context, after the system prompt (if any).
+- **INTENT-3**: The intent is immutable for the lifetime of the entity. The entity cannot change its own intent.
+
+### 1.6 The entity
+
+The entity is the living instance — the crystal shaped by its call, placed inside the circle, pursuing an intent, accumulating experience turn by turn. It is what emerges when crystal meets circle meets intent.
+
+The entity exists from cast to termination/truncation. It has a growing context (the thread-in-progress) and sandbox state.
+
+**Behavioral rules:**
+
+- **ENTITY-1**: An entity MUST be produced by casting a cantrip on an intent. There is no other way to create an entity.
+- **ENTITY-2**: Each entity MUST have a unique ID.
+- **ENTITY-3**: An entity's context MUST grow monotonically within a thread (modulo folding, which is a view transformation, not context deletion).
+- **ENTITY-4**: When an entity terminates or is truncated, its thread persists in the loom. The entity ceases but its record endures.
+
+### 1.7 Minimal cantrip
 
 The smallest valid cantrip requires:
 - A crystal (even a fake one that returns hardcoded text)
@@ -583,7 +625,7 @@ An implementation is conformant if:
 
 1. It implements all eleven terms as described
 2. It passes the test suite (`tests.yaml`)
-3. Every behavioral rule (LOOP-*, CRYSTAL-*, CALL-*, CIRCLE-*, COMP-*, LOOM-*, PROD-*) is satisfied
+3. Every behavioral rule (LOOP-*, CANTRIP-*, INTENT-*, ENTITY-*, CRYSTAL-*, CALL-*, CIRCLE-*, COMP-*, LOOM-*, PROD-*) is satisfied
 
 Implementations MAY extend the spec with additional features as long as the core behavioral rules are preserved.
 
