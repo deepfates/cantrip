@@ -168,12 +168,20 @@ export class Entity {
     // INTENT-2: intent becomes a user message
     this.messages.push({ role: "user", content: intent } as AnyMessage);
 
+    // Use circle's execution interface when available, otherwise fall back
+    const hasExecInterface = typeof this.circle.crystalView === "function";
+    const crystalView = hasExecInterface
+      ? this.circle.crystalView(effectiveToolChoice)
+      : null;
+    const tool_definitions = crystalView?.tool_definitions ?? this.call.gate_definitions;
+    const viewToolChoice = crystalView?.tool_choice ?? effectiveToolChoice;
+
     return runAgentLoop({
       llm: this.crystal,
       tools: this.circle.gates,
       tool_map: this.tool_map,
-      tool_definitions: this.call.gate_definitions,
-      tool_choice: effectiveToolChoice,
+      tool_definitions,
+      tool_choice: viewToolChoice,
       messages: this.messages,
       system_prompt: this.call.system_prompt,
       max_iterations: ward.max_turns,
@@ -181,13 +189,14 @@ export class Entity {
       dependency_overrides: this.dependency_overrides ?? null,
       usage_tracker: this.usage_tracker,
       on_event,
+      ...(hasExecInterface ? { circle: this.circle } : {}),
       invoke_llm: async () =>
         invokeLLMWithRetries({
           llm: this.crystal,
           messages: this.messages,
           tools: this.circle.gates,
-          tool_definitions: this.call.gate_definitions,
-          tool_choice: effectiveToolChoice,
+          tool_definitions,
+          tool_choice: viewToolChoice,
           usage_tracker: this.usage_tracker,
           llm_max_retries: 5,
           llm_retry_base_delay: 1.0,

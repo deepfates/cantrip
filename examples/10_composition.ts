@@ -1,13 +1,64 @@
 // Composition — delegate work to sub-agents via RLM.
-// createRlmAgent puts data outside the prompt; the entity explores via code.
+// The JS medium puts data outside the prompt; the entity explores via code.
+//
+// Two approaches shown:
+// 1. New cantrip API: Circle({ medium: js(...) }) + cantrip()
+// 2. Legacy API: createRlmAgent() (still works)
 
 import "./env";
-import { createRlmAgent, ChatOpenAI } from "../src";
+import { cantrip, Circle, max_turns, require_done, ChatOpenAI, createRlmAgent } from "../src";
+import { js } from "../src/circle/medium/js";
+import { getRlmSystemPrompt } from "../src/circle/gate/builtin/call_agent_prompt";
+import { analyzeContext } from "../src/circle/gate/builtin/call_agent";
+
+// ── New API: cantrip + JS medium ────────────────────────────────────
 
 export async function main() {
   const crystal = new ChatOpenAI({ model: "gpt-5-mini" });
 
   // Data stays outside the prompt window — injected into a QuickJS sandbox.
+  const data = {
+    documents: [
+      { id: 1, type: "noise", content: "The weather is nice today." },
+      { id: 2, type: "signal", content: "The secret password is: FLYING-FISH" },
+      { id: 3, type: "noise", content: "Remember to buy milk." },
+    ],
+  };
+
+  // Build a circle with a JS medium — the entity works inside a QuickJS sandbox.
+  const circle = Circle({
+    medium: js({ state: { context: data } }),
+    wards: [max_turns(20), require_done()],
+  });
+
+  // Generate a system prompt that describes the sandbox environment.
+  const metadata = analyzeContext(data);
+  const systemPrompt = getRlmSystemPrompt({
+    contextType: metadata.type,
+    contextLength: metadata.length,
+    contextPreview: metadata.preview,
+    hasRecursion: false,
+  });
+
+  const spell = cantrip({
+    crystal,
+    call: { system_prompt: systemPrompt },
+    circle,
+  });
+
+  try {
+    const answer = await spell.cast("Find the secret password in the documents.");
+    console.log("Answer:", answer);
+  } finally {
+    await circle.dispose?.();
+  }
+}
+
+// ── Legacy API: createRlmAgent ──────────────────────────────────────
+
+export async function legacyMain() {
+  const crystal = new ChatOpenAI({ model: "gpt-5-mini" });
+
   const hugeContext = {
     documents: [
       { id: 1, type: "noise", content: "The weather is nice today." },
@@ -19,7 +70,7 @@ export async function main() {
   const { agent, sandbox } = await createRlmAgent({
     llm: crystal,
     context: hugeContext,
-    maxDepth: 1, // one level of recursive sub-agent delegation
+    maxDepth: 1,
   });
 
   try {

@@ -88,9 +88,9 @@ export function cantrip(input: CantripInput): Cantrip {
     throw new Error("cantrip: circle must have at least one ward (CANTRIP-3)");
   }
 
-  // CANTRIP-3: circle must have a done gate
+  // CANTRIP-3: circle must have a done gate (relaxed when medium handles termination)
   const hasDoneGate = circle.gates.some((g) => g.name === "done");
-  if (!hasDoneGate) {
+  if (!hasDoneGate && !circle.hasMedium) {
     throw new Error("cantrip: circle must have a done gate (CANTRIP-3)");
   }
 
@@ -130,10 +130,17 @@ export function cantrip(input: CantripInput): Cantrip {
       for (const tool of tools) {
         tool_map.set(tool.name, tool);
       }
-      const tool_definitions = resolvedCall.gate_definitions;
       const effectiveToolChoice = ward.require_done_tool
         ? "required"
         : resolvedCall.hyperparameters.tool_choice;
+      const hasExecInterface = typeof circle.crystalView === "function";
+      const crystalView = hasExecInterface
+        ? circle.crystalView(effectiveToolChoice)
+        : null;
+      const tool_definitions =
+        crystalView?.tool_definitions ?? resolvedCall.gate_definitions;
+      const viewToolChoice =
+        crystalView?.tool_choice ?? effectiveToolChoice;
       const usage_tracker = new UsageTracker();
       const messages: AnyMessage[] = [];
 
@@ -153,19 +160,20 @@ export function cantrip(input: CantripInput): Cantrip {
         tools,
         tool_map,
         tool_definitions,
-        tool_choice: effectiveToolChoice,
+        tool_choice: viewToolChoice,
         messages,
         system_prompt: resolvedCall.system_prompt,
         max_iterations: ward.max_turns,
         require_done_tool: ward.require_done_tool,
         dependency_overrides: dependency_overrides ?? null,
+        ...(hasExecInterface ? { circle } : {}),
         invoke_llm: async () =>
           invokeLLMWithRetries({
             llm: crystal,
             messages,
             tools,
             tool_definitions,
-            tool_choice: effectiveToolChoice,
+            tool_choice: viewToolChoice,
             usage_tracker,
             llm_max_retries: 5,
             llm_retry_base_delay: 1.0,

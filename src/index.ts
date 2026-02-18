@@ -17,6 +17,11 @@ export * from "./crystal/tokens";
 
 // ── Circle (the environment) ────────────────────────────────────────
 export { Circle } from "./circle/circle";
+export type { CircleExecuteResult, CircleGateCall } from "./circle/circle";
+export type { Medium } from "./circle/medium";
+export { js as jsMedium } from "./circle/medium/js";
+export { getJsMediumSandbox } from "./circle/medium/js";
+export type { JsMediumOptions } from "./circle/medium/js";
 export type { Ward, ResolvedWard } from "./circle/ward";
 export { DEFAULT_WARD, max_turns, require_done, max_depth, resolveWards } from "./circle/ward";
 

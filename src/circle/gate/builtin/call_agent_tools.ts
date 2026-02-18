@@ -67,7 +67,7 @@ function defaultProgress(depth: number): RlmProgressCallback {
  * Formats sandbox execution results into a compact metadata string.
  * This prevents the Agent's prompt history from being flooded with large data dumps.
  */
-function formatRlmMetadata(output: string): string {
+export function formatRlmMetadata(output: string): string {
   if (!output || output === "undefined") return "[Result: undefined]";
   const length = output.length;
   const preview = output.slice(0, 150).replace(/\n/g, " ");
