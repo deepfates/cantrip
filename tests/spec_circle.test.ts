@@ -5,6 +5,7 @@ import { Agent, TaskComplete } from "../src/entity/service";
 import { tool } from "../src/circle/gate/decorator";
 import { Circle as CircleConstructor } from "../src/circle/circle";
 import type { Circle } from "../src/circle/circle";
+import { max_turns, require_done, max_depth, resolveWards } from "../src/circle/ward";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 
@@ -552,5 +553,50 @@ describe("CIRCLE-10: gate dependencies injected at construction", () => {
       (m: any) => typeof m.content === "string" && m.content.includes("/test/data/test.txt"),
     );
     expect(hasInjectedPath).toBe(true);
+  });
+});
+
+// ── Ward composition ────────────────────────────────────────────────
+
+describe("Ward composition via resolveWards", () => {
+  test("multiple max_turns wards resolve to minimum", () => {
+    const resolved = resolveWards([max_turns(20), max_turns(50)]);
+    expect(resolved.max_turns).toBe(20);
+  });
+
+  test("max_turns + require_done compose both constraints", () => {
+    const resolved = resolveWards([max_turns(20), require_done()]);
+    expect(resolved.max_turns).toBe(20);
+    expect(resolved.require_done_tool).toBe(true);
+  });
+
+  test("max_depth ward resolves correctly", () => {
+    const resolved = resolveWards([max_depth(3)]);
+    expect(resolved.max_depth).toBe(3);
+  });
+
+  test("empty wards array resolves to defaults", () => {
+    const resolved = resolveWards([]);
+    expect(resolved.max_turns).toBe(200);
+    expect(resolved.require_done_tool).toBe(false);
+    expect(resolved.max_depth).toBe(Infinity);
+  });
+
+  test("wards with no max_turns use default", () => {
+    const resolved = resolveWards([require_done()]);
+    expect(resolved.max_turns).toBe(200);
+    expect(resolved.require_done_tool).toBe(true);
+  });
+
+  test("multiple max_depth wards resolve to minimum", () => {
+    const resolved = resolveWards([max_depth(5), max_depth(2)]);
+    expect(resolved.max_depth).toBe(2);
+  });
+
+  test("all ward types compose together", () => {
+    const resolved = resolveWards([max_turns(10), require_done(), max_depth(3)]);
+    expect(resolved.max_turns).toBe(10);
+    expect(resolved.require_done_tool).toBe(true);
+    expect(resolved.max_depth).toBe(3);
   });
 });

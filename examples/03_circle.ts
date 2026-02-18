@@ -22,7 +22,7 @@ export function main() {
   // require_done() creates a ward that forces the entity to call done.
   const strict = Circle({
     gates: [greet, done],
-    wards: [require_done(50)],
+    wards: [require_done(), max_turns(50)],
   });
   console.log("Strict ward:", strict.wards);
 

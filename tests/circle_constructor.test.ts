@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { TaskComplete } from "../src/entity/service";
 import { tool } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
-import { max_turns, require_done } from "../src/circle/ward";
+import { max_turns, require_done, max_depth, resolveWards } from "../src/circle/ward";
 
 // ── Test fixtures ──────────────────────────────────────────────────
 
@@ -32,27 +32,28 @@ const add = tool("Add two numbers", async ({ a, b }: { a: number; b: number }) =
 // ── Ward helpers ──────────────────────────────────────────────────
 
 describe("max_turns helper", () => {
-  test("returns Ward with given max_turns and require_done_tool false", () => {
+  test("returns Ward with only max_turns set", () => {
     const ward = max_turns(50);
-    expect(ward).toEqual({ max_turns: 50, require_done_tool: false });
+    expect(ward).toEqual({ max_turns: 50 });
   });
 
   test("returns Ward with large value", () => {
     const ward = max_turns(1000);
     expect(ward.max_turns).toBe(1000);
-    expect(ward.require_done_tool).toBe(false);
   });
 });
 
 describe("require_done helper", () => {
-  test("returns Ward with default max_turns of 200", () => {
+  test("returns Ward with only require_done_tool set", () => {
     const ward = require_done();
-    expect(ward).toEqual({ max_turns: 200, require_done_tool: true });
+    expect(ward).toEqual({ require_done_tool: true });
   });
+});
 
-  test("returns Ward with custom max_turns", () => {
-    const ward = require_done(50);
-    expect(ward).toEqual({ max_turns: 50, require_done_tool: true });
+describe("max_depth helper", () => {
+  test("returns Ward with only max_depth set", () => {
+    const ward = max_depth(3);
+    expect(ward).toEqual({ max_depth: 3 });
   });
 });
 
@@ -85,13 +86,13 @@ describe("Circle() constructor", () => {
   });
 
   test("accepts circle with require_done ward", () => {
-    const circle = Circle({ gates: [done], wards: [require_done(50)] });
+    const circle = Circle({ gates: [done], wards: [require_done(), max_turns(50)] });
     expect(circle.wards[0].require_done_tool).toBe(true);
-    expect(circle.wards[0].max_turns).toBe(50);
+    expect(circle.wards[1].max_turns).toBe(50);
   });
 
   test("accepts circle with multiple wards", () => {
-    const circle = Circle({ gates: [done], wards: [max_turns(100), require_done(50)] });
+    const circle = Circle({ gates: [done], wards: [max_turns(100), require_done()] });
     expect(circle.wards).toHaveLength(2);
   });
 });

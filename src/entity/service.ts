@@ -10,7 +10,7 @@ import { hasGateCalls } from "../crystal/views";
 import type { GateResult } from "../circle/gate";
 import type { DependencyOverrides } from "../circle/gate/depends";
 import type { Circle } from "../circle/circle";
-import { DEFAULT_WARD } from "../circle/ward";
+import { DEFAULT_WARD, resolveWards } from "../circle/ward";
 import {
   fold,
   shouldFold,
@@ -111,18 +111,18 @@ export class Agent {
     // When a Circle is provided, extract gates and ward constraints from it.
     // Explicit options (tools, max_iterations, require_done_tool) take precedence.
     const circle = options.circle ?? null;
-    const ward = circle?.wards?.[0] ?? null;
+    const ward = resolveWards(circle?.wards ?? []);
 
     this.llm = options.llm;
     this.tools = options.tools ?? circle?.gates ?? [];
     this.system_prompt = options.system_prompt ?? null;
-    this.max_iterations = options.max_iterations ?? ward?.max_turns ?? DEFAULT_WARD.max_turns;
+    this.max_iterations = options.max_iterations ?? ward.max_turns;
     this.tool_choice = options.tool_choice ?? "auto";
     this.folding = { ...DEFAULT_FOLDING_CONFIG, ...options.folding };
     this.pricing_provider = options.pricing_provider ?? null;
     this.dependency_overrides = options.dependency_overrides ?? null;
     this.ephemeral_storage_path = options.ephemeral_storage_path ?? null;
-    this.require_done_tool = options.require_done_tool ?? ward?.require_done_tool ?? DEFAULT_WARD.require_done_tool;
+    this.require_done_tool = options.require_done_tool ?? ward.require_done_tool;
     this.llm_max_retries = options.llm_max_retries ?? 5;
     this.llm_retry_base_delay = options.llm_retry_base_delay ?? 1.0;
     this.llm_retry_max_delay = options.llm_retry_max_delay ?? 60.0;

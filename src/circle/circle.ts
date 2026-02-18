@@ -1,5 +1,6 @@
 import type { GateResult } from "./gate/gate";
 import type { Ward } from "./ward";
+import { resolveWards } from "./ward";
 
 /**
  * A Circle binds a set of Gates (tools) together with Wards (constraints).
@@ -27,6 +28,10 @@ export function Circle(opts: { gates: GateResult[]; wards: Ward[] }): Circle {
   }
   if (opts.wards.length === 0) {
     throw new Error("Circle must have at least one ward");
+  }
+  const resolved = resolveWards(opts.wards);
+  if (!isFinite(resolved.max_turns)) {
+    throw new Error("Circle wards must resolve to finite max_turns (CIRCLE-2)");
   }
   return { gates: opts.gates, wards: opts.wards };
 }

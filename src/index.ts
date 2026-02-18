@@ -17,8 +17,8 @@ export * from "./crystal/tokens";
 
 // ── Circle (the environment) ────────────────────────────────────────
 export { Circle } from "./circle/circle";
-export type { Ward } from "./circle/ward";
-export { DEFAULT_WARD, max_turns, require_done } from "./circle/ward";
+export type { Ward, ResolvedWard } from "./circle/ward";
+export { DEFAULT_WARD, max_turns, require_done, max_depth, resolveWards } from "./circle/ward";
 
 // ── Circle / Gate (tool framework) ──────────────────────────────────
 export { Tool, tool, serializeGateResult } from "./circle/gate/decorator";
