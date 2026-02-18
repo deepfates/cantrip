@@ -133,10 +133,8 @@ export function cantrip(input: CantripInput): Cantrip {
       const effectiveToolChoice = ward.require_done_tool
         ? "required"
         : resolvedCall.hyperparameters.tool_choice;
-      const hasExecInterface = typeof circle.crystalView === "function";
-      const crystalView = hasExecInterface
-        ? circle.crystalView(effectiveToolChoice)
-        : null;
+      // Circle provides crystalView when constructed via Circle()
+      const crystalView = circle.crystalView?.(effectiveToolChoice);
       const tool_definitions =
         crystalView?.tool_definitions ?? resolvedCall.gate_definitions;
       const viewToolChoice =
@@ -166,7 +164,7 @@ export function cantrip(input: CantripInput): Cantrip {
         max_iterations: ward.max_turns,
         require_done_tool: ward.require_done_tool,
         dependency_overrides: dependency_overrides ?? null,
-        ...(hasExecInterface ? { circle } : {}),
+        ...(circle.execute ? { circle } : {}),
         invoke_llm: async () =>
           invokeLLMWithRetries({
             llm: crystal,

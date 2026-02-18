@@ -168,11 +168,8 @@ export class Entity {
     // INTENT-2: intent becomes a user message
     this.messages.push({ role: "user", content: intent } as AnyMessage);
 
-    // Use circle's execution interface when available, otherwise fall back
-    const hasExecInterface = typeof this.circle.crystalView === "function";
-    const crystalView = hasExecInterface
-      ? this.circle.crystalView(effectiveToolChoice)
-      : null;
+    // Circle provides crystalView when constructed via Circle()
+    const crystalView = this.circle.crystalView?.(effectiveToolChoice);
     const tool_definitions = crystalView?.tool_definitions ?? this.call.gate_definitions;
     const viewToolChoice = crystalView?.tool_choice ?? effectiveToolChoice;
 
@@ -189,7 +186,7 @@ export class Entity {
       dependency_overrides: this.dependency_overrides ?? null,
       usage_tracker: this.usage_tracker,
       on_event,
-      ...(hasExecInterface ? { circle: this.circle } : {}),
+      ...(this.circle.execute ? { circle: this.circle } : {}),
       invoke_llm: async () =>
         invokeLLMWithRetries({
           llm: this.crystal,

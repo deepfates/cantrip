@@ -13,6 +13,10 @@ import {
 import type { RlmProgressCallback } from "./call_agent_tools";
 import { getRlmSystemPrompt, getRlmMemorySystemPrompt } from "./call_agent_prompt";
 import { UsageTracker } from "../../../crystal/tokens/usage";
+import { Entity } from "../../../cantrip/entity";
+import { js as jsMedium, getJsMediumSandbox } from "../../medium/js";
+import { Circle } from "../../circle";
+import { max_turns, require_done } from "../../ward";
 
 export type RlmOptions = {
   llm: BaseChatModel;
@@ -40,6 +44,8 @@ export type RlmOptions = {
  *
  * Purity: The agent cannot use 'done' or 'final_answer' tools. It MUST use
  * the 'submit_answer()' function from within the sandbox to finish the task.
+ *
+ * Internally uses the cantrip API: Circle({ medium: js(...) }) + cantrip() + invoke().
  */
 export async function createRlmAgent(
   options: RlmOptions,
@@ -56,11 +62,14 @@ export async function createRlmAgent(
     onProgress,
   } = options;
 
-  // 1. Prepare Sandbox with a recursion-safe WASM module instance
-  const module = await createAsyncModule();
-  const sandbox = await JsAsyncContext.create({ module });
+  // 1. Create JS medium with context as initial state
+  const medium = jsMedium({ state: { context } });
 
-  // 2. Analyze the context structure to generate the System Prompt
+  // 2. Force medium initialization so we can access the sandbox
+  await medium.init([], dependency_overrides || null);
+  const sandbox = getJsMediumSandbox(medium)!;
+
+  // 3. Analyze the context structure to generate the System Prompt
   const metadata = analyzeContext(context);
   const systemPrompt = getRlmSystemPrompt({
     contextType: metadata.type,
@@ -73,8 +82,9 @@ export async function createRlmAgent(
       : undefined,
   });
 
-  // 3. Register RLM Host Functions (The Recursive Bridge)
-  // This must be awaited to ensure the sandbox is fully hydrated before the Agent starts.
+  // 4. Register RLM Host Functions (The Recursive Bridge)
+  // submit_answer is already registered by the medium, but registerRlmFunctions
+  // adds llm_query, llm_batch, and browser functions.
   await registerRlmFunctions({
     sandbox,
     context,
@@ -82,12 +92,9 @@ export async function createRlmAgent(
     browserContext,
     onProgress,
     onLlmQuery: async (query, subContext) => {
-      // If subContext is omitted, the child receives the current parent context
       const contextToPass = subContext !== undefined ? subContext : context;
 
       if (depth >= maxDepth) {
-        // Fallback to a plain LLM completion at the maximum recursion depth level
-        // Truncate context to avoid blowing up the prompt at leaf level
         const contextStr =
           typeof contextToPass === "string"
             ? contextToPass
@@ -109,7 +116,6 @@ export async function createRlmAgent(
         return res.content ?? "";
       }
 
-      // Recursive step: Spawn a nested RLM agent at the next depth level
       const child = await createRlmAgent({
         llm: subLlm,
         subLlm,
@@ -125,25 +131,38 @@ export async function createRlmAgent(
       try {
         return await child.agent.query(query);
       } finally {
-        // Clean up the child sandbox to reclaim WASM memory
         child.sandbox.dispose();
       }
     },
   });
 
-  // 4. Initialize the Agent with RLM-specialized configuration
-  const overrides = new Map(dependency_overrides);
-  overrides.set(getRlmSandbox, () => sandbox);
-
-  const agent = new Agent({
-    llm,
-    tools: [js_rlm], // Only the JS tool is provided. submit_answer() is used for exit.
-    system_prompt: systemPrompt,
-    dependency_overrides: overrides,
-    max_iterations: 20, // RLM levels usually have shorter reasoning horizons
-    usage_tracker: usage,
-    require_done_tool: true, // This combined with only having 'js' forces the sandbox exit
+  // 5. Build Circle with the JS medium and wards
+  const circle = Circle({
+    medium,
+    gates: [],
+    wards: [max_turns(20), require_done()],
   });
+
+  // 6. Create Entity via cantrip API with shared usage tracker
+  const entity = new Entity({
+    crystal: llm,
+    call: {
+      system_prompt: systemPrompt,
+      hyperparameters: { tool_choice: "auto" },
+      gate_definitions: [],
+    },
+    circle,
+    dependency_overrides: dependency_overrides.size ? dependency_overrides : null,
+    usage_tracker: usage,
+  });
+
+  // 7. Return backward-compatible shim
+  // Callers use: agent.query(), agent.get_usage(), agent.history, agent.messages
+  const agent = {
+    query: (q: string) => entity.turn(q),
+    get history() { return entity.history; },
+    get_usage: () => entity.get_usage(),
+  } as unknown as Agent;
 
   return { agent, sandbox };
 }
@@ -220,6 +239,11 @@ export type RlmMemoryAgent = {
  *
  * After windowSize user turns, older messages are moved from the agent's
  * active message history into context.history, where the agent can search them.
+ *
+ * NOTE: Still uses Agent (not Entity/cantrip) because manageMemory() needs
+ * mutable access to agent.messages for sliding-window manipulation. Entity
+ * only exposes history (read-only copy) and load_history() (full replace),
+ * which can't support the slice-and-splice pattern used here.
  */
 export async function createRlmAgentWithMemory(
   options: RlmMemoryOptions,

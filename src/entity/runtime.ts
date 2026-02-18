@@ -273,9 +273,12 @@ Keep the summary brief but informative.`;
 export async function runAgentLoop(options: {
   llm: BaseChatModel;
   tools: GateResult[];
-  tool_map: Map<string, GateResult>;
-  tool_definitions: GateDefinition[];
-  tool_choice: ToolChoice;
+  /** Required when circle is not provided (legacy inline dispatch path). */
+  tool_map?: Map<string, GateResult>;
+  /** Required when circle is not provided (legacy inline dispatch path). */
+  tool_definitions?: GateDefinition[];
+  /** Required when circle is not provided (legacy inline dispatch path). */
+  tool_choice?: ToolChoice;
   messages: AnyMessage[];
   system_prompt: string | null;
   max_iterations: number;
@@ -302,7 +305,7 @@ export async function runAgentLoop(options: {
   }) => Promise<void>;
   /** Streaming event callback — when provided, runAgentLoop emits AgentEvents inline. */
   on_event?: (event: AgentEvent) => void;
-  /** When provided, the loop delegates tool dispatch to the circle. */
+  /** When provided, the loop delegates tool dispatch to the circle. tool_map/tool_definitions/tool_choice become optional. */
   circle?: Circle;
 }): Promise<string> {
   const {
