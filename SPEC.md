@@ -125,6 +125,14 @@ Unless you recorded it. But that's a later chapter.
 
 > **ENTITY-4**: When an entity terminates or is truncated, its thread persists in the loom. The entity ceases but its record endures.
 
+Invoking a cantrip produces a persistent entity. The initial intent starts the loop. When the loop completes — done or truncated — the entity persists. You can provide another intent as a new turn, and the loop resumes with accumulated state. The entity remembers what it did. A chat session is an invoked entity. A REPL session is an invoked entity.
+
+Casting is a convenience: invoke, run one intent, return the result, discard the entity. Most of the examples in this document describe casting, because most tasks are one-shot. But the underlying mechanism is always invocation — casting is just invocation with automatic cleanup.
+
+> **ENTITY-5**: An invoked entity persists after its loop completes. It MAY receive additional intents as new turns. State accumulates across all turns.
+
+> **ENTITY-6**: Invoking a cantrip multiple times MUST produce independent entities, just as casting does (CANTRIP-2).
+
 The crystal, the call, and the circle each have their own chapters. The entity does not, because the entity is not a component you configure. It is what emerges from the components you did configure, once the loop begins.
 
 ### 1.5 The RL correspondence
@@ -144,7 +152,7 @@ The mapping is structural, not formal. Cantrip's terms parallel RL concepts in t
 | Terminated | `done` gate called | Entity chose to stop |
 | Truncated | Ward triggered | Environment chose to stop |
 | Trajectory | Thread | One root-to-leaf path through the loom |
-| Episode | Entity lifetime | First turn to termination/truncation |
+| Episode | Entity lifetime | One invoke-to-termination sequence. An invoked entity may span multiple episodes. |
 | Replay buffer | Loom | Richer: the tree structure provides the trajectory data comparative RL methods need |
 | Environment reset | New entity, clean circle | Forking is NOT a reset — it continues from prior state |
 
@@ -850,7 +858,7 @@ Every term in this document was defined in context as it appeared. This table is
 | 5 | **Circle** | environment, sandbox | The environment: sandbox + gates + wards. |
 | 6 | **Intent** | task, goal | The goal. What the entity is trying to achieve. |
 | 7 | **Cantrip** | agent config | The recipe: crystal + call + circle. A value, not a process. |
-| 8 | **Entity** | agent instance | What emerges when you cast a cantrip on an intent. The living instance. |
+| 8 | **Entity** | agent instance | What emerges when you invoke a cantrip. The living instance. Persists across turns when invoked; discarded after one run when cast. |
 | 9 | **Turn** | step | One cycle: entity acts, circle responds, state accumulates. |
 | 10 | **Thread** | trajectory, trace | One root-to-leaf path through the loom. A trajectory. |
 | 11 | **Loom** | execution tree, replay buffer | The tree of all turns across all runs. Append-only. |
