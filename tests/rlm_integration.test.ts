@@ -1,3 +1,7 @@
+// cantrip-migration: uses createRlmAgent (RLM-internal factory).
+// Tests RLM-specific internals: WASM sandbox context isolation, recursive
+// delegation (llm_query/llm_batch), metadata loop, and token aggregation.
+// These are genuinely below the cantrip API level.
 import { describe, expect, test, afterEach } from "bun:test";
 import { createRlmAgent } from "../src/circle/gate/builtin/call_agent";
 import { JsAsyncContext } from "../src/circle/gate/builtin/js_async_context";

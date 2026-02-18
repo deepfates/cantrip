@@ -4,7 +4,7 @@
 import "./env";
 import { createRlmAgent, ChatOpenAI } from "../src";
 
-async function main() {
+export async function main() {
   const crystal = new ChatOpenAI({ model: "gpt-5-mini" });
 
   // Data stays outside the prompt window — injected into a QuickJS sandbox.

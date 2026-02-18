@@ -1,3 +1,6 @@
+// cantrip-migration: uses createRlmAgent (RLM-internal factory).
+// Tests progress event callbacks for sub-agent spawning and batching —
+// genuinely below the cantrip API level.
 import { describe, expect, test, afterEach } from "bun:test";
 import { createRlmAgent } from "../src/circle/gate/builtin/call_agent";
 import { JsAsyncContext } from "../src/circle/gate/builtin/js_async_context";

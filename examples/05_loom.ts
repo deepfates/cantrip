@@ -6,7 +6,7 @@ import {
   generateTurnId, type Turn,
 } from "../src";
 
-async function main() {
+export async function main() {
   const loom = new Loom(new MemoryStorage());
 
   const cantripId = "demo-cantrip";

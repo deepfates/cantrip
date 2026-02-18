@@ -9,7 +9,7 @@ const add = tool("Add two numbers", async ({ a, b }: { a: number; b: number }) =
   params: { a: "number", b: "number" },
 });
 
-async function main() {
+export async function main() {
   const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
   const circle = Circle({

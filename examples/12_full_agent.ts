@@ -10,7 +10,7 @@ import {
   done,
 } from "../src";
 
-async function main() {
+export async function main() {
   const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
   const fsCtx = await SandboxContext.create();
   const jsCtx = await JsContext.create();

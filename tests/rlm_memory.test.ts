@@ -1,3 +1,6 @@
+// cantrip-migration: uses createRlmAgentWithMemory (RLM-internal factory).
+// Tests WASM sandbox memory windowing and agent.messages manipulation —
+// genuinely below the cantrip API level.
 import { describe, test, expect, mock } from "bun:test";
 import { createRlmAgentWithMemory } from "../src/circle/gate/builtin/call_agent";
 import { BaseChatModel, ModelResponse } from "../src/crystal/crystal";

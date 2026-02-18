@@ -1,3 +1,4 @@
+// cantrip-migration: no Agent usage — tests the console renderer (pure event → string)
 import { describe, test, expect } from "bun:test";
 import {
   createRlmConsoleRenderer,

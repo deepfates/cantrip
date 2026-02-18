@@ -12,7 +12,7 @@ const add = tool("Add two numbers", async ({ a, b }: { a: number; b: number }) =
   params: { a: "number", b: "number" },
 });
 
-async function main() {
+export async function main() {
   const circle = Circle({
     gates: [add, done],
     wards: [max_turns(10)],

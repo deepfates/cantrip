@@ -3,6 +3,10 @@
  * 1. safeStringify — handles cyclic/non-serializable data
  * 2. llm_batch — validates task queries before calling .slice()
  * 3. Browser profile filtering in system prompts
+ *
+ * cantrip-migration: safeStringify and prompt tests are pure functions (no Agent).
+ * llm_batch tests use createRlmAgent (RLM-internal factory) to exercise WASM
+ * sandbox input validation — genuinely below the cantrip API level.
  */
 import { describe, expect, test, afterEach } from "bun:test";
 import { safeStringify } from "../src/circle/gate/builtin/call_agent_tools";

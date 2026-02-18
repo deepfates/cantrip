@@ -8,7 +8,7 @@ import {
   type BaseChatModel,
 } from "../src";
 
-async function main() {
+export async function main() {
   const loom = new Loom(new MemoryStorage());
   const cantripId = "fold-demo";
   const entityId = "fold-entity";

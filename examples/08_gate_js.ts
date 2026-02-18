@@ -7,7 +7,7 @@ import {
   js, js_run, JsContext, getJsContext, done,
 } from "../src";
 
-async function main() {
+export async function main() {
   const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
   const jsCtx = await JsContext.create();
 

@@ -1,58 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { loadEnv } from "./helpers/env";
+
+loadEnv();
+
+const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY;
+const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+const conditionalAnthropicTest = hasAnthropicKey ? test : test.skip;
+const conditionalOpenAITest = hasOpenAIKey ? test : test.skip;
 
 describe("examples", () => {
-  test("03_circle runs validation", async () => {
-    // Circle is pure logic — no LLM needed.
-    const { Circle, done, tool, max_turns, require_done } = await import("../src");
-
-    const greet = tool("greet", async ({ name }: { name: string }) => `Hello, ${name}!`, {
-      name: "greet",
-      params: { name: "string" },
-    });
-
-    const circle = Circle({
-      gates: [greet, done],
-      wards: [max_turns(10)],
-    });
-    expect(circle.gates.length).toBe(2);
-    expect(circle.wards.length).toBe(1);
-
-    // Missing done gate throws
-    expect(() => Circle({ gates: [greet], wards: [max_turns(10)] })).toThrow();
-
-    // No wards throws
-    expect(() => Circle({ gates: [greet, done], wards: [] })).toThrow();
-  });
-
-  test("05_loom runs without LLM", async () => {
-    const { Loom, MemoryStorage, deriveThread, generateTurnId } = await import("../src");
-    const loom = new Loom(new MemoryStorage());
-
-    const turn = {
-      id: generateTurnId(),
-      parent_id: null,
-      cantrip_id: "test",
-      entity_id: "test",
-      sequence: 1,
-      utterance: "hello",
-      observation: "hi",
-      gate_calls: [],
-      metadata: {
-        tokens_prompt: 10, tokens_completion: 5, tokens_cached: 0,
-        duration_ms: 100, timestamp: new Date().toISOString(),
-      },
-      reward: null,
-      terminated: true,
-      truncated: false,
-    };
-    await loom.append(turn);
-    expect(loom.size).toBe(1);
-
-    const thread = deriveThread(loom, turn.id);
-    expect(thread.turns.length).toBe(1);
-  });
-
-  test("example files exist", async () => {
+  test("all example files exist", async () => {
     const files = [
       "01_crystal.ts", "02_gate.ts", "03_circle.ts", "04_cantrip.ts",
       "05_loom.ts", "06_providers.ts", "07_gate_fs.ts", "08_gate_js.ts",
@@ -64,4 +21,92 @@ describe("examples", () => {
       expect(await file.exists()).toBe(true);
     }
   });
+
+  test("all examples export main()", async () => {
+    const examples = [
+      "01_crystal", "02_gate", "03_circle", "04_cantrip",
+      "05_loom", "06_providers", "07_gate_fs", "08_gate_js",
+      "09_gate_browser", "10_composition", "11_folding",
+      "12_full_agent", "13_acp",
+    ];
+    for (const name of examples) {
+      const mod = await import(`../examples/${name}`);
+      expect(typeof mod.main).toBe("function");
+    }
+  });
+
+  // ── No-LLM examples: run directly ──────────────────────────────
+
+  test("02_gate runs without LLM", async () => {
+    const { main } = await import("../examples/02_gate");
+    await main();
+  });
+
+  test("03_circle runs validation", async () => {
+    const { main } = await import("../examples/03_circle");
+    main();
+  });
+
+  test("05_loom runs without LLM", async () => {
+    const { main } = await import("../examples/05_loom");
+    await main();
+  });
+
+  test("11_folding runs without LLM", async () => {
+    const { main } = await import("../examples/11_folding");
+    await main();
+  });
+
+  // ── LLM examples (Anthropic): skip without API key ─────────────
+
+  conditionalAnthropicTest("01_crystal runs with Anthropic", async () => {
+    const { main } = await import("../examples/01_crystal");
+    await main();
+  }, 30_000);
+
+  conditionalAnthropicTest("04_cantrip runs with Anthropic", async () => {
+    const { main } = await import("../examples/04_cantrip");
+    await main();
+  }, 60_000);
+
+  conditionalAnthropicTest("06_providers runs with Anthropic", async () => {
+    const { main } = await import("../examples/06_providers");
+    await main();
+  }, 30_000);
+
+  // Interactive examples — these call runRepl() or serveCantripACP(),
+  // which require stdin/server. We verify they import cleanly.
+  // Running them fully requires a separate harness.
+
+  conditionalAnthropicTest("07_gate_fs imports cleanly", async () => {
+    const mod = await import("../examples/07_gate_fs");
+    expect(typeof mod.main).toBe("function");
+  });
+
+  conditionalAnthropicTest("08_gate_js imports cleanly", async () => {
+    const mod = await import("../examples/08_gate_js");
+    expect(typeof mod.main).toBe("function");
+  });
+
+  conditionalAnthropicTest("09_gate_browser imports cleanly", async () => {
+    const mod = await import("../examples/09_gate_browser");
+    expect(typeof mod.main).toBe("function");
+  });
+
+  conditionalAnthropicTest("12_full_agent imports cleanly", async () => {
+    const mod = await import("../examples/12_full_agent");
+    expect(typeof mod.main).toBe("function");
+  });
+
+  conditionalAnthropicTest("13_acp imports cleanly", async () => {
+    const mod = await import("../examples/13_acp");
+    expect(typeof mod.main).toBe("function");
+  });
+
+  // ── LLM examples (OpenAI): skip without API key ────────────────
+
+  conditionalOpenAITest("10_composition runs with OpenAI", async () => {
+    const { main } = await import("../examples/10_composition");
+    await main();
+  }, 60_000);
 });

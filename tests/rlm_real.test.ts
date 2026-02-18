@@ -1,3 +1,6 @@
+// cantrip-migration: uses createRlmAgent (RLM-internal factory).
+// Tests real LLM integration with RLM sandbox (context isolation, recursive
+// delegation). These are genuinely below the cantrip API level.
 import { describe, expect, test } from "bun:test";
 import { createRlmAgent } from "../src/circle/gate/builtin/call_agent";
 import { ChatOpenAI } from "../src/crystal/providers/openai/chat";

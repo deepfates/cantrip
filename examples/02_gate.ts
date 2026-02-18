@@ -9,7 +9,7 @@ const add = tool("Add two numbers", async ({ a, b }: { a: number; b: number }) =
   params: { a: "number", b: "number" },
 });
 
-async function main() {
+export async function main() {
   // Gates can be executed directly for testing.
   const sum = await add.execute({ a: 2, b: 3 });
   console.log("add(2, 3) =", sum);

@@ -9,7 +9,7 @@ const greet = tool("Say hello", async ({ name }: { name: string }) => `Hello, ${
   params: { name: "string" },
 });
 
-function main() {
+export function main() {
   // Circle validates: must have a done gate (CIRCLE-1) and at least one ward (CIRCLE-2).
   const circle = Circle({
     gates: [greet, done],
