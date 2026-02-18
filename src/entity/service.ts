@@ -80,6 +80,142 @@ export type AgentOptions = {
   circle?: Circle | null;
 };
 
+// ── Standalone recording functions ──────────────────────────────────
+// Extracted from Agent so they're callable without an Agent instance.
+// Agent delegates to these.
+
+/** Turn data accepted by recordTurn. */
+export type TurnData = {
+  iteration: number;
+  utterance: string;
+  observation: string;
+  gate_calls: { gate_name: string; arguments: string; result: string; is_error: boolean }[];
+  usage: any;
+  duration_ms: number;
+  terminated: boolean;
+  truncated: boolean;
+};
+
+/**
+ * Record the Call as the loom root turn (CALL-4).
+ * Returns the new last_turn_id (the root turn's id), or null if nothing was recorded.
+ */
+export async function recordCallRoot(params: {
+  loom: Loom;
+  cantrip_id: string;
+  entity_id: string;
+  system_prompt: string | null;
+  tool_definitions: GateDefinition[];
+}): Promise<string> {
+  const gateDefinitions = params.tool_definitions
+    .map((g) => `- ${g.function.name}: ${g.function.description ?? "(no description)"}`)
+    .join("\n");
+
+  const turn: Turn = {
+    id: generateTurnId(),
+    parent_id: null,
+    cantrip_id: params.cantrip_id,
+    entity_id: params.entity_id,
+    sequence: 0,
+    role: "call",
+    utterance: params.system_prompt ?? "",
+    observation: gateDefinitions,
+    gate_calls: [],
+    metadata: {
+      tokens_prompt: 0,
+      tokens_completion: 0,
+      tokens_cached: 0,
+      duration_ms: 0,
+      timestamp: new Date().toISOString(),
+    },
+    reward: null,
+    terminated: false,
+    truncated: false,
+  };
+
+  await params.loom.append(turn);
+  return turn.id;
+}
+
+/**
+ * Record a turn in the loom (LOOM-1).
+ * Returns the new last_turn_id.
+ */
+export async function recordTurn(params: {
+  loom: Loom;
+  parent_id: string | null;
+  cantrip_id: string;
+  entity_id: string;
+  turnData: TurnData;
+}): Promise<string> {
+  const turn: Turn = {
+    id: generateTurnId(),
+    parent_id: params.parent_id,
+    cantrip_id: params.cantrip_id,
+    entity_id: params.entity_id,
+    sequence: params.turnData.iteration,
+    utterance: params.turnData.utterance,
+    observation: params.turnData.observation,
+    gate_calls: params.turnData.gate_calls,
+    metadata: {
+      tokens_prompt: params.turnData.usage?.prompt_tokens ?? 0,
+      tokens_completion: params.turnData.usage?.completion_tokens ?? 0,
+      tokens_cached: params.turnData.usage?.prompt_cached_tokens ?? 0,
+      duration_ms: params.turnData.duration_ms,
+      timestamp: new Date().toISOString(),
+    },
+    reward: null,
+    terminated: params.turnData.terminated,
+    truncated: params.turnData.truncated,
+  };
+  await params.loom.append(turn);
+  return turn.id;
+}
+
+/**
+ * Check whether folding should trigger and, if so, fold older turns.
+ * Returns the new messages array if folding occurred, or null if no folding needed.
+ */
+export async function checkAndFold(params: {
+  messages: AnyMessage[];
+  loom: Loom;
+  last_turn_id: string;
+  folding: FoldingConfig;
+  folding_enabled: boolean;
+  llm: BaseChatModel;
+  system_prompt: string | null;
+  response: ChatInvokeCompletion;
+}): Promise<AnyMessage[] | null> {
+  if (!params.folding_enabled) return null;
+
+  const totalTokens =
+    (params.response.usage?.prompt_tokens ?? 0) +
+    (params.response.usage?.completion_tokens ?? 0);
+
+  const contextWindow = 128_000;
+  if (!shouldFold(totalTokens, contextWindow, params.folding)) return null;
+
+  const thread = deriveThread(params.loom, params.last_turn_id);
+  const { toFold, toKeep } = partitionForFolding(thread, params.folding);
+  if (toFold.length === 0) return null;
+
+  const result = await fold(toFold, toKeep, params.llm, params.folding);
+  if (!result.folded) return null;
+
+  const newMessages: AnyMessage[] = [];
+  if (params.system_prompt) {
+    newMessages.push({
+      role: "system",
+      content: params.system_prompt,
+      cache: true,
+    } as AnyMessage);
+  }
+  newMessages.push(...result.messages);
+  return newMessages;
+}
+
+// ── Agent class ────────────────────────────────────────────────────
+
 export class Agent {
   llm: BaseChatModel;
   tools: GateResult[];
@@ -169,123 +305,53 @@ export class Agent {
     return null;
   }
 
-  /**
-   * Record the Call as the loom root turn (CALL-4).
-   * The system prompt, hyperparameters, and gate definitions are stored
-   * as the root of the turn tree. Every thread starts from this turn.
-   */
-  private async recordCallRoot(): Promise<void> {
-    if (!this.loom || this.last_turn_id !== null) return; // already recorded or no loom
-
-    const gateDefinitions = this.tool_definitions
-      .map((g) => `- ${g.function.name}: ${g.function.description ?? "(no description)"}`)
-      .join("\n");
-
-    const turn: Turn = {
-      id: generateTurnId(),
-      parent_id: null,
+  /** Delegates to standalone recordCallRoot(). */
+  private async _recordCallRoot(): Promise<void> {
+    if (!this.loom || this.last_turn_id !== null) return;
+    this.last_turn_id = await recordCallRoot({
+      loom: this.loom,
       cantrip_id: this.cantrip_id,
       entity_id: this.entity_id,
-      sequence: 0,
-      role: "call",
-      utterance: this.system_prompt ?? "",
-      observation: gateDefinitions,
-      gate_calls: [],
-      metadata: {
-        tokens_prompt: 0,
-        tokens_completion: 0,
-        tokens_cached: 0,
-        duration_ms: 0,
-        timestamp: new Date().toISOString(),
-      },
-      reward: null,
-      terminated: false,
-      truncated: false,
-    };
-
-    await this.loom.append(turn);
-    this.last_turn_id = turn.id;
+      system_prompt: this.system_prompt,
+      tool_definitions: this.tool_definitions,
+    });
   }
 
-  /** Record a turn in the loom (LOOM-1). */
-  private async recordTurn(turnData: {
-    iteration: number;
-    utterance: string;
-    observation: string;
-    gate_calls: { gate_name: string; arguments: string; result: string; is_error: boolean }[];
-    usage: any;
-    duration_ms: number;
-    terminated: boolean;
-    truncated: boolean;
-  }): Promise<void> {
+  /** Delegates to standalone recordTurn(). */
+  private async _recordTurn(turnData: TurnData): Promise<void> {
     if (!this.loom) return;
-    const turn: Turn = {
-      id: generateTurnId(),
+    this.last_turn_id = await recordTurn({
+      loom: this.loom,
       parent_id: this.last_turn_id,
       cantrip_id: this.cantrip_id,
       entity_id: this.entity_id,
-      sequence: turnData.iteration,
-      utterance: turnData.utterance,
-      observation: turnData.observation,
-      gate_calls: turnData.gate_calls,
-      metadata: {
-        tokens_prompt: turnData.usage?.prompt_tokens ?? 0,
-        tokens_completion: turnData.usage?.completion_tokens ?? 0,
-        tokens_cached: turnData.usage?.prompt_cached_tokens ?? 0,
-        duration_ms: turnData.duration_ms,
-        timestamp: new Date().toISOString(),
-      },
-      reward: null,
-      terminated: turnData.terminated,
-      truncated: turnData.truncated,
-    };
-    await this.loom.append(turn);
-    this.last_turn_id = turn.id;
+      turnData,
+    });
   }
 
-  /**
-   * Check whether folding should trigger and, if so, fold older turns.
-   * Uses the loom's fold() API (LOOM-5: non-destructive).
-   */
-  private async checkAndFold(
-    response: ChatInvokeCompletion,
-  ): Promise<boolean> {
-    if (!this.folding_enabled || !this.loom || !this.last_turn_id) return false;
-
-    const totalTokens =
-      (response.usage?.prompt_tokens ?? 0) +
-      (response.usage?.completion_tokens ?? 0);
-
-    // Use a default context window; pricing provider lookup could be added later
-    const contextWindow = 128_000;
-    if (!shouldFold(totalTokens, contextWindow, this.folding)) return false;
-
-    // Derive the current thread from the loom and partition for folding
-    const thread = deriveThread(this.loom, this.last_turn_id);
-    const { toFold, toKeep } = partitionForFolding(thread, this.folding);
-    if (toFold.length === 0) return false;
-
-    const result = await fold(toFold, toKeep, this.llm, this.folding);
-    if (!result.folded) return false;
-
-    // Rebuild messages: keep system prompt + fold summary + recent turns as messages
-    const newMessages: AnyMessage[] = [];
-    if (this.system_prompt) {
-      newMessages.push({
-        role: "system",
-        content: this.system_prompt,
-        cache: true,
-      } as AnyMessage);
+  /** Delegates to standalone checkAndFold(). */
+  private async _checkAndFold(response: ChatInvokeCompletion): Promise<boolean> {
+    if (!this.loom || !this.last_turn_id) return false;
+    const newMessages = await checkAndFold({
+      messages: this.messages,
+      loom: this.loom,
+      last_turn_id: this.last_turn_id,
+      folding: this.folding,
+      folding_enabled: this.folding_enabled,
+      llm: this.llm,
+      system_prompt: this.system_prompt,
+      response,
+    });
+    if (newMessages) {
+      this.messages = newMessages;
+      return true;
     }
-    newMessages.push(...result.messages);
-
-    this.messages = newMessages;
-    return true;
+    return false;
   }
 
   async query(message: string): Promise<string> {
     // CALL-4: Record the call as the loom root before the first turn
-    await this.recordCallRoot();
+    await this._recordCallRoot();
 
     // Add system prompt first if this is a fresh conversation
     if (!this.messages.length && this.system_prompt) {
@@ -359,7 +425,7 @@ export class Agent {
             }
           }
         }
-        await this.checkAndFold(response);
+        await this._checkAndFold(response);
         return false;
       },
       on_max_iterations: async () =>
@@ -369,7 +435,7 @@ export class Agent {
           max_iterations: this.max_iterations,
         }),
       on_turn_complete: this.loom
-        ? async (turnData) => this.recordTurn(turnData)
+        ? async (turnData) => this._recordTurn(turnData)
         : undefined,
     });
     return result;
@@ -377,7 +443,7 @@ export class Agent {
 
   async *query_stream(message: string): AsyncGenerator<AgentEvent> {
     // CALL-4: Record the call as the loom root before the first turn
-    await this.recordCallRoot();
+    await this._recordCallRoot();
 
     if (!this.messages.length && this.system_prompt) {
       this.messages.push({
@@ -465,7 +531,7 @@ export class Agent {
               continue;
             }
           }
-          await this.checkAndFold(response);
+          await this._checkAndFold(response);
           if (response.content) yield new TextEvent(response.content);
           yield new FinalResponseEvent(response.content ?? "");
           return;
@@ -544,7 +610,7 @@ export class Agent {
         }
       }
 
-      await this.checkAndFold(response);
+      await this._checkAndFold(response);
     }
 
     const summary = await generateMaxIterationsSummary({

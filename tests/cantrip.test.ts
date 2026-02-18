@@ -354,7 +354,7 @@ describe("cantrip", () => {
     expect(entity2UserMessages[0].content).toBe("entity2 message");
   });
 
-  test("entity exposes .agent for interop with runRepl", () => {
+  test("entity exposes spec parts (crystal, call, circle)", () => {
     const crystal = makeLlm([]);
     const spell = cantrip({
       crystal: crystal as any,
@@ -362,7 +362,9 @@ describe("cantrip", () => {
       circle: makeCircle(),
     });
     const entity = spell.invoke();
-    expect(entity.agent).toBeDefined();
+    expect(entity.crystal).toBeDefined();
+    expect(entity.call).toBeDefined();
+    expect(entity.circle).toBeDefined();
   });
 
   test("call with simple system_prompt derives gate_definitions from circle", async () => {

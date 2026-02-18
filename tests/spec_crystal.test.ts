@@ -274,9 +274,7 @@ describe("CRYSTAL-6: provider responses normalized to crystal contract", () => {
     expect(result).toBe("hello");
 
     // Usage is captured from the crystal response
-    // TODO: entity.agent access is an intentional escape hatch; a proper
-    // Entity.usage property would avoid reaching into Agent internals.
-    const usage = await entity.agent.get_usage();
+    const usage = await entity.get_usage();
     expect(usage.total_prompt_tokens).toBe(10);
     expect(usage.total_completion_tokens).toBe(5);
   });

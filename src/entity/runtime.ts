@@ -8,12 +8,24 @@ import type {
   GateCall,
   ToolMessage,
 } from "../crystal/messages";
+import { extractToolMessageText } from "../crystal/messages";
 import type { ChatInvokeCompletion } from "../crystal/views";
 import { hasGateCalls } from "../crystal/views";
 import type { DependencyOverrides } from "../circle/gate/depends";
 import type { GateResult } from "../circle/gate";
 import { UsageTracker } from "../crystal/tokens";
 import { TaskComplete } from "./errors";
+import type { AgentEvent } from "./events";
+import {
+  FinalResponseEvent,
+  StepCompleteEvent,
+  StepStartEvent,
+  TextEvent,
+  ThinkingEvent,
+  ToolCallEvent,
+  ToolResultEvent,
+  UsageEvent,
+} from "./events";
 
 export async function destroyEphemeralMessages(options: {
   messages: AnyMessage[];
@@ -268,6 +280,7 @@ export async function runAgentLoop(options: {
   max_iterations: number;
   require_done_tool: boolean;
   dependency_overrides?: DependencyOverrides | null;
+  usage_tracker?: UsageTracker;
   before_step?: () => Promise<void>;
   invoke_llm: () => Promise<ChatInvokeCompletion>;
   after_response?: (
@@ -286,6 +299,8 @@ export async function runAgentLoop(options: {
     terminated: boolean;
     truncated: boolean;
   }) => Promise<void>;
+  /** Streaming event callback — when provided, runAgentLoop emits AgentEvents inline. */
+  on_event?: (event: AgentEvent) => void;
 }): Promise<string> {
   const {
     llm,
@@ -298,13 +313,17 @@ export async function runAgentLoop(options: {
     max_iterations,
     require_done_tool,
     dependency_overrides,
+    usage_tracker,
     before_step,
     invoke_llm,
     after_response,
     on_max_iterations,
     on_tool_result,
     on_turn_complete,
+    on_event,
   } = options;
+
+  const emit = on_event ?? (() => {});
 
   if (!messages.length && system_prompt) {
     messages.push({
@@ -322,6 +341,21 @@ export async function runAgentLoop(options: {
 
     const turnStart = Date.now();
     const response = await invoke_llm();
+
+    // Emit streaming events for thinking and usage
+    if (response.thinking) {
+      emit(new ThinkingEvent(response.thinking));
+    }
+    if (response.usage && usage_tracker) {
+      const summary = await usage_tracker.getUsageSummary();
+      emit(new UsageEvent({
+        prompt_tokens: response.usage.prompt_tokens,
+        completion_tokens: response.usage.completion_tokens,
+        total_tokens: response.usage.prompt_tokens + response.usage.completion_tokens,
+        cached_tokens: response.usage.prompt_cached_tokens ?? 0,
+        cumulative_tokens: summary.total_tokens,
+      }));
+    }
 
     const assistantMessage: AssistantMessage = {
       role: "assistant",
@@ -350,15 +384,36 @@ export async function runAgentLoop(options: {
         if (shouldContinue) {
           continue;
         }
+        if (response.content) emit(new TextEvent(response.content));
+        emit(new FinalResponseEvent(response.content ?? ""));
         return response.content ?? "";
       }
+      if (response.content) emit(new TextEvent(response.content));
       continue;
+    }
+
+    // Has gate calls — emit text before processing tools
+    if (response.content) {
+      emit(new TextEvent(response.content));
     }
 
     const turnGateCalls: { gate_name: string; arguments: string; result: string; is_error: boolean }[] = [];
     const observationParts: string[] = [];
 
+    let stepNumber = 0;
     for (const toolCall of response.tool_calls ?? []) {
+      stepNumber += 1;
+      let args: Record<string, any> = {};
+      try {
+        args = JSON.parse(toolCall.function.arguments ?? "{}");
+      } catch {
+        args = { _raw: toolCall.function.arguments };
+      }
+
+      emit(new StepStartEvent(toolCall.id, toolCall.function.name, stepNumber));
+      emit(new ToolCallEvent(toolCall.function.name, args, toolCall.id, toolCall.function.name));
+
+      const stepStart = Date.now();
       try {
         const toolResult = await executeToolCall({
           tool_call: toolCall,
@@ -371,6 +426,20 @@ export async function runAgentLoop(options: {
         const resultText = typeof toolResult.content === "string"
           ? toolResult.content
           : JSON.stringify(toolResult.content);
+
+        emit(new ToolResultEvent(
+          toolCall.function.name,
+          extractToolMessageText(toolResult),
+          toolCall.id,
+          toolResult.is_error ?? false,
+          extractScreenshot(toolResult),
+        ));
+        emit(new StepCompleteEvent(
+          toolCall.id,
+          toolResult.is_error ? "error" : "completed",
+          Date.now() - stepStart,
+        ));
+
         turnGateCalls.push({
           gate_name: toolCall.function.name,
           arguments: toolCall.function.arguments ?? "{}",
@@ -387,6 +456,14 @@ export async function runAgentLoop(options: {
             content: `Task completed: ${err.message}`,
             is_error: false,
           } as ToolMessage);
+
+          emit(new ToolResultEvent(
+            toolCall.function.name,
+            `Task completed: ${err.message}`,
+            toolCall.id,
+            false,
+          ));
+          emit(new FinalResponseEvent(err.message));
 
           turnGateCalls.push({
             gate_name: toolCall.function.name,
@@ -445,6 +522,12 @@ export async function runAgentLoop(options: {
     });
   }
 
-  if (on_max_iterations) return await on_max_iterations();
-  return `Task stopped after ${max_iterations} iterations.`;
+  if (on_max_iterations) {
+    const summary = await on_max_iterations();
+    emit(new FinalResponseEvent(summary));
+    return summary;
+  }
+  const fallback = `Task stopped after ${max_iterations} iterations.`;
+  emit(new FinalResponseEvent(fallback));
+  return fallback;
 }

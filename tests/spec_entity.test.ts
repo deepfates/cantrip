@@ -179,9 +179,7 @@ describe("ENTITY-4: entity thread persists after termination", () => {
     const entity = spell.invoke();
     await entity.turn("persist test");
 
-    // TODO: entity.agent is an intentional escape hatch, but a proper Entity API
-    // (e.g., entity.history or entity.thread) would avoid reaching into internals.
-    const history = entity.agent.history;
+    const history = entity.history;
     // History should contain at least: system, user, assistant messages
     expect(history.length).toBeGreaterThanOrEqual(3);
     // First message is system prompt
@@ -208,9 +206,7 @@ describe("ENTITY-5/6: invoke and turn API", () => {
     const entity = spell.invoke();
     // Entity exists but no turn has run yet
     expect(entity).toBeDefined();
-    // TODO: entity.agent access is an intentional escape hatch; a proper
-    // Entity.isIdle or Entity.turnCount property would be cleaner.
-    expect(entity.agent.history.length).toBe(0);
+    expect(entity.history.length).toBe(0);
   });
 
   test("ENTITY-6: turn() runs one agent loop step and returns result", async () => {

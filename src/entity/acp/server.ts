@@ -16,15 +16,19 @@ import {
 } from "@agentclientprotocol/sdk";
 import { Readable, Writable } from "node:stream";
 import { Agent as CantripAgent } from "../service";
+import { Entity } from "../../cantrip/entity";
 import { TextEvent, FinalResponseEvent } from "../events";
 import { mapEvent } from "./events";
 
 /**
  * Extended session handle returned by the factory.
  * Allows lifecycle hooks for features like RLM memory management.
+ *
+ * Accepts either an Entity (preferred) or a legacy Agent.
  */
 export type CantripSessionHandle = {
-  agent: CantripAgent;
+  agent?: CantripAgent;
+  entity?: Entity;
   /** Called after each prompt turn completes (e.g., memory window management) */
   onTurn?: () => void | Promise<void>;
   /** Called when the connection closes (e.g., sandbox disposal) */
@@ -44,28 +48,60 @@ export type CantripSessionContext = {
 };
 
 /**
- * Factory function that creates a cantrip agent for each ACP session.
- * Can return a bare Agent or a CantripSessionHandle with lifecycle hooks.
+ * Factory function that creates an entity/agent for each ACP session.
+ * Can return a bare Agent, Entity, or a CantripSessionHandle with lifecycle hooks.
  */
 export type CantripAgentFactory = (
   context: CantripSessionContext,
 ) =>
   | CantripAgent
+  | Entity
   | CantripSessionHandle
   | Promise<CantripAgent>
+  | Promise<Entity>
   | Promise<CantripSessionHandle>;
 
+/** Streamable source — abstracts over Entity.turn_stream and Agent.query_stream. */
+type StreamSource = (text: string) => AsyncGenerator<any>;
+
 interface CantripSession {
-  agent: CantripAgent;
+  stream: StreamSource;
   onTurn?: () => void | Promise<void>;
   onClose?: () => void | Promise<void>;
   cancelled: boolean;
 }
 
 function isSessionHandle(
-  result: CantripAgent | CantripSessionHandle,
+  result: CantripAgent | Entity | CantripSessionHandle,
 ): result is CantripSessionHandle {
-  return "agent" in result && result.agent instanceof CantripAgent;
+  return (
+    ("agent" in result && result.agent instanceof CantripAgent) ||
+    ("entity" in result && result.entity instanceof Entity)
+  );
+}
+
+function toStreamSource(result: CantripAgent | Entity | CantripSessionHandle): {
+  stream: StreamSource;
+  onTurn?: () => void | Promise<void>;
+  onClose?: () => void | Promise<void>;
+} {
+  if (result instanceof Entity) {
+    return { stream: (text) => result.turn_stream(text) };
+  }
+  if (result instanceof CantripAgent) {
+    return { stream: (text) => result.query_stream(text) };
+  }
+  // CantripSessionHandle
+  const handle = result as CantripSessionHandle;
+  let stream: StreamSource;
+  if (handle.entity) {
+    stream = (text) => handle.entity!.turn_stream(text);
+  } else if (handle.agent) {
+    stream = (text) => handle.agent!.query_stream(text);
+  } else {
+    throw new Error("CantripSessionHandle must have either agent or entity");
+  }
+  return { stream, onTurn: handle.onTurn, onClose: handle.onClose };
 }
 
 class CantripACPAgent implements ACPAgent {
@@ -118,17 +154,18 @@ class CantripACPAgent implements ACPAgent {
       connection: this.connection,
     });
 
-    let session: CantripSession;
-    if (isSessionHandle(result)) {
-      session = {
-        agent: result.agent,
-        onTurn: result.onTurn,
-        onClose: result.onClose,
-        cancelled: false,
-      };
-    } else {
-      session = { agent: result, cancelled: false };
-    }
+    const resolved = toStreamSource(
+      isSessionHandle(result)
+        ? result
+        : result,
+    );
+
+    const session: CantripSession = {
+      stream: resolved.stream,
+      onTurn: resolved.onTurn,
+      onClose: resolved.onClose,
+      cancelled: false,
+    };
 
     this.sessions.set(sessionId, session);
     return { sessionId };
@@ -152,7 +189,7 @@ class CantripACPAgent implements ACPAgent {
     let hasStreamedText = false;
 
     try {
-      for await (const event of session.agent.query_stream(text)) {
+      for await (const event of session.stream(text)) {
         if (session.cancelled) {
           return { stopReason: "cancelled" };
         }
@@ -221,37 +258,26 @@ function extractText(prompt: Array<ContentBlock>): string {
 /**
  * Start an ACP server over stdio that wraps cantrip agents.
  *
- * The factory function is called once per session to create a new cantrip Agent.
+ * The factory function is called once per session to create a new Entity or Agent.
  * It receives the ACP NewSessionRequest (which includes `cwd` and `mcpServers`)
- * so you can configure the agent accordingly.
+ * so you can configure the entity accordingly.
  *
- * Return a bare Agent for simple cases, or a CantripSessionHandle for
+ * Return a bare Entity/Agent for simple cases, or a CantripSessionHandle for
  * lifecycle hooks (onTurn for memory management, onClose for cleanup).
  *
  * @example
  * ```typescript
- * import { Agent, ChatAnthropic, unsafeFsGates, done } from "cantrip";
+ * import { cantrip, ChatAnthropic, unsafeFsGates, done } from "cantrip";
  * import { serveCantripACP } from "cantrip/acp";
  *
- * // Simple agent
+ * // Simple entity
  * serveCantripACP(async ({ params }) => {
- *   return new Agent({
- *     llm: new ChatAnthropic({ model: "claude-sonnet-4-5" }),
- *     tools: [...unsafeFsGates, done],
+ *   const c = cantrip({
+ *     crystal: new ChatAnthropic({ model: "claude-sonnet-4-5" }),
+ *     call: { system_prompt: "You are helpful." },
+ *     circle: Circle({ gates: [...unsafeFsGates, done], wards: [max_turns(50)] }),
  *   });
- * });
- *
- * // RLM memory agent with plan updates
- * serveCantripACP(async ({ params, sessionId, connection }) => {
- *   const onProgress = createAcpProgressCallback(sessionId, connection);
- *   const { agent, sandbox, manageMemory } = await createRlmAgentWithMemory({
- *     llm, windowSize: 3, onProgress,
- *   });
- *   return {
- *     agent,
- *     onTurn: manageMemory,
- *     onClose: () => sandbox.dispose(),
- *   };
+ *   return c.invoke();
  * });
  * ```
  */

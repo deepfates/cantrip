@@ -1,11 +1,19 @@
 import type { BaseChatModel } from "../crystal/crystal";
+import type { AnyMessage } from "../crystal/messages";
 import type { Call } from "./call";
 import { renderGateDefinitions } from "./call";
 import type { Circle } from "../circle/circle";
+import { resolveWards } from "../circle/ward";
 import type { DependencyOverrides } from "../circle/gate/depends";
+import type { GateResult } from "../circle/gate";
 import type { Intent } from "./intent";
-import { Agent } from "../entity/service";
 import { Entity } from "./entity";
+import { UsageTracker } from "../crystal/tokens";
+import {
+  invokeLLMWithRetries,
+  generateMaxIterationsSummary,
+  runAgentLoop,
+} from "../entity/runtime";
 
 /**
  * A Cantrip is the minimal recipe for creating an Entity.
@@ -103,10 +111,11 @@ export function cantrip(input: CantripInput): Cantrip {
 
     /**
      * Cast the cantrip with an intent.
-     * CANTRIP-2: each cast creates a fresh, independent Agent.
-     * ENTITY-1: casting produces an entity (Agent instance).
+     * CANTRIP-2: each cast creates a fresh run — no shared state.
      * INTENT-1: intent is required.
      * INTENT-2: intent becomes the first user message.
+     *
+     * Calls runAgentLoop directly — no Agent in the path.
      */
     async cast(intent: Intent): Promise<any> {
       // INTENT-1: intent is required
@@ -114,33 +123,75 @@ export function cantrip(input: CantripInput): Cantrip {
         throw new Error("cast: intent is required (INTENT-1)");
       }
 
-      // CANTRIP-2: fresh Agent per cast — no shared state
-      const agent = new Agent({
-        llm: crystal,
-        circle,
-        system_prompt: resolvedCall.system_prompt,
-        tool_choice: resolvedCall.hyperparameters.tool_choice,
-        dependency_overrides: dependency_overrides ?? null,
-      });
+      // CANTRIP-2: fresh state per cast
+      const ward = resolveWards(circle.wards);
+      const tools = circle.gates;
+      const tool_map = new Map<string, GateResult>();
+      for (const tool of tools) {
+        tool_map.set(tool.name, tool);
+      }
+      const tool_definitions = resolvedCall.gate_definitions;
+      const effectiveToolChoice = ward.require_done_tool
+        ? "required"
+        : resolvedCall.hyperparameters.tool_choice;
+      const usage_tracker = new UsageTracker();
+      const messages: AnyMessage[] = [];
 
+      // System prompt first, then intent as first user message
+      if (resolvedCall.system_prompt) {
+        messages.push({
+          role: "system",
+          content: resolvedCall.system_prompt,
+          cache: true,
+        } as AnyMessage);
+      }
       // INTENT-2: intent becomes the first user message
-      return agent.query(intent);
+      messages.push({ role: "user", content: intent } as AnyMessage);
+
+      return runAgentLoop({
+        llm: crystal,
+        tools,
+        tool_map,
+        tool_definitions,
+        tool_choice: effectiveToolChoice,
+        messages,
+        system_prompt: resolvedCall.system_prompt,
+        max_iterations: ward.max_turns,
+        require_done_tool: ward.require_done_tool,
+        dependency_overrides: dependency_overrides ?? null,
+        invoke_llm: async () =>
+          invokeLLMWithRetries({
+            llm: crystal,
+            messages,
+            tools,
+            tool_definitions,
+            tool_choice: effectiveToolChoice,
+            usage_tracker,
+            llm_max_retries: 5,
+            llm_retry_base_delay: 1.0,
+            llm_retry_max_delay: 60.0,
+            llm_retryable_status_codes: new Set([429, 500, 502, 503, 504]),
+          }),
+        on_max_iterations: async () =>
+          generateMaxIterationsSummary({
+            llm: crystal,
+            messages,
+            max_iterations: ward.max_turns,
+          }),
+      });
     },
 
     /**
      * Invoke the cantrip to create a persistent Entity.
-     * CANTRIP-2: each invoke creates a fresh, independent Agent.
-     * The Entity wraps the Agent for multi-turn sessions.
+     * CANTRIP-2: each invoke creates a fresh, independent Entity.
      */
     invoke(): Entity {
-      const agent = new Agent({
-        llm: crystal,
+      return new Entity({
+        crystal,
+        call: resolvedCall,
         circle,
-        system_prompt: resolvedCall.system_prompt,
-        tool_choice: resolvedCall.hyperparameters.tool_choice,
         dependency_overrides: dependency_overrides ?? null,
       });
-      return new Entity(agent);
     },
   };
 }

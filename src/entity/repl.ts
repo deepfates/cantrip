@@ -8,10 +8,16 @@ import {
   type ConsoleRendererOptions,
 } from "./console";
 
-/** Resolve an Agent from either { agent } or { entity } options. */
-function resolveAgent(options: { agent?: Agent; entity?: Entity }): Agent {
-  if (options.agent) return options.agent;
-  if (options.entity) return options.entity.agent;
+/** Resolve a streamable source — Entity preferred, Agent for backward compat. */
+function resolveStreamable(options: { agent?: Agent; entity?: Entity }): {
+  stream: (task: string) => AsyncGenerator<any>;
+} {
+  if (options.entity) {
+    return { stream: (task: string) => options.entity!.turn_stream(task) };
+  }
+  if (options.agent) {
+    return { stream: (task: string) => options.agent!.query_stream(task) };
+  }
   throw new Error("Either agent or entity is required");
 }
 
@@ -32,14 +38,14 @@ export type ExecOptions = {
  * Unix-friendly: no prompts, no decoration, just output.
  */
 export async function exec(options: ExecOptions): Promise<void> {
-  const agent = resolveAgent(options);
+  const { stream } = resolveStreamable(options);
   const { task } = options;
   const verbose = options.verbose ?? false;
 
   const renderer = options.renderer ?? createConsoleRenderer({ verbose });
   const state = renderer.createState();
 
-  for await (const event of agent.query_stream(task)) {
+  for await (const event of stream(task)) {
     renderer.handle(event, state);
   }
 }
@@ -69,7 +75,7 @@ export type ReplOptions = {
  * - Interactive: opens a REPL prompt
  */
 export async function runRepl(options: ReplOptions): Promise<void> {
-  const agent = resolveAgent(options);
+  const { stream } = resolveStreamable(options);
   const { onClose, onTurn } = options;
   const prompt = options.prompt ?? "› ";
   const verbose =
@@ -83,7 +89,7 @@ export async function runRepl(options: ReplOptions): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length > 0) {
     const task = args.join(" ");
-    await exec({ agent, task, verbose, renderer: options.renderer });
+    await exec({ ...options, task, verbose });
     if (onTurn) await onTurn();
     if (onClose) await onClose();
     return;
@@ -100,7 +106,7 @@ export async function runRepl(options: ReplOptions): Promise<void> {
     }
     const task = input.trim();
     if (!task) return;
-    await exec({ agent, task, verbose, renderer: options.renderer });
+    await exec({ ...options, task, verbose });
     if (onTurn) await onTurn();
     if (onClose) await onClose();
     return;
@@ -134,7 +140,7 @@ export async function runRepl(options: ReplOptions): Promise<void> {
 
       rl.pause();
       const state = renderer.createState();
-      for await (const event of agent.query_stream(task)) {
+      for await (const event of stream(task)) {
         renderer.handle(event, state);
       }
       if (onTurn) await onTurn();
