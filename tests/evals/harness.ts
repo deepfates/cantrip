@@ -11,15 +11,15 @@
  * - Context preview provided to all approaches
  * - Cached tokens tracked separately
  */
-import { Agent } from "../../src/agent/service";
-import { analyzeContext, createRlmAgent } from "../../src/rlm/service";
-import { JsContext, getJsContext } from "../../src/tools/builtin/js_context";
-import { js } from "../../src/tools/builtin/js";
-import { done } from "../../src/tools/builtin/default";
-import { tool } from "../../src/tools/decorator";
+import { Agent } from "../../src/entity/service";
+import { analyzeContext, createRlmAgent } from "../../src/circle/gate/builtin/call_agent";
+import { JsContext, getJsContext } from "../../src/circle/gate/builtin/js_context";
+import { js } from "../../src/circle/gate/builtin/js";
+import { done } from "../../src/circle/gate/builtin/done";
+import { tool } from "../../src/circle/gate/decorator";
 import { z } from "zod";
-import { UsageTracker } from "../../src/tokens/usage";
-import type { BaseChatModel } from "../../src/llm/base";
+import { UsageTracker } from "../../src/crystal/tokens/usage";
+import type { BaseChatModel } from "../../src/crystal/crystal";
 
 // --- Result Types ---
 

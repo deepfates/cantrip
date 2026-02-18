@@ -1,6 +1,6 @@
 import { describe, test, expect, mock } from "bun:test";
-import { createRlmAgentWithMemory } from "../src/rlm/service";
-import { BaseChatModel, ModelResponse } from "../src/llm/base";
+import { createRlmAgentWithMemory } from "../src/circle/gate/builtin/call_agent";
+import { BaseChatModel, ModelResponse } from "../src/crystal/crystal";
 
 // Mock LLM that responds predictably
 function createMockLlm(responses: string[]): BaseChatModel {

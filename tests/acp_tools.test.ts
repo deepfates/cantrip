@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getToolKind, getToolLocations, getToolTitle } from "../src/acp/tools";
+import { getToolKind, getToolLocations, getToolTitle } from "../src/entity/acp/tools";
 
 describe("ACP tool classification", () => {
   describe("getToolKind", () => {

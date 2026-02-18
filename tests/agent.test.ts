@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { Agent, TaskComplete } from "../src/agent/service";
-import { tool } from "../src/tools/decorator";
+import { Agent, TaskComplete } from "../src/entity/service";
+import { tool } from "../src/circle/gate/decorator";
 
 async function addHandler({ a, b }: { a: number; b: number }) {
   return a + b;
@@ -264,7 +264,7 @@ describe("agent", () => {
     expect(toolMessages[1].destroyed).toBe(false);
   });
 
-  test("can disable compaction wiring", async () => {
+  test("can disable folding", async () => {
     const llm = {
       model: "dummy",
       provider: "dummy",
@@ -277,7 +277,7 @@ describe("agent", () => {
     const agent = new Agent({
       llm: llm as any,
       tools: [],
-      compaction_enabled: false,
+      folding_enabled: false,
     });
 
     const result = await agent.query("hi");

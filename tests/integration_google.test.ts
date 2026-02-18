@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatGoogle } from "../src/llm/google/chat";
-import type { ToolDefinition } from "../src/llm/base";
+import { ChatGoogle } from "../src/crystal/providers/google/chat";
+import type { GateDefinition } from "../src/crystal/crystal";
 import { loadEnv } from "./helpers/env";
 
 loadEnv();
@@ -11,7 +11,7 @@ const it = hasKey ? test : test.skip;
 
 const model = process.env.GOOGLE_MODEL ?? "gemini-2.0-flash";
 
-const echoTool: ToolDefinition = {
+const echoTool: GateDefinition = {
   name: "echo",
   description: "Echo back the input",
   parameters: {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createRlmAgent } from "../src/rlm/service";
-import { ChatOpenAI } from "../src/llm/openai/chat";
+import { createRlmAgent } from "../src/circle/gate/builtin/call_agent";
+import { ChatOpenAI } from "../src/crystal/providers/openai/chat";
 import { loadEnv } from "./helpers/env";
 
 loadEnv();

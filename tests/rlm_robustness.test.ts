@@ -5,16 +5,16 @@
  * 3. Browser profile filtering in system prompts
  */
 import { describe, expect, test, afterEach } from "bun:test";
-import { safeStringify } from "../src/rlm/tools";
+import { safeStringify } from "../src/circle/gate/builtin/call_agent_tools";
 import {
   getRlmSystemPrompt,
   getRlmMemorySystemPrompt,
-} from "../src/rlm/prompt";
-import { createRlmAgent } from "../src/rlm/service";
-import { JsAsyncContext } from "../src/tools/builtin/js_async_context";
-import type { BaseChatModel } from "../src/llm/base";
-import type { AnyMessage } from "../src/llm/messages";
-import type { ChatInvokeCompletion } from "../src/llm/views";
+} from "../src/circle/gate/builtin/call_agent_prompt";
+import { createRlmAgent } from "../src/circle/gate/builtin/call_agent";
+import { JsAsyncContext } from "../src/circle/gate/builtin/js_async_context";
+import type { BaseChatModel } from "../src/crystal/crystal";
+import type { AnyMessage } from "../src/crystal/messages";
+import type { ChatInvokeCompletion } from "../src/crystal/views";
 
 // ---------------------------------------------------------------------------
 // 1. safeStringify

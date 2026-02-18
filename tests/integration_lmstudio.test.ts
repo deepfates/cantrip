@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatLMStudio } from "../src/llm/lmstudio/chat";
-import type { ToolDefinition } from "../src/llm/base";
+import { ChatLMStudio } from "../src/crystal/providers/lmstudio/chat";
+import type { GateDefinition } from "../src/crystal/crystal";
 import { loadEnv } from "./helpers/env";
 
 loadEnv();
@@ -14,7 +14,7 @@ const it = runLive ? test : test.skip;
 const model = process.env.LM_STUDIO_MODEL ?? "gpt-oss-20b";
 const base_url = process.env.LM_STUDIO_BASE_URL ?? "http://localhost:1234/v1";
 
-const echoTool: ToolDefinition = {
+const echoTool: GateDefinition = {
   name: "echo",
   description: "Echo back the input",
   parameters: {

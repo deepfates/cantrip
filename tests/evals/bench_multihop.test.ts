@@ -13,7 +13,7 @@
  * Requires OPENAI_API_KEY in .env (skips gracefully if missing).
  */
 import { describe, test, expect } from "bun:test";
-import { ChatOpenAI } from "../../src/llm/openai/chat";
+import { ChatOpenAI } from "../../src/crystal/providers/openai/chat";
 import { generateMultihopDocuments } from "./generators";
 import {
   runRlmEval,

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { CoreAgent } from "../src/agent/core";
-import { rawTool } from "../src/tools/raw";
-import { TaskComplete } from "../src/agent/errors";
+import { CoreAgent } from "../src/entity/core";
+import { rawTool } from "../src/circle/gate/raw";
+import { TaskComplete } from "../src/entity/errors";
 
 const add = rawTool(
   {

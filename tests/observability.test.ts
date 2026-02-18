@@ -5,7 +5,7 @@ import {
   observe,
   observe_debug,
   setObserver,
-} from "../src/observability";
+} from "../src/entity/observability";
 
 describe("observability", () => {
   test("observer hooks are called for async functions", async () => {

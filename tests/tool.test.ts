@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { tool, serializeToolResult } from "../src/tools/decorator";
-import { Depends } from "../src/tools/depends";
+import { tool, serializeGateResult } from "../src/circle/gate/decorator";
+import { Depends } from "../src/circle/gate/depends";
 
 function getValue() {
   return 42;
@@ -84,13 +84,13 @@ describe("tools", () => {
     expect(result).toBe("42");
   });
 
-  test("serializeToolResult handles objects", () => {
-    const result = serializeToolResult({ ok: true });
+  test("serializeGateResult handles objects", () => {
+    const result = serializeGateResult({ ok: true });
     expect(result).toBe('{"ok":true}');
   });
 
-  test("serializeToolResult handles text parts", () => {
-    const result = serializeToolResult([{ type: "text", text: "hi" }]);
+  test("serializeGateResult handles text parts", () => {
+    const result = serializeGateResult([{ type: "text", text: "hi" }]);
     expect(result).toEqual([{ type: "text", text: "hi" }]);
   });
 });
