@@ -2,7 +2,7 @@ import type {
   AgentSideConnection,
   ToolCallContent,
 } from "@agentclientprotocol/sdk";
-import type { AgentEvent } from "../events";
+import type { TurnEvent } from "../events";
 import {
   TextEvent,
   ThinkingEvent,
@@ -83,12 +83,12 @@ function getToolCallContent(
 const pendingInputContent = new Map<string, ToolCallContent[]>();
 
 /**
- * Maps a cantrip AgentEvent to ACP session/update notification(s).
+ * Maps a cantrip TurnEvent to ACP session/update notification(s).
  * Returns true if the event was a FinalResponseEvent (signals end of turn).
  */
 export async function mapEvent(
   sessionId: string,
-  event: AgentEvent,
+  event: TurnEvent,
   connection: AgentSideConnection,
 ): Promise<boolean> {
   if (event instanceof TextEvent) {

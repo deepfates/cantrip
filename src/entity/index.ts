@@ -18,5 +18,5 @@ export {
   StepStartEvent,
   StepCompleteEvent,
   HiddenUserMessageEvent,
-  type AgentEvent,
+  type TurnEvent,
 } from "./events";

@@ -2,7 +2,7 @@
 // Tests real LLM integration with RLM sandbox (context isolation, recursive
 // delegation). These are genuinely below the cantrip API level.
 import { describe, expect, test } from "bun:test";
-import { createRlmAgent } from "../src/circle/gate/builtin/call_agent";
+import { createRlmAgent } from "../src/circle/gate/builtin/call_entity";
 import { ChatOpenAI } from "../src/crystal/providers/openai/chat";
 import { loadEnv } from "./helpers/env";
 
@@ -24,7 +24,7 @@ describe("rlm: real integration", () => {
     const context =
       "Filler text. ".repeat(2000) + needle + "More filler. ".repeat(2000);
 
-    const { agent, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createRlmAgent({
       llm,
       context,
       maxDepth: 0,
@@ -32,12 +32,12 @@ describe("rlm: real integration", () => {
 
     try {
       // The query is clean; the system prompt handles instructions for tools and termination.
-      const result = await agent.query("What is the SECRET_CODE?");
+      const result = await entity.turn("What is the SECRET_CODE?");
 
       expect(result).toContain("X-99");
 
       // Verify Context Isolation: The full 50kb context should not be in the prompt history
-      const historyJson = JSON.stringify(agent.history);
+      const historyJson = JSON.stringify(entity.history);
 
       // Prompt history should be small (metadata + model turns only)
       expect(historyJson.length).toBeLessThan(15000);
@@ -46,7 +46,7 @@ describe("rlm: real integration", () => {
     } catch (e) {
       console.log(
         "Needle Test Failed. History:",
-        JSON.stringify(agent.history, null, 2),
+        JSON.stringify(entity.history, null, 2),
       );
       throw e;
     } finally {
@@ -65,7 +65,7 @@ describe("rlm: real integration", () => {
       ],
     };
 
-    const { agent, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createRlmAgent({
       llm,
       context,
       maxDepth: 1,
@@ -73,7 +73,7 @@ describe("rlm: real integration", () => {
 
     try {
       // Testing the model's ability to filter and delegate based on system prompt rules
-      const result = await agent.query(
+      const result = await entity.turn(
         "Extract the password from the signal item in the data_points.",
       );
 
@@ -81,7 +81,7 @@ describe("rlm: real integration", () => {
     } catch (e) {
       console.log(
         "Recursion Test Failed. History:",
-        JSON.stringify(agent.history, null, 2),
+        JSON.stringify(entity.history, null, 2),
       );
       throw e;
     } finally {

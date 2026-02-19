@@ -9,7 +9,7 @@ import { Circle } from "../src/circle/circle";
 //
 // COMP-* tests verify that cantrips can compose — one cantrip can
 // delegate to another via a gate. Since the codebase doesn't yet have
-// a built-in call_agent gate, we simulate composition by creating
+// a built-in call_entity gate, we simulate composition by creating
 // a gate that internally runs another cantrip.
 
 async function doneHandler({ message }: { message: string }) {
@@ -79,7 +79,7 @@ describe("COMP-1: child circle is subset of parent", () => {
         return result;
       },
       {
-        name: "call_agent",
+        name: "call_entity",
         schema: {
           type: "object",
           properties: { intent: { type: "string" } },
@@ -89,7 +89,7 @@ describe("COMP-1: child circle is subset of parent", () => {
       },
     );
 
-    // Parent cantrip that uses call_agent
+    // Parent cantrip that uses call_entity
     const parentCrystal = makeLlm([
       () => ({
         content: null,
@@ -98,7 +98,7 @@ describe("COMP-1: child circle is subset of parent", () => {
             id: "parent_call_1",
             type: "function",
             function: {
-              name: "call_agent",
+              name: "call_entity",
               arguments: JSON.stringify({ intent: "sub task" }),
             },
           },
@@ -133,9 +133,9 @@ describe("COMP-1: child circle is subset of parent", () => {
   });
 });
 
-// ── COMP-2: call_agent blocks parent until child completes ─────────
+// ── COMP-2: call_entity blocks parent until child completes ─────────
 
-describe("COMP-2: call_agent blocks parent until child completes", () => {
+describe("COMP-2: call_entity blocks parent until child completes", () => {
   test("COMP-2: parent waits for child cantrip to complete before continuing", async () => {
     const executionOrder: string[] = [];
 
@@ -176,7 +176,7 @@ describe("COMP-2: call_agent blocks parent until child completes", () => {
         return result;
       },
       {
-        name: "call_agent",
+        name: "call_entity",
         schema: {
           type: "object",
           properties: { intent: { type: "string" } },
@@ -194,7 +194,7 @@ describe("COMP-2: call_agent blocks parent until child completes", () => {
             id: "p1",
             type: "function",
             function: {
-              name: "call_agent",
+              name: "call_entity",
               arguments: JSON.stringify({ intent: "compute 6*7" }),
             },
           },
@@ -237,7 +237,7 @@ describe("COMP-2: call_agent blocks parent until child completes", () => {
 
 // ── COMP-3: batch returns results in request order ─────────────────
 
-describe("COMP-3: call_agent_batch returns results in request order", () => {
+describe("COMP-3: call_entity_batch returns results in request order", () => {
   test("COMP-3: batch delegation returns results in order", async () => {
     // Create child cantrips that return different results
     function makeChildCantrip(result: string) {
@@ -282,7 +282,7 @@ describe("COMP-3: call_agent_batch returns results in request order", () => {
         return results.join(",");
       },
       {
-        name: "call_agent_batch",
+        name: "call_entity_batch",
         schema: {
           type: "object",
           properties: {
@@ -302,7 +302,7 @@ describe("COMP-3: call_agent_batch returns results in request order", () => {
             id: "p1",
             type: "function",
             function: {
-              name: "call_agent_batch",
+              name: "call_entity_batch",
               arguments: JSON.stringify({ intents: ["return A", "return B", "return C"] }),
             },
           },
@@ -380,7 +380,7 @@ describe("COMP-4: child entity has independent context", () => {
         return await childSpell.cast(intent);
       },
       {
-        name: "call_agent",
+        name: "call_entity",
         schema: {
           type: "object",
           properties: { intent: { type: "string" } },
@@ -405,7 +405,7 @@ describe("COMP-4: child entity has independent context", () => {
                 id: "p1",
                 type: "function",
                 function: {
-                  name: "call_agent",
+                  name: "call_entity",
                   arguments: JSON.stringify({ intent: "read secret variable" }),
                 },
               },
@@ -462,7 +462,7 @@ describe("COMP-4: child entity has independent context", () => {
 // ── COMP-6: max_depth prevents further delegation ──────────────────
 // NOTE: Framework-level max_depth warding (gate removal at depth limit) is not
 // yet implemented. These tests verify user-land depth tracking, not framework
-// enforcement. TODO: add framework-level depth ward that removes call_agent gate.
+// enforcement. TODO: add framework-level depth ward that removes call_entity gate.
 
 describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
   test("COMP-6: depth-limited gate prevents deep recursion", async () => {
@@ -479,7 +479,7 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
         return "should not reach";
       },
       {
-        name: "call_agent",
+        name: "call_entity",
         schema: {
           type: "object",
           properties: { intent: { type: "string" } },
@@ -504,7 +504,7 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
                 id: "p1",
                 type: "function",
                 function: {
-                  name: "call_agent",
+                  name: "call_entity",
                   arguments: JSON.stringify({ intent: "sub" }),
                 },
               },
@@ -556,7 +556,7 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
           return await child.cast(intent);
         },
         {
-          name: "call_agent",
+          name: "call_entity",
           schema: {
             type: "object",
             properties: { intent: { type: "string" } },
@@ -581,7 +581,7 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
                   id: `call_depth_${depth}`,
                   type: "function",
                   function: {
-                    name: "call_agent",
+                    name: "call_entity",
                     arguments: JSON.stringify({ intent: `level ${depth}` }),
                   },
                 },
@@ -663,7 +663,7 @@ describe("COMP-7: child can use different crystal", () => {
       "Call agent",
       async ({ intent }: { intent: string }) => childSpell.cast(intent),
       {
-        name: "call_agent",
+        name: "call_entity",
         schema: {
           type: "object",
           properties: { intent: { type: "string" } },
@@ -689,7 +689,7 @@ describe("COMP-7: child can use different crystal", () => {
                 id: "p1",
                 type: "function",
                 function: {
-                  name: "call_agent",
+                  name: "call_entity",
                   arguments: JSON.stringify({ intent: "use different crystal" }),
                 },
               },
@@ -755,7 +755,7 @@ describe("COMP-8: child failure returns error to parent", () => {
         return await childSpell.cast(intent);
       },
       {
-        name: "call_agent",
+        name: "call_entity",
         schema: {
           type: "object",
           properties: { intent: { type: "string" } },
@@ -780,7 +780,7 @@ describe("COMP-8: child failure returns error to parent", () => {
                 id: "p1",
                 type: "function",
                 function: {
-                  name: "call_agent",
+                  name: "call_entity",
                   arguments: JSON.stringify({ intent: "will fail" }),
                 },
               },

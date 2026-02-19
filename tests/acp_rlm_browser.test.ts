@@ -8,7 +8,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { ChatAnthropic } from "../src/crystal/providers/anthropic/chat";
-import { createRlmAgent, createRlmAgentWithMemory } from "../src/circle/gate/builtin/call_agent";
+import { createRlmAgent, createRlmAgentWithMemory } from "../src/circle/gate/builtin/call_entity";
 import { BrowserContext } from "../src/circle/gate/builtin/browser_context";
 
 describe("ACP RLM Browser Agent", () => {

@@ -11,7 +11,7 @@ import { UsageTracker } from "../crystal/tokens";
 import {
   invokeLLMWithRetries,
   generateMaxIterationsSummary,
-  runAgentLoop,
+  runLoop,
 } from "../entity/runtime";
 import type { Loom } from "../loom";
 import type { FoldingConfig } from "../loom/folding";
@@ -131,7 +131,7 @@ export function cantrip(input: CantripInput): Cantrip {
      * INTENT-1: intent is required.
      * INTENT-2: intent becomes the first user message.
      *
-     * Calls runAgentLoop directly — no Agent in the path.
+     * Calls runLoop directly — no Agent in the path.
      */
     async cast(intent: Intent): Promise<any> {
       // INTENT-1: intent is required
@@ -164,7 +164,7 @@ export function cantrip(input: CantripInput): Cantrip {
       // INTENT-2: intent becomes the first user message
       messages.push({ role: "user", content: intent } as AnyMessage);
 
-      return runAgentLoop({
+      return runLoop({
         llm: crystal,
         tools,
         circle,

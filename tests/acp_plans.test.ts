@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAcpProgressCallback } from "../src/entity/acp/plans";
-import type { RlmProgressEvent } from "../src/circle/gate/builtin/call_agent_tools";
+import type { RlmProgressEvent } from "../src/circle/gate/builtin/call_entity_tools";
 
 /** Captures sessionUpdate calls and extracts plan entries. */
 function mockConnection() {
@@ -22,11 +22,11 @@ function mockConnection() {
 describe("ACP plan updates", () => {
   const sid = "plan-test-session";
 
-  test("sub_agent_start adds an in_progress entry", () => {
+  test("sub_entity_start adds an in_progress entry", () => {
     const conn = mockConnection();
     const progress = createAcpProgressCallback(sid, conn as any);
 
-    progress({ type: "sub_agent_start", depth: 1, query: "Find the answer" });
+    progress({ type: "sub_entity_start", depth: 1, query: "Find the answer" });
 
     expect(conn.updates).toHaveLength(1);
     expect(conn.updates[0].sessionId).toBe(sid);
@@ -36,12 +36,12 @@ describe("ACP plan updates", () => {
     expect(conn.lastEntries[0].content).toContain("Find the answer");
   });
 
-  test("sub_agent_end marks the entry as completed", () => {
+  test("sub_entity_end marks the entry as completed", () => {
     const conn = mockConnection();
     const progress = createAcpProgressCallback(sid, conn as any);
 
-    progress({ type: "sub_agent_start", depth: 1, query: "task A" });
-    progress({ type: "sub_agent_end", depth: 1 });
+    progress({ type: "sub_entity_start", depth: 1, query: "task A" });
+    progress({ type: "sub_entity_end", depth: 1 });
 
     expect(conn.updates).toHaveLength(2);
     expect(conn.lastEntries).toHaveLength(1);
@@ -53,7 +53,7 @@ describe("ACP plan updates", () => {
     const progress = createAcpProgressCallback(sid, conn as any);
 
     const longQuery = "A".repeat(100);
-    progress({ type: "sub_agent_start", depth: 1, query: longQuery });
+    progress({ type: "sub_entity_start", depth: 1, query: longQuery });
 
     const content = conn.lastEntries[0].content;
     expect(content.length).toBeLessThan(100);
@@ -101,9 +101,9 @@ describe("ACP plan updates", () => {
     const conn = mockConnection();
     const progress = createAcpProgressCallback(sid, conn as any);
 
-    progress({ type: "sub_agent_start", depth: 1, query: "first" });
-    progress({ type: "sub_agent_end", depth: 1 });
-    progress({ type: "sub_agent_start", depth: 1, query: "second" });
+    progress({ type: "sub_entity_start", depth: 1, query: "first" });
+    progress({ type: "sub_entity_end", depth: 1 });
+    progress({ type: "sub_entity_start", depth: 1, query: "second" });
 
     expect(conn.lastEntries).toHaveLength(2);
     expect(conn.lastEntries[0].status).toBe("completed");
@@ -114,16 +114,16 @@ describe("ACP plan updates", () => {
     const conn = mockConnection();
     const progress = createAcpProgressCallback(sid, conn as any);
 
-    progress({ type: "sub_agent_start", depth: 1, query: "outer" });
-    progress({ type: "sub_agent_start", depth: 2, query: "inner" });
-    progress({ type: "sub_agent_end", depth: 2 });
+    progress({ type: "sub_entity_start", depth: 1, query: "outer" });
+    progress({ type: "sub_entity_start", depth: 2, query: "inner" });
+    progress({ type: "sub_entity_end", depth: 2 });
 
     // Inner should be completed, outer still in_progress
     expect(conn.lastEntries).toHaveLength(2);
     expect(conn.lastEntries[0].status).toBe("in_progress");
     expect(conn.lastEntries[1].status).toBe("completed");
 
-    progress({ type: "sub_agent_end", depth: 1 });
+    progress({ type: "sub_entity_end", depth: 1 });
     expect(conn.lastEntries[0].status).toBe("completed");
     expect(conn.lastEntries[1].status).toBe("completed");
   });
@@ -132,8 +132,8 @@ describe("ACP plan updates", () => {
     const conn = mockConnection();
     const progress = createAcpProgressCallback(sid, conn as any);
 
-    progress({ type: "sub_agent_start", depth: 1, query: "a" });
-    progress({ type: "sub_agent_start", depth: 1, query: "b" });
+    progress({ type: "sub_entity_start", depth: 1, query: "a" });
+    progress({ type: "sub_entity_start", depth: 1, query: "b" });
 
     // Second update should contain both entries
     expect(conn.updates[1].update.entries).toHaveLength(2);

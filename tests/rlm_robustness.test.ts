@@ -9,12 +9,12 @@
  * sandbox input validation — genuinely below the cantrip API level.
  */
 import { describe, expect, test, afterEach } from "bun:test";
-import { safeStringify } from "../src/circle/gate/builtin/call_agent_tools";
+import { safeStringify } from "../src/circle/gate/builtin/call_entity_tools";
 import {
   getRlmSystemPrompt,
   getRlmMemorySystemPrompt,
-} from "../src/circle/gate/builtin/call_agent_prompt";
-import { createRlmAgent } from "../src/circle/gate/builtin/call_agent";
+} from "../src/circle/gate/builtin/call_entity_prompt";
+import { createRlmAgent } from "../src/circle/gate/builtin/call_entity";
 import { JsAsyncContext } from "../src/circle/gate/builtin/js_async_context";
 import type { BaseChatModel } from "../src/crystal/crystal";
 import type { AnyMessage } from "../src/crystal/messages";
@@ -287,14 +287,14 @@ describe("llm_batch input validation", () => {
       }),
     ]);
 
-    const { agent, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createRlmAgent({
       llm: mockLlm,
       context: "test",
       maxDepth: 1,
     });
     activeSandbox = sandbox;
 
-    const result = await agent.query("Start");
+    const result = await entity.turn("Start");
     expect(result).toContain("llm_batch: task[0].query must be a string");
   });
 
@@ -322,14 +322,14 @@ describe("llm_batch input validation", () => {
       }),
     ]);
 
-    const { agent, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createRlmAgent({
       llm: mockLlm,
       context: "test",
       maxDepth: 1,
     });
     activeSandbox = sandbox;
 
-    const result = await agent.query("Start");
+    const result = await entity.turn("Start");
     expect(result).toContain("llm_batch: task[0].query must be a string");
   });
 });

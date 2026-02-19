@@ -2,14 +2,14 @@ import type { ToolChoice, GateDefinition } from "../../crystal/crystal";
 import type { AssistantMessage, ToolMessage } from "../../crystal/messages";
 import type { GateResult } from "../gate/gate";
 import type { DependencyOverrides } from "../gate/depends";
-import type { AgentEvent } from "../../entity/events";
+import type { TurnEvent } from "../../entity/events";
 import type { CircleExecuteResult } from "../circle";
 import type { Medium } from "../medium";
 import {
   JsAsyncContext,
   createAsyncModule,
 } from "../gate/builtin/js_async_context";
-import { formatRlmMetadata } from "../gate/builtin/call_agent_tools";
+import { formatRlmMetadata } from "../gate/builtin/call_entity_tools";
 import { TaskComplete } from "../../entity/errors";
 import {
   StepStartEvent,
@@ -100,7 +100,7 @@ export function js(opts?: JsMediumOptions): Medium {
     async execute(
       utterance: AssistantMessage,
       options: {
-        on_event?: (event: AgentEvent) => void;
+        on_event?: (event: TurnEvent) => void;
         on_tool_result?: (msg: ToolMessage) => void;
       },
     ): Promise<CircleExecuteResult> {

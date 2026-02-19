@@ -15,8 +15,8 @@ export function safeStringify(value: unknown, indent?: number): string {
 }
 
 export type RlmProgressEvent =
-  | { type: "sub_agent_start"; depth: number; query: string }
-  | { type: "sub_agent_end"; depth: number }
+  | { type: "sub_entity_start"; depth: number; query: string }
+  | { type: "sub_entity_end"; depth: number }
   | { type: "batch_start"; depth: number; count: number }
   | {
       type: "batch_item";
@@ -34,13 +34,13 @@ function defaultProgress(depth: number): RlmProgressCallback {
   const indent = "  ".repeat(depth);
   return (event) => {
     switch (event.type) {
-      case "sub_agent_start": {
+      case "sub_entity_start": {
         const preview =
           event.query.slice(0, 50) + (event.query.length > 50 ? "..." : "");
         console.error(`${indent}├─ [depth:${event.depth}] "${preview}"`);
         break;
       }
-      case "sub_agent_end":
+      case "sub_entity_end":
         console.error(`${indent}└─ [depth:${event.depth}] done`);
         break;
       case "batch_start":
@@ -176,11 +176,11 @@ export async function registerRlmFunctions(options: {
     }
 
     const childDepth = depth + 1;
-    progress({ type: "sub_agent_start", depth: childDepth, query: q });
+    progress({ type: "sub_entity_start", depth: childDepth, query: q });
 
     const result = await onLlmQuery(q, c);
 
-    progress({ type: "sub_agent_end", depth: childDepth });
+    progress({ type: "sub_entity_end", depth: childDepth });
     return result;
   });
 

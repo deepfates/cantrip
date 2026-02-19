@@ -47,7 +47,7 @@ export type CantripSessionContext = {
  * Factory function that creates an Entity for each ACP session.
  * Can return a bare Entity or a CantripSessionHandle with lifecycle hooks.
  */
-export type CantripAgentFactory = (
+export type CantripEntityFactory = (
   context: CantripSessionContext,
 ) =>
   | Entity
@@ -88,12 +88,12 @@ function toStreamSource(result: Entity | CantripSessionHandle): {
   };
 }
 
-class CantripACPAgent implements ACPAgent {
+class CantripACPEntity implements ACPAgent {
   private connection: AgentSideConnection;
   private sessions = new Map<string, CantripSession>();
-  private factory: CantripAgentFactory;
+  private factory: CantripEntityFactory;
 
-  constructor(connection: AgentSideConnection, factory: CantripAgentFactory) {
+  constructor(connection: AgentSideConnection, factory: CantripEntityFactory) {
     this.connection = connection;
     this.factory = factory;
   }
@@ -261,11 +261,11 @@ function extractText(prompt: Array<ContentBlock>): string {
  * });
  * ```
  */
-export function serveCantripACP(factory: CantripAgentFactory): void {
+export function serveCantripACP(factory: CantripEntityFactory): void {
   const input = Writable.toWeb(process.stdout) as WritableStream<Uint8Array>;
   const output = Readable.toWeb(
     process.stdin,
   ) as unknown as ReadableStream<Uint8Array>;
   const stream = ndJsonStream(input, output);
-  new AgentSideConnection((conn) => new CantripACPAgent(conn, factory), stream);
+  new AgentSideConnection((conn) => new CantripACPEntity(conn, factory), stream);
 }
