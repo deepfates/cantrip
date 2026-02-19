@@ -3,6 +3,7 @@ import type { BaseChatModel } from "../../../crystal/crystal";
 import type { UsageTracker } from "../../../crystal/tokens/usage";
 import type { RlmProgressCallback } from "../../recipe/rlm_tools";
 import type { BrowserContext } from "../../medium/browser/context";
+import type { Loom } from "../../../loom";
 
 export type CallEntityGateOptions = {
   /** Crystal (LLM) for child entities */
@@ -21,6 +22,10 @@ export type CallEntityGateOptions = {
   onProgress?: RlmProgressCallback;
   /** Optional browser context to propagate to child agents. */
   browserContext?: BrowserContext;
+  /** Parent's loom — when provided, child entities record into it (unified tree). */
+  loom?: Loom;
+  /** Returns the parent entity's most recent turn ID. Used as parent_turn_id for children. */
+  getCurrentTurnId?: () => string | null;
 };
 
 /**
@@ -41,6 +46,8 @@ export function call_entity(opts: CallEntityGateOptions): GateResult | null {
     parent_context,
     onProgress,
     browserContext,
+    loom,
+    getCurrentTurnId,
   } = opts;
 
   // COMP-6: At depth >= max_depth, remove call_entity from the circle
@@ -115,6 +122,7 @@ export function call_entity(opts: CallEntityGateOptions): GateResult | null {
       try {
         const { createRlmAgent } = await import("../../recipe/rlm");
 
+        const parentTurnId = getCurrentTurnId?.() ?? undefined;
         const child = await createRlmAgent({
           llm: sub_crystal,
           subLlm: sub_crystal,
@@ -124,6 +132,8 @@ export function call_entity(opts: CallEntityGateOptions): GateResult | null {
           usage,
           onProgress,
           browserContext,
+          loom,
+          parent_turn_id: parentTurnId,
         });
 
         try {
@@ -162,6 +172,8 @@ export function call_entity_batch(opts: CallEntityGateOptions): GateResult | nul
     parent_context,
     onProgress,
     browserContext,
+    loom,
+    getCurrentTurnId,
   } = opts;
 
   // Same depth check as call_entity — at max depth, no batch either
@@ -263,6 +275,7 @@ export function call_entity_batch(opts: CallEntityGateOptions): GateResult | nul
             }
 
             try {
+              const parentTurnId = getCurrentTurnId?.() ?? undefined;
               const child = await createRlmAgent({
                 llm: sub_crystal,
                 subLlm: sub_crystal,
@@ -272,6 +285,8 @@ export function call_entity_batch(opts: CallEntityGateOptions): GateResult | nul
                 usage,
                 onProgress,
                 browserContext,
+                loom,
+                parent_turn_id: parentTurnId,
               });
 
               try {

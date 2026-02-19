@@ -39,6 +39,8 @@ export async function recordCallRoot(params: {
   entity_id: string;
   system_prompt: string | null;
   tool_definitions: GateDefinition[];
+  /** When this entity is a child, the parent turn that spawned it. */
+  parent_turn_id?: string | null;
 }): Promise<string> {
   const gateDefinitions = params.tool_definitions
     .map((g) => `- ${g.name}: ${g.description ?? "(no description)"}`)
@@ -46,7 +48,7 @@ export async function recordCallRoot(params: {
 
   const turn: Turn = {
     id: generateTurnId(),
-    parent_id: null,
+    parent_id: params.parent_turn_id ?? null,
     cantrip_id: params.cantrip_id,
     entity_id: params.entity_id,
     sequence: 0,

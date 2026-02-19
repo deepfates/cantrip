@@ -35,6 +35,10 @@ export type RlmOptions = {
   browserContext?: import("../medium/browser/context").BrowserContext;
   /** Progress callback for sub-agent activity. Defaults to console.error logging. */
   onProgress?: RlmProgressCallback;
+  /** Optional shared loom — when provided, child records into parent's loom instead of creating its own. */
+  loom?: Loom;
+  /** Parent turn ID — the parent turn that spawned this child entity. */
+  parent_turn_id?: string;
 };
 
 /**
@@ -63,12 +67,22 @@ export async function createRlmAgent(
     dependency_overrides = new Map(),
     browserContext,
     onProgress,
+    loom: parentLoom,
+    parent_turn_id,
   } = options;
 
   // 1. Create JS medium with context as initial state
   const medium = jsMedium({ state: { context } });
 
+  // Resolve the loom early so it's available for gate construction.
+  // When a parent loom is provided, the child records into it (unified tree).
+  // Otherwise, create an ephemeral loom (backward compat / top-level agents).
+  const loom = parentLoom ?? new Loom(new MemoryStorage());
+
   // 2. Build gates array — done gate (submit_answer) + call_entity gate (llm_query)
+  // entityRef is populated after entity creation (step 7); execute() is only called
+  // during entity.turn(), so the ref is always populated by then.
+  const entityRef: { current: Entity | null } = { current: null };
   const progress = onProgress ?? defaultProgress(depth);
   const gates: GateResult[] = [done_for_medium()];
   const entityGate = call_entity_gate({
@@ -80,6 +94,8 @@ export async function createRlmAgent(
     parent_context: context,
     onProgress: progress,
     browserContext,
+    loom,
+    getCurrentTurnId: () => entityRef.current?.lastTurnId ?? null,
   });
   if (entityGate) gates.push(entityGate);
   const batchGate = call_entity_batch_gate({
@@ -91,6 +107,8 @@ export async function createRlmAgent(
     parent_context: context,
     onProgress: progress,
     browserContext,
+    loom,
+    getCurrentTurnId: () => entityRef.current?.lastTurnId ?? null,
   });
   if (batchGate) gates.push(batchGate);
 
@@ -175,7 +193,6 @@ export async function createRlmAgent(
   });
 
   // 7. Create Entity via cantrip API with shared usage tracker and folding
-  const loom = new Loom(new MemoryStorage());
   const spell = cantrip({
     crystal: llm,
     call: { system_prompt: systemPrompt, hyperparameters: { tool_choice: "auto" } },
@@ -183,6 +200,7 @@ export async function createRlmAgent(
     dependency_overrides: dependency_overrides.size ? dependency_overrides : null,
     usage_tracker: usage,
     loom,
+    parent_turn_id,
     folding_enabled: true,
     folding: {
       enabled: true,
@@ -192,6 +210,7 @@ export async function createRlmAgent(
     },
   });
   const entity = spell.invoke();
+  entityRef.current = entity;
 
   return { entity, sandbox };
 }
