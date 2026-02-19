@@ -36,13 +36,14 @@ describe("Circle with JS medium", () => {
     circle = null;
   });
 
-  test("constructs without done gate when medium present", () => {
+  test("auto-injects done_for_medium when medium present and no done gate", () => {
     circle = Circle({
       medium: js(),
       wards: [max_turns(10)],
     });
     expect(circle.hasMedium).toBe(true);
-    expect(circle.gates).toHaveLength(0);
+    expect(circle.gates).toHaveLength(1);
+    expect(circle.gates[0].name).toBe("done");
   });
 
   test("constructs with gates when medium present", () => {

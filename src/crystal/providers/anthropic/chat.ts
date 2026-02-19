@@ -82,6 +82,10 @@ export class ChatAnthropic implements BaseChatModel {
     if (tool_choice === "auto") return { type: "auto" };
     if (tool_choice === "required") return { type: "any" };
     if (tool_choice === "none") return { type: "none" };
+    // Handle object format: { type: string, name: string }
+    if (typeof tool_choice === "object" && "name" in tool_choice) {
+      return { type: "tool", name: tool_choice.name };
+    }
     return { type: "tool", name: tool_choice };
   }
 
