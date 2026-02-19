@@ -1,43 +1,35 @@
-// Browser gate — headless browser control via Taiko.
-// The browser context is lazily created on first use.
+// Browser medium — a Taiko browser session that the entity works inside.
+// The entity writes Taiko code; gates are projected as available commands.
+// ONE medium per circle. The medium REPLACES conversation.
 
 import "./env";
-import {
-  cantrip, runRepl, Circle, ChatAnthropic, max_turns,
-  browser, BrowserContext, getBrowserContext, done,
-} from "../src";
+import { cantrip, Circle, ChatAnthropic, max_turns, require_done } from "../src";
+import { browser } from "../src/circle/medium/browser";
 
 export async function main() {
   const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
-  let browserCtx: BrowserContext | null = null;
-  const lazyGetBrowser = async () => {
-    if (!browserCtx) {
-      console.log("[Browser] Launching...");
-      browserCtx = await BrowserContext.create({ headless: true, profile: "full" });
-    }
-    return browserCtx;
-  };
-
+  // The browser medium: entity works IN a Taiko browser session.
+  // Gates (like submit_answer) are projected as callable functions inside it.
   const circle = Circle({
-    gates: [browser, done],
-    wards: [max_turns(50)],
+    medium: browser({ headless: true, profile: "full" }),
+    wards: [max_turns(50), require_done()],
   });
 
-  const entity = cantrip({
+  const spell = cantrip({
     crystal,
-    call: { system_prompt: "You control a headless browser. Navigate, click, extract data. Call done when finished." },
-    circle,
-    dependency_overrides: new Map([[getBrowserContext, lazyGetBrowser]]),
-  }).invoke();
-
-  await runRepl({
-    entity,
-    greeting: "Browser agent ready. Ctrl+C to exit.",
-    onClose: async () => {
-      if (browserCtx) await browserCtx.dispose();
+    call: {
+      system_prompt: "You control a headless browser via Taiko. Navigate, click, extract data. Use submit_answer(value) to return your final result.",
     },
+    circle,
   });
+
+  try {
+    const answer = await spell.cast("Go to https://example.com and return the page title.");
+    console.log("Answer:", answer);
+  } finally {
+    await circle.dispose?.();
+  }
 }
 
 if (import.meta.main) {

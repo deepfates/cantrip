@@ -1,8 +1,8 @@
 import type { GateResult, GateDocs } from "../gate";
 import type { BaseChatModel } from "../../../crystal/crystal";
 import type { UsageTracker } from "../../../crystal/tokens/usage";
-import type { RlmProgressCallback } from "./call_entity_tools";
-import type { BrowserContext } from "./browser_context";
+import type { RlmProgressCallback } from "../../recipe/rlm_tools";
+import type { BrowserContext } from "../../medium/browser/context";
 
 export type CallEntityGateOptions = {
   /** Crystal (LLM) for child entities */
@@ -113,7 +113,7 @@ export function call_entity(opts: CallEntityGateOptions): GateResult | null {
       }
 
       try {
-        const { createRlmAgent } = await import("./call_entity");
+        const { createRlmAgent } = await import("../../recipe/rlm");
 
         const child = await createRlmAgent({
           llm: sub_crystal,
@@ -227,7 +227,7 @@ export function call_entity_batch(opts: CallEntityGateOptions): GateResult | nul
         onProgress({ type: "batch_start", depth: childDepth, count: tasks.length });
       }
 
-      const { createRlmAgent } = await import("./call_entity");
+      const { createRlmAgent } = await import("../../recipe/rlm");
 
       const results: string[] = [];
       for (let i = 0; i < tasks.length; i += MAX_BATCH_CONCURRENCY) {

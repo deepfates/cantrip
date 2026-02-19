@@ -3,7 +3,6 @@ import {
   SandboxContext,
   read,
   write,
-  bash,
   glob,
   edit,
   getSandboxContextDepends,
@@ -102,38 +101,6 @@ describe("File System Windowing", () => {
       );
 
       expect(result).toContain("empty - file has 2 lines");
-    });
-  });
-
-  describe("bash tool", () => {
-    it("truncates long output", async () => {
-      const result = await bash.execute(
-        { command: `node -e "console.log('x'.repeat(15000))"` },
-        deps,
-      );
-
-      expect(result).toContain("[output truncated");
-      expect(result.length).toBeLessThan(10000);
-    });
-
-    it("rejects commands over 5000 chars", async () => {
-      const longCommand = "echo " + "x".repeat(6000);
-
-      const result = await bash.execute({ command: longCommand }, deps);
-
-      expect(result).toContain("Command too long");
-    });
-
-    it("supports max_output_chars parameter", async () => {
-      const result = await bash.execute(
-        {
-          command: `node -e "console.log('x'.repeat(5000))"`,
-          max_output_chars: 100,
-        },
-        deps,
-      );
-
-      expect(result.length).toBeLessThan(200);
     });
   });
 
@@ -251,18 +218,6 @@ describe("File System Windowing", () => {
       const result = await read.execute({ file_path: "huge.txt" }, deps);
 
       expect(result.length).toBeLessThan(10000);
-    });
-
-    it("bash never exceeds specified limit", async () => {
-      const result = await bash.execute(
-        {
-          command: `node -e "console.log('x'.repeat(20000))"`,
-          max_output_chars: 5000,
-        },
-        deps,
-      );
-
-      expect(result.length).toBeLessThan(5500); // with metadata
     });
 
     it("glob never exceeds 10k", async () => {

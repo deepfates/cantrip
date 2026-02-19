@@ -247,7 +247,7 @@ function extractText(prompt: Array<ContentBlock>): string {
  *
  * @example
  * ```typescript
- * import { cantrip, ChatAnthropic, unsafeFsGates, done } from "cantrip";
+ * import { cantrip, ChatAnthropic, safeFsGates, done } from "cantrip";
  * import { serveCantripACP } from "cantrip/acp";
  *
  * // Simple entity
@@ -255,7 +255,7 @@ function extractText(prompt: Array<ContentBlock>): string {
  *   const c = cantrip({
  *     crystal: new ChatAnthropic({ model: "claude-sonnet-4-5" }),
  *     call: { system_prompt: "You are helpful." },
- *     circle: Circle({ gates: [...unsafeFsGates, done], wards: [max_turns(50)] }),
+ *     circle: Circle({ gates: [...safeFsGates, done], wards: [max_turns(50)] }),
  *   });
  *   return c.invoke();
  * });

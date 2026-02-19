@@ -2,7 +2,7 @@
 // Tests real LLM integration with RLM sandbox (context isolation, recursive
 // delegation). These are genuinely below the cantrip API level.
 import { describe, expect, test } from "bun:test";
-import { createRlmAgent } from "../src/circle/gate/builtin/call_entity";
+import { createRlmAgent } from "../src/circle/recipe/rlm";
 import { ChatOpenAI } from "../src/crystal/providers/openai/chat";
 import { loadEnv } from "./helpers/env";
 

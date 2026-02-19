@@ -1,4 +1,4 @@
-import type { GateResult } from "../gate";
+import type { GateResult } from "../gate/gate";
 
 /**
  * Build the HOST FUNCTIONS section of the system prompt from the actual gates present.

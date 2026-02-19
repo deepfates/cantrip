@@ -1,11 +1,11 @@
 import { describe, expect, test, afterEach } from "bun:test";
-import { createRlmAgent } from "../src/circle/gate/builtin/call_entity";
-import { JsAsyncContext } from "../src/circle/gate/builtin/js_async_context";
-import { HandleTable, describeArg } from "../src/circle/gate/builtin/call_entity_tools";
+import { createRlmAgent } from "../src/circle/recipe/rlm";
+import { JsAsyncContext } from "../src/circle/medium/js/async_context";
+import { HandleTable, describeArg } from "../src/circle/recipe/rlm_tools";
 import type { BaseChatModel } from "../src/crystal/crystal";
 import type { AnyMessage } from "../src/crystal/messages";
 import type { ChatInvokeCompletion } from "../src/crystal/views";
-import type { BrowserContext } from "../src/circle/gate/builtin/browser_context";
+import type { BrowserContext } from "../src/circle/medium/browser/context";
 
 class MockLlm implements BaseChatModel {
   model = "mock";

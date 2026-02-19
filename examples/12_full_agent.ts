@@ -1,53 +1,54 @@
-// Full agent — filesystem, JavaScript, and browser gates in one circle.
-// Uses cantrip().invoke() + runRepl for interactive use with all capabilities.
+// Full agent — JS medium with filesystem gates.
+// ONE medium per circle. The JS medium gives the entity a code sandbox;
+// filesystem gates cross INTO it as host functions (read_file, write_file, etc.).
 
 import "./env";
 import {
   cantrip, runRepl, Circle, ChatAnthropic, max_turns,
-  SandboxContext, getSandboxContext, unsafeFsGates,
-  js, js_run, JsContext, getJsContext,
-  browser, BrowserContext, getBrowserContext,
-  done,
+  SandboxContext, getSandboxContext, safeFsGates,
 } from "../src";
+import { js } from "../src/circle/medium/js";
+import { getRlmSystemPrompt } from "../src/circle/recipe/rlm_prompt";
+import { analyzeContext } from "../src/circle/recipe/rlm";
 
 export async function main() {
   const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
   const fsCtx = await SandboxContext.create();
-  const jsCtx = await JsContext.create();
-  let browserCtx: BrowserContext | null = null;
 
-  const lazyGetBrowser = async () => {
-    if (!browserCtx) {
-      console.log("[Browser] Launching...");
-      browserCtx = await BrowserContext.create({ headless: true, profile: "full" });
-    }
-    return browserCtx;
+  // Data for the sandbox — the entity can explore it with code.
+  const workspace = {
+    working_dir: fsCtx.working_dir,
+    description: "A coding workspace with filesystem access via host functions.",
   };
 
+  // ONE medium: JS sandbox. Gates (filesystem ops) are projected as host functions.
+  // The entity writes JS code that can call read_file(), write_file(), etc.
   const circle = Circle({
-    gates: [...unsafeFsGates, js, js_run, browser, done],
+    medium: js({ state: { context: workspace } }),
+    gates: [...safeFsGates],
     wards: [max_turns(200)],
+  });
+
+  const metadata = analyzeContext(workspace);
+  const systemPrompt = getRlmSystemPrompt({
+    contextType: metadata.type,
+    contextLength: metadata.length,
+    contextPreview: metadata.preview,
+    hasRecursion: false,
   });
 
   const entity = cantrip({
     crystal,
-    call: { system_prompt: `You have filesystem, JavaScript, and browser gates.
-Working dir: ${fsCtx.working_dir}
-Call done when finished.` },
+    call: { system_prompt: `${systemPrompt}\n\nYou also have filesystem host functions: read_file, write_file, glob, bash.\nWorking dir: ${fsCtx.working_dir}` },
     circle,
-    dependency_overrides: new Map<any, any>([
-      [getSandboxContext, () => fsCtx],
-      [getJsContext, () => jsCtx],
-      [getBrowserContext, lazyGetBrowser],
-    ]),
+    dependency_overrides: new Map([[getSandboxContext, () => fsCtx]]),
   }).invoke();
 
   await runRepl({
     entity,
-    greeting: "Full agent ready. Ctrl+C to exit.",
+    greeting: "Full agent ready (JS medium + filesystem gates). Ctrl+C to exit.",
     onClose: async () => {
-      jsCtx.dispose();
-      if (browserCtx) await browserCtx.dispose();
+      await circle.dispose?.();
     },
   });
 }

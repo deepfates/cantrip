@@ -2,7 +2,7 @@
 // Tests WASM sandbox memory windowing and entity.history manipulation —
 // genuinely below the cantrip API level.
 import { describe, test, expect, mock } from "bun:test";
-import { createRlmAgentWithMemory } from "../src/circle/gate/builtin/call_entity";
+import { createRlmAgentWithMemory } from "../src/circle/recipe/rlm";
 import { BaseChatModel } from "../src/crystal/crystal";
 import type { ChatInvokeCompletion } from "../src/crystal/views";
 

@@ -1,25 +1,25 @@
-import { AnyMessage } from "../../../crystal/messages";
-import { BaseChatModel } from "../../../crystal/crystal";
+import { AnyMessage } from "../../crystal/messages";
+import { BaseChatModel } from "../../crystal/crystal";
 import {
   JsAsyncContext,
-} from "./js_async_context";
+} from "../medium/js/async_context";
 import {
   registerRlmFunctions,
   safeStringify,
   defaultProgress,
-} from "./call_entity_tools";
-import type { RlmProgressCallback } from "./call_entity_tools";
-import { getRlmSystemPrompt, getRlmMemorySystemPrompt } from "./call_entity_prompt";
-import { UsageTracker } from "../../../crystal/tokens/usage";
-import type { Entity } from "../../../cantrip/entity";
-import { cantrip } from "../../../cantrip/cantrip";
-import { js as jsMedium, getJsMediumSandbox } from "../../medium/js";
-import { Circle } from "../../circle";
-import { max_turns, require_done } from "../../ward";
-import { call_entity as call_entity_gate, call_entity_batch as call_entity_batch_gate } from "./call_entity_gate";
-import { done_for_medium } from "./done";
-import type { GateResult } from "../../gate/gate";
-import { Loom, MemoryStorage } from "../../../loom";
+} from "./rlm_tools";
+import type { RlmProgressCallback } from "./rlm_tools";
+import { getRlmSystemPrompt, getRlmMemorySystemPrompt } from "./rlm_prompt";
+import { UsageTracker } from "../../crystal/tokens/usage";
+import type { Entity } from "../../cantrip/entity";
+import { cantrip } from "../../cantrip/cantrip";
+import { js as jsMedium, getJsMediumSandbox } from "../medium/js";
+import { Circle } from "../circle";
+import { max_turns, require_done } from "../ward";
+import { call_entity as call_entity_gate, call_entity_batch as call_entity_batch_gate } from "../gate/builtin/call_entity_gate";
+import { done_for_medium } from "../gate/builtin/done";
+import type { GateResult } from "../gate/gate";
+import { Loom, MemoryStorage } from "../../loom";
 
 export type RlmOptions = {
   llm: BaseChatModel;
@@ -32,7 +32,7 @@ export type RlmOptions = {
   /** Number of recent turns to keep in active prompt (rest moves to context.history) */
   windowSize?: number;
   /** Optional browser context — enables browser(code) host function in the sandbox. */
-  browserContext?: import("./browser_context").BrowserContext;
+  browserContext?: import("../medium/browser/context").BrowserContext;
   /** Progress callback for sub-agent activity. Defaults to console.error logging. */
   onProgress?: RlmProgressCallback;
 };
@@ -247,7 +247,7 @@ export type RlmMemoryOptions = {
   /** Number of user turns to keep in active prompt window */
   windowSize: number;
   /** Optional browser context — enables browser(code) host function in the sandbox. */
-  browserContext?: import("./browser_context").BrowserContext;
+  browserContext?: import("../medium/browser/context").BrowserContext;
   /** Progress callback for sub-agent activity. Defaults to console.error logging. */
   onProgress?: RlmProgressCallback;
 };

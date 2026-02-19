@@ -6,7 +6,7 @@ import {
   type QuickJSHandle,
 } from "quickjs-emscripten-core";
 import variant from "@jitl/quickjs-ng-wasmfile-release-asyncify";
-import { Depends } from "../depends";
+import { Depends } from "../../gate/depends";
 
 const DEFAULT_EXECUTION_TIMEOUT_MS = 30_000; // longer default for LLM calls
 const DEFAULT_MEMORY_LIMIT_BYTES = 256 * 1024 * 1024; // 256MB for large contexts

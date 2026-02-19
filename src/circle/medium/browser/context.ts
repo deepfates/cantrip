@@ -1,4 +1,4 @@
-import { Depends } from "../depends";
+import { Depends } from "../../gate/depends";
 import * as taiko from "taiko";
 
 export type BrowserProfile = "full" | "interactive" | "readonly";

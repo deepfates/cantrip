@@ -3,8 +3,8 @@
 // delegation (llm_query/llm_batch), metadata loop, and token aggregation.
 // These are genuinely below the cantrip API level.
 import { describe, expect, test, afterEach } from "bun:test";
-import { createRlmAgent } from "../src/circle/gate/builtin/call_entity";
-import { JsAsyncContext } from "../src/circle/gate/builtin/js_async_context";
+import { createRlmAgent } from "../src/circle/recipe/rlm";
+import { JsAsyncContext } from "../src/circle/medium/js/async_context";
 import type { BaseChatModel } from "../src/crystal/crystal";
 import type { AnyMessage } from "../src/crystal/messages";
 import type { ChatInvokeCompletion } from "../src/crystal/views";

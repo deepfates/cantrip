@@ -1,5 +1,5 @@
 import type { AgentSideConnection } from "@agentclientprotocol/sdk";
-import type { RlmProgressEvent, RlmProgressCallback } from "../../circle/gate/builtin/call_entity_tools";
+import type { RlmProgressEvent, RlmProgressCallback } from "../../circle/recipe/rlm_tools";
 
 type PlanEntry = {
   content: string;

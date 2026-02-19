@@ -8,8 +8,8 @@
 
 import { describe, test, expect } from "bun:test";
 import { ChatAnthropic } from "../src/crystal/providers/anthropic/chat";
-import { createRlmAgent, createRlmAgentWithMemory } from "../src/circle/gate/builtin/call_entity";
-import { BrowserContext } from "../src/circle/gate/builtin/browser_context";
+import { createRlmAgent, createRlmAgentWithMemory } from "../src/circle/recipe/rlm";
+import { BrowserContext } from "../src/circle/medium/browser/context";
 
 describe("ACP RLM Browser Agent", () => {
   test("createRlmAgent with browserContext option is defined", () => {
@@ -32,6 +32,7 @@ describe("ACP RLM Browser Agent", () => {
     expect(await file.exists()).toBe(true);
     const content = await file.text();
     expect(content).toContain("serveCantripACP");
-    expect(content).toContain("BrowserContext");
+    // ACP example uses JS medium (not browser-as-gate)
+    expect(content).toContain("medium: js(");
   });
 });

@@ -1,12 +1,8 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { exec } from "child_process";
-import { promisify } from "util";
 
 import { Depends } from "../depends";
 import { gate } from "../decorator";
-
-const execAsync = promisify(exec);
 
 // Loria node size constraints
 const SAFE_OUTPUT_LIMIT = 9_500;
@@ -49,70 +45,6 @@ export function getSandboxContext(): SandboxContext {
  * Use this as a key in dependency_overrides Map.
  */
 const sandboxContextDepends = new Depends(getSandboxContext);
-
-export const bash = gate(
-  "Execute a shell command and return output. Output is automatically limited to max_output_chars (default 9000 chars). Use shell pipes and filters to process large outputs.",
-  async (
-    {
-      command,
-      timeout,
-      max_output_chars,
-    }: {
-      command: string;
-      timeout?: number;
-      max_output_chars?: number;
-    },
-    deps,
-  ) => {
-    const ctx = deps.ctx as SandboxContext;
-    const maxChars = max_output_chars ?? 9000;
-
-    // Validate command length
-    if (command.length > 5000) {
-      return `Error: Command too long (${command.length} chars). Maximum 5000.`;
-    }
-
-    try {
-      const { stdout, stderr } = await execAsync(command, {
-        cwd: ctx.working_dir,
-        timeout: timeout ?? 30_000,
-      });
-      let output = `${stdout}${stderr}`.trim();
-
-      if (!output) return "(no output)";
-
-      // Truncate if needed
-      if (output.length > maxChars) {
-        // Try to truncate at last newline
-        const lastNewline = output.lastIndexOf("\n", maxChars);
-        if (lastNewline > maxChars / 2) {
-          output = output.substring(0, lastNewline);
-        } else {
-          output = output.substring(0, maxChars);
-        }
-        output += `\n\n... [output truncated at ${maxChars} chars]`;
-      }
-
-      return output;
-    } catch (err: any) {
-      return `Error: ${String(err?.message ?? err)}`;
-    }
-  },
-  {
-    name: "bash",
-    schema: {
-      type: "object",
-      properties: {
-        command: { type: "string", maxLength: 5000 },
-        timeout: { type: "integer" },
-        max_output_chars: { type: "integer" },
-      },
-      required: ["command"],
-      additionalProperties: false,
-    },
-    dependencies: { ctx: sandboxContextDepends },
-  },
-);
 
 export const read = gate(
   "Read contents of a file with line numbers. Returns a window of lines starting from start_line for up to max_lines. Shows line range and total count for navigation.",
@@ -373,11 +305,4 @@ export const glob = gate(
 
 export { sandboxContextDepends as getSandboxContextDepends };
 
-export const unsafeFsGates = [bash, read, write, edit, glob];
 export const safeFsGates = [read, write, edit, glob];
-
-/**
- * Tools for interacting with the filesystem, with dangerous tools removed.
- * @deprecated Use safeFsGates instead
- */
-export const fsTools = safeFsGates;
