@@ -4,7 +4,7 @@ import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/recording";
 import { gate } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
-import type { GateResult } from "../src/circle/gate/gate";
+import type { BoundGate } from "../src/circle/gate/gate";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 
@@ -24,7 +24,7 @@ const doneGate = gate("Signal completion", doneHandler, {
 
 const ward = { max_turns: 10, require_done_tool: true };
 
-function makeCircle(gates: GateResult[] = [doneGate], wards = [ward]) {
+function makeCircle(gates: BoundGate[] = [doneGate], wards = [ward]) {
   return Circle({ gates, wards });
 }
 
@@ -34,7 +34,7 @@ function makeLlm(responses: (() => any)[]) {
     model: "dummy",
     provider: "dummy",
     name: "dummy",
-    async ainvoke(messages: any[]) {
+    async query(messages: any[]) {
       const fn = responses[callIndex];
       if (!fn) throw new Error(`Unexpected LLM call #${callIndex}`);
       callIndex++;
@@ -142,7 +142,7 @@ describe("CANTRIP-2: cantrip is reusable across intents", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         return {
           content: null,
@@ -183,7 +183,7 @@ describe("CANTRIP-2: cantrip is reusable across intents", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         return {
           content: null,

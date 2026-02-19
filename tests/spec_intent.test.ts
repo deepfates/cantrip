@@ -4,7 +4,7 @@ import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/recording";
 import { gate } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
-import type { GateResult } from "../src/circle/gate/gate";
+import type { BoundGate } from "../src/circle/gate/gate";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 
@@ -24,7 +24,7 @@ const doneGate = gate("Signal completion", doneHandler, {
 
 const ward = { max_turns: 10, require_done_tool: true };
 
-function makeCircle(gates: GateResult[] = [doneGate], wards = [ward]) {
+function makeCircle(gates: BoundGate[] = [doneGate], wards = [ward]) {
   return Circle({ gates, wards });
 }
 
@@ -36,7 +36,7 @@ describe("INTENT-1: casting without intent is invalid", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         return {
           content: null,
           tool_calls: [
@@ -67,7 +67,7 @@ describe("INTENT-1: casting without intent is invalid", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         return { content: "ok", tool_calls: [] };
       },
     };
@@ -91,7 +91,7 @@ describe("INTENT-2: intent appears as first user message", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         return {
           content: null,

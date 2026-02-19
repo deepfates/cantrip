@@ -1,6 +1,6 @@
 import type { ToolChoice, GateDefinition } from "../crystal/crystal";
 import type { AssistantMessage, ToolMessage } from "../crystal/messages";
-import type { GateResult } from "./gate/gate";
+import type { BoundGate } from "./gate/gate";
 import type { DependencyOverrides } from "./gate/depends";
 import type { TurnEvent } from "../entity/events";
 import type { CircleExecuteResult } from "./circle";
@@ -15,7 +15,7 @@ import type { CircleExecuteResult } from "./circle";
 export interface Medium {
   /** Initialize the medium — create sandbox, project gates as host functions. */
   init(
-    gates: GateResult[],
+    gates: BoundGate[],
     dependency_overrides?: DependencyOverrides | null,
   ): Promise<void>;
 

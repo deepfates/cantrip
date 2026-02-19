@@ -9,7 +9,7 @@ import { recordCallRoot, recordTurn } from "../src/entity/recording";
 import { generateTurnId } from "../src/loom/turn";
 import type { Turn } from "../src/loom/turn";
 import type { Ward } from "../src/circle/ward";
-import type { GateResult } from "../src/circle/gate/gate";
+import type { BoundGate } from "../src/circle/gate/gate";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ const doneGate = gate("Done", doneHandler, {
 
 const ward: Ward = { max_turns: 10, require_done_tool: true };
 
-function makeCircle(gates: GateResult[] = [doneGate], wards = [ward]) {
+function makeCircle(gates: BoundGate[] = [doneGate], wards = [ward]) {
   return Circle({ gates, wards });
 }
 
@@ -40,7 +40,7 @@ function makeLlm(responses: (() => any)[]) {
     provider: "dummy",
     name: "dummy",
     context_window: 128_000,
-    async ainvoke(messages: any[]) {
+    async query(messages: any[]) {
       const fn = responses[callIndex];
       if (!fn) throw new Error(`Unexpected LLM call #${callIndex}`);
       callIndex++;
@@ -318,7 +318,7 @@ describe("Loom tree: child entities record into parent loom", () => {
       parent_turn_id: parentTurnId,
     });
 
-    await childEntity.turn("do something");
+    await childEntity.cast("do something");
 
     // Verify the loom now contains both parent and child turns
     const allTurns = await storage.getAll();
@@ -381,7 +381,7 @@ describe("Loom tree: child entities record into parent loom", () => {
     // Before any turn, lastTurnId should be null
     expect(entity.lastTurnId).toBeNull();
 
-    await entity.turn("hello");
+    await entity.cast("hello");
 
     // After a turn, lastTurnId should be set
     expect(entity.lastTurnId).not.toBeNull();
@@ -422,7 +422,7 @@ describe("Loom tree: child entities record into parent loom", () => {
       // No loom, no parent_turn_id
     });
 
-    const result = await entity.turn("hello");
+    const result = await entity.cast("hello");
     expect(result).toBe("standalone");
   });
 
@@ -480,7 +480,7 @@ describe("Loom tree: child entities record into parent loom", () => {
     });
 
     const entity = spell.invoke();
-    await entity.turn("child task");
+    await entity.cast("child task");
 
     // The child's call root should branch from the parent turn
     const allTurns = await storage.getAll();

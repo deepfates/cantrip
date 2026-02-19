@@ -289,7 +289,7 @@ export async function runRlmEval(options: {
   const EVAL_TIMEOUT_MS = 240_000; // 4 minutes hard wall-clock limit
   try {
     answer = await Promise.race([
-      entity.turn(query),
+      entity.cast(query),
       new Promise<string>((_, reject) =>
         setTimeout(
           () => reject(new Error("RLM eval timeout")),
@@ -364,7 +364,7 @@ export async function runEntityWithJsEval(options: {
 
   let answer: string;
   try {
-    answer = await entity.turn(query);
+    answer = await entity.cast(query);
   } finally {
     jsCtx.dispose();
   }
@@ -430,7 +430,7 @@ export async function runEntityMetaJsEval(options: {
 
   let answer: string;
   try {
-    answer = await entity.turn(query);
+    answer = await entity.cast(query);
   } finally {
     jsCtx.dispose();
   }
@@ -453,7 +453,7 @@ export async function runEntityMetaJsEval(options: {
 
 /**
  * Run a task by stuffing the full context into the LLM prompt. No tools, no sandbox.
- * Single ainvoke() call — the simplest possible baseline.
+ * Single query() call — the simplest possible baseline.
  */
 export async function runInContextEval(options: {
   llm: BaseChatModel;
@@ -470,7 +470,7 @@ export async function runInContextEval(options: {
   const start = Date.now();
   let answer: string;
   try {
-    const res = await llm.ainvoke([
+    const res = await llm.query([
       {
         role: "user",
         content: `${query}\n\nHere is the full data:\n\n${contextStr}`,

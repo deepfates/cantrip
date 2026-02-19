@@ -3,7 +3,7 @@ import { describe, expect, test, afterEach } from "bun:test";
 import { js, getJsMediumSandbox } from "../src/circle/medium/js";
 import { Circle } from "../src/circle/circle";
 import { max_turns } from "../src/circle/ward";
-import type { GateResult } from "../src/circle/gate/gate";
+import type { BoundGate } from "../src/circle/gate/gate";
 import type { AssistantMessage } from "../src/crystal/messages";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -23,7 +23,7 @@ function makeJsToolCall(code: string, id = "call_1"): AssistantMessage {
 }
 
 /** Create a simple gate that records the args it was called with. */
-function mockGate(overrides: Partial<GateResult> & { name: string }): GateResult {
+function mockGate(overrides: Partial<BoundGate> & { name: string }): BoundGate {
   return {
     definition: {
       name: overrides.name,

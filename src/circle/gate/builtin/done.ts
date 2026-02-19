@@ -1,6 +1,6 @@
 import { TaskComplete } from "../../../entity/recording";
 import { gate } from "../decorator";
-import type { GateResult } from "../gate";
+import type { BoundGate } from "../gate";
 
 export const done = gate(
   "Signal task completion",
@@ -25,7 +25,7 @@ export const done = gate(
  * Throws SIGNAL_FINAL so the error propagates correctly through QuickJS
  * (which stringifies thrown errors — TaskComplete wouldn't survive the boundary).
  */
-export function done_for_medium(): GateResult {
+export function done_for_medium(): BoundGate {
   return {
     name: "done",
     definition: {

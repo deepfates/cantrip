@@ -13,7 +13,7 @@ function createMockLlm(responses: string[]): BaseChatModel {
     model: "mock",
     provider: "mock",
     name: "mock",
-    async ainvoke(): Promise<ChatInvokeCompletion> {
+    async query(): Promise<ChatInvokeCompletion> {
       const response = responses[callIndex % responses.length];
       callIndex++;
 
@@ -104,7 +104,7 @@ describe("RLM Memory", () => {
       model: "mock",
       provider: "mock",
       name: "mock",
-      async ainvoke(): Promise<ChatInvokeCompletion> {
+      async query(): Promise<ChatInvokeCompletion> {
         callCount++;
         return {
           content: null,
@@ -130,24 +130,24 @@ describe("RLM Memory", () => {
     });
 
     // Simulate 4 turns
-    await entity.turn("Turn 1");
+    await entity.cast("Turn 1");
     manageMemory();
 
-    await entity.turn("Turn 2");
+    await entity.cast("Turn 2");
     manageMemory();
 
     // After 2 turns, nothing should be in history yet (within window)
     let result = await sandbox.evalCode("context.history.length");
     expect((result as any).output).toBe("0");
 
-    await entity.turn("Turn 3");
+    await entity.cast("Turn 3");
     manageMemory();
 
     // After 3 turns with window=2, turn 1 should be in history
     result = await sandbox.evalCode("context.history.length");
     expect(parseInt((result as any).output)).toBeGreaterThan(0);
 
-    await entity.turn("Turn 4");
+    await entity.cast("Turn 4");
     manageMemory();
 
     // With 4 turns and windowSize=2, we should have 2 in history and 2 active

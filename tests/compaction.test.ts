@@ -36,7 +36,7 @@ const dummyLLM = {
   model: "dummy-model",
   provider: "dummy",
   name: "dummy",
-  async ainvoke() {
+  async query() {
     return {
       content: "<summary>Short summary</summary>",
       tool_calls: [],

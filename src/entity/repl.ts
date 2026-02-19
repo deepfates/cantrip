@@ -29,7 +29,7 @@ export async function exec(options: ExecOptions): Promise<void> {
   const renderer = options.renderer ?? createConsoleRenderer({ verbose });
   const state = renderer.createState();
 
-  for await (const event of entity.turn_stream(task)) {
+  for await (const event of entity.cast_stream(task)) {
     renderer.handle(event, state);
   }
 }
@@ -59,7 +59,7 @@ export type ReplOptions = {
  */
 export async function runRepl(options: ReplOptions): Promise<void> {
   const { entity, onClose, onTurn } = options;
-  const stream = (task: string) => entity.turn_stream(task);
+  const stream = (task: string) => entity.cast_stream(task);
   const prompt = options.prompt ?? "› ";
   const verbose =
     options.verbose ??

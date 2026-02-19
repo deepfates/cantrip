@@ -1,6 +1,6 @@
 import type { ToolChoice, GateDefinition } from "../../crystal/crystal";
 import type { AssistantMessage, ToolMessage } from "../../crystal/messages";
-import type { GateResult } from "../gate/gate";
+import type { BoundGate } from "../gate/gate";
 import type { DependencyOverrides } from "../gate/depends";
 import type { TurnEvent } from "../../entity/events";
 import type { CircleExecuteResult } from "../circle";
@@ -58,7 +58,7 @@ export function js(opts?: JsMediumOptions): Medium {
   };
 
   const medium: Medium = {
-    async init(gates: GateResult[], _dependency_overrides?: DependencyOverrides | null) {
+    async init(gates: BoundGate[], _dependency_overrides?: DependencyOverrides | null) {
       if (initialized) return;
 
       const module = await createAsyncModule();

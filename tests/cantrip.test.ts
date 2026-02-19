@@ -5,7 +5,7 @@ import { TaskComplete } from "../src/entity/recording";
 import { gate } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
 import type { Ward } from "../src/circle/ward";
-import type { GateResult } from "../src/circle/gate/gate";
+import type { BoundGate } from "../src/circle/gate/gate";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -25,7 +25,7 @@ const doneGate = gate("Done", doneHandler, {
 
 const ward: Ward = { max_turns: 10, require_done_tool: true };
 
-function makeCircle(gates: GateResult[] = [doneGate], wards = [ward]) {
+function makeCircle(gates: BoundGate[] = [doneGate], wards = [ward]) {
   return Circle({ gates, wards });
 }
 
@@ -35,7 +35,7 @@ function makeLlm(responses: (() => any)[]) {
     model: "dummy",
     provider: "dummy",
     name: "dummy",
-    async ainvoke(messages: any[]) {
+    async query(messages: any[]) {
       const fn = responses[callIndex];
       if (!fn) throw new Error(`Unexpected LLM call #${callIndex}`);
       callIndex++;
@@ -163,7 +163,7 @@ describe("cantrip", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         return {
           content: null,
@@ -210,9 +210,9 @@ describe("cantrip", () => {
     expect(hasFirstIntent).toBe(false);
   });
 
-  // ── invoke() and turn() ──────────────────────────────────────────
+  // ── invoke() and cast() ──────────────────────────────────────────
 
-  test("invoke() returns an entity with .turn()", () => {
+  test("invoke() returns an entity with .cast()", () => {
     const crystal = makeLlm([]);
     const spell = cantrip({
       crystal: crystal as any,
@@ -221,10 +221,10 @@ describe("cantrip", () => {
     });
     const entity = spell.invoke();
     expect(entity).toBeDefined();
-    expect(typeof entity.turn).toBe("function");
+    expect(typeof entity.cast).toBe("function");
   });
 
-  test("turn() runs the agent loop and returns the done result", async () => {
+  test("cast() runs the agent loop and returns the done result", async () => {
     const crystal = makeLlm([
       () => ({
         content: null,
@@ -248,7 +248,7 @@ describe("cantrip", () => {
     });
 
     const entity = spell.invoke();
-    const result = await entity.turn("do something");
+    const result = await entity.cast("do something");
     expect(result).toBe("hello from turn");
   });
 
@@ -259,7 +259,7 @@ describe("cantrip", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         return {
           content: null,
@@ -286,8 +286,8 @@ describe("cantrip", () => {
     });
 
     const entity = spell.invoke();
-    await entity.turn("first message");
-    await entity.turn("second message");
+    await entity.cast("first message");
+    await entity.cast("second message");
 
     // The second LLM call should see the first turn's context
     const secondCallMessages = messagesPerCall[1];
@@ -307,7 +307,7 @@ describe("cantrip", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         return {
           content: null,
@@ -336,8 +336,8 @@ describe("cantrip", () => {
     const entity1 = spell.invoke();
     const entity2 = spell.invoke();
 
-    await entity1.turn("entity1 message");
-    await entity2.turn("entity2 message");
+    await entity1.cast("entity1 message");
+    await entity2.cast("entity2 message");
 
     // entity2's LLM call should NOT contain "entity1 message"
     const entity2Messages = messagesPerCall[1];

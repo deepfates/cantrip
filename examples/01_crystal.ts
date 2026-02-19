@@ -12,7 +12,7 @@ export async function main() {
   const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
   console.log('Asking: "What is 2+2? Reply with just the number."');
-  const result: ChatInvokeCompletion = await crystal.ainvoke([
+  const result: ChatInvokeCompletion = await crystal.query([
     { role: "user", content: "What is 2 + 2? Reply with just the number." },
   ]);
 

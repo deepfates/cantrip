@@ -338,7 +338,7 @@ describe("Folding", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         return {
           content: "<summary>Folded summary of earlier turns</summary>",
           tool_calls: [],
@@ -379,7 +379,7 @@ describe("Folding", () => {
   });
 
   test("fold returns no-op when nothing to fold", async () => {
-    const dummyLLM = { model: "dummy", async ainvoke() { return { content: "" }; } };
+    const dummyLLM = { model: "dummy", async query() { return { content: "" }; } };
     const result = await fold([], [makeTurn({ id: "t1" })], dummyLLM as any);
     expect(result.folded).toBe(false);
     expect(result.fold_record).toBeNull();

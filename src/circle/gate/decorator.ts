@@ -76,7 +76,7 @@ export class Gate<TArgs extends Record<string, any> = Record<string, any>> {
     }
 
     const result = await this.handler(args, resolvedDeps);
-    return serializeGateResult(result);
+    return serializeBoundGate(result);
   }
 }
 
@@ -88,7 +88,7 @@ export function gate<TArgs extends Record<string, any>>(
   return new Gate(description, handler, options);
 }
 
-export function serializeGateResult(result: any): GateContent {
+export function serializeBoundGate(result: any): GateContent {
   if (result === null || result === undefined) return "";
   if (typeof result === "string") return result;
 

@@ -71,7 +71,7 @@ describe("PROD-2: retried invocation appears as single turn", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         calls++;
         if (calls < 3) {
           const err: any = new Error("rate limited");
@@ -101,7 +101,7 @@ describe("PROD-2: retried invocation appears as single turn", () => {
       retry: { max_retries: 3, base_delay: 0, max_delay: 0 },
     });
 
-    const result = await entity.turn("test retry");
+    const result = await entity.cast("test retry");
     expect(result).toBe("ok");
     expect(calls).toBe(3); // 2 failures + 1 success
   });
@@ -112,7 +112,7 @@ describe("PROD-2: retried invocation appears as single turn", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         calls++;
         if (calls === 1) {
           const err: any = new Error("rate limited");
@@ -142,7 +142,7 @@ describe("PROD-2: retried invocation appears as single turn", () => {
       retry: { max_retries: 3, base_delay: 0, max_delay: 0 },
     });
 
-    const result = await entity.turn("test retry");
+    const result = await entity.cast("test retry");
     expect(result).toBe("ok");
     // Despite the retry, history should reflect a single completed interaction
     // (not duplicate assistant messages from the retry)
@@ -161,7 +161,7 @@ describe("PROD-3: cumulative token tracking", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         callCount++;
         if (callCount === 1) {
           return {
@@ -202,7 +202,7 @@ describe("PROD-3: cumulative token tracking", () => {
       system_prompt: "test",
     });
 
-    await entity.turn("test usage tracking");
+    await entity.cast("test usage tracking");
 
     const usage = await entity.get_usage();
     // Should have accumulated usage from both calls
@@ -240,7 +240,7 @@ describe("PROD-5: ephemeral gate full result stored in loom", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         callCount++;
         if (callCount <= 2) {
           return {
@@ -279,7 +279,7 @@ describe("PROD-5: ephemeral gate full result stored in loom", () => {
       system_prompt: "test",
     });
 
-    const result = await entity.turn("test ephemeral");
+    const result = await entity.cast("test ephemeral");
     expect(result).toBe("ok");
 
     // The first ephemeral tool message should be destroyed, second still active

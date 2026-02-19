@@ -5,7 +5,7 @@ import { TaskComplete } from "../src/entity/errors";
 import { gate } from "../src/circle/gate/decorator";
 import { renderGateDefinitions } from "../src/cantrip/call";
 import { Circle } from "../src/circle/circle";
-import type { GateResult } from "../src/circle/gate/gate";
+import type { BoundGate } from "../src/circle/gate/gate";
 import { Loom, MemoryStorage } from "../src/loom";
 
 // ── Shared helpers ─────────────────────────────────────────────────
@@ -44,7 +44,7 @@ const readGate = gate("Read a file", async ({ path }: { path: string }) => `cont
   },
 });
 
-function makeCircle(gates: GateResult[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
+function makeCircle(gates: BoundGate[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
   return Circle({ gates, wards });
 }
 
@@ -61,7 +61,7 @@ describe("CALL-1: call is immutable after construction", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         return {
           content: null,
@@ -111,7 +111,7 @@ describe("CALL-2: system prompt is first message on every invocation", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         callCount++;
         if (callCount === 1) {
@@ -169,7 +169,7 @@ describe("CALL-3: gate definitions derived from circle", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         return { content: "ok", tool_calls: [] };
       },
     };
@@ -209,7 +209,7 @@ describe("CALL-4: call stored as root context in loom", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         return { content: "ok", tool_calls: [] };
       },
     };
@@ -275,7 +275,7 @@ describe("CALL-5: folding never compresses the system prompt", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         callCount++;
         if (callCount <= 5) {

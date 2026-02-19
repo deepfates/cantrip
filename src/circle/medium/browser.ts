@@ -1,6 +1,6 @@
 import type { ToolChoice, GateDefinition } from "../../crystal/crystal";
 import type { AssistantMessage, ToolMessage } from "../../crystal/messages";
-import type { GateResult } from "../gate/gate";
+import type { BoundGate } from "../gate/gate";
 import type { DependencyOverrides } from "../gate/depends";
 import type { TurnEvent } from "../../entity/events";
 import type { CircleExecuteResult } from "../circle";
@@ -38,7 +38,7 @@ const DEFAULT_MAX_OUTPUT_CHARS = 9500;
 export function browser(opts?: BrowserMediumOptions): Medium {
   let ctx: BrowserContext | null = null;
   let initialized = false;
-  let projectedGates: GateResult[] = [];
+  let projectedGates: BoundGate[] = [];
 
   const browserToolDefinition: GateDefinition = {
     name: "browser",
@@ -60,7 +60,7 @@ export function browser(opts?: BrowserMediumOptions): Medium {
 
   const medium: Medium = {
     async init(
-      gates: GateResult[],
+      gates: BoundGate[],
       _dependency_overrides?: DependencyOverrides | null,
     ) {
       if (initialized) return;
@@ -309,7 +309,7 @@ export function browser(opts?: BrowserMediumOptions): Medium {
  */
 async function tryProjectedGate(
   code: string,
-  _gates: GateResult[],
+  _gates: BoundGate[],
 ): Promise<{ done: true; value: string } | undefined> {
   // Match submit_answer("value") or submit_answer('value') patterns
   const match = code

@@ -23,7 +23,7 @@ class MockRlmLlm implements BaseChatModel {
     private responses: ((messages: AnyMessage[]) => ChatInvokeCompletion)[],
   ) {}
 
-  async ainvoke(messages: AnyMessage[]): Promise<ChatInvokeCompletion> {
+  async query(messages: AnyMessage[]): Promise<ChatInvokeCompletion> {
     const idx = Math.min(this.callCount, this.responses.length - 1);
     const responseFn = this.responses[idx];
     this.callCount++;
@@ -96,7 +96,7 @@ describe("RLM Integration", () => {
       context: hugeContext,
     });
     activeSandbox = sandbox;
-    const result = await entity.turn("test");
+    const result = await entity.cast("test");
     expect(result).toBe("History is clean");
   });
 
@@ -149,7 +149,7 @@ describe("RLM Integration", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.turn("Start");
+    const result = await entity.cast("Start");
     expect(result).toBe("password123");
 
     // Verify token aggregation: Parent tracker should see both its tokens and child's
@@ -203,7 +203,7 @@ describe("RLM Integration", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.turn("Start");
+    const result = await entity.cast("Start");
     expect(result).toBe("Max Depth Reached");
   });
 
@@ -232,7 +232,7 @@ describe("RLM Integration", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.turn("Start");
+    const result = await entity.cast("Start");
     const parsed = JSON.parse(result);
     expect(parsed.a).toBe(1);
     expect(parsed.b).toEqual([2, 3]);
@@ -287,7 +287,7 @@ describe("RLM Integration", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.turn("Start");
+    const result = await entity.cast("Start");
     // Parent's context should still be 'original' despite child's attempt to mutate
     expect(result).toBe("original");
   });
@@ -338,7 +338,7 @@ describe("RLM Integration", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.turn("Start");
+    const result = await entity.cast("Start");
     expect(result).toBe("Result for a, Result for b");
 
     // Verify token aggregation for batch

@@ -7,7 +7,7 @@ import { gate } from "../src/circle/gate/decorator";
 import { MemoryStorage, Loom } from "../src/loom";
 import { Circle } from "../src/circle/circle";
 import type { Ward } from "../src/circle/ward";
-import type { GateResult } from "../src/circle/gate/gate";
+import type { BoundGate } from "../src/circle/gate/gate";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ const doneGate = gate("Done", doneHandler, {
 
 const ward: Ward = { max_turns: 10, require_done_tool: true };
 
-function makeCircle(gates: GateResult[] = [doneGate], wards = [ward]) {
+function makeCircle(gates: BoundGate[] = [doneGate], wards = [ward]) {
   return Circle({ gates, wards });
 }
 
@@ -37,7 +37,7 @@ function makeLlm(responses: (() => any)[]) {
     model: "dummy",
     provider: "dummy",
     name: "dummy",
-    async ainvoke(messages: any[]) {
+    async query(messages: any[]) {
       const fn = responses[callIndex];
       if (!fn) throw new Error(`Unexpected LLM call #${callIndex}`);
       callIndex++;
@@ -83,7 +83,7 @@ describe("Entity loom integration", () => {
       entity_id: "test-entity",
     });
 
-    await entity.turn("hello");
+    await entity.cast("hello");
 
     const turns = await storage.getAll();
     // Should have at least the call root + one turn
@@ -122,7 +122,7 @@ describe("Entity loom integration", () => {
       dependency_overrides: null,
     });
 
-    const result = await entity.turn("hello");
+    const result = await entity.cast("hello");
     expect(result).toBe("no loom");
   });
 
@@ -155,7 +155,7 @@ describe("Entity loom integration", () => {
     });
 
     const entity = spell.invoke();
-    await entity.turn("hello");
+    await entity.cast("hello");
 
     const turns = await storage.getAll();
     expect(turns.length).toBeGreaterThanOrEqual(1);
@@ -196,7 +196,7 @@ describe("Entity loom integration", () => {
       },
     });
 
-    const result = await entity.turn("hello");
+    const result = await entity.cast("hello");
     expect(result).toBe("with retry config");
   });
 
@@ -209,7 +209,7 @@ describe("Entity loom integration", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         callCount++;
         return {
           content: null,
@@ -241,8 +241,8 @@ describe("Entity loom integration", () => {
       entity_id: "entity-1",
     });
 
-    await entity.turn("first");
-    await entity.turn("second");
+    await entity.cast("first");
+    await entity.cast("second");
 
     const turns = await storage.getAll();
     // Root + at least 2 turn records

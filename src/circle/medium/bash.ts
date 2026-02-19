@@ -1,6 +1,6 @@
 import type { ToolChoice, GateDefinition } from "../../crystal/crystal";
 import type { AssistantMessage, ToolMessage } from "../../crystal/messages";
-import type { GateResult } from "../gate/gate";
+import type { BoundGate } from "../gate/gate";
 import type { DependencyOverrides } from "../gate/depends";
 import type { TurnEvent } from "../../entity/events";
 import type { CircleExecuteResult } from "../circle";
@@ -38,7 +38,7 @@ export type BashMediumOptions = {
  */
 export function bash(opts?: BashMediumOptions): Medium {
   let initialized = false;
-  let projectedGates: GateResult[] = [];
+  let projectedGates: BoundGate[] = [];
 
   const cwd = opts?.cwd ?? process.cwd();
   const defaultTimeout = opts?.defaultTimeoutMs ?? 30_000;
@@ -69,7 +69,7 @@ export function bash(opts?: BashMediumOptions): Medium {
 
   const medium: Medium = {
     async init(
-      gates: GateResult[],
+      gates: BoundGate[],
       _dependency_overrides?: DependencyOverrides | null,
     ) {
       if (initialized) return;

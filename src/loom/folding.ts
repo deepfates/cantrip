@@ -139,7 +139,7 @@ export async function fold(
   }
   summaryInput.push({ role: "user", content: config.summary_prompt } as AnyMessage);
 
-  const response = await llm.ainvoke(summaryInput);
+  const response = await llm.query(summaryInput);
   const summary = extractSummary(response.content ?? "");
 
   const fromSeq = turnsToFold[0].sequence;

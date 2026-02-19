@@ -1,5 +1,5 @@
 import type { ToolChoice, GateDefinition } from "../crystal/crystal";
-import type { GateResult } from "../circle/gate/gate";
+import type { BoundGate } from "../circle/gate/gate";
 
 /**
  * A Call defines the parameters for a single invocation of an Entity.
@@ -28,7 +28,7 @@ export type Call = {
  * This strips the `execute()` function and ephemeral metadata, keeping only
  * the LLM-facing definition.
  */
-export function renderGateDefinitions(gates: GateResult[]): GateDefinition[] {
+export function renderGateDefinitions(gates: BoundGate[]): GateDefinition[] {
   return gates.map((g) => g.definition);
 }
 

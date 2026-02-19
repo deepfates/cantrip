@@ -237,7 +237,7 @@ class MockLlm implements BaseChatModel {
     private responses: ((messages: AnyMessage[]) => ChatInvokeCompletion)[],
   ) {}
 
-  async ainvoke(messages: AnyMessage[]): Promise<ChatInvokeCompletion> {
+  async query(messages: AnyMessage[]): Promise<ChatInvokeCompletion> {
     const idx = Math.min(this.callCount, this.responses.length - 1);
     this.callCount++;
     const res = this.responses[idx](messages);
@@ -294,7 +294,7 @@ describe("llm_batch input validation", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.turn("Start");
+    const result = await entity.cast("Start");
     expect(result).toContain("llm_batch: task[0].query must be a string");
   });
 
@@ -329,7 +329,7 @@ describe("llm_batch input validation", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.turn("Start");
+    const result = await entity.cast("Start");
     expect(result).toContain("llm_batch: task[0].query must be a string");
   });
 });

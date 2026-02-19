@@ -129,7 +129,7 @@ export function cantrip(input: CantripInput): Cantrip {
      * LOOM-1: every turn is recorded via Entity's loom integration.
      * PROD-4: folding enabled by default.
      *
-     * Creates a temporary Entity and calls turn() — Entity already handles
+     * Creates a temporary Entity and calls cast() — Entity already handles
      * loom recording, folding, and the full run loop.
      */
     async cast(intent: Intent): Promise<any> {
@@ -153,7 +153,7 @@ export function cantrip(input: CantripInput): Cantrip {
         retry: input.retry,
       });
 
-      return entity.turn(intent);
+      return entity.cast(intent);
     },
 
     /**

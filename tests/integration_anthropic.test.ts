@@ -26,7 +26,7 @@ const echoTool: GateDefinition = {
 describe("integration: anthropic", () => {
   it("returns a response", async () => {
     const llm = new ChatAnthropic({ model });
-    const response = await llm.ainvoke([
+    const response = await llm.query([
       { role: "user", content: "Reply with 'pong' only." } as any,
     ]);
     expect(response.content?.toLowerCase()).toContain("pong");
@@ -34,7 +34,7 @@ describe("integration: anthropic", () => {
 
   it("returns tool calls when required", async () => {
     const llm = new ChatAnthropic({ model });
-    const response = await llm.ainvoke(
+    const response = await llm.query(
       [{ role: "user", content: "Call the echo tool with text ping." } as any],
       [echoTool],
       "required",
