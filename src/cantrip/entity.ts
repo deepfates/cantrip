@@ -37,6 +37,8 @@ export type EntityOptions = {
   cantrip_id?: string;
   /** Entity ID for loom recording. */
   entity_id?: string;
+  /** Parent turn ID — when this entity is a child, the parent turn that spawned it. */
+  parent_turn_id?: string | null;
   /** Folding configuration. */
   folding?: FoldingConfig;
   /** Whether folding is enabled. */
@@ -93,6 +95,9 @@ export class Entity {
   /** Last turn ID in the loom (for parent chaining). */
   private last_turn_id: string | null = null;
 
+  /** Parent turn ID — when this entity is a child, the parent turn that spawned it. */
+  private parent_turn_id: string | null = null;
+
   /** Folding configuration. */
   private folding: FoldingConfig;
 
@@ -116,6 +121,7 @@ export class Entity {
     this.loom = options.loom;
     this.cantrip_id = options.cantrip_id ?? "unknown";
     this.entity_id = options.entity_id ?? "unknown";
+    this.parent_turn_id = options.parent_turn_id ?? null;
     this.folding = options.folding ?? DEFAULT_FOLDING_CONFIG;
     this.folding_enabled = options.folding_enabled ?? true;
     this.retry = options.retry;
@@ -123,6 +129,11 @@ export class Entity {
     for (const gate of this.circle.gates) {
       this.tool_map.set(gate.name, gate);
     }
+  }
+
+  /** The ID of the last turn recorded in the loom. Used by call_entity to thread children. */
+  get lastTurnId(): string | null {
+    return this.last_turn_id;
   }
 
   /** Read-only snapshot of current message history. */
@@ -234,6 +245,7 @@ export class Entity {
         entity_id: this.entity_id,
         system_prompt: this.call.system_prompt,
         tool_definitions: crystalView?.tool_definitions ?? this.call.gate_definitions,
+        parent_turn_id: this.parent_turn_id,
       });
     }
 

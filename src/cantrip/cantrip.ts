@@ -58,6 +58,8 @@ export type CantripInput = {
   loom?: Loom;
   /** Cantrip ID for loom recording. */
   cantrip_id?: string;
+  /** Parent turn ID — when this entity is a child, the parent turn that spawned it. */
+  parent_turn_id?: string | null;
   /** Folding configuration. */
   folding?: FoldingConfig;
   /** Whether folding is enabled. */
@@ -144,6 +146,7 @@ export function cantrip(input: CantripInput): Cantrip {
         dependency_overrides: dependency_overrides ?? null,
         loom: input.loom ?? new Loom(new MemoryStorage()),
         cantrip_id: input.cantrip_id,
+        parent_turn_id: input.parent_turn_id,
         folding: input.folding,
         folding_enabled: input.folding_enabled ?? true,
         usage_tracker: input.usage_tracker,
@@ -165,6 +168,7 @@ export function cantrip(input: CantripInput): Cantrip {
         dependency_overrides: dependency_overrides ?? null,
         loom: input.loom ?? new Loom(new MemoryStorage()),
         cantrip_id: input.cantrip_id,
+        parent_turn_id: input.parent_turn_id,
         folding: input.folding,
         folding_enabled: input.folding_enabled ?? true,
         usage_tracker: input.usage_tracker,
