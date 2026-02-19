@@ -22,6 +22,7 @@ export type ChatGoogleOptions = {
   retry_max_delay?: number;
   explicit_context_caching?: boolean;
   explicit_cache_ttl_seconds?: number | null;
+  context_window?: number;
 };
 
 export class ChatGoogle implements BaseChatModel {
@@ -41,6 +42,7 @@ export class ChatGoogle implements BaseChatModel {
   retry_max_delay: number;
   explicit_context_caching: boolean;
   explicit_cache_ttl_seconds: number | null;
+  context_window: number;
 
   private cachedContentName: string | null = null;
   private cachedContentKey: string | null = null;
@@ -62,6 +64,7 @@ export class ChatGoogle implements BaseChatModel {
     this.retry_max_delay = options.retry_max_delay ?? 60.0;
     this.explicit_context_caching = options.explicit_context_caching ?? true;
     this.explicit_cache_ttl_seconds = options.explicit_cache_ttl_seconds ?? 3600;
+    this.context_window = options.context_window ?? 128_000;
   }
 
   get provider(): string {
