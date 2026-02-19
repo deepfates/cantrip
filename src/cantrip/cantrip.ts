@@ -1,19 +1,12 @@
 import type { BaseChatModel } from "../crystal/crystal";
-import type { AnyMessage } from "../crystal/messages";
 import type { Call } from "./call";
 import { renderGateDefinitions } from "./call";
 import { Circle } from "../circle/circle";
-import { resolveWards } from "../circle/ward";
 import type { DependencyOverrides } from "../circle/gate/depends";
 import type { Intent } from "./intent";
 import { Entity } from "./entity";
 import { UsageTracker } from "../crystal/tokens";
-import {
-  invokeLLMWithRetries,
-  generateMaxIterationsSummary,
-  runLoop,
-} from "../entity/runtime";
-import type { Loom } from "../loom";
+import { Loom, MemoryStorage } from "../loom";
 import type { FoldingConfig } from "../loom/folding";
 
 /**
@@ -69,6 +62,8 @@ export type CantripInput = {
   folding?: FoldingConfig;
   /** Whether folding is enabled. */
   folding_enabled?: boolean;
+  /** Optional shared usage tracker (for aggregating across recursive entities). */
+  usage_tracker?: UsageTracker;
   /** Retry configuration for LLM calls. */
   retry?: {
     max_retries?: number;
@@ -129,9 +124,11 @@ export function cantrip(input: CantripInput): Cantrip {
      * Cast the cantrip with an intent.
      * CANTRIP-2: each cast creates a fresh run — no shared state.
      * INTENT-1: intent is required.
-     * INTENT-2: intent becomes the first user message.
+     * LOOM-1: every turn is recorded via Entity's loom integration.
+     * PROD-4: folding enabled by default.
      *
-     * Calls runLoop directly — no Agent in the path.
+     * Creates a temporary Entity and calls turn() — Entity already handles
+     * loom recording, folding, and the full run loop.
      */
     async cast(intent: Intent): Promise<any> {
       // INTENT-1: intent is required
@@ -139,60 +136,21 @@ export function cantrip(input: CantripInput): Cantrip {
         throw new Error("cast: intent is required (INTENT-1)");
       }
 
-      // CANTRIP-2: fresh state per cast
-      const ward = resolveWards(circle.wards);
-      const tools = circle.gates;
-      const effectiveToolChoice = ward.require_done_tool
-        ? "required"
-        : resolvedCall.hyperparameters.tool_choice;
-      const crystalView = circle.crystalView(effectiveToolChoice);
-      const tool_definitions =
-        crystalView?.tool_definitions ?? resolvedCall.gate_definitions;
-      const viewToolChoice =
-        crystalView?.tool_choice ?? effectiveToolChoice;
-      const usage_tracker = new UsageTracker();
-      const messages: AnyMessage[] = [];
-
-      // System prompt first, then intent as first user message
-      if (resolvedCall.system_prompt) {
-        messages.push({
-          role: "system",
-          content: resolvedCall.system_prompt,
-          cache: true,
-        } as AnyMessage);
-      }
-      // INTENT-2: intent becomes the first user message
-      messages.push({ role: "user", content: intent } as AnyMessage);
-
-      return runLoop({
-        llm: crystal,
-        tools,
+      // CANTRIP-2: fresh state per cast — temporary Entity with fresh loom
+      const entity = new Entity({
+        crystal,
+        call: resolvedCall,
         circle,
-        messages,
-        system_prompt: resolvedCall.system_prompt,
-        max_iterations: ward.max_turns,
-        require_done_tool: ward.require_done_tool,
         dependency_overrides: dependency_overrides ?? null,
-        invoke_llm: async () =>
-          invokeLLMWithRetries({
-            llm: crystal,
-            messages,
-            tools,
-            tool_definitions,
-            tool_choice: viewToolChoice,
-            usage_tracker,
-            llm_max_retries: 5,
-            llm_retry_base_delay: 1.0,
-            llm_retry_max_delay: 60.0,
-            llm_retryable_status_codes: new Set([429, 500, 502, 503, 504]),
-          }),
-        on_max_iterations: async () =>
-          generateMaxIterationsSummary({
-            llm: crystal,
-            messages,
-            max_iterations: ward.max_turns,
-          }),
+        loom: input.loom ?? new Loom(new MemoryStorage()),
+        cantrip_id: input.cantrip_id,
+        folding: input.folding,
+        folding_enabled: input.folding_enabled ?? true,
+        usage_tracker: input.usage_tracker,
+        retry: input.retry,
       });
+
+      return entity.turn(intent);
     },
 
     /**
@@ -205,10 +163,11 @@ export function cantrip(input: CantripInput): Cantrip {
         call: resolvedCall,
         circle,
         dependency_overrides: dependency_overrides ?? null,
-        loom: input.loom,
+        loom: input.loom ?? new Loom(new MemoryStorage()),
         cantrip_id: input.cantrip_id,
         folding: input.folding,
-        folding_enabled: input.folding_enabled,
+        folding_enabled: input.folding_enabled ?? true,
+        usage_tracker: input.usage_tracker,
         retry: input.retry,
       });
     },

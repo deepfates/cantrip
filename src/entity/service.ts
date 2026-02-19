@@ -125,7 +125,7 @@ export async function checkAndFold(params: {
     (params.response.usage?.prompt_tokens ?? 0) +
     (params.response.usage?.completion_tokens ?? 0);
 
-  const contextWindow = 128_000;
+  const contextWindow = params.llm.context_window ?? 128_000;
   if (!shouldFold(totalTokens, contextWindow, params.folding)) return null;
 
   const thread = deriveThread(params.loom, params.last_turn_id);

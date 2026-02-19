@@ -4,6 +4,7 @@ import { Circle } from "../src/circle/circle";
 import type { Circle as CircleType } from "../src/circle/circle";
 import { max_turns, require_done } from "../src/circle/ward";
 import { js, getJsMediumSandbox } from "../src/circle/medium/js";
+import { done_for_medium } from "../src/circle/gate/builtin/done";
 import type { AssistantMessage } from "../src/crystal/messages";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -83,6 +84,7 @@ describe("Circle with JS medium", () => {
   test("execute handles submit_answer termination", async () => {
     circle = Circle({
       medium: js({ state: { context: "hello" } }),
+      gates: [done_for_medium()],
       wards: [max_turns(10)],
     });
 
@@ -97,6 +99,7 @@ describe("Circle with JS medium", () => {
   test("state persists across execute calls", async () => {
     circle = Circle({
       medium: js({ state: { context: [1, 2, 3] } }),
+      gates: [done_for_medium()],
       wards: [max_turns(10)],
     });
 
@@ -165,6 +168,7 @@ describe("Circle with JS medium", () => {
   test("emits events during execution", async () => {
     circle = Circle({
       medium: js({ state: { context: "data" } }),
+      gates: [done_for_medium()],
       wards: [max_turns(10)],
     });
 

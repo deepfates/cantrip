@@ -25,6 +25,7 @@ export type ChatOpenAIOptions = {
   extended_cache_models?: string[];
   max_completion_tokens?: number | null;
   reasoning_models?: string[];
+  context_window?: number;
 };
 
 export class ChatOpenAI implements BaseChatModel {
@@ -45,6 +46,7 @@ export class ChatOpenAI implements BaseChatModel {
   require_api_key: boolean;
   max_completion_tokens: number | null;
   reasoning_models: string[];
+  context_window: number;
 
   constructor(options: ChatOpenAIOptions) {
     this.model = options.model;
@@ -82,6 +84,7 @@ export class ChatOpenAI implements BaseChatModel {
     this.headers = options.headers ?? {};
     this.require_api_key = options.require_api_key ?? true;
     this.max_completion_tokens = options.max_completion_tokens ?? 4096;
+    this.context_window = options.context_window ?? 128_000;
     this.reasoning_models = options.reasoning_models ?? [
       "o4-mini",
       "o3",
@@ -179,6 +182,10 @@ export class ChatOpenAI implements BaseChatModel {
     if (tool_choice === "auto") return "auto";
     if (tool_choice === "required") return "required";
     if (tool_choice === "none") return "none";
+    // Handle object format: { type: string, name: string }
+    if (typeof tool_choice === "object" && "name" in tool_choice) {
+      return { type: "function", function: { name: tool_choice.name } };
+    }
     return { type: "function", function: { name: tool_choice } };
   }
 

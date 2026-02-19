@@ -14,6 +14,7 @@ export type ChatAnthropicOptions = {
   base_url?: string | null;
   prompt_cache_beta?: string | null;
   max_cached_tool_definitions?: number;
+  context_window?: number;
 };
 
 export class ChatAnthropic implements BaseChatModel {
@@ -26,6 +27,7 @@ export class ChatAnthropic implements BaseChatModel {
   base_url: string;
   prompt_cache_beta: string | null;
   max_cached_tool_definitions: number;
+  context_window: number;
 
   constructor(options: ChatAnthropicOptions) {
     this.model = options.model;
@@ -39,6 +41,7 @@ export class ChatAnthropic implements BaseChatModel {
       options.prompt_cache_beta ?? "prompt-caching-2024-07-31";
     this.max_cached_tool_definitions =
       options.max_cached_tool_definitions ?? 3;
+    this.context_window = options.context_window ?? 200_000;
   }
 
   get provider(): string {

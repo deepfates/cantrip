@@ -1,3 +1,53 @@
+import type { GateResult } from "../gate";
+
+/**
+ * Build the HOST FUNCTIONS section of the system prompt from the actual gates present.
+ * Groups gates by their docs.section and renders each gate's docs.
+ * Always appends console.log (a built-in, not a gate).
+ */
+export function buildHostFunctionsSection(gates: GateResult[]): string {
+  // Collect gates that have docs with a section
+  const sectionedGates = gates.filter(
+    (g) => g.docs?.section && g.docs.sandbox_name,
+  );
+
+  // Group by section name
+  const sections = new Map<string, GateResult[]>();
+  for (const gate of sectionedGates) {
+    const section = gate.docs!.section!;
+    if (!sections.has(section)) sections.set(section, []);
+    sections.get(section)!.push(gate);
+  }
+
+  const lines: string[] = [];
+
+  for (const [sectionName, sectionGates] of sections) {
+    lines.push(`### ${sectionName}`);
+    for (const gate of sectionGates) {
+      const d = gate.docs!;
+      const sig = d.signature ?? d.sandbox_name!;
+      const desc = d.description ?? "";
+      lines.push(`- \`${sig}\`: ${desc}`);
+    }
+    // Always add console.log after gates in the HOST FUNCTIONS section
+    if (sectionName === "HOST FUNCTIONS") {
+      lines.push(
+        "- `console.log(...args)`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.",
+      );
+    }
+  }
+
+  // If no sections were found (no gates with docs), fall back to just console.log
+  if (lines.length === 0) {
+    lines.push("### HOST FUNCTIONS");
+    lines.push(
+      "- `console.log(...args)`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.",
+    );
+  }
+
+  return lines.join("\n");
+}
+
 /**
  * Build browser automation docs filtered by what's actually registered.
  * If allowedFns is undefined, documents everything (full profile).
@@ -188,8 +238,8 @@ export function getRlmSystemPrompt(options: {
   contextType: string;
   contextLength: number;
   contextPreview: string;
-  /** Whether recursive sub-LLMs are available (depth < maxDepth). Default: true. */
-  hasRecursion?: boolean;
+  /** Gates active in this circle — used to build the HOST FUNCTIONS section. Defaults to []. */
+  gates?: GateResult[];
   /** Whether browser automation functions are available. Default: false. */
   hasBrowser?: boolean;
   /** Set of allowed browser function names (from BrowserContext.getAllowedFunctions()). */
@@ -199,10 +249,13 @@ export function getRlmSystemPrompt(options: {
     contextType,
     contextLength,
     contextPreview,
-    hasRecursion = true,
+    gates = [],
     hasBrowser = false,
     browserAllowedFunctions,
   } = options;
+
+  // Derive recursion availability from gate docs (presence of llm_query gate)
+  const hasRecursion = gates.some((g) => g.docs?.sandbox_name === "llm_query");
 
   // Adapt sub-LLM guidance based on whether recursion spawns full RLMs or truncated fallbacks
   const subLlmIntro = hasRecursion
@@ -370,11 +423,7 @@ Make sure you look through the context sufficiently before answering your query.
 2. **NO ASYNC/AWAIT**: Do NOT use \`async\`, \`await\`, or \`Promise\`. They will crash the sandbox.
 3. **PERSISTENCE**: Use \`var\` or \`globalThis\` to save state between \`js\` tool calls.
 
-### HOST FUNCTIONS
-- \`llm_query(query, snippet?)\`: Query a sub-LLM inside your sandbox. Returns a string answer. ${subLlmNote}
-- \`llm_batch(tasks)\`: Parallel delegation. Takes an array of \`{query, context}\` objects (max 50). Returns an array of strings.
-- \`submit_answer(result)\`: Terminates the task and returns \`result\` to the user. This is the ONLY way to finish.
-- \`console.log(...args)\`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.${
+${buildHostFunctionsSection(gates)}${
     hasBrowser
       ? `
 
@@ -404,6 +453,8 @@ export function getRlmMemorySystemPrompt(options: {
   dataLength?: number;
   dataPreview?: string;
   windowSize: number;
+  /** Gates active in this circle — used to build the HOST FUNCTIONS section. Defaults to []. */
+  gates?: GateResult[];
   /** Whether browser automation functions are available. Default: false. */
   hasBrowser?: boolean;
   /** Set of allowed browser function names (from BrowserContext.getAllowedFunctions()). */
@@ -415,6 +466,7 @@ export function getRlmMemorySystemPrompt(options: {
     dataLength,
     dataPreview,
     windowSize,
+    gates = [],
     hasBrowser = false,
     browserAllowedFunctions,
   } = options;
@@ -447,11 +499,7 @@ You MUST use the \`js\` tool to explore context and recall past conversations.
 2. **NO ASYNC/AWAIT**: Do NOT use \`async\`, \`await\`, or \`Promise\`. They will crash the sandbox.
 3. **PERSISTENCE**: Use \`var\` or \`globalThis\` to save state between \`js\` tool calls.
 
-### HOST FUNCTIONS
-- \`llm_query(query, snippet?)\`: Spawns a sub-agent to analyze a snippet. Returns a string answer.
-- \`llm_batch(tasks)\`: Parallel delegation. Takes an array of \`{query, context}\` objects (max 50). Returns an array of strings.
-- \`submit_answer(result)\`: Terminates the task and returns \`result\` to the user. This is the ONLY way to finish.
-- \`console.log(...args)\`: Prints output (captured as metadata in your history).${
+${buildHostFunctionsSection(gates)}${
     hasBrowser
       ? `
 
