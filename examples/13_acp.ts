@@ -1,6 +1,6 @@
-// ACP — Agent Control Protocol adapter for editor integration.
+// Example 13: ACP — Agent Control Protocol adapter for editor integration.
 // Serves a cantrip over ACP so editors (VS Code, etc.) can interact with it.
-// Uses JS medium with filesystem gates — one medium, gates cross in.
+// Medium: conversation | LLM: No (server — starts an ACP server)
 
 import "./env";
 import {
@@ -13,6 +13,10 @@ import { getRlmSystemPrompt } from "../src/circle/recipe/rlm_prompt";
 import { analyzeContext } from "../src/circle/recipe/rlm";
 
 export async function main() {
+  console.log("--- Example 13: ACP Server ---");
+  console.log("Serves a cantrip over the Agent Control Protocol.");
+  console.log("Editors (VS Code, etc.) connect and interact with the entity.");
+
   serveCantripACP(async ({ params }) => {
     const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
     const ctx = await SandboxContext.create(params.cwd);
@@ -22,7 +26,6 @@ export async function main() {
       description: "ACP coding agent with filesystem access.",
     };
 
-    // ONE medium: JS sandbox. Filesystem gates cross in as host functions.
     const circle = Circle({
       medium: js({ state: { context: workspace } }),
       gates: [...safeFsGates],
@@ -51,6 +54,8 @@ export async function main() {
       },
     };
   });
+
+  return "acp-server-started";
 }
 
 if (import.meta.main) {

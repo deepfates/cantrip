@@ -1,6 +1,6 @@
-// JS medium — a QuickJS sandbox that the entity works inside.
-// The entity writes JavaScript code; gates are projected as host functions.
-// ONE medium per circle. The medium REPLACES conversation.
+// Example 08: JS Medium
+// The entity works inside a QuickJS sandbox. Gates are projected as host functions.
+// ONE medium per circle — the medium REPLACES conversation.
 
 import "./env";
 import { cantrip, Circle, ChatAnthropic, max_turns, require_done } from "../src";
@@ -9,9 +9,12 @@ import { getRlmSystemPrompt } from "../src/circle/recipe/rlm_prompt";
 import { analyzeContext } from "../src/circle/recipe/rlm";
 
 export async function main() {
+  console.log("=== Example 08: JS Medium ===");
+  console.log("The JS medium gives the entity a QuickJS sandbox to work in.");
+  console.log("Data is injected as globals; the entity explores it with code.\n");
+
   const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
-  // Data injected into the sandbox — available as globals to the entity's code.
   const data = {
     items: [
       { name: "alpha", value: 10 },
@@ -20,8 +23,6 @@ export async function main() {
     ],
   };
 
-  // The JS medium: entity works IN a QuickJS sandbox.
-  // Gates (like submit_answer) are projected as callable functions inside it.
   const circle = Circle({
     medium: js({ state: { context: data } }),
     wards: [max_turns(20), require_done()],
@@ -42,8 +43,11 @@ export async function main() {
   });
 
   try {
+    console.log('Asking: "Which item has the highest value?"');
     const answer = await spell.cast("Which item has the highest value? Return its name.");
-    console.log("Answer:", answer);
+    console.log(`Answer: ${answer}`);
+    console.log("\nThe entity wrote JS code to find the answer in the sandbox.");
+    return answer;
   } finally {
     await circle.dispose?.();
   }
