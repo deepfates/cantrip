@@ -16,6 +16,7 @@ import {
 import { TaskComplete } from "../entity/errors";
 import { executeToolCall, extractScreenshot } from "../entity/runtime";
 import type { Medium } from "./medium";
+import { done_for_medium } from "./gate/builtin/done";
 
 /** A gate call record produced by circle.execute(). */
 export type CircleGateCall = {
@@ -84,6 +85,11 @@ export interface Circle {
 export function Circle(opts: { medium?: Medium; gates?: GateResult[]; wards: Ward[] }): Circle {
   const gates = opts.gates ?? [];
   const hasMedium = !!opts.medium;
+
+  // Auto-inject done_for_medium when medium is present and no done gate provided
+  if (hasMedium && !gates.some((g) => g.name === "done")) {
+    gates.push(done_for_medium());
+  }
 
   // CIRCLE-1: done gate required unless medium handles termination
   if (!hasMedium && !gates.some((g) => g.name === "done")) {
