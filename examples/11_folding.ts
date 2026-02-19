@@ -1,19 +1,21 @@
-// Folding — compress older turns to keep the context window small.
+// Example 11: Folding — compress older turns to keep the context window small.
 // When a thread gets long, fold early turns into a summary.
+// LLM: No (mock — folding is demonstrated without calling an LLM)
 
 import {
   Loom, MemoryStorage, deriveThread,
-  shouldFold, partitionForFolding, fold,
+  shouldFold, partitionForFolding,
   generateTurnId, type Turn, DEFAULT_FOLDING_CONFIG,
-  type BaseChatModel,
 } from "../src";
 
 export async function main() {
+  console.log("--- Example 11: Folding ---");
+  console.log("When a thread gets long, folding compresses early turns into a summary.");
+
   const loom = new Loom(new MemoryStorage());
   const cantripId = "fold-demo";
   const entityId = "fold-entity";
 
-  // Build a conversation with several turns.
   let parentId: string | null = null;
   for (let i = 1; i <= 6; i++) {
     const turn: Turn = {
@@ -26,11 +28,8 @@ export async function main() {
       observation: `User message ${i}`,
       gate_calls: [],
       metadata: {
-        tokens_prompt: 500 * i,
-        tokens_completion: 100,
-        tokens_cached: 0,
-        duration_ms: 300,
-        timestamp: new Date().toISOString(),
+        tokens_prompt: 500 * i, tokens_completion: 100, tokens_cached: 0,
+        duration_ms: 300, timestamp: new Date().toISOString(),
       },
       reward: null,
       terminated: i === 6,
@@ -40,29 +39,27 @@ export async function main() {
     parentId = turn.id;
   }
 
-  // Derive the thread.
   const leaves = loom.getLeaves();
   const thread = deriveThread(loom, leaves[0].id);
-  console.log(`Thread: ${thread.turns.length} turns`);
+  const turnCount = thread.turns.length;
+  console.log(`Built a thread with ${turnCount} turns.`);
 
-  // Check if folding is needed.
   const totalTokens = thread.turns.reduce(
     (sum, t) => sum + t.metadata.tokens_prompt + t.metadata.tokens_completion,
     0,
   );
   const contextWindow = 4096;
   const config = { ...DEFAULT_FOLDING_CONFIG, enabled: true };
+  const needsFolding = shouldFold(totalTokens, contextWindow, config);
 
   console.log(`Total tokens: ${totalTokens}, context window: ${contextWindow}`);
-  console.log(`Should fold: ${shouldFold(totalTokens, contextWindow, config)}`);
+  console.log(`Should fold: ${needsFolding}`);
 
-  // Partition into what to fold vs keep.
   const { toFold, toKeep } = partitionForFolding(thread, config);
-  console.log(`To fold: ${toFold.length} turns, to keep: ${toKeep.length} turns`);
+  console.log(`Partition: ${toFold.length} turns to fold, ${toKeep.length} to keep.`);
+  console.log("Done. In production, fold() would call a crystal to summarize the folded turns.");
 
-  // fold() requires a real crystal to summarize — here we just show the partition.
-  // In production: const result = await fold(toFold, toKeep, crystal, config);
-  console.log("Folding partitioned successfully. Use fold() with a crystal to compress.");
+  return { turnCount, totalTokens, needsFolding, foldCount: toFold.length, keepCount: toKeep.length };
 }
 
 if (import.meta.main) {

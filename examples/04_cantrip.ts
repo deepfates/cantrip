@@ -1,5 +1,6 @@
-// Cantrip — the full recipe. crystal + call + circle = cantrip.
-// Cast a cantrip on an intent, an entity arises.
+// Example 04: Cantrip
+// crystal + call + circle = cantrip. Cast it on an intent, an entity arises.
+// This is the full recipe — everything before was ingredients.
 
 import "./env";
 import { cantrip, Circle, ChatAnthropic, done, gate, max_turns } from "../src";
@@ -10,6 +11,9 @@ const add = gate("Add two numbers", async ({ a, b }: { a: number; b: number }) =
 });
 
 export async function main() {
+  console.log("=== Example 04: Cantrip ===");
+  console.log("A cantrip binds crystal + call + circle. Cast on an intent → entity runs.\n");
+
   const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
   const circle = Circle({
@@ -17,20 +21,23 @@ export async function main() {
     wards: [max_turns(10)],
   });
 
-  // Bind the recipe.
   const spell = cantrip({
     crystal,
     call: { system_prompt: "You are a calculator. Use the add tool, then call done with the result." },
     circle,
   });
 
-  // Cast on an intent → an entity runs and returns the result.
+  console.log('Casting: "What is 2 + 3?"');
   const result = await spell.cast("What is 2 + 3?");
-  console.log("Result:", result);
+  console.log(`Result: ${result}`);
 
-  // Cast again → independent entity, no shared state (CANTRIP-2).
+  console.log('\nCasting again: "What is 10 + 20?" (independent entity, no shared state)');
   const result2 = await spell.cast("What is 10 + 20?");
-  console.log("Result 2:", result2);
+  console.log(`Result: ${result2}`);
+
+  console.log("\nEach cast creates a fresh entity — the cantrip is reusable.");
+
+  return { result, result2 };
 }
 
 if (import.meta.main) {

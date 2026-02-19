@@ -1,5 +1,6 @@
-// Providers — same cantrip, different crystal.
-// Swap the crystal to use any supported LLM provider.
+// Example 06: Providers
+// Same cantrip, different crystal. Swap the crystal to use any LLM provider.
+// The cantrip recipe stays the same — only the model changes.
 
 import "./env";
 import {
@@ -13,6 +14,9 @@ const add = gate("Add two numbers", async ({ a, b }: { a: number; b: number }) =
 });
 
 export async function main() {
+  console.log("=== Example 06: Providers ===");
+  console.log("The same cantrip works with any crystal. Only the model changes.\n");
+
   const circle = Circle({
     gates: [add, done],
     wards: [max_turns(10)],
@@ -20,7 +24,6 @@ export async function main() {
 
   const call = { system_prompt: "You are a calculator. Use add, then call done." };
 
-  // Pick a crystal — the rest of the cantrip stays the same.
   const crystals = {
     anthropic: () => new ChatAnthropic({ model: "claude-sonnet-4-5" }),
     openai: () => new ChatOpenAI({ model: "gpt-5-mini" }),
@@ -35,7 +38,11 @@ export async function main() {
 
   const spell = cantrip({ crystal, call, circle });
   const result = await spell.cast("What is 7 + 8?");
-  console.log("Result:", result);
+  console.log(`Result: ${result}`);
+
+  console.log("\nSwap the crystal, keep everything else.");
+
+  return result;
 }
 
 if (import.meta.main) {
