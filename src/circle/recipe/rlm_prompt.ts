@@ -1,51 +1,44 @@
 import type { BoundGate } from "../gate/gate";
+import { buildCapabilityDocs } from "../circle";
+
+const CONSOLE_LOG_DOC =
+  "- `console.log(...args)`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.";
 
 /**
  * Build the HOST FUNCTIONS section of the system prompt from the actual gates present.
- * Groups gates by their docs.section and renders each gate's docs.
- * Always appends console.log (a built-in, not a gate).
+ * Delegates to Circle's buildCapabilityDocs for the core gate→docs logic,
+ * then layers RLM-specific additions (console.log).
  */
 export function buildHostFunctionsSection(gates: BoundGate[]): string {
-  // Collect gates that have docs with a section
-  const sectionedGates = gates.filter(
-    (g) => g.docs?.section && g.docs.sandbox_name,
-  );
+  const coreDocs = buildCapabilityDocs(gates);
 
-  // Group by section name
-  const sections = new Map<string, BoundGate[]>();
-  for (const gate of sectionedGates) {
-    const section = gate.docs!.section!;
-    if (!sections.has(section)) sections.set(section, []);
-    sections.get(section)!.push(gate);
+  if (coreDocs === "") {
+    // No gates with docs — fall back to just console.log
+    return `### HOST FUNCTIONS\n${CONSOLE_LOG_DOC}`;
   }
 
-  const lines: string[] = [];
+  // Append console.log after the HOST FUNCTIONS section if it exists
+  const lines = coreDocs.split("\n");
+  const result: string[] = [];
+  let inHostFunctions = false;
 
-  for (const [sectionName, sectionGates] of sections) {
-    lines.push(`### ${sectionName}`);
-    for (const gate of sectionGates) {
-      const d = gate.docs!;
-      const sig = d.signature ?? d.sandbox_name!;
-      const desc = d.description ?? "";
-      lines.push(`- \`${sig}\`: ${desc}`);
-    }
-    // Always add console.log after gates in the HOST FUNCTIONS section
-    if (sectionName === "HOST FUNCTIONS") {
-      lines.push(
-        "- `console.log(...args)`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.",
-      );
+  for (const line of lines) {
+    result.push(line);
+    if (line === "### HOST FUNCTIONS") {
+      inHostFunctions = true;
+    } else if (line.startsWith("### ") && inHostFunctions) {
+      // New section started — insert console.log before it
+      result.splice(result.length - 1, 0, CONSOLE_LOG_DOC);
+      inHostFunctions = false;
     }
   }
 
-  // If no sections were found (no gates with docs), fall back to just console.log
-  if (lines.length === 0) {
-    lines.push("### HOST FUNCTIONS");
-    lines.push(
-      "- `console.log(...args)`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.",
-    );
+  // If we were still in HOST FUNCTIONS at the end, append console.log
+  if (inHostFunctions) {
+    result.push(CONSOLE_LOG_DOC);
   }
 
-  return lines.join("\n");
+  return result.join("\n");
 }
 
 /**

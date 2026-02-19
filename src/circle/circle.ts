@@ -69,8 +69,46 @@ export interface Circle {
     },
   ): Promise<CircleExecuteResult>;
 
+  /**
+   * Generate capability documentation from gate docs metadata.
+   * Groups gates by their docs.section and renders each gate's signature + description.
+   * Gates without docs (or without docs.section + docs.sandbox_name) are invisible.
+   * CIRCLE-11: the circle owns its own capability presentation.
+   */
+  capabilityDocs(): string;
+
   /** Optional cleanup. */
   dispose?(): Promise<void>;
+}
+
+/**
+ * Build capability docs string from gates. Pure function, shared by both circle variants.
+ * Exported so recipe-level code (e.g., rlm_prompt) can reuse the core logic.
+ */
+export function buildCapabilityDocs(gates: BoundGate[]): string {
+  const sectionedGates = gates.filter(
+    (g) => g.docs?.section && g.docs.sandbox_name,
+  );
+
+  const sections = new Map<string, BoundGate[]>();
+  for (const gate of sectionedGates) {
+    const section = gate.docs!.section!;
+    if (!sections.has(section)) sections.set(section, []);
+    sections.get(section)!.push(gate);
+  }
+
+  const lines: string[] = [];
+  for (const [sectionName, sectionGates] of sections) {
+    lines.push(`### ${sectionName}`);
+    for (const gate of sectionGates) {
+      const d = gate.docs!;
+      const sig = d.signature ?? d.sandbox_name!;
+      const desc = d.description ?? "";
+      lines.push(`- \`${sig}\`: ${desc}`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 /**
@@ -112,6 +150,10 @@ export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward
       gates,
       wards: opts.wards,
       hasMedium: true,
+
+      capabilityDocs() {
+        return buildCapabilityDocs(gates);
+      },
 
       crystalView(_toolChoice?: ToolChoice) {
         return medium.crystalView();
@@ -155,6 +197,10 @@ export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward
   return {
     gates,
     wards: opts.wards,
+
+    capabilityDocs() {
+      return buildCapabilityDocs(gates);
+    },
 
     crystalView(toolChoice?: ToolChoice) {
       return {
