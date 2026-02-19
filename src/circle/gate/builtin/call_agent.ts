@@ -1,12 +1,9 @@
-import { Agent, AnyMessage } from "../../../entity/service";
+import { AnyMessage } from "../../../entity/service";
 import { BaseChatModel } from "../../../crystal/crystal";
 import {
   JsAsyncContext,
-  createAsyncModule,
 } from "./js_async_context";
 import {
-  js_rlm,
-  getRlmSandbox,
   registerRlmFunctions,
   safeStringify,
 } from "./call_agent_tools";
@@ -17,6 +14,19 @@ import { Entity } from "../../../cantrip/entity";
 import { js as jsMedium, getJsMediumSandbox } from "../../medium/js";
 import { Circle } from "../../circle";
 import { max_turns, require_done } from "../../ward";
+
+/**
+ * Minimal interface for RLM agent callers.
+ * Replaces the duck-typed `as unknown as Agent` shim with an honest type.
+ */
+export type RlmAgent = {
+  query: (message: string) => Promise<string>;
+  readonly history: AnyMessage[];
+  get_usage: () => Promise<any>;
+  /** Direct access to messages for backward compat (e.g. memory management). */
+  messages: AnyMessage[];
+  load_history: (messages: AnyMessage[]) => void;
+};
 
 export type RlmOptions = {
   llm: BaseChatModel;
@@ -49,7 +59,7 @@ export type RlmOptions = {
  */
 export async function createRlmAgent(
   options: RlmOptions,
-): Promise<{ agent: Agent; sandbox: JsAsyncContext }> {
+): Promise<{ agent: RlmAgent; entity: Entity; sandbox: JsAsyncContext }> {
   const {
     llm,
     context,
@@ -156,15 +166,17 @@ export async function createRlmAgent(
     usage_tracker: usage,
   });
 
-  // 7. Return backward-compatible shim
-  // Callers use: agent.query(), agent.get_usage(), agent.history, agent.messages
-  const agent = {
+  // 7. Return Entity as primary, with RlmAgent shim for backward compat
+  const agent: RlmAgent = {
     query: (q: string) => entity.turn(q),
     get history() { return entity.history; },
     get_usage: () => entity.get_usage(),
-  } as unknown as Agent;
+    get messages() { return entity.history; },
+    set messages(msgs: AnyMessage[]) { entity.load_history(msgs); },
+    load_history: (msgs: AnyMessage[]) => entity.load_history(msgs),
+  };
 
-  return { agent, sandbox };
+  return { agent, entity, sandbox };
 }
 
 /**
@@ -224,7 +236,8 @@ export type RlmMemoryOptions = {
 };
 
 export type RlmMemoryAgent = {
-  agent: Agent;
+  agent: RlmAgent;
+  entity: Entity;
   sandbox: JsAsyncContext;
   /** Call after each turn to manage the sliding window */
   manageMemory: () => void;
@@ -237,13 +250,12 @@ export type RlmMemoryAgent = {
  * - `context.data`: User-provided data (optional)
  * - `context.history`: Older messages that have been moved out of the active prompt
  *
- * After windowSize user turns, older messages are moved from the agent's
+ * After windowSize user turns, older messages are moved from the entity's
  * active message history into context.history, where the agent can search them.
  *
- * NOTE: Still uses Agent (not Entity/cantrip) because manageMemory() needs
- * mutable access to agent.messages for sliding-window manipulation. Entity
- * only exposes history (read-only copy) and load_history() (full replace),
- * which can't support the slice-and-splice pattern used here.
+ * Uses Entity via cantrip API internally. The `manageMemory()` function uses
+ * `entity.history` (read) and `entity.load_history()` (write) for sliding-window
+ * memory management.
  */
 export async function createRlmAgentWithMemory(
   options: RlmMemoryOptions,
@@ -265,14 +277,14 @@ export async function createRlmAgentWithMemory(
     history: [],
   };
 
-  // Track user turns for windowing
-  let userTurnCount = 0;
+  // 1. Create JS medium with context as initial state
+  const medium = jsMedium({ state: { context } });
 
-  // 1. Prepare Sandbox
-  const module = await createAsyncModule();
-  const sandbox = await JsAsyncContext.create({ module });
+  // 2. Force medium initialization so we can access the sandbox
+  await medium.init([], null);
+  const sandbox = getJsMediumSandbox(medium)!;
 
-  // 2. Generate system prompt that explains the memory feature
+  // 3. Generate system prompt that explains the memory feature
   const dataMetadata = data ? analyzeContext(data) : null;
   const systemPrompt = getRlmMemorySystemPrompt({
     hasData: !!data,
@@ -286,7 +298,7 @@ export async function createRlmAgentWithMemory(
       : undefined,
   });
 
-  // 3. Register RLM functions with the unified context
+  // 4. Register RLM functions with the unified context
   // Memory agent is always at depth 0, children start at depth 1
   await registerRlmFunctions({
     sandbox,
@@ -299,7 +311,6 @@ export async function createRlmAgentWithMemory(
 
       if (maxDepth <= 0) {
         // At max depth, fall back to plain LLM completion
-        // Truncate context to avoid blowing up the prompt at leaf level
         const contextStr =
           typeof contextToPass === "string"
             ? contextToPass
@@ -341,49 +352,66 @@ export async function createRlmAgentWithMemory(
     },
   });
 
-  // 4. Create agent
-  const overrides = new Map();
-  overrides.set(getRlmSandbox, () => sandbox);
-
-  const agent = new Agent({
-    llm,
-    tools: [js_rlm],
-    system_prompt: systemPrompt,
-    dependency_overrides: overrides,
-    max_iterations: 20,
-    usage_tracker: usage,
-    require_done_tool: true,
+  // 5. Build Circle with the JS medium and wards
+  const circle = Circle({
+    medium,
+    gates: [],
+    wards: [max_turns(20), require_done()],
   });
 
-  // 5. Memory management function
+  // 6. Create Entity via cantrip API with shared usage tracker
+  const entity = new Entity({
+    crystal: llm,
+    call: {
+      system_prompt: systemPrompt,
+      hyperparameters: { tool_choice: "auto" },
+      gate_definitions: [],
+    },
+    circle,
+    dependency_overrides: null,
+    usage_tracker: usage,
+  });
+
+  // 7. RlmAgent shim for backward compat
+  const agent: RlmAgent = {
+    query: (q: string) => entity.turn(q),
+    get history() { return entity.history; },
+    get_usage: () => entity.get_usage(),
+    get messages() { return entity.history; },
+    set messages(msgs: AnyMessage[]) { entity.load_history(msgs); },
+    load_history: (msgs: AnyMessage[]) => entity.load_history(msgs),
+  };
+
+  // 8. Memory management function — uses entity.history/load_history
   const manageMemory = () => {
     // Keep slicing until active user count is within window
     while (true) {
-      const activeUserCount = agent.messages.filter(
+      let messages = entity.history; // read-only copy
+      const activeUserCount = messages.filter(
         (m) => m.role === "user",
       ).length;
       if (activeUserCount <= windowSize) break;
       // Find the end of the first turn (from first user message to next user message)
-      const startIndex = agent.messages[0]?.role === "system" ? 1 : 0;
+      const startIndex = messages[0]?.role === "system" ? 1 : 0;
       let cutIndex = startIndex;
 
       // Find first user message
       while (
-        cutIndex < agent.messages.length &&
-        agent.messages[cutIndex].role !== "user"
+        cutIndex < messages.length &&
+        messages[cutIndex].role !== "user"
       ) {
         cutIndex++;
       }
 
-      if (cutIndex >= agent.messages.length) break;
+      if (cutIndex >= messages.length) break;
 
       // Skip past the user message
       cutIndex++;
 
       // Find end of turn (next user message or end of messages)
       while (
-        cutIndex < agent.messages.length &&
-        agent.messages[cutIndex].role !== "user"
+        cutIndex < messages.length &&
+        messages[cutIndex].role !== "user"
       ) {
         cutIndex++;
       }
@@ -391,19 +419,20 @@ export async function createRlmAgentWithMemory(
       if (cutIndex <= startIndex) break;
 
       // Move messages to history
-      const toMove = agent.messages.slice(startIndex, cutIndex);
+      const toMove = messages.slice(startIndex, cutIndex);
       context.history.push(...toMove);
 
       // Remove from active messages (keep system prompt)
-      agent.messages = [
-        ...(startIndex === 1 ? [agent.messages[0]] : []),
-        ...agent.messages.slice(cutIndex),
+      messages = [
+        ...(startIndex === 1 ? [messages[0]] : []),
+        ...messages.slice(cutIndex),
       ];
+      entity.load_history(messages); // write back
     }
 
     // Update sandbox with new context
     sandbox.setGlobal("context", context);
   };
 
-  return { agent, sandbox, manageMemory };
+  return { agent, entity, sandbox, manageMemory };
 }

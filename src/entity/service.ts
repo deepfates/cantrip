@@ -216,6 +216,10 @@ export async function checkAndFold(params: {
 
 // ── Agent class ────────────────────────────────────────────────────
 
+/**
+ * @deprecated Use Entity via cantrip().invoke() instead.
+ * Agent remains for backward compatibility but Entity is the spec-correct path.
+ */
 export class Agent {
   llm: BaseChatModel;
   tools: GateResult[];

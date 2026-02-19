@@ -45,12 +45,13 @@ export { JsContext, getJsContext } from "./circle/gate/builtin/js_context";
 export { browser } from "./circle/gate/builtin/browser";
 export { BrowserContext, getBrowserContext } from "./circle/gate/builtin/browser_context";
 export { createRlmAgent, createRlmAgentWithMemory } from "./circle/gate/builtin/call_agent";
-export type { RlmOptions, RlmMemoryOptions, RlmMemoryAgent } from "./circle/gate/builtin/call_agent";
+export type { RlmOptions, RlmMemoryOptions, RlmMemoryAgent, RlmAgent } from "./circle/gate/builtin/call_agent";
 export { createRlmConsoleRenderer, patchStderrForRlm } from "./circle/gate/builtin/call_agent_console";
 
 // ── Cantrip (the recipe — primary public API) ──────────────────────
 export { cantrip } from "./cantrip/cantrip";
 export { Entity } from "./cantrip/entity";
+export type { EntityOptions } from "./cantrip/entity";
 export type { Cantrip, CantripInput, CallInput } from "./cantrip/cantrip";
 export type { Call, CallHyperparameters } from "./cantrip/call";
 export { renderGateDefinitions } from "./cantrip/call";
