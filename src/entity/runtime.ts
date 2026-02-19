@@ -171,8 +171,8 @@ export async function invokeLLMWithRetries(options: {
     try {
       const response = await llm.ainvoke(
         messages,
-        tools.length ? tool_definitions : null,
-        tools.length ? tool_choice : null,
+        tool_definitions.length ? tool_definitions : null,
+        tool_definitions.length ? tool_choice : null,
       );
 
       if (response.usage) {
@@ -228,8 +228,8 @@ export async function invokeLLMOnce(options: {
 
   const response = await llm.ainvoke(
     messages,
-    tools.length ? tool_definitions : null,
-    tools.length ? tool_choice : null,
+    tool_definitions.length ? tool_definitions : null,
+    tool_definitions.length ? tool_choice : null,
   );
 
   if (response.usage) {
