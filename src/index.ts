@@ -44,9 +44,9 @@ export { js_run } from "./circle/gate/builtin/js_run";
 export { JsContext, getJsContext } from "./circle/gate/builtin/js_context";
 export { browser } from "./circle/gate/builtin/browser";
 export { BrowserContext, getBrowserContext } from "./circle/gate/builtin/browser_context";
-export { createRlmAgent, createRlmAgentWithMemory } from "./circle/gate/builtin/call_agent";
-export type { RlmOptions, RlmMemoryOptions, RlmMemoryAgent, RlmAgent } from "./circle/gate/builtin/call_agent";
-export { createRlmConsoleRenderer, patchStderrForRlm } from "./circle/gate/builtin/call_agent_console";
+export { createRlmAgent, createRlmAgentWithMemory } from "./circle/gate/builtin/call_entity";
+export type { RlmOptions, RlmMemoryOptions, RlmMemoryAgent } from "./circle/gate/builtin/call_entity";
+export { createRlmConsoleRenderer, patchStderrForRlm } from "./circle/gate/builtin/call_entity_console";
 
 // ── Cantrip (the recipe — primary public API) ──────────────────────
 export { cantrip } from "./cantrip/cantrip";
@@ -97,13 +97,13 @@ export {
   StepStartEvent,
   StepCompleteEvent,
   HiddenUserMessageEvent,
-  type AgentEvent,
+  type TurnEvent,
 } from "./entity/events";
 
 // ── Entity / ACP (protocol adapter) ─────────────────────────────────
 export { serveCantripACP, createAcpProgressCallback } from "./entity/acp";
 export type {
-  CantripAgentFactory,
+  CantripEntityFactory,
   CantripSessionHandle,
   CantripSessionContext,
 } from "./entity/acp";

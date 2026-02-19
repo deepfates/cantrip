@@ -521,7 +521,7 @@ describe("Loom tree structure", () => {
         sequence: 2,
         utterance: "Calling child agent",
         gate_calls: [{
-          gate_name: "call_agent",
+          gate_name: "call_entity",
           arguments: '{"task":"subtask"}',
           result: "spawned child",
           is_error: false,

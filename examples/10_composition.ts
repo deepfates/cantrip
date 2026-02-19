@@ -4,8 +4,8 @@
 import "./env";
 import { cantrip, Circle, max_turns, require_done, ChatOpenAI } from "../src";
 import { js } from "../src/circle/medium/js";
-import { getRlmSystemPrompt } from "../src/circle/gate/builtin/call_agent_prompt";
-import { analyzeContext } from "../src/circle/gate/builtin/call_agent";
+import { getRlmSystemPrompt } from "../src/circle/gate/builtin/call_entity_prompt";
+import { analyzeContext } from "../src/circle/gate/builtin/call_entity";
 
 // ── cantrip + JS medium ─────────────────────────────────────────────
 

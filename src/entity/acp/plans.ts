@@ -1,5 +1,5 @@
 import type { AgentSideConnection } from "@agentclientprotocol/sdk";
-import type { RlmProgressEvent, RlmProgressCallback } from "../../circle/gate/builtin/call_agent_tools";
+import type { RlmProgressEvent, RlmProgressCallback } from "../../circle/gate/builtin/call_entity_tools";
 
 type PlanEntry = {
   content: string;
@@ -31,7 +31,7 @@ export function createAcpProgressCallback(
 
   return (event: RlmProgressEvent) => {
     switch (event.type) {
-      case "sub_agent_start": {
+      case "sub_entity_start": {
         const preview =
           event.query.length > 60
             ? event.query.slice(0, 57) + "..."
@@ -44,7 +44,7 @@ export function createAcpProgressCallback(
         sendPlan();
         break;
       }
-      case "sub_agent_end": {
+      case "sub_entity_end": {
         // Mark the most recent in_progress sub-agent entry as completed
         for (let i = entries.length - 1; i >= 0; i--) {
           if (

@@ -15,7 +15,7 @@ import type { DependencyOverrides } from "../circle/gate/depends";
 import type { GateResult } from "../circle/gate";
 import { UsageTracker } from "../crystal/tokens";
 import { TaskComplete } from "./errors";
-import type { AgentEvent } from "./events";
+import type { TurnEvent } from "./events";
 import {
   FinalResponseEvent,
   TextEvent,
@@ -265,7 +265,7 @@ Keep the summary brief but informative.`;
   }
 }
 
-export async function runAgentLoop(options: {
+export async function runLoop(options: {
   llm: BaseChatModel;
   tools: GateResult[];
   messages: AnyMessage[];
@@ -292,8 +292,8 @@ export async function runAgentLoop(options: {
     terminated: boolean;
     truncated: boolean;
   }) => Promise<void>;
-  /** Streaming event callback — when provided, runAgentLoop emits AgentEvents inline. */
-  on_event?: (event: AgentEvent) => void;
+  /** Streaming event callback — when provided, runLoop emits TurnEvents inline. */
+  on_event?: (event: TurnEvent) => void;
   /** The circle handles all tool dispatch. */
   circle: Circle;
 }): Promise<string> {

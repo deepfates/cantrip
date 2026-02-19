@@ -1,7 +1,7 @@
 export { serveCantripACP } from "./server";
 export { createAcpProgressCallback } from "./plans";
 export type {
-  CantripAgentFactory,
+  CantripEntityFactory,
   CantripSessionHandle,
   CantripSessionContext,
 } from "./server";

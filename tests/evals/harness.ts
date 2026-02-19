@@ -13,7 +13,7 @@
  */
 import { Entity } from "../../src/cantrip/entity";
 import { Circle } from "../../src/circle/circle";
-import { analyzeContext, createRlmAgent } from "../../src/circle/gate/builtin/call_agent";
+import { analyzeContext, createRlmAgent } from "../../src/circle/gate/builtin/call_entity";
 import { JsContext, getJsContext } from "../../src/circle/gate/builtin/js_context";
 import { js } from "../../src/circle/gate/builtin/js";
 import { done } from "../../src/circle/gate/builtin/done";

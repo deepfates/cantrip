@@ -5,7 +5,7 @@ import type { GateResult } from "./gate/gate";
 import type { DependencyOverrides } from "./gate/depends";
 import type { Ward } from "./ward";
 import { resolveWards } from "./ward";
-import type { AgentEvent } from "../entity/events";
+import type { TurnEvent } from "../entity/events";
 import {
   StepStartEvent,
   StepCompleteEvent,
@@ -63,7 +63,7 @@ export interface Circle {
     utterance: AssistantMessage,
     options: {
       dependency_overrides?: DependencyOverrides | null;
-      on_event?: (event: AgentEvent) => void;
+      on_event?: (event: TurnEvent) => void;
       on_tool_result?: (msg: ToolMessage) => void;
     },
   ): Promise<CircleExecuteResult>;

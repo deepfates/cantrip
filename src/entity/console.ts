@@ -4,7 +4,7 @@ import {
   ToolCallEvent,
   ToolResultEvent,
   UsageEvent,
-  type AgentEvent,
+  type TurnEvent,
 } from "./events";
 
 export type ConsoleRendererState = { sawText: boolean };
@@ -17,7 +17,7 @@ export type ConsoleRendererOptions = {
 
 export type ConsoleRenderer = {
   createState: () => ConsoleRendererState;
-  handle: (event: AgentEvent, state: ConsoleRendererState) => void;
+  handle: (event: TurnEvent, state: ConsoleRendererState) => void;
 };
 
 const trimTrailingWhitespace = (value: string): string =>

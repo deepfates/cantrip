@@ -1,8 +1,8 @@
 // cantrip-migration: uses createRlmAgentWithMemory (RLM-internal factory).
-// Tests WASM sandbox memory windowing and agent.messages manipulation —
+// Tests WASM sandbox memory windowing and entity.history manipulation —
 // genuinely below the cantrip API level.
 import { describe, test, expect, mock } from "bun:test";
-import { createRlmAgentWithMemory } from "../src/circle/gate/builtin/call_agent";
+import { createRlmAgentWithMemory } from "../src/circle/gate/builtin/call_entity";
 import { BaseChatModel } from "../src/crystal/crystal";
 import type { ChatInvokeCompletion } from "../src/crystal/views";
 
@@ -38,15 +38,15 @@ function createMockLlm(responses: string[]): BaseChatModel {
 }
 
 describe("RLM Memory", () => {
-  test("creates agent with memory support", async () => {
+  test("creates entity with memory support", async () => {
     const llm = createMockLlm(["hello"]);
 
-    const { agent, sandbox, manageMemory } = await createRlmAgentWithMemory({
+    const { entity, sandbox, manageMemory } = await createRlmAgentWithMemory({
       llm,
       windowSize: 3,
     });
 
-    expect(agent).toBeDefined();
+    expect(entity).toBeDefined();
     expect(sandbox).toBeDefined();
     expect(typeof manageMemory).toBe("function");
 
@@ -124,30 +124,30 @@ describe("RLM Memory", () => {
       },
     } as BaseChatModel;
 
-    const { agent, sandbox, manageMemory } = await createRlmAgentWithMemory({
+    const { entity, sandbox, manageMemory } = await createRlmAgentWithMemory({
       llm,
       windowSize: 2, // Keep only 2 turns in active prompt
     });
 
     // Simulate 4 turns
-    await agent.query("Turn 1");
+    await entity.turn("Turn 1");
     manageMemory();
 
-    await agent.query("Turn 2");
+    await entity.turn("Turn 2");
     manageMemory();
 
     // After 2 turns, nothing should be in history yet (within window)
     let result = await sandbox.evalCode("context.history.length");
     expect((result as any).output).toBe("0");
 
-    await agent.query("Turn 3");
+    await entity.turn("Turn 3");
     manageMemory();
 
     // After 3 turns with window=2, turn 1 should be in history
     result = await sandbox.evalCode("context.history.length");
     expect(parseInt((result as any).output)).toBeGreaterThan(0);
 
-    await agent.query("Turn 4");
+    await entity.turn("Turn 4");
     manageMemory();
 
     // With 4 turns and windowSize=2, we should have 2 in history and 2 active
@@ -157,7 +157,7 @@ describe("RLM Memory", () => {
     const historyUserCount = parseInt((result as any).output);
     expect(historyUserCount).toBe(2);
 
-    const activeUserMessages = agent.messages.filter(
+    const activeUserMessages = entity.history.filter(
       (m) => m.role === "user",
     ).length;
     expect(activeUserMessages).toBe(2);

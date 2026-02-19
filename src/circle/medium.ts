@@ -2,7 +2,7 @@ import type { ToolChoice, GateDefinition } from "../crystal/crystal";
 import type { AssistantMessage, ToolMessage } from "../crystal/messages";
 import type { GateResult } from "./gate/gate";
 import type { DependencyOverrides } from "./gate/depends";
-import type { AgentEvent } from "../entity/events";
+import type { TurnEvent } from "../entity/events";
 import type { CircleExecuteResult } from "./circle";
 
 /**
@@ -29,7 +29,7 @@ export interface Medium {
   execute(
     utterance: AssistantMessage,
     options: {
-      on_event?: (event: AgentEvent) => void;
+      on_event?: (event: TurnEvent) => void;
       on_tool_result?: (msg: ToolMessage) => void;
     },
   ): Promise<CircleExecuteResult>;

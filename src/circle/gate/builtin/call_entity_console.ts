@@ -14,7 +14,7 @@ import {
   ToolResultEvent,
   FinalResponseEvent,
   UsageEvent,
-  type AgentEvent,
+  type TurnEvent,
 } from "../../../entity/events";
 
 // ANSI color codes
@@ -55,7 +55,7 @@ export type RlmConsoleRendererOptions = {
 
 export type RlmConsoleRenderer = {
   createState: () => RlmConsoleRendererState;
-  handle: (event: AgentEvent, state: RlmConsoleRendererState) => void;
+  handle: (event: TurnEvent, state: RlmConsoleRendererState) => void;
 };
 
 /**

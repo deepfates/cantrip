@@ -6,27 +6,14 @@ import {
 import {
   registerRlmFunctions,
   safeStringify,
-} from "./call_agent_tools";
-import type { RlmProgressCallback } from "./call_agent_tools";
-import { getRlmSystemPrompt, getRlmMemorySystemPrompt } from "./call_agent_prompt";
+} from "./call_entity_tools";
+import type { RlmProgressCallback } from "./call_entity_tools";
+import { getRlmSystemPrompt, getRlmMemorySystemPrompt } from "./call_entity_prompt";
 import { UsageTracker } from "../../../crystal/tokens/usage";
 import { Entity } from "../../../cantrip/entity";
 import { js as jsMedium, getJsMediumSandbox } from "../../medium/js";
 import { Circle } from "../../circle";
 import { max_turns, require_done } from "../../ward";
-
-/**
- * Minimal interface for RLM agent callers.
- * Replaces the duck-typed `as unknown as Agent` shim with an honest type.
- */
-export type RlmAgent = {
-  query: (message: string) => Promise<string>;
-  readonly history: AnyMessage[];
-  get_usage: () => Promise<any>;
-  /** Direct access to messages for backward compat (e.g. memory management). */
-  messages: AnyMessage[];
-  load_history: (messages: AnyMessage[]) => void;
-};
 
 export type RlmOptions = {
   llm: BaseChatModel;
@@ -45,21 +32,21 @@ export type RlmOptions = {
 };
 
 /**
- * Factory to create an RLM-enabled Agent.
+ * Factory to create an RLM-enabled Entity.
  *
- * An RLM Agent is a standard Agent equipped with:
+ * An RLM Entity is a standard Entity equipped with:
  * 1. A persistent JsAsyncContext sandbox containing the 'context' data.
  * 2. A 'js' tool that returns metadata-only results to prevent context window bloat.
  * 3. Specialized host functions for recursive delegation and termination.
  *
- * Purity: The agent cannot use 'done' or 'final_answer' tools. It MUST use
+ * Purity: The entity cannot use 'done' or 'final_answer' tools. It MUST use
  * the 'submit_answer()' function from within the sandbox to finish the task.
  *
  * Internally uses the cantrip API: Circle({ medium: js(...) }) + cantrip() + invoke().
  */
 export async function createRlmAgent(
   options: RlmOptions,
-): Promise<{ agent: RlmAgent; entity: Entity; sandbox: JsAsyncContext }> {
+): Promise<{ entity: Entity; sandbox: JsAsyncContext }> {
   const {
     llm,
     context,
@@ -139,7 +126,7 @@ export async function createRlmAgent(
       });
 
       try {
-        return await child.agent.query(query);
+        return await child.entity.turn(query);
       } finally {
         child.sandbox.dispose();
       }
@@ -166,17 +153,7 @@ export async function createRlmAgent(
     usage_tracker: usage,
   });
 
-  // 7. Return Entity as primary, with RlmAgent shim for backward compat
-  const agent: RlmAgent = {
-    query: (q: string) => entity.turn(q),
-    get history() { return entity.history; },
-    get_usage: () => entity.get_usage(),
-    get messages() { return entity.history; },
-    set messages(msgs: AnyMessage[]) { entity.load_history(msgs); },
-    load_history: (msgs: AnyMessage[]) => entity.load_history(msgs),
-  };
-
-  return { agent, entity, sandbox };
+  return { entity, sandbox };
 }
 
 /**
@@ -236,7 +213,6 @@ export type RlmMemoryOptions = {
 };
 
 export type RlmMemoryAgent = {
-  agent: RlmAgent;
   entity: Entity;
   sandbox: JsAsyncContext;
   /** Call after each turn to manage the sliding window */
@@ -244,14 +220,14 @@ export type RlmMemoryAgent = {
 };
 
 /**
- * Creates an RLM agent with auto-managed conversation history.
+ * Creates an RLM entity with auto-managed conversation history.
  *
  * The context object has two parts:
  * - `context.data`: User-provided data (optional)
  * - `context.history`: Older messages that have been moved out of the active prompt
  *
  * After windowSize user turns, older messages are moved from the entity's
- * active message history into context.history, where the agent can search them.
+ * active message history into context.history, where the entity can search them.
  *
  * Uses Entity via cantrip API internally. The `manageMemory()` function uses
  * `entity.history` (read) and `entity.load_history()` (write) for sliding-window
@@ -345,7 +321,7 @@ export async function createRlmAgentWithMemory(
       });
 
       try {
-        return await child.agent.query(query);
+        return await child.entity.turn(query);
       } finally {
         child.sandbox.dispose();
       }
@@ -372,17 +348,7 @@ export async function createRlmAgentWithMemory(
     usage_tracker: usage,
   });
 
-  // 7. RlmAgent shim for backward compat
-  const agent: RlmAgent = {
-    query: (q: string) => entity.turn(q),
-    get history() { return entity.history; },
-    get_usage: () => entity.get_usage(),
-    get messages() { return entity.history; },
-    set messages(msgs: AnyMessage[]) { entity.load_history(msgs); },
-    load_history: (msgs: AnyMessage[]) => entity.load_history(msgs),
-  };
-
-  // 8. Memory management function — uses entity.history/load_history
+  // 7. Memory management function — uses entity.history/load_history
   const manageMemory = () => {
     // Keep slicing until active user count is within window
     while (true) {
@@ -434,5 +400,5 @@ export async function createRlmAgentWithMemory(
     sandbox.setGlobal("context", context);
   };
 
-  return { agent, entity, sandbox, manageMemory };
+  return { entity, sandbox, manageMemory };
 }

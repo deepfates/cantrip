@@ -5,7 +5,7 @@ import { Circle } from "../circle/circle";
 import type { DependencyOverrides } from "../circle/gate/depends";
 import type { GateResult } from "../circle/gate";
 import type { Intent } from "./intent";
-import type { AgentEvent } from "../entity/events";
+import type { TurnEvent } from "../entity/events";
 import { HiddenUserMessageEvent } from "../entity/events";
 import { resolveWards } from "../circle/ward";
 import { UsageTracker } from "../crystal/tokens";
@@ -13,7 +13,7 @@ import {
   destroyEphemeralMessages,
   invokeLLMWithRetries,
   generateMaxIterationsSummary,
-  runAgentLoop,
+  runLoop,
 } from "../entity/runtime";
 import { recordCallRoot, recordTurn, checkAndFold } from "../entity/service";
 import type { Loom } from "../loom";
@@ -56,7 +56,7 @@ export type EntityOptions = {
  * While `cast()` is fire-and-forget (one intent → one result), `invoke()`
  * creates an Entity that accumulates state across multiple `turn()` calls.
  *
- * Entity owns its circle state (messages) directly and uses `runAgentLoop`
+ * Entity owns its circle state (messages) directly and uses `runLoop`
  * for both `turn()` (returns string) and `turn_stream()` (yields events).
  */
 export class Entity {
@@ -149,11 +149,11 @@ export class Entity {
   }
 
   /**
-   * Execute a turn with streaming: yields AgentEvents as they occur.
+   * Execute a turn with streaming: yields TurnEvents as they occur.
    * State accumulates — each turn sees all prior context.
    */
-  async *turn_stream(intent: Intent): AsyncGenerator<AgentEvent> {
-    const events: AgentEvent[] = [];
+  async *turn_stream(intent: Intent): AsyncGenerator<TurnEvent> {
+    const events: TurnEvent[] = [];
     let resolve: (() => void) | null = null;
     let done = false;
     let loopResult: string | undefined;
@@ -202,7 +202,7 @@ export class Entity {
    */
   private async _runLoop(
     intent: Intent,
-    on_event?: (event: AgentEvent) => void,
+    on_event?: (event: TurnEvent) => void,
   ): Promise<string> {
     const ward = resolveWards(this.circle.wards);
     const effectiveToolChoice = ward.require_done_tool
@@ -237,7 +237,7 @@ export class Entity {
       });
     }
 
-    return runAgentLoop({
+    return runLoop({
       llm: this.crystal,
       tools: this.circle.gates,
       circle: this.circle,

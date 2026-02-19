@@ -3,7 +3,7 @@
 // delegation (llm_query/llm_batch), metadata loop, and token aggregation.
 // These are genuinely below the cantrip API level.
 import { describe, expect, test, afterEach } from "bun:test";
-import { createRlmAgent } from "../src/circle/gate/builtin/call_agent";
+import { createRlmAgent } from "../src/circle/gate/builtin/call_entity";
 import { JsAsyncContext } from "../src/circle/gate/builtin/js_async_context";
 import type { BaseChatModel } from "../src/crystal/crystal";
 import type { AnyMessage } from "../src/crystal/messages";
@@ -91,12 +91,12 @@ describe("RLM Integration", () => {
       },
     ]);
 
-    const { agent, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createRlmAgent({
       llm: mockLlm,
       context: hugeContext,
     });
     activeSandbox = sandbox;
-    const result = await agent.query("test");
+    const result = await entity.turn("test");
     expect(result).toBe("History is clean");
   });
 
@@ -142,18 +142,18 @@ describe("RLM Integration", () => {
       },
     ]);
 
-    const { agent, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createRlmAgent({
       llm: mockLlm,
       context: { secret: "password123" },
       maxDepth: 1,
     });
     activeSandbox = sandbox;
 
-    const result = await agent.query("Start");
+    const result = await entity.turn("Start");
     expect(result).toBe("password123");
 
     // Verify token aggregation: Parent tracker should see both its tokens and child's
-    const usage = await agent.get_usage();
+    const usage = await entity.get_usage();
     // 1 parent call + 1 child call = 2 calls * 10 prompt tokens = 20
     expect(usage.total_prompt_tokens).toBeGreaterThanOrEqual(20);
   });
@@ -196,14 +196,14 @@ describe("RLM Integration", () => {
       }),
     ]);
 
-    const { agent, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createRlmAgent({
       llm: mockLlm,
       context: "data",
       maxDepth: 1,
     });
     activeSandbox = sandbox;
 
-    const result = await agent.query("Start");
+    const result = await entity.turn("Start");
     expect(result).toBe("Max Depth Reached");
   });
 
@@ -226,13 +226,13 @@ describe("RLM Integration", () => {
       }),
     ]);
 
-    const { agent, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createRlmAgent({
       llm: mockLlm,
       context: {},
     });
     activeSandbox = sandbox;
 
-    const result = await agent.query("Start");
+    const result = await entity.turn("Start");
     const parsed = JSON.parse(result);
     expect(parsed.a).toBe(1);
     expect(parsed.b).toEqual([2, 3]);
@@ -280,14 +280,14 @@ describe("RLM Integration", () => {
       },
     ]);
 
-    const { agent, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createRlmAgent({
       llm: mockLlm,
       context: { data: "original" },
       maxDepth: 1,
     });
     activeSandbox = sandbox;
 
-    const result = await agent.query("Start");
+    const result = await entity.turn("Start");
     // Parent's context should still be 'original' despite child's attempt to mutate
     expect(result).toBe("original");
   });
@@ -331,18 +331,18 @@ describe("RLM Integration", () => {
       },
     ]);
 
-    const { agent, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createRlmAgent({
       llm: mockLlm,
       context: "parent",
       maxDepth: 1,
     });
     activeSandbox = sandbox;
 
-    const result = await agent.query("Start");
+    const result = await entity.turn("Start");
     expect(result).toBe("Result for a, Result for b");
 
     // Verify token aggregation for batch
-    const usage = await agent.get_usage();
+    const usage = await entity.get_usage();
     // 1 parent call + 2 parallel child calls = 3 calls * 10 prompt tokens = 30
     expect(usage.total_prompt_tokens).toBeGreaterThanOrEqual(30);
   });

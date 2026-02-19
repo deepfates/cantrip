@@ -202,7 +202,7 @@ export class UsageEvent {
   }
 }
 
-export type AgentEvent =
+export type TurnEvent =
   | TextEvent
   | ThinkingEvent
   | ToolCallEvent

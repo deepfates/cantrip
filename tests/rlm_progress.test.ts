@@ -2,12 +2,12 @@
 // Tests progress event callbacks for sub-agent spawning and batching —
 // genuinely below the cantrip API level.
 import { describe, expect, test, afterEach } from "bun:test";
-import { createRlmAgent } from "../src/circle/gate/builtin/call_agent";
+import { createRlmAgent } from "../src/circle/gate/builtin/call_entity";
 import { JsAsyncContext } from "../src/circle/gate/builtin/js_async_context";
 import type { BaseChatModel } from "../src/crystal/crystal";
 import type { AnyMessage } from "../src/crystal/messages";
 import type { ChatInvokeCompletion } from "../src/crystal/views";
-import type { RlmProgressEvent } from "../src/circle/gate/builtin/call_agent_tools";
+import type { RlmProgressEvent } from "../src/circle/gate/builtin/call_entity_tools";
 
 class MockLlm implements BaseChatModel {
   model = "mock";
@@ -44,7 +44,7 @@ describe("RLM progress events", () => {
     }
   });
 
-  test("llm_query emits sub_agent_start and sub_agent_end", async () => {
+  test("llm_query emits sub_entity_start and sub_entity_end", async () => {
     const events: RlmProgressEvent[] = [];
 
     const mockLlm = new MockLlm([
@@ -88,7 +88,7 @@ describe("RLM progress events", () => {
       },
     ]);
 
-    const { agent, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createRlmAgent({
       llm: mockLlm,
       context: {},
       maxDepth: 1,
@@ -96,10 +96,10 @@ describe("RLM progress events", () => {
     });
     activeSandbox = sandbox;
 
-    await agent.query("Start");
+    await entity.turn("Start");
 
-    const starts = events.filter((e) => e.type === "sub_agent_start");
-    const ends = events.filter((e) => e.type === "sub_agent_end");
+    const starts = events.filter((e) => e.type === "sub_entity_start");
+    const ends = events.filter((e) => e.type === "sub_entity_end");
 
     expect(starts).toHaveLength(1);
     expect(starts[0].depth).toBe(1);
@@ -150,7 +150,7 @@ describe("RLM progress events", () => {
       },
     ]);
 
-    const { agent, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createRlmAgent({
       llm: mockLlm,
       context: {},
       maxDepth: 1,
@@ -158,7 +158,7 @@ describe("RLM progress events", () => {
     });
     activeSandbox = sandbox;
 
-    await agent.query("Start");
+    await entity.turn("Start");
 
     const batchStarts = events.filter((e) => e.type === "batch_start");
     const batchItems = events.filter((e) => e.type === "batch_item");
@@ -224,7 +224,7 @@ describe("RLM progress events", () => {
         },
       ]);
 
-      const { agent, sandbox } = await createRlmAgent({
+      const { entity, sandbox } = await createRlmAgent({
         llm: mockLlm,
         context: {},
         maxDepth: 1,
@@ -232,7 +232,7 @@ describe("RLM progress events", () => {
       });
       activeSandbox = sandbox;
 
-      await agent.query("Go");
+      await entity.turn("Go");
 
       // Should have logged sub-agent start/end to stderr
       const hasStart = stderrOutput.some((line) => line.includes("[depth:1]"));
