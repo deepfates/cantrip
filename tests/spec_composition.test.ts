@@ -32,7 +32,7 @@ function makeLlm(responses: (() => any)[]) {
     model: "dummy",
     provider: "dummy",
     name: "dummy",
-    async ainvoke(messages: any[]) {
+    async query(messages: any[]) {
       const fn = responses[callIndex];
       if (!fn) throw new Error(`Unexpected LLM call #${callIndex}`);
       callIndex++;
@@ -347,7 +347,7 @@ describe("COMP-4: child entity has independent context", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         childMessagesReceived.push([...messages]);
         return {
           content: null,
@@ -395,7 +395,7 @@ describe("COMP-4: child entity has independent context", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         parentCallCount++;
         if (parentCallCount === 1) {
           return {
@@ -494,7 +494,7 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         callCount++;
         if (callCount === 1) {
           return {
@@ -571,7 +571,7 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
         model: "dummy",
         provider: "dummy",
         name: "dummy",
-        async ainvoke() {
+        async query() {
           if (!called && depth > 0) {
             called = true;
             return {
@@ -632,7 +632,7 @@ describe("COMP-7: child can use different crystal", () => {
       model: "child-model",
       provider: "child",
       name: "child",
-      async ainvoke() {
+      async query() {
         childCrystalCalls.push("child invoked");
         return {
           content: null,
@@ -678,7 +678,7 @@ describe("COMP-7: child can use different crystal", () => {
       model: "parent-model",
       provider: "parent",
       name: "parent",
-      async ainvoke() {
+      async query() {
         parentCrystalCalls.push("parent invoked");
         parentCallCount++;
         if (parentCallCount === 1) {
@@ -735,7 +735,7 @@ describe("COMP-8: child failure returns error to parent", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         throw new Error("child exploded");
       },
     };
@@ -770,7 +770,7 @@ describe("COMP-8: child failure returns error to parent", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         parentCallCount++;
         if (parentCallCount === 1) {
           return {

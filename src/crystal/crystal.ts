@@ -18,7 +18,7 @@ export interface BaseChatModel {
   name: string;
   /** Context window size in tokens. Used by folding to determine when to compress. */
   context_window?: number;
-  ainvoke(
+  query(
     messages: AnyMessage[],
     tools?: GateDefinition[] | null,
     tool_choice?: ToolChoice | null,

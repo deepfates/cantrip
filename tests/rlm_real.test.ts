@@ -32,7 +32,7 @@ describe("rlm: real integration", () => {
 
     try {
       // The query is clean; the system prompt handles instructions for tools and termination.
-      const result = await entity.turn("What is the SECRET_CODE?");
+      const result = await entity.cast("What is the SECRET_CODE?");
 
       expect(result).toContain("X-99");
 
@@ -73,7 +73,7 @@ describe("rlm: real integration", () => {
 
     try {
       // Testing the model's ability to filter and delegate based on system prompt rules
-      const result = await entity.turn(
+      const result = await entity.cast(
         "Extract the password from the signal item in the data_points.",
       );
 

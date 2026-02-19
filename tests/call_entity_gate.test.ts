@@ -5,7 +5,7 @@ describe("call_entity gate factory", () => {
   // Use a mock crystal — we're testing the gate factory, not LLM integration
   const mockCrystal = {} as any;
 
-  test("returns a GateResult at depth < max_depth", () => {
+  test("returns a BoundGate at depth < max_depth", () => {
     const gate = call_entity({ crystal: mockCrystal, max_depth: 2, depth: 0 });
     expect(gate).not.toBeNull();
     expect(gate!.name).toBe("call_entity");

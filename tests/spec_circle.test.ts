@@ -4,7 +4,7 @@ import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/errors";
 import { gate } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
-import type { GateResult } from "../src/circle/gate/gate";
+import type { BoundGate } from "../src/circle/gate/gate";
 import { max_turns, require_done, max_depth, resolveWards } from "../src/circle/ward";
 
 // ── Shared helpers ─────────────────────────────────────────────────
@@ -33,7 +33,7 @@ const echoGate = gate("Echo text back", async ({ text }: { text: string }) => te
   },
 });
 
-function makeCircle(gates: GateResult[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
+function makeCircle(gates: BoundGate[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
   return Circle({ gates, wards });
 }
 
@@ -43,7 +43,7 @@ function makeLlm(responses: (() => any)[]) {
     model: "dummy",
     provider: "dummy",
     name: "dummy",
-    async ainvoke(messages: any[]) {
+    async query(messages: any[]) {
       const fn = responses[callIndex];
       if (!fn) throw new Error(`Unexpected LLM call #${callIndex}`);
       callIndex++;
@@ -128,7 +128,7 @@ describe("CIRCLE-3: gate execution is synchronous from entity perspective", () =
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         callCount++;
         if (callCount === 1) {
@@ -191,7 +191,7 @@ describe("CIRCLE-4: gate results visible in context", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         callCount++;
         if (callCount === 1) {
@@ -263,7 +263,7 @@ describe("CIRCLE-5: gate errors returned as observations", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         callCount++;
         if (callCount === 1) {
           return {
@@ -321,7 +321,7 @@ describe("CIRCLE-6: wards enforced by circle not entity", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         callCount++;
         return {
           content: null,
@@ -504,7 +504,7 @@ describe("CIRCLE-10: gate dependencies injected at construction", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         callCount++;
         if (callCount === 1) {

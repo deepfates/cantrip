@@ -1,4 +1,4 @@
-import type { GateResult, GateDocs } from "../gate";
+import type { BoundGate, GateDocs } from "../gate";
 import type { BaseChatModel } from "../../../crystal/crystal";
 import type { UsageTracker } from "../../../crystal/tokens/usage";
 import type { RlmProgressCallback } from "../../recipe/rlm_tools";
@@ -29,14 +29,14 @@ export type CallEntityGateOptions = {
 };
 
 /**
- * Gate factory: call_entity({ crystal, max_depth }) → GateResult | null
+ * Gate factory: call_entity({ crystal, max_depth }) → BoundGate | null
  *
  * When invoked, spawns a child entity with an independent circle.
  * The child blocks the parent until it completes (COMP-2).
  * Child failure returns as an error string, doesn't kill the parent (COMP-8).
  * At depth >= max_depth, this gate returns null and should be excluded from the circle (COMP-6).
  */
-export function call_entity(opts: CallEntityGateOptions): GateResult | null {
+export function call_entity(opts: CallEntityGateOptions): BoundGate | null {
   const {
     crystal,
     sub_crystal = crystal,
@@ -137,7 +137,7 @@ export function call_entity(opts: CallEntityGateOptions): GateResult | null {
         });
 
         try {
-          const result = await child.entity.turn(query);
+          const result = await child.entity.cast(query);
           return result;
         } finally {
           child.sandbox.dispose();
@@ -157,12 +157,12 @@ const MAX_BATCH_CONCURRENCY = 8;
 const MAX_BATCH_SIZE = 50;
 
 /**
- * Gate factory: call_entity_batch({ crystal, max_depth }) → GateResult | null
+ * Gate factory: call_entity_batch({ crystal, max_depth }) → BoundGate | null
  *
  * Parallel delegation to multiple sub-entities. Processes tasks in chunks
  * with concurrency control. At depth >= max_depth, returns null.
  */
-export function call_entity_batch(opts: CallEntityGateOptions): GateResult | null {
+export function call_entity_batch(opts: CallEntityGateOptions): BoundGate | null {
   const {
     crystal,
     sub_crystal = crystal,
@@ -290,7 +290,7 @@ export function call_entity_batch(opts: CallEntityGateOptions): GateResult | nul
               });
 
               try {
-                return await child.entity.turn(q);
+                return await child.entity.cast(q);
               } finally {
                 child.sandbox.dispose();
               }

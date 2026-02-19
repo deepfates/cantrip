@@ -43,7 +43,7 @@ const dummyLlm = {
   model: "dummy",
   provider: "dummy",
   name: "dummy",
-  async ainvoke() {
+  async query() {
     return { content: "ok", tool_calls: [] };
   },
 };
@@ -51,7 +51,7 @@ const dummyLlm = {
 // ── renderGateDefinitions ──────────────────────────────────────────
 
 describe("renderGateDefinitions", () => {
-  test("extracts GateDefinition from GateResult[]", () => {
+  test("extracts GateDefinition from BoundGate[]", () => {
     const rendered = renderGateDefinitions([add, done]);
     expect(rendered).toHaveLength(2);
     expect(rendered[0].name).toBe("add");
@@ -148,7 +148,7 @@ describe("Entity with Circle", () => {
       circle,
       dependency_overrides: null,
     });
-    const result = await entity.turn("hello");
+    const result = await entity.cast("hello");
     expect(result).toBe("ok");
   });
 });

@@ -63,7 +63,7 @@ describe("entity (from core agent tests)", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         if (messages.filter((m: any) => m.role === "tool").length === 0) {
           return {
             content: null,
@@ -87,7 +87,7 @@ describe("entity (from core agent tests)", () => {
       llm: llm as any,
       gates: [add, done],
     });
-    const result = await entity.turn("What is 2 + 3?");
+    const result = await entity.cast("What is 2 + 3?");
     expect(result).toBe("Result is 5");
   });
 
@@ -97,7 +97,7 @@ describe("entity (from core agent tests)", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         callCount += 1;
         if (callCount === 1) {
           return {
@@ -124,7 +124,7 @@ describe("entity (from core agent tests)", () => {
       wards: [{ max_turns: 200, require_done_tool: true }],
     });
 
-    const result = await entity.turn("finish");
+    const result = await entity.cast("finish");
     expect(result).toBe("all set");
   });
 
@@ -133,7 +133,7 @@ describe("entity (from core agent tests)", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         throw new Error("boom");
       },
     };
@@ -142,6 +142,6 @@ describe("entity (from core agent tests)", () => {
       llm: llm as any,
       gates: [done],
     });
-    await expect(entity.turn("hi")).rejects.toThrow("boom");
+    await expect(entity.cast("hi")).rejects.toThrow("boom");
   });
 });

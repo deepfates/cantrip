@@ -1,7 +1,7 @@
 import type { ToolChoice, GateDefinition } from "../crystal/crystal";
 import type { AssistantMessage, ToolMessage } from "../crystal/messages";
 import { extractToolMessageText } from "../crystal/messages";
-import type { GateResult } from "./gate/gate";
+import type { BoundGate } from "./gate/gate";
 import type { DependencyOverrides } from "./gate/depends";
 import type { Ward } from "./ward";
 import { resolveWards } from "./ward";
@@ -45,7 +45,7 @@ export type CircleExecuteResult = {
  */
 export interface Circle {
   /** The gates (tools) available within this circle. */
-  gates: GateResult[];
+  gates: BoundGate[];
 
   /** The wards (constraints) that govern execution within this circle. */
   wards: Ward[];
@@ -82,7 +82,7 @@ export interface Circle {
  * When no medium: returns a ToolCallingCircle that dispatches tool_calls to gates.
  * When medium present: delegates crystalView/execute/dispose to the medium.
  */
-export function Circle(opts: { medium?: Medium; gates?: GateResult[]; wards: Ward[] }): Circle {
+export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward[] }): Circle {
   const gates = opts.gates ?? [];
   const hasMedium = !!opts.medium;
 
@@ -142,7 +142,7 @@ export function Circle(opts: { medium?: Medium; gates?: GateResult[]; wards: War
   // No medium: tool-calling circle (original behavior)
 
   // Build tool_map once
-  const tool_map = new Map<string, GateResult>();
+  const tool_map = new Map<string, BoundGate>();
   for (const gate of gates) {
     tool_map.set(gate.name, gate);
   }

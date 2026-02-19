@@ -27,7 +27,7 @@ const echoTool: GateDefinition = {
 describe("integration: openrouter", () => {
   it("returns a response", async () => {
     const llm = new ChatOpenRouter({ model });
-    const response = await llm.ainvoke([
+    const response = await llm.query([
       { role: "user", content: "Reply with 'pong' only." } as any,
     ]);
     expect(response.content?.toLowerCase()).toContain("pong");
@@ -35,7 +35,7 @@ describe("integration: openrouter", () => {
 
   it("returns tool calls when required", async () => {
     const llm = new ChatOpenRouter({ model });
-    const response = await llm.ainvoke(
+    const response = await llm.query(
       [{ role: "user", content: "Call the echo tool with text ping." } as any],
       [echoTool],
       "required",

@@ -1,8 +1,8 @@
 import type { GateDefinition } from "../../crystal/crystal";
 import type { DependencyOverrides } from "./depends";
 import { Depends } from "./depends";
-import { serializeGateResult, type GateContent } from "./decorator";
-import type { GateResult } from "./gate";
+import { serializeBoundGate, type GateContent } from "./decorator";
+import type { BoundGate } from "./gate";
 
 export type RawGateHandler<TArgs extends Record<string, any>, TResult> = (
   args: TArgs,
@@ -25,7 +25,7 @@ export function rawGate<TArgs extends Record<string, any>>(
   definition: RawGateDefinition,
   handler: RawGateHandler<TArgs, any>,
   options?: RawGateOptions,
-): GateResult {
+): BoundGate {
   const dependencies = options?.dependencies ?? {};
   return {
     name: definition.name,
@@ -42,7 +42,7 @@ export function rawGate<TArgs extends Record<string, any>>(
         resolvedDeps[name] = await dep.resolve(overrides);
       }
       const result = await handler(args, resolvedDeps);
-      return serializeGateResult(result);
+      return serializeBoundGate(result);
     },
   };
 }

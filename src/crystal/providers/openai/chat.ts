@@ -219,7 +219,7 @@ export class ChatOpenAI implements BaseChatModel {
     };
   }
 
-  async ainvoke(
+  async query(
     messages: AnyMessage[],
     tools?: GateDefinition[] | null,
     tool_choice?: ToolChoice | null,

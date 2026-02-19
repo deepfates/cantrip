@@ -16,7 +16,7 @@ export type GateDocs = {
   section?: string;
 };
 
-export type GateResult = {
+export type BoundGate = {
   name: string;
   definition: GateDefinition;
   execute(args: Record<string, any>, overrides?: DependencyOverrides): Promise<GateContent>;

@@ -4,7 +4,7 @@ import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/errors";
 import { gate } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
-import type { GateResult } from "../src/circle/gate/gate";
+import type { BoundGate } from "../src/circle/gate/gate";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ const echoGate = gate("Echo text back", async ({ text }: { text: string }) => te
   },
 });
 
-function makeCircle(gates: GateResult[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
+function makeCircle(gates: BoundGate[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
   return Circle({ gates, wards });
 }
 
@@ -47,7 +47,7 @@ describe("CRYSTAL-1: crystal is stateless between invocations", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         callCount++;
         if (callCount === 1) {
@@ -109,7 +109,7 @@ describe("CRYSTAL-2: crystal accepts many messages", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         callCount++;
         if (callCount <= 5) {
@@ -169,7 +169,7 @@ describe("CRYSTAL-3: crystal must return content or tool_calls", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         return { content: null, tool_calls: null };
       },
     };
@@ -204,7 +204,7 @@ describe("CRYSTAL-5: required tool_choice forces gate use", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         return {
           content: null,
           tool_calls: [
@@ -249,7 +249,7 @@ describe("CRYSTAL-6: provider responses normalized to crystal contract", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         return {
           content: "hello",
           tool_calls: [],
@@ -269,7 +269,7 @@ describe("CRYSTAL-6: provider responses normalized to crystal contract", () => {
 
     // Use invoke() so we can inspect the agent for usage tracking
     const entity = spell.invoke();
-    const result = await entity.turn("test normalization");
+    const result = await entity.cast("test normalization");
 
     // Content is normalized: returned as-is as the result string
     expect(result).toBe("hello");

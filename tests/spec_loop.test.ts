@@ -4,7 +4,7 @@ import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/errors";
 import { gate } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
-import type { GateResult } from "../src/circle/gate/gate";
+import type { BoundGate } from "../src/circle/gate/gate";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ const echoGate = gate("Echo text back", async ({ text }: { text: string }) => te
   },
 });
 
-function makeCircle(gates: GateResult[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
+function makeCircle(gates: BoundGate[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
   return Circle({ gates, wards });
 }
 
@@ -42,7 +42,7 @@ function makeLlm(responses: (() => any)[]) {
     model: "dummy",
     provider: "dummy",
     name: "dummy",
-    async ainvoke(messages: any[]) {
+    async query(messages: any[]) {
       const fn = responses[callIndex];
       if (!fn) throw new Error(`Unexpected LLM call #${callIndex}`);
       callIndex++;
@@ -199,7 +199,7 @@ describe("LOOP-4: max turns ward truncates the loop", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         callCount++;
         return {
           content: null,
@@ -247,7 +247,7 @@ describe("LOOP-5: entity receives all prior turns as context", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         callCount++;
         if (callCount === 1) {
@@ -326,7 +326,7 @@ describe("LOOP-6: text-only response behavior", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke() {
+      async query() {
         callCount++;
         if (callCount < 3) {
           return { content: "thinking...", tool_calls: [] };

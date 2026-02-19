@@ -3,7 +3,7 @@ import type { AnyMessage } from "../crystal/messages";
 import type { Call } from "./call";
 import { Circle } from "../circle/circle";
 import type { DependencyOverrides } from "../circle/gate/depends";
-import type { GateResult } from "../circle/gate";
+import type { BoundGate } from "../circle/gate";
 import type { Intent } from "./intent";
 import type { TurnEvent } from "../entity/events";
 import { HiddenUserMessageEvent } from "../entity/events";
@@ -56,10 +56,10 @@ export type EntityOptions = {
  * An Entity is a persistent multi-turn session created by invoking a Cantrip.
  *
  * While `cast()` is fire-and-forget (one intent → one result), `invoke()`
- * creates an Entity that accumulates state across multiple `turn()` calls.
+ * creates an Entity that accumulates state across multiple `cast()` calls.
  *
  * Entity owns its circle state (messages) directly and uses `runLoop`
- * for both `turn()` (returns string) and `turn_stream()` (yields events).
+ * for both `cast()` (returns string) and `cast_stream()` (yields events).
  */
 export class Entity {
   /** The Crystal (LLM) that powers this Entity. */
@@ -78,7 +78,7 @@ export class Entity {
   private messages: AnyMessage[] = [];
 
   /** Tool lookup map, built once from circle gates. */
-  private tool_map: Map<string, GateResult> = new Map();
+  private tool_map: Map<string, BoundGate> = new Map();
 
   /** Tracks token usage across turns. */
   private usage_tracker: UsageTracker;
@@ -119,8 +119,8 @@ export class Entity {
     this.dependency_overrides = options.dependency_overrides;
     this.usage_tracker = options.usage_tracker ?? new UsageTracker();
     this.loom = options.loom;
-    this.cantrip_id = options.cantrip_id ?? "unknown";
-    this.entity_id = options.entity_id ?? "unknown";
+    this.cantrip_id = options.cantrip_id ?? crypto.randomUUID();
+    this.entity_id = options.entity_id ?? crypto.randomUUID();
     this.parent_turn_id = options.parent_turn_id ?? null;
     this.folding = options.folding ?? DEFAULT_FOLDING_CONFIG;
     this.folding_enabled = options.folding_enabled ?? true;
@@ -152,18 +152,18 @@ export class Entity {
   }
 
   /**
-   * Execute a turn: send an intent, run the agent loop, return the result.
-   * State accumulates — each turn sees all prior context.
+   * Cast an intent: run the agent loop, return the result.
+   * State accumulates — each cast sees all prior context.
    */
-  async turn(intent: Intent): Promise<string> {
+  async cast(intent: Intent): Promise<string> {
     return this._runLoop(intent);
   }
 
   /**
-   * Execute a turn with streaming: yields TurnEvents as they occur.
-   * State accumulates — each turn sees all prior context.
+   * Cast an intent with streaming: yields TurnEvents as they occur.
+   * State accumulates — each cast sees all prior context.
    */
-  async *turn_stream(intent: Intent): AsyncGenerator<TurnEvent> {
+  async *cast_stream(intent: Intent): AsyncGenerator<TurnEvent> {
     const events: TurnEvent[] = [];
     let resolve: (() => void) | null = null;
     let done = false;

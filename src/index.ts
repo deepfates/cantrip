@@ -30,14 +30,14 @@ export type { Ward, ResolvedWard } from "./circle/ward";
 export { DEFAULT_WARD, max_turns, require_done, max_depth, resolveWards } from "./circle/ward";
 
 // ── Circle / Gate (tool framework) ──────────────────────────────────
-export { Gate, gate, serializeGateResult } from "./circle/gate/decorator";
+export { Gate, gate, serializeBoundGate } from "./circle/gate/decorator";
 export { Depends } from "./circle/gate/depends";
 export { rawGate } from "./circle/gate/raw";
 export { GateSchema, GateSchemaBuilder } from "./circle/gate/schema";
 export type { GateContent, GateHandler, GateOptions } from "./circle/gate/decorator";
 export type { DependencyOverrides, DependencyFactory } from "./circle/gate/depends";
 export type { RawGateDefinition, RawGateHandler, RawGateOptions } from "./circle/gate/raw";
-export type { GateResult } from "./circle/gate/gate";
+export type { BoundGate } from "./circle/gate/gate";
 export type { GateSchemaFieldOptions } from "./circle/gate/schema";
 
 // ── Circle / Gate / Builtins ────────────────────────────────────────

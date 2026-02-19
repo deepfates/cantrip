@@ -4,7 +4,7 @@ import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/recording";
 import { gate } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
-import type { GateResult } from "../src/circle/gate/gate";
+import type { BoundGate } from "../src/circle/gate/gate";
 import { Loom, MemoryStorage } from "../src/loom";
 
 // ── Shared helpers ─────────────────────────────────────────────────
@@ -25,7 +25,7 @@ const doneGate = gate("Signal completion", doneHandler, {
 
 const ward = { max_turns: 10, require_done_tool: true };
 
-function makeCircle(gates: GateResult[] = [doneGate], wards = [ward]) {
+function makeCircle(gates: BoundGate[] = [doneGate], wards = [ward]) {
   return Circle({ gates, wards });
 }
 
@@ -35,7 +35,7 @@ function makeLlm(responses: (() => any)[]) {
     model: "dummy",
     provider: "dummy",
     name: "dummy",
-    async ainvoke(messages: any[]) {
+    async query(messages: any[]) {
       const fn = responses[callIndex];
       if (!fn) throw new Error(`Unexpected LLM call #${callIndex}`);
       callIndex++;
@@ -98,7 +98,7 @@ describe("ENTITY-1: entity only created by casting cantrip", () => {
 
     const entity = spell.invoke();
     // Actually call turn() and verify it produces a result
-    const result = await entity.turn("test invoke");
+    const result = await entity.cast("test invoke");
     expect(result).toBe("invoked");
   });
 });
@@ -112,7 +112,7 @@ describe("ENTITY-2: each entity has unique ID", () => {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async ainvoke(messages: any[]) {
+      async query(messages: any[]) {
         messagesPerCall.push([...messages]);
         return {
           content: null,
@@ -139,8 +139,8 @@ describe("ENTITY-2: each entity has unique ID", () => {
     const entity1 = spell.invoke();
     const entity2 = spell.invoke();
 
-    await entity1.turn("entity1 msg");
-    await entity2.turn("entity2 msg");
+    await entity1.cast("entity1 msg");
+    await entity2.cast("entity2 msg");
 
     // entity2's call should NOT contain entity1's message
     const entity2Messages = messagesPerCall[1];
@@ -178,7 +178,7 @@ describe("ENTITY-4: entity thread persists after termination", () => {
     });
 
     const entity = spell.invoke();
-    await entity.turn("persist test");
+    await entity.cast("persist test");
 
     const history = entity.history;
     // History should contain at least: system, user, assistant messages
@@ -234,7 +234,7 @@ describe("ENTITY-5/6: invoke and turn API", () => {
     });
 
     const entity = spell.invoke();
-    const result = await entity.turn("do something");
+    const result = await entity.cast("do something");
     expect(result).toBe("hello from turn");
   });
 });

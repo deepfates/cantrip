@@ -12,7 +12,7 @@ import type { ChatInvokeCompletion } from "../crystal/views";
 import { hasGateCalls } from "../crystal/views";
 import type { Circle } from "../circle/circle";
 import type { DependencyOverrides } from "../circle/gate/depends";
-import type { GateResult } from "../circle/gate";
+import type { BoundGate } from "../circle/gate";
 import { UsageTracker } from "../crystal/tokens";
 import { TaskComplete } from "./errors";
 import type { TurnEvent } from "./events";
@@ -25,7 +25,7 @@ import {
 
 export async function destroyEphemeralMessages(options: {
   messages: AnyMessage[];
-  tool_map: Map<string, GateResult>;
+  tool_map: Map<string, BoundGate>;
   ephemeral_storage_path?: string | null;
 }): Promise<void> {
   const { messages, tool_map, ephemeral_storage_path } = options;
@@ -73,7 +73,7 @@ export async function destroyEphemeralMessages(options: {
 
 export async function executeToolCall(options: {
   tool_call: GateCall;
-  tool_map: Map<string, GateResult>;
+  tool_map: Map<string, BoundGate>;
   dependency_overrides?: DependencyOverrides | null;
 }): Promise<ToolMessage> {
   const { tool_call, tool_map, dependency_overrides } = options;
@@ -144,7 +144,7 @@ export function extractScreenshot(toolMessage: ToolMessage): string | null {
 export async function invokeLLMWithRetries(options: {
   llm: BaseChatModel;
   messages: AnyMessage[];
-  tools: GateResult[];
+  tools: BoundGate[];
   tool_definitions: GateDefinition[];
   tool_choice: ToolChoice;
   usage_tracker: UsageTracker;
@@ -169,7 +169,7 @@ export async function invokeLLMWithRetries(options: {
 
   for (let attempt = 0; attempt < llm_max_retries; attempt += 1) {
     try {
-      const response = await llm.ainvoke(
+      const response = await llm.query(
         messages,
         tool_definitions.length ? tool_definitions : null,
         tool_definitions.length ? tool_choice : null,
@@ -218,7 +218,7 @@ export async function invokeLLMWithRetries(options: {
 export async function invokeLLMOnce(options: {
   llm: BaseChatModel;
   messages: AnyMessage[];
-  tools: GateResult[];
+  tools: BoundGate[];
   tool_definitions: GateDefinition[];
   tool_choice: ToolChoice;
   usage_tracker: UsageTracker;
@@ -226,7 +226,7 @@ export async function invokeLLMOnce(options: {
   const { llm, messages, tools, tool_definitions, tool_choice, usage_tracker } =
     options;
 
-  const response = await llm.ainvoke(
+  const response = await llm.query(
     messages,
     tool_definitions.length ? tool_definitions : null,
     tool_definitions.length ? tool_choice : null,
@@ -256,7 +256,7 @@ Keep the summary brief but informative.`;
 
   messages.push({ role: "user", content: summaryPrompt } as AnyMessage);
   try {
-    const response = await llm.ainvoke(messages, null, null);
+    const response = await llm.query(messages, null, null);
     return `[Max iterations reached]\n\n${response.content ?? "Unable to generate summary."}`;
   } catch (err) {
     return `Task stopped after ${max_iterations} iterations. Unable to generate summary due to error.`;
@@ -267,7 +267,7 @@ Keep the summary brief but informative.`;
 
 export async function runLoop(options: {
   llm: BaseChatModel;
-  tools: GateResult[];
+  tools: BoundGate[];
   messages: AnyMessage[];
   system_prompt: string | null;
   max_iterations: number;

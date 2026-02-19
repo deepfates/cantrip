@@ -29,7 +29,7 @@ const echoTool: GateDefinition = {
 describe("integration: lmstudio (local server)", () => {
   it("returns a response from local LM Studio", async () => {
     const llm = new ChatLMStudio({ model, base_url });
-    const response = await llm.ainvoke([
+    const response = await llm.query([
       { role: "user", content: "Reply with 'pong' only." } as any,
     ]);
     expect(response.content?.toLowerCase()).toContain("pong");
@@ -37,7 +37,7 @@ describe("integration: lmstudio (local server)", () => {
 
   it("returns tool calls when required", async () => {
     const llm = new ChatLMStudio({ model, base_url });
-    const response = await llm.ainvoke(
+    const response = await llm.query(
       [{ role: "user", content: "Call the echo tool with text ping." } as any],
       [echoTool],
       "required",

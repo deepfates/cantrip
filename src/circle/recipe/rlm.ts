@@ -18,7 +18,7 @@ import { Circle } from "../circle";
 import { max_turns, require_done } from "../ward";
 import { call_entity as call_entity_gate, call_entity_batch as call_entity_batch_gate } from "../gate/builtin/call_entity_gate";
 import { done_for_medium } from "../gate/builtin/done";
-import type { GateResult } from "../gate/gate";
+import type { BoundGate } from "../gate/gate";
 import { Loom, MemoryStorage } from "../../loom";
 
 export type RlmOptions = {
@@ -81,10 +81,10 @@ export async function createRlmAgent(
 
   // 2. Build gates array — done gate (submit_answer) + call_entity gate (llm_query)
   // entityRef is populated after entity creation (step 7); execute() is only called
-  // during entity.turn(), so the ref is always populated by then.
+  // during entity.cast(), so the ref is always populated by then.
   const entityRef: { current: Entity | null } = { current: null };
   const progress = onProgress ?? defaultProgress(depth);
-  const gates: GateResult[] = [done_for_medium()];
+  const gates: BoundGate[] = [done_for_medium()];
   const entityGate = call_entity_gate({
     crystal: subLlm,
     sub_crystal: subLlm,
@@ -153,7 +153,7 @@ export async function createRlmAgent(
             ? contextStr.slice(0, 10000) + "\n... [truncated]"
             : contextStr;
 
-        const res = await subLlm.ainvoke([
+        const res = await subLlm.query([
           {
             role: "user",
             content: `Task: ${query}\n\nContext Snippet:\n${truncated}`,
@@ -178,7 +178,7 @@ export async function createRlmAgent(
       });
 
       try {
-        return await child.entity.turn(query);
+        return await child.entity.cast(query);
       } finally {
         child.sandbox.dispose();
       }
@@ -316,7 +316,7 @@ export async function createRlmAgentWithMemory(
   const medium = jsMedium({ state: { context } });
 
   // 2. Build gates array — done gate (submit_answer) + call_entity gate (llm_query)
-  const gates: GateResult[] = [done_for_medium()];
+  const gates: BoundGate[] = [done_for_medium()];
   const entityGate = call_entity_gate({
     crystal: subLlm,
     sub_crystal: subLlm,
@@ -381,7 +381,7 @@ export async function createRlmAgentWithMemory(
             ? contextStr.slice(0, 10000) + "\n... [truncated]"
             : contextStr;
 
-        const res = await subLlm.ainvoke([
+        const res = await subLlm.query([
           {
             role: "user",
             content: `Task: ${query}\n\nContext:\n${truncated}`,
@@ -406,7 +406,7 @@ export async function createRlmAgentWithMemory(
       });
 
       try {
-        return await child.entity.turn(query);
+        return await child.entity.cast(query);
       } finally {
         child.sandbox.dispose();
       }

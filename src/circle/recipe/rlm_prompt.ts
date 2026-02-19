@@ -1,18 +1,18 @@
-import type { GateResult } from "../gate/gate";
+import type { BoundGate } from "../gate/gate";
 
 /**
  * Build the HOST FUNCTIONS section of the system prompt from the actual gates present.
  * Groups gates by their docs.section and renders each gate's docs.
  * Always appends console.log (a built-in, not a gate).
  */
-export function buildHostFunctionsSection(gates: GateResult[]): string {
+export function buildHostFunctionsSection(gates: BoundGate[]): string {
   // Collect gates that have docs with a section
   const sectionedGates = gates.filter(
     (g) => g.docs?.section && g.docs.sandbox_name,
   );
 
   // Group by section name
-  const sections = new Map<string, GateResult[]>();
+  const sections = new Map<string, BoundGate[]>();
   for (const gate of sectionedGates) {
     const section = gate.docs!.section!;
     if (!sections.has(section)) sections.set(section, []);
@@ -239,7 +239,7 @@ export function getRlmSystemPrompt(options: {
   contextLength: number;
   contextPreview: string;
   /** Gates active in this circle — used to build the HOST FUNCTIONS section. Defaults to []. */
-  gates?: GateResult[];
+  gates?: BoundGate[];
   /** Whether browser automation functions are available. Default: false. */
   hasBrowser?: boolean;
   /** Set of allowed browser function names (from BrowserContext.getAllowedFunctions()). */
@@ -454,7 +454,7 @@ export function getRlmMemorySystemPrompt(options: {
   dataPreview?: string;
   windowSize: number;
   /** Gates active in this circle — used to build the HOST FUNCTIONS section. Defaults to []. */
-  gates?: GateResult[];
+  gates?: BoundGate[];
   /** Whether browser automation functions are available. Default: false. */
   hasBrowser?: boolean;
   /** Set of allowed browser function names (from BrowserContext.getAllowedFunctions()). */
