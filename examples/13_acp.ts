@@ -32,7 +32,7 @@ export async function main() {
       crystal,
       call: { system_prompt: `Coding assistant. Working dir: ${ctx.working_dir}\nCall done when finished.` },
       circle,
-      dependency_overrides: new Map([
+      dependency_overrides: new Map<any, any>([
         [getSandboxContext, () => ctx],
         [getBrowserContext, lazyGetBrowser],
       ]),

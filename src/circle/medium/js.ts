@@ -36,20 +36,17 @@ export function js(opts?: JsMediumOptions): Medium {
   let initialized = false;
 
   const jsToolDefinition: GateDefinition = {
-    type: "function",
-    function: {
-      name: "js",
-      description:
-        "Execute JavaScript in the persistent sandbox. Results are returned as metadata. You MUST use submit_answer() to return your final result.",
-      parameters: {
-        type: "object",
-        properties: {
-          code: { type: "string", description: "JavaScript code to execute." },
-          timeout_ms: { type: "integer", description: "Optional execution timeout in milliseconds." },
-        },
-        required: ["code"],
-        additionalProperties: false,
+    name: "js",
+    description:
+      "Execute JavaScript in the persistent sandbox. Results are returned as metadata. You MUST use submit_answer() to return your final result.",
+    parameters: {
+      type: "object",
+      properties: {
+        code: { type: "string", description: "JavaScript code to execute." },
+        timeout_ms: { type: "integer", description: "Optional execution timeout in milliseconds." },
       },
+      required: ["code"],
+      additionalProperties: false,
     },
   };
 

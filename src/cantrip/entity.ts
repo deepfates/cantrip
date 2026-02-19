@@ -110,10 +110,7 @@ export class Entity {
   constructor(options: EntityOptions) {
     this.crystal = options.crystal;
     this.call = options.call;
-    // Ensure we have a fully constructed Circle with execute().
-    this.circle = options.circle.execute
-      ? options.circle
-      : Circle({ gates: options.circle.gates, wards: options.circle.wards });
+    this.circle = options.circle;
     this.dependency_overrides = options.dependency_overrides;
     this.usage_tracker = options.usage_tracker ?? new UsageTracker();
     this.loom = options.loom;

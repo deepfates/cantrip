@@ -3,7 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/service";
 import { tool } from "../src/circle/gate/decorator";
-import type { Circle } from "../src/circle/circle";
+import { Circle } from "../src/circle/circle";
+import type { GateResult } from "../src/circle/gate/gate";
 import { Loom, MemoryStorage } from "../src/loom";
 
 // ── Shared helpers ─────────────────────────────────────────────────
@@ -24,8 +25,8 @@ const doneGate = tool("Signal completion", doneHandler, {
 
 const ward = { max_turns: 10, require_done_tool: true };
 
-function makeCircle(gates = [doneGate], wards = [ward]): Circle {
-  return { gates, wards };
+function makeCircle(gates: GateResult[] = [doneGate], wards = [ward]) {
+  return Circle({ gates, wards });
 }
 
 function makeLlm(responses: (() => any)[]) {

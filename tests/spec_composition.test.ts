@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/errors";
 import { tool } from "../src/circle/gate/decorator";
-import type { Circle } from "../src/circle/circle";
+import { Circle } from "../src/circle/circle";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 //
@@ -65,10 +65,10 @@ describe("COMP-1: child circle is subset of parent", () => {
     const childSpell = cantrip({
       crystal: childCrystal as any,
       call: { system_prompt: "child agent" },
-      circle: {
+      circle: Circle({
         gates: [doneGate],
         wards: [{ max_turns: 5, require_done_tool: true }],
-      },
+      }),
     });
 
     // Create a gate that delegates to the child cantrip
@@ -122,10 +122,10 @@ describe("COMP-1: child circle is subset of parent", () => {
     const parentSpell = cantrip({
       crystal: parentCrystal as any,
       call: { system_prompt: "parent agent" },
-      circle: {
+      circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
-      },
+      }),
     });
 
     const result = await parentSpell.cast("test gate inheritance");
@@ -161,10 +161,10 @@ describe("COMP-2: call_agent blocks parent until child completes", () => {
     const childSpell = cantrip({
       crystal: childCrystal as any,
       call: { system_prompt: "compute" },
-      circle: {
+      circle: Circle({
         gates: [doneGate],
         wards: [{ max_turns: 5, require_done_tool: true }],
-      },
+      }),
     });
 
     const callAgentGate = tool(
@@ -218,10 +218,10 @@ describe("COMP-2: call_agent blocks parent until child completes", () => {
     const parentSpell = cantrip({
       crystal: parentCrystal as any,
       call: { system_prompt: "parent" },
-      circle: {
+      circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
-      },
+      }),
     });
 
     await parentSpell.cast("test blocking");
@@ -260,10 +260,10 @@ describe("COMP-3: call_agent_batch returns results in request order", () => {
       return cantrip({
         crystal: crystal as any,
         call: { system_prompt: "child" },
-        circle: {
+        circle: Circle({
           gates: [doneGate],
           wards: [{ max_turns: 5, require_done_tool: true }],
-        },
+        }),
       });
     }
 
@@ -326,10 +326,10 @@ describe("COMP-3: call_agent_batch returns results in request order", () => {
     const parentSpell = cantrip({
       crystal: parentCrystal as any,
       call: { system_prompt: "parent" },
-      circle: {
+      circle: Circle({
         gates: [doneGate, batchGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
-      },
+      }),
     });
 
     const result = await parentSpell.cast("test batch ordering");
@@ -368,10 +368,10 @@ describe("COMP-4: child entity has independent context", () => {
     const childSpell = cantrip({
       crystal: childCrystal as any,
       call: { system_prompt: "child system" },
-      circle: {
+      circle: Circle({
         gates: [doneGate],
         wards: [{ max_turns: 5, require_done_tool: true }],
-      },
+      }),
     });
 
     const callAgentGate = tool(
@@ -431,10 +431,10 @@ describe("COMP-4: child entity has independent context", () => {
     const parentSpell = cantrip({
       crystal: parentCrystal as any,
       call: { system_prompt: "parent secret context" },
-      circle: {
+      circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
-      },
+      }),
     });
 
     await parentSpell.cast("test context isolation");
@@ -530,10 +530,10 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
     const spell = cantrip({
       crystal: crystal as any,
       call: { system_prompt: "test" },
-      circle: {
+      circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
-      },
+      }),
     });
 
     const result = await spell.cast("test depth limit");
@@ -607,10 +607,10 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
       return cantrip({
         crystal: crystal as any,
         call: { system_prompt: `agent at depth ${depth}` },
-        circle: {
+        circle: Circle({
           gates: [doneGate, callAgentGate],
           wards: [{ max_turns: 10, require_done_tool: true }],
-        },
+        }),
       });
     }
 
@@ -653,10 +653,10 @@ describe("COMP-7: child can use different crystal", () => {
     const childSpell = cantrip({
       crystal: childCrystal as any,
       call: { system_prompt: "alternate crystal" },
-      circle: {
+      circle: Circle({
         gates: [doneGate],
         wards: [{ max_turns: 5, require_done_tool: true }],
-      },
+      }),
     });
 
     const callAgentGate = tool(
@@ -715,10 +715,10 @@ describe("COMP-7: child can use different crystal", () => {
     const result = await cantrip({
       crystal: parentCrystal as any,
       call: { system_prompt: "parent" },
-      circle: {
+      circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
-      },
+      }),
     }).cast("test crystal override");
 
     expect(result).toBe("from alternate");
@@ -743,10 +743,10 @@ describe("COMP-8: child failure returns error to parent", () => {
     const childSpell = cantrip({
       crystal: childCrystal as any,
       call: { system_prompt: "child" },
-      circle: {
+      circle: Circle({
         gates: [doneGate],
         wards: [{ max_turns: 5, require_done_tool: true }],
-      },
+      }),
     });
 
     const callAgentGate = tool(
@@ -807,10 +807,10 @@ describe("COMP-8: child failure returns error to parent", () => {
     const result = await cantrip({
       crystal: parentCrystal as any,
       call: { system_prompt: "parent" },
-      circle: {
+      circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
-      },
+      }),
     }).cast("test child failure");
 
     // Parent should have recovered

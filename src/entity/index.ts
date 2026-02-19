@@ -1,5 +1,4 @@
-export { Agent, TaskComplete } from "./service";
-export { CoreAgent } from "./core";
+export { TaskComplete } from "./service";
 export { createConsoleRenderer } from "./console";
 export { exec, runRepl } from "./repl";
 export type { ExecOptions, ReplOptions } from "./repl";

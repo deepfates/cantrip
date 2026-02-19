@@ -3,7 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/errors";
 import { tool } from "../src/circle/gate/decorator";
-import type { Circle } from "../src/circle/circle";
+import { Circle } from "../src/circle/circle";
+import type { GateResult } from "../src/circle/gate/gate";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 
@@ -31,8 +32,8 @@ const echoGate = tool("Echo text back", async ({ text }: { text: string }) => te
   },
 });
 
-function makeCircle(gates = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]): Circle {
-  return { gates, wards };
+function makeCircle(gates: GateResult[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
+  return Circle({ gates, wards });
 }
 
 function makeLlm(responses: (() => any)[]) {
@@ -90,7 +91,7 @@ describe("LOOP-2: cantrip without truncation ward is invalid", () => {
       cantrip({
         crystal: crystal as any,
         call: { system_prompt: "test" },
-        circle: { gates: [doneGate], wards: [] },
+        circle: { gates: [doneGate], wards: [] } as any,
       }),
     ).toThrow(/ward/i);
   });
@@ -105,7 +106,7 @@ describe("LOOP-2: cantrip without truncation ward is invalid", () => {
       cantrip({
         crystal: crystal as any,
         call: { system_prompt: "test" },
-        circle: { gates: [notDone], wards: [{ max_turns: 10, require_done_tool: true }] },
+        circle: { gates: [notDone], wards: [{ max_turns: 10, require_done_tool: true }] } as any,
       }),
     ).toThrow(/done/i);
   });

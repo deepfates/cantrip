@@ -140,18 +140,12 @@ export function cantrip(input: CantripInput): Cantrip {
       }
 
       // CANTRIP-2: fresh state per cast
-      // Ensure we have a fully constructed Circle with execute().
-      // Users may pass a plain {gates, wards} object — wrap it if needed.
-      const execCircle = circle.execute
-        ? circle
-        : Circle({ gates: circle.gates, wards: circle.wards });
-      const ward = resolveWards(execCircle.wards);
-      const tools = execCircle.gates;
+      const ward = resolveWards(circle.wards);
+      const tools = circle.gates;
       const effectiveToolChoice = ward.require_done_tool
         ? "required"
         : resolvedCall.hyperparameters.tool_choice;
-      // Circle provides crystalView when constructed via Circle()
-      const crystalView = execCircle.crystalView?.(effectiveToolChoice);
+      const crystalView = circle.crystalView(effectiveToolChoice);
       const tool_definitions =
         crystalView?.tool_definitions ?? resolvedCall.gate_definitions;
       const viewToolChoice =
@@ -173,7 +167,7 @@ export function cantrip(input: CantripInput): Cantrip {
       return runAgentLoop({
         llm: crystal,
         tools,
-        circle: execCircle,
+        circle,
         messages,
         system_prompt: resolvedCall.system_prompt,
         max_iterations: ward.max_turns,

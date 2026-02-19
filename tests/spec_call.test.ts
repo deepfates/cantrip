@@ -4,7 +4,8 @@ import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/errors";
 import { tool } from "../src/circle/gate/decorator";
 import { renderGateDefinitions } from "../src/cantrip/call";
-import type { Circle } from "../src/circle/circle";
+import { Circle } from "../src/circle/circle";
+import type { GateResult } from "../src/circle/gate/gate";
 import { Loom, MemoryStorage } from "../src/loom";
 
 // ── Shared helpers ─────────────────────────────────────────────────
@@ -43,8 +44,8 @@ const readGate = tool("Read a file", async ({ path }: { path: string }) => `cont
   },
 });
 
-function makeCircle(gates = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]): Circle {
-  return { gates, wards };
+function makeCircle(gates: GateResult[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
+  return Circle({ gates, wards });
 }
 
 // ── CALL-1: call is immutable after construction ───────────────────

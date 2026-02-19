@@ -10,7 +10,7 @@ export type GateDefinition = {
   strict?: boolean;
 };
 
-export type ToolChoice = "auto" | "required" | "none" | string;
+export type ToolChoice = "auto" | "required" | "none" | string | { type: string; name: string };
 
 export interface BaseChatModel {
   model: string;

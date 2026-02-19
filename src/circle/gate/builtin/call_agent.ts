@@ -1,4 +1,4 @@
-import { AnyMessage } from "../../../entity/service";
+import { AnyMessage } from "../../../crystal/messages";
 import { BaseChatModel } from "../../../crystal/crystal";
 import {
   JsAsyncContext,

@@ -5,8 +5,9 @@ import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/service";
 import { tool } from "../src/circle/gate/decorator";
 import { MemoryStorage, Loom } from "../src/loom";
-import type { Circle } from "../src/circle/circle";
+import { Circle } from "../src/circle/circle";
 import type { Ward } from "../src/circle/ward";
+import type { GateResult } from "../src/circle/gate/gate";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -26,8 +27,8 @@ const doneGate = tool("Done", doneHandler, {
 
 const ward: Ward = { max_turns: 10, require_done_tool: true };
 
-function makeCircle(gates = [doneGate], wards = [ward]): Circle {
-  return { gates, wards };
+function makeCircle(gates: GateResult[] = [doneGate], wards = [ward]) {
+  return Circle({ gates, wards });
 }
 
 function makeLlm(responses: (() => any)[]) {

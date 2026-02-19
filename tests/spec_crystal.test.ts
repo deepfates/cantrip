@@ -3,7 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/errors";
 import { tool } from "../src/circle/gate/decorator";
-import type { Circle } from "../src/circle/circle";
+import { Circle } from "../src/circle/circle";
+import type { GateResult } from "../src/circle/gate/gate";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 
@@ -31,8 +32,8 @@ const echoGate = tool("Echo text back", async ({ text }: { text: string }) => te
   },
 });
 
-function makeCircle(gates = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]): Circle {
-  return { gates, wards };
+function makeCircle(gates: GateResult[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
+  return Circle({ gates, wards });
 }
 
 // ── CRYSTAL-1: crystal is stateless between invocations ────────────

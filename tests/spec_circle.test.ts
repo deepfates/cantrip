@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/errors";
 import { tool } from "../src/circle/gate/decorator";
-import { Circle as CircleConstructor } from "../src/circle/circle";
-import type { Circle } from "../src/circle/circle";
+import { Circle } from "../src/circle/circle";
+import type { GateResult } from "../src/circle/gate/gate";
 import { max_turns, require_done, max_depth, resolveWards } from "../src/circle/ward";
 
 // ── Shared helpers ─────────────────────────────────────────────────
@@ -33,8 +33,8 @@ const echoGate = tool("Echo text back", async ({ text }: { text: string }) => te
   },
 });
 
-function makeCircle(gates = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]): Circle {
-  return { gates, wards };
+function makeCircle(gates: GateResult[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
+  return Circle({ gates, wards });
 }
 
 function makeLlm(responses: (() => any)[]) {
@@ -61,7 +61,7 @@ describe("CIRCLE-1: circle must have done gate", () => {
       schema: { type: "object", properties: {}, additionalProperties: false },
     });
     expect(() =>
-      CircleConstructor({
+      Circle({
         gates: [notDone],
         wards: [{ max_turns: 10, require_done_tool: false }],
       }),
@@ -70,7 +70,7 @@ describe("CIRCLE-1: circle must have done gate", () => {
 
   test("CIRCLE-1: Circle constructor throws when gates array is empty", () => {
     expect(() =>
-      CircleConstructor({
+      Circle({
         gates: [],
         wards: [{ max_turns: 10, require_done_tool: false }],
       }),
@@ -87,7 +87,7 @@ describe("CIRCLE-1: circle must have done gate", () => {
       cantrip({
         crystal: crystal as any,
         call: { system_prompt: "test" },
-        circle: { gates: [notDone], wards: [{ max_turns: 10, require_done_tool: false }] },
+        circle: { gates: [notDone], wards: [{ max_turns: 10, require_done_tool: false }] } as any,
       }),
     ).toThrow(/done/i);
   });
@@ -98,7 +98,7 @@ describe("CIRCLE-1: circle must have done gate", () => {
 describe("CIRCLE-2: circle must have termination ward", () => {
   test("CIRCLE-2: Circle constructor throws when wards array is empty", () => {
     expect(() =>
-      CircleConstructor({ gates: [doneGate], wards: [] }),
+      Circle({ gates: [doneGate], wards: [] }),
     ).toThrow(/ward/i);
   });
 });

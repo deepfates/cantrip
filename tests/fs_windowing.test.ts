@@ -218,7 +218,7 @@ describe("File System Windowing", () => {
 
       expect(result).toMatch(/^Results 100-149 of 150/);
       // Files are sorted alphabetically, so offset 100 will be around file5x-6x range
-      expect(result.split("\n").length).toBeGreaterThan(40); // Should have ~50 results
+      expect((result as string).split("\n").length).toBeGreaterThan(40); // Should have ~50 results
     });
 
     it("supports max_results parameter", async () => {

@@ -60,7 +60,7 @@ describe("Circle with JS medium", () => {
     });
     const view = circle.crystalView();
     expect(view.tool_definitions).toHaveLength(1);
-    expect(view.tool_definitions[0].function.name).toBe("js");
+    expect(view.tool_definitions[0].name).toBe("js");
     expect(view.tool_choice).toEqual({ type: "tool", name: "js" });
   });
 
