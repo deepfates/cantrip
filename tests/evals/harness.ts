@@ -13,14 +13,51 @@
  */
 import { Entity } from "../../src/cantrip/entity";
 import { Circle } from "../../src/circle/circle";
-import { analyzeContext, createRlmAgent } from "../../src/circle/gate/builtin/call_entity";
-import { JsContext, getJsContext } from "../../src/circle/gate/builtin/js_context";
-import { js } from "../../src/circle/gate/builtin/js";
+import { analyzeContext, createRlmAgent } from "../../src/circle/recipe/rlm";
+import { JsContext, getJsContext } from "../../src/circle/medium/js/context";
 import { done } from "../../src/circle/gate/builtin/done";
 import { gate } from "../../src/circle/gate/decorator";
 import { z } from "zod";
 import { UsageTracker } from "../../src/crystal/tokens/usage";
 import type { BaseChatModel } from "../../src/crystal/crystal";
+
+// --- Local JS gate for eval baselines (full output) ---
+
+const DEFAULT_MAX_OUTPUT_CHARS = 9500;
+
+function truncateOutput(output: string, maxChars: number): string {
+  if (output.length <= maxChars) return output;
+  const lastNewline = output.lastIndexOf("\n", maxChars);
+  const cutoff = lastNewline > maxChars / 2 ? lastNewline : maxChars;
+  return output.substring(0, cutoff) + `\n\n... [output truncated at ${maxChars} chars]`;
+}
+
+const js = gate(
+  "Execute JavaScript in a persistent, isolated sandbox. State persists across calls.",
+  async (
+    { code, timeout_ms, max_output_chars }: { code: string; timeout_ms?: number; max_output_chars?: number },
+    deps,
+  ) => {
+    const ctx = deps.ctx as JsContext;
+    const maxChars = max_output_chars ?? DEFAULT_MAX_OUTPUT_CHARS;
+    try {
+      const result = await ctx.evalCode(code, { executionTimeoutMs: timeout_ms });
+      if (!result.ok) return truncateOutput(`Error: ${result.error}`, maxChars);
+      return truncateOutput(result.output, maxChars);
+    } catch (e: any) {
+      return truncateOutput(`Error: ${String(e?.message ?? e)}`, maxChars);
+    }
+  },
+  {
+    name: "js",
+    zodSchema: z.object({
+      code: z.string().describe("The Javascript code to execute in the sandbox."),
+      timeout_ms: z.number().int().positive().optional(),
+      max_output_chars: z.number().int().positive().optional(),
+    }),
+    dependencies: { ctx: getJsContext },
+  },
+);
 
 // --- Result Types ---
 

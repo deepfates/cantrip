@@ -6,7 +6,7 @@ import {
   type QuickJSHandle,
   type QuickJSWASMModule,
 } from "quickjs-emscripten-core";
-import { Depends } from "../depends";
+import { Depends } from "../../gate/depends";
 
 const DEFAULT_EXECUTION_TIMEOUT_MS = 2000;
 const DEFAULT_MEMORY_LIMIT_BYTES = 64 * 1024 * 1024;

@@ -12,7 +12,7 @@ describe("examples", () => {
   test("all example files exist", async () => {
     const files = [
       "01_crystal.ts", "02_gate.ts", "03_circle.ts", "04_cantrip.ts",
-      "05_loom.ts", "06_providers.ts", "07_gate_fs.ts", "08_gate_js.ts",
+      "05_loom.ts", "06_providers.ts", "07_conversation.ts", "08_gate_js.ts",
       "09_gate_browser.ts", "10_composition.ts", "11_folding.ts",
       "12_full_agent.ts", "13_acp.ts", "env.ts",
     ];
@@ -25,7 +25,7 @@ describe("examples", () => {
   test("all examples export main()", async () => {
     const examples = [
       "01_crystal", "02_gate", "03_circle", "04_cantrip",
-      "05_loom", "06_providers", "07_gate_fs", "08_gate_js",
+      "05_loom", "06_providers", "07_conversation", "08_gate_js",
       "09_gate_browser", "10_composition", "11_folding",
       "12_full_agent", "13_acp",
     ];
@@ -78,8 +78,8 @@ describe("examples", () => {
   // which require stdin/server. We verify they import cleanly.
   // Running them fully requires a separate harness.
 
-  conditionalAnthropicTest("07_gate_fs imports cleanly", async () => {
-    const mod = await import("../examples/07_gate_fs");
+  conditionalAnthropicTest("07_conversation imports cleanly", async () => {
+    const mod = await import("../examples/07_conversation");
     expect(typeof mod.main).toBe("function");
   });
 

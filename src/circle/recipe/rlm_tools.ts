@@ -1,9 +1,9 @@
-import { gate } from "../decorator";
+import { gate } from "../gate/decorator";
 import { z } from "zod";
-import { JsAsyncContext } from "./js_async_context";
-import { TaskComplete } from "../../../entity/errors";
-import { Depends } from "../depends";
-import type { BrowserContext } from "./browser_context";
+import { JsAsyncContext } from "../medium/js/async_context";
+import { TaskComplete } from "../../entity/errors";
+import { Depends } from "../gate/depends";
+import type { BrowserContext } from "../medium/browser/context";
 
 /** JSON.stringify that tolerates circular references. */
 export function safeStringify(value: unknown, indent?: number): string {

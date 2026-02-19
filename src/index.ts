@@ -22,6 +22,10 @@ export type { Medium } from "./circle/medium";
 export { js as jsMedium } from "./circle/medium/js";
 export { getJsMediumSandbox } from "./circle/medium/js";
 export type { JsMediumOptions } from "./circle/medium/js";
+export { browser as browserMedium } from "./circle/medium/browser";
+export type { BrowserMediumOptions } from "./circle/medium/browser";
+export { bash as bashMedium } from "./circle/medium/bash";
+export type { BashMediumOptions } from "./circle/medium/bash";
 export type { Ward, ResolvedWard } from "./circle/ward";
 export { DEFAULT_WARD, max_turns, require_done, max_depth, resolveWards } from "./circle/ward";
 
@@ -38,15 +42,12 @@ export type { GateSchemaFieldOptions } from "./circle/gate/schema";
 
 // ── Circle / Gate / Builtins ────────────────────────────────────────
 export { done, defaultGates } from "./circle/gate/builtin/done";
-export { unsafeFsGates, SandboxContext, getSandboxContext } from "./circle/gate/builtin/fs";
-export { js } from "./circle/gate/builtin/js";
-export { js_run } from "./circle/gate/builtin/js_run";
-export { JsContext, getJsContext } from "./circle/gate/builtin/js_context";
-export { browser } from "./circle/gate/builtin/browser";
-export { BrowserContext, getBrowserContext } from "./circle/gate/builtin/browser_context";
-export { createRlmAgent, createRlmAgentWithMemory } from "./circle/gate/builtin/call_entity";
-export type { RlmOptions, RlmMemoryOptions, RlmMemoryAgent } from "./circle/gate/builtin/call_entity";
-export { createRlmConsoleRenderer, patchStderrForRlm } from "./circle/gate/builtin/call_entity_console";
+export { safeFsGates, SandboxContext, getSandboxContext } from "./circle/gate/builtin/fs";
+export { JsContext, getJsContext } from "./circle/medium/js/context";
+export { BrowserContext, getBrowserContext } from "./circle/medium/browser/context";
+export { createRlmAgent, createRlmAgentWithMemory } from "./circle/recipe/rlm";
+export type { RlmOptions, RlmMemoryOptions, RlmMemoryAgent } from "./circle/recipe/rlm";
+export { createRlmConsoleRenderer, patchStderrForRlm } from "./circle/recipe/rlm_console";
 export { call_entity as call_entity_gate, call_entity_batch as call_entity_batch_gate } from "./circle/gate/builtin/call_entity_gate";
 export type { CallEntityGateOptions } from "./circle/gate/builtin/call_entity_gate";
 

@@ -8,8 +8,8 @@ import type { Medium } from "../medium";
 import {
   JsAsyncContext,
   createAsyncModule,
-} from "../gate/builtin/js_async_context";
-import { formatRlmMetadata } from "../gate/builtin/call_entity_tools";
+} from "./js/async_context";
+import { formatRlmMetadata } from "../recipe/rlm_tools";
 import { TaskComplete } from "../../entity/errors";
 import {
   StepStartEvent,

@@ -9,13 +9,13 @@
  * sandbox input validation — genuinely below the cantrip API level.
  */
 import { describe, expect, test, afterEach } from "bun:test";
-import { safeStringify } from "../src/circle/gate/builtin/call_entity_tools";
+import { safeStringify } from "../src/circle/recipe/rlm_tools";
 import {
   getRlmSystemPrompt,
   getRlmMemorySystemPrompt,
-} from "../src/circle/gate/builtin/call_entity_prompt";
-import { createRlmAgent } from "../src/circle/gate/builtin/call_entity";
-import { JsAsyncContext } from "../src/circle/gate/builtin/js_async_context";
+} from "../src/circle/recipe/rlm_prompt";
+import { createRlmAgent } from "../src/circle/recipe/rlm";
+import { JsAsyncContext } from "../src/circle/medium/js/async_context";
 import type { BaseChatModel } from "../src/crystal/crystal";
 import type { AnyMessage } from "../src/crystal/messages";
 import type { ChatInvokeCompletion } from "../src/crystal/views";
