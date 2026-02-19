@@ -21,7 +21,7 @@ export type RawGateDefinition = {
   strict?: boolean;
 };
 
-export function rawTool<TArgs extends Record<string, any>>(
+export function rawGate<TArgs extends Record<string, any>>(
   definition: RawGateDefinition,
   handler: RawGateHandler<TArgs, any>,
   options?: RawGateOptions,

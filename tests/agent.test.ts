@@ -3,13 +3,13 @@ import { describe, expect, test } from "bun:test";
 import { TaskComplete } from "../src/entity/errors";
 import { Entity } from "../src/cantrip/entity";
 import { Circle } from "../src/circle/circle";
-import { tool } from "../src/circle/gate/decorator";
+import { gate } from "../src/circle/gate/decorator";
 
 async function addHandler({ a, b }: { a: number; b: number }) {
   return a + b;
 }
 
-const add = tool("Add", addHandler, {
+const add = gate("Add", addHandler, {
   name: "add",
   schema: {
     type: "object",
@@ -23,7 +23,7 @@ async function doneHandler({ message }: { message: string }) {
   throw new TaskComplete(message);
 }
 
-const done = tool("Done", doneHandler, {
+const done = gate("Done", doneHandler, {
   name: "done",
   schema: {
     type: "object",
@@ -162,7 +162,7 @@ describe("entity", () => {
       return "big output";
     }
 
-    const eph = tool("Ephemeral", ephHandler, {
+    const eph = gate("Ephemeral", ephHandler, {
       name: "ephemeral",
       schema: {
         type: "object",

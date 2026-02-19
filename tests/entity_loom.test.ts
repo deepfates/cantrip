@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Entity } from "../src/cantrip/entity";
 import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/service";
-import { tool } from "../src/circle/gate/decorator";
+import { gate } from "../src/circle/gate/decorator";
 import { MemoryStorage, Loom } from "../src/loom";
 import { Circle } from "../src/circle/circle";
 import type { Ward } from "../src/circle/ward";
@@ -15,7 +15,7 @@ async function doneHandler({ message }: { message: string }) {
   throw new TaskComplete(message);
 }
 
-const doneGate = tool("Done", doneHandler, {
+const doneGate = gate("Done", doneHandler, {
   name: "done",
   schema: {
     type: "object",

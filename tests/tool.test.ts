@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { tool, serializeGateResult } from "../src/circle/gate/decorator";
+import { gate, serializeGateResult } from "../src/circle/gate/decorator";
 import { Depends } from "../src/circle/gate/depends";
 
 function getValue() {
@@ -11,7 +11,7 @@ async function addHandler({ a, b }: { a: number; b: number }) {
   return a + b;
 }
 
-const add = tool("Add two numbers", addHandler, {
+const add = gate("Add two numbers", addHandler, {
   name: "add",
   schema: {
     type: "object",
@@ -28,7 +28,7 @@ async function depsHandler(_: {}, deps: any) {
   return deps.value;
 }
 
-const withDeps = tool("Return dep value", depsHandler, {
+const withDeps = gate("Return dep value", depsHandler, {
   name: "with_deps",
   schema: {
     type: "object",
@@ -53,7 +53,7 @@ describe("tools", () => {
 
   test("throws error when arrow function has no explicit name", () => {
     expect(() => {
-      tool("Anonymous tool", async () => "result", {
+      gate("Anonymous tool", async () => "result", {
         schema: {
           type: "object",
           properties: {},
@@ -61,14 +61,14 @@ describe("tools", () => {
           additionalProperties: false,
         },
       });
-    }).toThrow("Tool name is required");
+    }).toThrow("Gate name is required");
   });
 
   test("uses handler.name for named functions", () => {
     async function myNamedTool() {
       return "result";
     }
-    const t = tool("A named tool", myNamedTool, {
+    const t = gate("A named tool", myNamedTool, {
       schema: {
         type: "object",
         properties: {},

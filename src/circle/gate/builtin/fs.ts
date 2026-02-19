@@ -4,7 +4,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 
 import { Depends } from "../depends";
-import { tool } from "../decorator";
+import { gate } from "../decorator";
 
 const execAsync = promisify(exec);
 
@@ -50,7 +50,7 @@ export function getSandboxContext(): SandboxContext {
  */
 const sandboxContextDepends = new Depends(getSandboxContext);
 
-export const bash = tool(
+export const bash = gate(
   "Execute a shell command and return output. Output is automatically limited to max_output_chars (default 9000 chars). Use shell pipes and filters to process large outputs.",
   async (
     {
@@ -114,7 +114,7 @@ export const bash = tool(
   },
 );
 
-export const read = tool(
+export const read = gate(
   "Read contents of a file with line numbers. Returns a window of lines starting from start_line for up to max_lines. Shows line range and total count for navigation.",
   async (
     {
@@ -200,7 +200,7 @@ export const read = tool(
   },
 );
 
-export const write = tool(
+export const write = gate(
   "Write content to a file. Content limited to 50,000 characters. For larger data, write in multiple chunks or separate files.",
   async (
     { file_path, content }: { file_path: string; content: string },
@@ -237,7 +237,7 @@ export const write = tool(
   },
 );
 
-export const edit = tool(
+export const edit = gate(
   "Replace all occurrences of old_string with new_string in a file. Both strings limited to 10,000 characters each. Returns summary only.",
   async (
     {
@@ -286,7 +286,7 @@ export const edit = tool(
   },
 );
 
-export const glob = tool(
+export const glob = gate(
   "Find files matching a glob pattern. Returns paginated results starting at offset for up to max_results items. Shows total count for navigation.",
   async (
     {

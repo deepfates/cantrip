@@ -18,7 +18,7 @@ export type GateOptions = {
   dependencies?: Record<string, Depends<any>>;
 };
 
-export class Tool<TArgs extends Record<string, any> = Record<string, any>> {
+export class Gate<TArgs extends Record<string, any> = Record<string, any>> {
   name: string;
   description: string;
   schema: JsonSchema;
@@ -34,8 +34,8 @@ export class Tool<TArgs extends Record<string, any> = Record<string, any>> {
     const name = options?.name || handler.name;
     if (!name) {
       throw new Error(
-        "Tool name is required. Either provide a named function or pass { name: 'tool_name' } in options. " +
-          "Arrow functions like `async () => ...` have no name - use `async function myTool() {...}` or provide an explicit name.",
+        "Gate name is required. Either provide a named function or pass { name: 'gate_name' } in options. " +
+          "Arrow functions like `async () => ...` have no name - use `async function myGate() {...}` or provide an explicit name.",
       );
     }
     this.name = name;
@@ -80,12 +80,12 @@ export class Tool<TArgs extends Record<string, any> = Record<string, any>> {
   }
 }
 
-export function tool<TArgs extends Record<string, any>>(
+export function gate<TArgs extends Record<string, any>>(
   description: string,
   handler: GateHandler<TArgs, any>,
   options?: GateOptions,
-): Tool<TArgs> {
-  return new Tool(description, handler, options);
+): Gate<TArgs> {
+  return new Gate(description, handler, options);
 }
 
 export function serializeGateResult(result: any): GateContent {

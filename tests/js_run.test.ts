@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { createJsRunTool, js_run } from "../src/circle/gate/builtin/js_run";
+import { createJsRunGate, js_run } from "../src/circle/gate/builtin/js_run";
 import type { GateContent } from "../src/circle/gate/decorator";
 
 describe("js_run tool", () => {
@@ -36,7 +36,7 @@ describe("js_run tool", () => {
   });
 
   test("supports virtual fs when mounted", async () => {
-    const js_run_fs = createJsRunTool({
+    const js_run_fs = createJsRunGate({
       allow_fs: true,
       mount_fs: { "note.txt": "hello" },
     });
@@ -52,7 +52,7 @@ export default readFileSync("note.txt", "utf8");
   });
 
   test("compute profile disables fetch", async () => {
-    const js_run_compute = createJsRunTool({ profile: "compute" });
+    const js_run_compute = createJsRunGate({ profile: "compute" });
     const result = await js_run_compute.execute({
       code: `
 let message = "no error";

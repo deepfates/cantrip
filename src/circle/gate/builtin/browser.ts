@@ -1,4 +1,4 @@
-import { tool } from "../decorator";
+import { gate } from "../decorator";
 import { z } from "zod";
 import {
   BrowserContext,
@@ -101,7 +101,7 @@ const browserSchema = z.object({
     .optional(),
 });
 
-function createBrowserTool({
+function createBrowserGate({
   name,
   description,
   ctxDependency,
@@ -110,7 +110,7 @@ function createBrowserTool({
   description: string;
   ctxDependency: typeof getBrowserContext;
 }) {
-  return tool(
+  return gate(
     description,
     async (
       { code, timeout_ms, max_output_chars, reset_session }: BrowserToolOptions,
@@ -138,21 +138,21 @@ function createBrowserTool({
   );
 }
 
-export const browser = createBrowserTool({
+export const browser = createBrowserGate({
   name: "browser",
   description:
     "Execute Taiko code in a persistent browser session. Full capabilities. Use goto() to navigate, click/write for interactions, text/button/link for selectors, evaluate() for JS execution. Use `return` to get values back. State persists across calls.",
   ctxDependency: getBrowserContext,
 });
 
-export const browser_interactive = createBrowserTool({
+export const browser_interactive = createBrowserGate({
   name: "browser_interactive",
   description:
     "Execute Taiko code in a persistent browser session with interaction-only capabilities (no evaluate/intercept/cookies/permissions/CDP). Use `return` to get values back. State persists across calls.",
   ctxDependency: getBrowserContextInteractive,
 });
 
-export const browser_readonly = createBrowserTool({
+export const browser_readonly = createBrowserGate({
   name: "browser_readonly",
   description:
     "Execute Taiko code in a persistent browser session with read-only capabilities (no interactions, no evaluate/intercept/cookies/permissions/CDP). Use `return` to get values back. State persists across calls.",

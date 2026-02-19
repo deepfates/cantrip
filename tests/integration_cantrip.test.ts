@@ -10,10 +10,10 @@ const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5";
 
 describe("integration: cantrip API", () => {
   it("cast() returns a result", async () => {
-    const { cantrip, Circle, ChatAnthropic, done, tool, max_turns } = await import("../src");
+    const { cantrip, Circle, ChatAnthropic, done, gate, max_turns } = await import("../src");
 
     const crystal = new ChatAnthropic({ model });
-    const echo = tool("Echo input", async ({ text }: { text: string }) => text, {
+    const echo = gate("Echo input", async ({ text }: { text: string }) => text, {
       name: "echo",
       params: { text: "string" },
     });
@@ -34,10 +34,10 @@ describe("integration: cantrip API", () => {
   }, 30_000);
 
   it("invoke() returns an entity, entity.turn() works", async () => {
-    const { cantrip, Circle, ChatAnthropic, done, tool, max_turns } = await import("../src");
+    const { cantrip, Circle, ChatAnthropic, done, gate, max_turns } = await import("../src");
 
     const crystal = new ChatAnthropic({ model });
-    const echo = tool("Echo input", async ({ text }: { text: string }) => text, {
+    const echo = gate("Echo input", async ({ text }: { text: string }) => text, {
       name: "echo",
       params: { text: "string" },
     });
@@ -66,12 +66,12 @@ describe("integration: cantrip API", () => {
   }, 60_000);
 
   it("two casts of same cantrip are independent", async () => {
-    const { cantrip, Circle, ChatAnthropic, done, tool, max_turns } = await import("../src");
+    const { cantrip, Circle, ChatAnthropic, done, gate, max_turns } = await import("../src");
 
     const crystal = new ChatAnthropic({ model });
 
     let callCount = 0;
-    const counter = tool("Increment counter", async () => {
+    const counter = gate("Increment counter", async () => {
       callCount++;
       return `count: ${callCount}`;
     }, {
