@@ -24,6 +24,13 @@ export type JsMediumOptions = {
   state?: Record<string, unknown>;
 };
 
+/** Extract parameter names from a gate definition's JSON schema properties. */
+function getParameterNames(definition: GateDefinition): string[] {
+  const props = definition.parameters?.properties;
+  if (!props || typeof props !== "object") return [];
+  return Object.keys(props as Record<string, unknown>);
+}
+
 /**
  * Creates a JS medium — a QuickJS sandbox that the entity works in.
  *
@@ -45,7 +52,7 @@ export function js(opts?: JsMediumOptions): Medium {
         code: { type: "string", description: "JavaScript code to execute." },
         timeout_ms: { type: "integer", description: "Optional execution timeout in milliseconds." },
       },
-      required: ["code"],
+      required: ["code", "timeout_ms"],
       additionalProperties: false,
     },
   };
@@ -64,26 +71,26 @@ export function js(opts?: JsMediumOptions): Medium {
         }
       }
 
-      // submit_answer: the done gate — throws SIGNAL_FINAL to terminate
-      sandbox.registerAsyncFunction("submit_answer", async (value) => {
-        const result =
-          typeof value === "string" ? value : JSON.stringify(value, null, 2);
-        throw new Error(`SIGNAL_FINAL:${result}`);
-      });
-
       // Project gates as host functions in the sandbox
+      // The done gate (with docs.sandbox_name: "submit_answer") is projected like any other gate.
       for (const gate of gates) {
-        // Skip 'done' gate — submit_answer handles termination
-        if (gate.name === "done") continue;
+        const sandboxName = gate.docs?.sandbox_name ?? gate.name;
+        const paramNames = getParameterNames(gate.definition);
 
-        sandbox.registerAsyncFunction(gate.name, async (...args: unknown[]) => {
-          // If a single object argument, pass it as the args map
-          const argMap =
-            args.length === 1 && typeof args[0] === "object" && args[0] !== null
-              ? (args[0] as Record<string, unknown>)
-              : { args };
-          const result = await gate.execute(argMap);
-          return result;
+        sandbox.registerAsyncFunction(sandboxName, async (...args: unknown[]) => {
+          // If a single plain object argument (not an array), pass it as the args map
+          if (args.length === 1 && typeof args[0] === "object" && args[0] !== null && !Array.isArray(args[0])) {
+            return await gate.execute(args[0] as Record<string, unknown>);
+          }
+          // Map positional args to named parameters from the gate definition
+          if (paramNames.length > 0) {
+            const argMap: Record<string, unknown> = {};
+            for (let i = 0; i < args.length && i < paramNames.length; i++) {
+              argMap[paramNames[i]] = args[i];
+            }
+            return await gate.execute(argMap);
+          }
+          return await gate.execute({ args });
         });
       }
 

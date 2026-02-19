@@ -117,7 +117,7 @@ export class Entity {
     this.cantrip_id = options.cantrip_id ?? "unknown";
     this.entity_id = options.entity_id ?? "unknown";
     this.folding = options.folding ?? DEFAULT_FOLDING_CONFIG;
-    this.folding_enabled = options.folding_enabled ?? false;
+    this.folding_enabled = options.folding_enabled ?? true;
     this.retry = options.retry;
 
     for (const gate of this.circle.gates) {

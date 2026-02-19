@@ -6,14 +6,20 @@ import {
 import {
   registerRlmFunctions,
   safeStringify,
+  defaultProgress,
 } from "./call_entity_tools";
 import type { RlmProgressCallback } from "./call_entity_tools";
 import { getRlmSystemPrompt, getRlmMemorySystemPrompt } from "./call_entity_prompt";
 import { UsageTracker } from "../../../crystal/tokens/usage";
-import { Entity } from "../../../cantrip/entity";
+import type { Entity } from "../../../cantrip/entity";
+import { cantrip } from "../../../cantrip/cantrip";
 import { js as jsMedium, getJsMediumSandbox } from "../../medium/js";
 import { Circle } from "../../circle";
 import { max_turns, require_done } from "../../ward";
+import { call_entity as call_entity_gate, call_entity_batch as call_entity_batch_gate } from "./call_entity_gate";
+import { done_for_medium } from "./done";
+import type { GateResult } from "../../gate/gate";
+import { Loom, MemoryStorage } from "../../../loom";
 
 export type RlmOptions = {
   llm: BaseChatModel;
@@ -62,32 +68,60 @@ export async function createRlmAgent(
   // 1. Create JS medium with context as initial state
   const medium = jsMedium({ state: { context } });
 
-  // 2. Force medium initialization so we can access the sandbox
-  await medium.init([], dependency_overrides || null);
+  // 2. Build gates array — done gate (submit_answer) + call_entity gate (llm_query)
+  const progress = onProgress ?? defaultProgress(depth);
+  const gates: GateResult[] = [done_for_medium()];
+  const entityGate = call_entity_gate({
+    crystal: subLlm,
+    sub_crystal: subLlm,
+    max_depth: maxDepth,
+    depth,
+    usage,
+    parent_context: context,
+    onProgress: progress,
+    browserContext,
+  });
+  if (entityGate) gates.push(entityGate);
+  const batchGate = call_entity_batch_gate({
+    crystal: subLlm,
+    sub_crystal: subLlm,
+    max_depth: maxDepth,
+    depth,
+    usage,
+    parent_context: context,
+    onProgress: progress,
+    browserContext,
+  });
+  if (batchGate) gates.push(batchGate);
+
+  // 3. Init medium with gates so the sandbox exists and gates are registered as host functions.
+  // Circle's lazy init will be a no-op since medium is already initialized.
+  await medium.init(gates, dependency_overrides || null);
   const sandbox = getJsMediumSandbox(medium)!;
 
-  // 3. Analyze the context structure to generate the System Prompt
+  // 4. Analyze the context structure to generate the System Prompt
   const metadata = analyzeContext(context);
   const systemPrompt = getRlmSystemPrompt({
     contextType: metadata.type,
     contextLength: metadata.length,
     contextPreview: metadata.preview,
-    hasRecursion: depth < maxDepth,
+    gates,
     hasBrowser: !!browserContext,
     browserAllowedFunctions: browserContext
       ? new Set(browserContext.getAllowedFunctions())
       : undefined,
   });
 
-  // 4. Register RLM Host Functions (The Recursive Bridge)
-  // submit_answer is already registered by the medium, but registerRlmFunctions
-  // adds llm_query, llm_batch, and browser functions.
+  // 5. Register remaining RLM Host Functions (browser, etc.)
+  // When gates exist (depth < maxDepth), the medium already registered llm_query and llm_batch.
+  // onLlmQuery is only used as a fallback when skipLlmQuery is false (depth >= maxDepth).
   await registerRlmFunctions({
     sandbox,
     context,
     depth,
     browserContext,
     onProgress,
+    skipLlmQuery: !!entityGate,
     onLlmQuery: async (query, subContext) => {
       const contextToPass = subContext !== undefined ? subContext : context;
 
@@ -133,25 +167,31 @@ export async function createRlmAgent(
     },
   });
 
-  // 5. Build Circle with the JS medium and wards
+  // 6. Build Circle with the JS medium, gates, and wards
   const circle = Circle({
     medium,
-    gates: [],
+    gates,
     wards: [max_turns(20), require_done()],
   });
 
-  // 6. Create Entity via cantrip API with shared usage tracker
-  const entity = new Entity({
+  // 7. Create Entity via cantrip API with shared usage tracker and folding
+  const loom = new Loom(new MemoryStorage());
+  const spell = cantrip({
     crystal: llm,
-    call: {
-      system_prompt: systemPrompt,
-      hyperparameters: { tool_choice: "auto" },
-      gate_definitions: [],
-    },
+    call: { system_prompt: systemPrompt, hyperparameters: { tool_choice: "auto" } },
     circle,
     dependency_overrides: dependency_overrides.size ? dependency_overrides : null,
     usage_tracker: usage,
+    loom,
+    folding_enabled: true,
+    folding: {
+      enabled: true,
+      threshold_ratio: 0.75,
+      summary_prompt: "Summarize the key findings and decisions from the conversation so far. Be concise but preserve important details, data values, and conclusions.",
+      recent_turns_to_keep: 5,
+    },
   });
+  const entity = spell.invoke();
 
   return { entity, sandbox };
 }
@@ -256,11 +296,34 @@ export async function createRlmAgentWithMemory(
   // 1. Create JS medium with context as initial state
   const medium = jsMedium({ state: { context } });
 
-  // 2. Force medium initialization so we can access the sandbox
-  await medium.init([], null);
+  // 2. Build gates array — done gate (submit_answer) + call_entity gate (llm_query)
+  const gates: GateResult[] = [done_for_medium()];
+  const entityGate = call_entity_gate({
+    crystal: subLlm,
+    sub_crystal: subLlm,
+    max_depth: maxDepth,
+    depth: 0, // Memory agent is depth 0
+    usage,
+    parent_context: context,
+    onProgress,
+  });
+  if (entityGate) gates.push(entityGate);
+  const batchGate = call_entity_batch_gate({
+    crystal: subLlm,
+    sub_crystal: subLlm,
+    max_depth: maxDepth,
+    depth: 0,
+    usage,
+    parent_context: context,
+    onProgress,
+  });
+  if (batchGate) gates.push(batchGate);
+
+  // 3. Init medium with gates so sandbox exists and gates are registered as host functions
+  await medium.init(gates, null);
   const sandbox = getJsMediumSandbox(medium)!;
 
-  // 3. Generate system prompt that explains the memory feature
+  // 4. Generate system prompt that explains the memory feature
   const dataMetadata = data ? analyzeContext(data) : null;
   const systemPrompt = getRlmMemorySystemPrompt({
     hasData: !!data,
@@ -268,20 +331,23 @@ export async function createRlmAgentWithMemory(
     dataLength: dataMetadata?.length,
     dataPreview: dataMetadata?.preview,
     windowSize,
+    gates,
     hasBrowser: !!browserContext,
     browserAllowedFunctions: browserContext
       ? new Set(browserContext.getAllowedFunctions())
       : undefined,
   });
 
-  // 4. Register RLM functions with the unified context
-  // Memory agent is always at depth 0, children start at depth 1
+  // 5. Register remaining RLM functions (browser, etc.)
+  // When gates exist (maxDepth > 0), the medium already registered llm_query and llm_batch.
+  // onLlmQuery is only used as a fallback when skipLlmQuery is false (maxDepth <= 0).
   await registerRlmFunctions({
     sandbox,
     context,
     depth: 0,
     browserContext,
     onProgress,
+    skipLlmQuery: !!entityGate,
     onLlmQuery: async (query, subContext) => {
       const contextToPass = subContext !== undefined ? subContext : context;
 
@@ -328,27 +394,41 @@ export async function createRlmAgentWithMemory(
     },
   });
 
-  // 5. Build Circle with the JS medium and wards
+  // 6. Build Circle with the JS medium, gates, and wards
   const circle = Circle({
     medium,
-    gates: [],
+    gates,
     wards: [max_turns(20), require_done()],
   });
 
-  // 6. Create Entity via cantrip API with shared usage tracker
-  const entity = new Entity({
+  // 7. Create Entity via cantrip API with shared usage tracker and folding
+  const loom = new Loom(new MemoryStorage());
+  const spell = cantrip({
     crystal: llm,
-    call: {
-      system_prompt: systemPrompt,
-      hyperparameters: { tool_choice: "auto" },
-      gate_definitions: [],
-    },
+    call: { system_prompt: systemPrompt, hyperparameters: { tool_choice: "auto" } },
     circle,
     dependency_overrides: null,
     usage_tracker: usage,
+    loom,
+    folding_enabled: true,
+    folding: {
+      enabled: true,
+      threshold_ratio: 0.75,
+      summary_prompt: "Summarize the key findings and decisions from the conversation so far. Be concise but preserve important details, data values, and conclusions.",
+      recent_turns_to_keep: windowSize,
+    },
   });
+  const entity = spell.invoke();
 
-  // 7. Memory management function — uses entity.history/load_history
+  // 8. Memory management function — uses entity.history/load_history
+  //
+  // Folding manages context window size via LLM summaries (§6.8).
+  // manageMemory migrates old turns into context.history where the entity
+  // can search them via JS code in the sandbox. Both are needed:
+  // - Folding compresses messages in place (threshold-based, automatic)
+  // - manageMemory moves messages to sandbox state (called by the user after each turn)
+  // These don't conflict — folding may have already compressed some messages,
+  // and manageMemory handles whatever messages remain beyond windowSize.
   const manageMemory = () => {
     // Keep slicing until active user count is within window
     while (true) {
