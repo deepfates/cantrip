@@ -7,9 +7,9 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { ChatAnthropic } from "../src/llm/anthropic/chat";
-import { createRlmAgent, createRlmAgentWithMemory } from "../src/rlm/service";
-import { BrowserContext } from "../src/tools/builtin/browser_context";
+import { ChatAnthropic } from "../src/crystal/providers/anthropic/chat";
+import { createRlmAgent, createRlmAgentWithMemory } from "../src/circle/gate/builtin/call_agent";
+import { BrowserContext } from "../src/circle/gate/builtin/browser_context";
 
 describe("ACP RLM Browser Agent", () => {
   test("createRlmAgent with browserContext option is defined", () => {
@@ -28,11 +28,10 @@ describe("ACP RLM Browser Agent", () => {
   });
 
   test("example file exists and is readable", async () => {
-    const file = Bun.file("examples/15_acp_rlm_browser.ts");
+    const file = Bun.file("examples/13_acp.ts");
     expect(await file.exists()).toBe(true);
     const content = await file.text();
     expect(content).toContain("serveCantripACP");
     expect(content).toContain("BrowserContext");
-    expect(content).toContain("createRlmAgent");
   });
 });

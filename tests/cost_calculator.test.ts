@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { PricingProvider } from "../src/tokens";
-import { CostCalculator } from "../src/tokens";
+import type { PricingProvider } from "../src/crystal/tokens";
+import { CostCalculator } from "../src/crystal/tokens";
 
 const pricingProvider: PricingProvider = {
   async getModelPricing(model: string) {

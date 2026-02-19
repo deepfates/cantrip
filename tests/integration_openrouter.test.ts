@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatOpenRouter } from "../src/llm/openrouter/chat";
-import type { ToolDefinition } from "../src/llm/base";
+import { ChatOpenRouter } from "../src/crystal/providers/openrouter/chat";
+import type { GateDefinition } from "../src/crystal/crystal";
 import { loadEnv } from "./helpers/env";
 
 loadEnv();
@@ -12,7 +12,7 @@ const it = hasKey ? test : test.skip;
 // OpenRouter model names are provider-qualified; default to OpenAI's current frontier.
 const model = process.env.OPENROUTER_MODEL ?? "openai/gpt-5.1";
 
-const echoTool: ToolDefinition = {
+const echoTool: GateDefinition = {
   name: "echo",
   description: "Echo back the input",
   parameters: {

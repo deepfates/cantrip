@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatAnthropic } from "../src/llm/anthropic/chat";
-import type { ToolDefinition } from "../src/llm/base";
+import { ChatAnthropic } from "../src/crystal/providers/anthropic/chat";
+import type { GateDefinition } from "../src/crystal/crystal";
 import { loadEnv } from "./helpers/env";
 
 loadEnv();
@@ -11,7 +11,7 @@ const it = hasKey ? test : test.skip;
 
 const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5";
 
-const echoTool: ToolDefinition = {
+const echoTool: GateDefinition = {
   name: "echo",
   description: "Echo back the input",
   parameters: {

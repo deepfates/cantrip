@@ -1,0 +1,251 @@
+---
+title: "CodeAct: Connecting Large Language Models with Iterative Code Actions"
+url: "https://arxiv.org/abs/2402.01030"
+date_fetched: "2026-02-16"
+---
+
+Title: Executable Code Actions Elicit Better LLM Agents
+
+URL Source: https://arxiv.org/abs/2402.01030
+
+Published Time: Mon, 10 Jun 2024 00:17:22 GMT
+
+Markdown Content:
+[2402.01030] Executable Code Actions Elicit Better LLM Agents
+===============
+[![Image 1: close this message](https://arxiv.org/static/browse/0.3.4/images/icons/close-slider.png)](https://arxiv.org/abs/2402.01030#)
+
+![Image 2: arXiv smileybones](https://arxiv.org/static/browse/0.3.4/images/icons/smileybones-pixel.png)
+
+Happy Open Access Week from arXiv!
+----------------------------------
+
+YOU make open access possible! Tell us why you support #openaccess and give to arXiv this week to help keep science open for all.
+
+[**Donate!**](https://arxiv.salsalabs.org/arXivOAWeek2025)
+
+[Skip to main content](https://arxiv.org/abs/2402.01030#content)
+
+[![Image 3: Cornell University Logo](https://arxiv.org/static/browse/0.3.4/images/icons/cu/cornell-reduced-white-SMALL.svg)](https://www.cornell.edu/)
+
+We gratefully acknowledge support from the Simons Foundation, [member institutions](https://info.arxiv.org/about/ourmembers.html), and all contributors.[Donate](https://info.arxiv.org/about/donate.html)
+
+[](https://arxiv.org/IgnoreMe)
+
+[![Image 4: arxiv logo](https://arxiv.org/static/browse/0.3.4/images/arxiv-logo-one-color-white.svg)](https://arxiv.org/)>[cs](https://arxiv.org/list/cs/recent)> arXiv:2402.01030 
+
+[Help](https://info.arxiv.org/help) | [Advanced Search](https://arxiv.org/search/advanced)
+
+Search
+
+[![Image 5: arXiv logo](https://arxiv.org/static/browse/0.3.4/images/arxiv-logomark-small-white.svg)](https://arxiv.org/)
+
+[![Image 6: Cornell University Logo](https://arxiv.org/static/browse/0.3.4/images/icons/cu/cornell-reduced-white-SMALL.svg)](https://www.cornell.edu/)
+
+GO
+
+quick links
+-----------
+
+*   [Login](https://arxiv.org/login)
+*   [Help Pages](https://info.arxiv.org/help)
+*   [About](https://info.arxiv.org/about)
+
+Computer Science > Computation and Language
+===========================================
+
+**arXiv:2402.01030** (cs) 
+
+ [Submitted on 1 Feb 2024 ([v1](https://arxiv.org/abs/2402.01030v1)), last revised 7 Jun 2024 (this version, v4)]
+
+Title:Executable Code Actions Elicit Better LLM Agents
+======================================================
+
+Authors:[Xingyao Wang](https://arxiv.org/search/cs?searchtype=author&query=Wang,+X), [Yangyi Chen](https://arxiv.org/search/cs?searchtype=author&query=Chen,+Y), [Lifan Yuan](https://arxiv.org/search/cs?searchtype=author&query=Yuan,+L), [Yizhe Zhang](https://arxiv.org/search/cs?searchtype=author&query=Zhang,+Y), [Yunzhu Li](https://arxiv.org/search/cs?searchtype=author&query=Li,+Y), [Hao Peng](https://arxiv.org/search/cs?searchtype=author&query=Peng,+H), [Heng Ji](https://arxiv.org/search/cs?searchtype=author&query=Ji,+H)
+
+View a PDF of the paper titled Executable Code Actions Elicit Better LLM Agents, by Xingyao Wang and 6 other authors
+
+[View PDF](https://arxiv.org/pdf/2402.01030)[HTML (experimental)](https://arxiv.org/html/2402.01030v4)
+> Abstract:Large Language Model (LLM) agents, capable of performing a broad range of actions, such as invoking tools and controlling robots, show great potential in tackling real-world challenges. LLM agents are typically prompted to produce actions by generating JSON or text in a pre-defined format, which is usually limited by constrained action space (e.g., the scope of pre-defined tools) and restricted flexibility (e.g., inability to compose multiple tools). This work proposes to use executable Python code to consolidate LLM agents' actions into a unified action space (CodeAct). Integrated with a Python interpreter, CodeAct can execute code actions and dynamically revise prior actions or emit new actions upon new observations through multi-turn interactions. Our extensive analysis of 17 LLMs on API-Bank and a newly curated benchmark shows that CodeAct outperforms widely used alternatives (up to 20% higher success rate). The encouraging performance of CodeAct motivates us to build an open-source LLM agent that interacts with environments by executing interpretable code and collaborates with users using natural language. To this end, we collect an instruction-tuning dataset CodeActInstruct that consists of 7k multi-turn interactions using CodeAct. We show that it can be used with existing data to improve models in agent-oriented tasks without compromising their general capability. CodeActAgent, finetuned from Llama2 and Mistral, is integrated with Python interpreter and uniquely tailored to perform sophisticated tasks (e.g., model training) using existing libraries and autonomously self-debug.
+
+Comments:Accepted by ICML 2024; Code, data, model, and demo are available at [this https URL](https://github.com/xingyaoww/code-act)
+Subjects:Computation and Language (cs.CL); Artificial Intelligence (cs.AI)
+Cite as:[arXiv:2402.01030](https://arxiv.org/abs/2402.01030) [cs.CL]
+(or [arXiv:2402.01030v4](https://arxiv.org/abs/2402.01030v4) [cs.CL] for this version)
+[https://doi.org/10.48550/arXiv.2402.01030](https://doi.org/10.48550/arXiv.2402.01030)
+
+Focus to learn more
+
+ arXiv-issued DOI via DataCite
+
+Submission history
+------------------
+
+ From: Xingyao Wang [[view email](https://arxiv.org/show-email/8dc24098/2402.01030)] 
+
+**[[v1]](https://arxiv.org/abs/2402.01030v1)** Thu, 1 Feb 2024 21:38:58 UTC (8,761 KB)
+
+**[[v2]](https://arxiv.org/abs/2402.01030v2)** Mon, 18 Mar 2024 15:18:45 UTC (8,780 KB)
+
+**[[v3]](https://arxiv.org/abs/2402.01030v3)** Fri, 24 May 2024 01:05:14 UTC (8,778 KB)
+
+**[v4]** Fri, 7 Jun 2024 01:53:07 UTC (8,789 KB)
+
+[](https://arxiv.org/abs/2402.01030)Full-text links:
+Access Paper:
+-------------
+
+ View a PDF of the paper titled Executable Code Actions Elicit Better LLM Agents, by Xingyao Wang and 6 other authors
+
+*   [View PDF](https://arxiv.org/pdf/2402.01030)
+*   [HTML (experimental)](https://arxiv.org/html/2402.01030v4)
+*   [TeX Source](https://arxiv.org/src/2402.01030)
+
+[![Image 7: license icon](https://arxiv.org/icons/licenses/by-4.0.png)view license](http://creativecommons.org/licenses/by/4.0/ "Rights to this article")
+
+ Current browse context: 
+
+cs.CL
+
+[<prev](https://arxiv.org/prevnext?id=2402.01030&function=prev&context=cs.CL "previous in cs.CL (accesskey p)") | [next>](https://arxiv.org/prevnext?id=2402.01030&function=next&context=cs.CL "next in cs.CL (accesskey n)")
+
+[new](https://arxiv.org/list/cs.CL/new) | [recent](https://arxiv.org/list/cs.CL/recent) | [2024-02](https://arxiv.org/list/cs.CL/2024-02)
+
+ Change to browse by: 
+
+[cs](https://arxiv.org/abs/2402.01030?context=cs)
+
+[cs.AI](https://arxiv.org/abs/2402.01030?context=cs.AI)
+
+### References & Citations
+
+*   [NASA ADS](https://ui.adsabs.harvard.edu/abs/arXiv:2402.01030)
+*   [Google Scholar](https://scholar.google.com/scholar_lookup?arxiv_id=2402.01030)
+*   [Semantic Scholar](https://api.semanticscholar.org/arXiv:2402.01030)
+
+export BibTeX citation Loading...
+
+BibTeX formatted citation
+-------------------------
+
+×
+
+Data provided by: [](https://arxiv.org/abs/2402.01030)
+
+### Bookmark
+
+[![Image 8: BibSonomy logo](https://arxiv.org/static/browse/0.3.4/images/icons/social/bibsonomy.png)](http://www.bibsonomy.org/BibtexHandler?requTask=upload&url=https://arxiv.org/abs/2402.01030&description=Executable%20Code%20Actions%20Elicit%20Better%20LLM%20Agents "Bookmark on BibSonomy")[![Image 9: Reddit logo](https://arxiv.org/static/browse/0.3.4/images/icons/social/reddit.png)](https://reddit.com/submit?url=https://arxiv.org/abs/2402.01030&title=Executable%20Code%20Actions%20Elicit%20Better%20LLM%20Agents "Bookmark on Reddit")
+
+Bibliographic Tools 
+
+Bibliographic and Citation Tools
+================================
+
+- [x] Bibliographic Explorer Toggle 
+
+Bibliographic Explorer _([What is the Explorer?](https://info.arxiv.org/labs/showcase.html#arxiv-bibliographic-explorer))_
+
+- [x] Connected Papers Toggle 
+
+Connected Papers _([What is Connected Papers?](https://www.connectedpapers.com/about))_
+
+- [x] Litmaps Toggle 
+
+Litmaps _([What is Litmaps?](https://www.litmaps.co/))_
+
+- [x] scite.ai Toggle 
+
+scite Smart Citations _([What are Smart Citations?](https://www.scite.ai/))_
+
+Code, Data, Media 
+
+Code, Data and Media Associated with this Article
+=================================================
+
+- [x] alphaXiv Toggle 
+
+alphaXiv _([What is alphaXiv?](https://alphaxiv.org/))_
+
+- [x] Links to Code Toggle 
+
+CatalyzeX Code Finder for Papers _([What is CatalyzeX?](https://www.catalyzex.com/))_
+
+- [x] DagsHub Toggle 
+
+DagsHub _([What is DagsHub?](https://dagshub.com/))_
+
+- [x] GotitPub Toggle 
+
+Gotit.pub _([What is GotitPub?](http://gotit.pub/faq))_
+
+- [x] Huggingface Toggle 
+
+Hugging Face _([What is Huggingface?](https://huggingface.co/huggingface))_
+
+- [x] Links to Code Toggle 
+
+Papers with Code _([What is Papers with Code?](https://paperswithcode.com/))_
+
+- [x] ScienceCast Toggle 
+
+ScienceCast _([What is ScienceCast?](https://sciencecast.org/welcome))_
+
+Demos 
+
+Demos
+=====
+
+- [x] Replicate Toggle 
+
+Replicate _([What is Replicate?](https://replicate.com/docs/arxiv/about))_
+
+- [x] Spaces Toggle 
+
+Hugging Face Spaces _([What is Spaces?](https://huggingface.co/docs/hub/spaces))_
+
+- [x] Spaces Toggle 
+
+TXYZ.AI _([What is TXYZ.AI?](https://txyz.ai/))_
+
+Related Papers 
+
+Recommenders and Search Tools
+=============================
+
+- [x] Link to Influence Flower 
+
+Influence Flower _([What are Influence Flowers?](https://influencemap.cmlab.dev/))_
+
+- [x] Core recommender toggle 
+
+CORE Recommender _([What is CORE?](https://core.ac.uk/services/recommender))_
+
+*   [Author](https://arxiv.org/abs/2402.01030)
+*   [Venue](https://arxiv.org/abs/2402.01030)
+*   [Institution](https://arxiv.org/abs/2402.01030)
+*   [Topic](https://arxiv.org/abs/2402.01030)
+
+ About arXivLabs  
+
+arXivLabs: experimental projects with community collaborators
+=============================================================
+
+arXivLabs is a framework that allows collaborators to develop and share new arXiv features directly on our website.
+
+Both individuals and organizations that work with arXivLabs have embraced and accepted our values of openness, community, excellence, and user data privacy. arXiv is committed to these values and only works with partners that adhere to them.
+
+Have an idea for a project that will add value for arXiv's community? [**Learn more about arXivLabs**](https://info.arxiv.org/labs/index.html).
+
+[Which authors of this paper are endorsers?](https://arxiv.org/auth/show-endorsers/2402.01030) | [Disable MathJax](javascript:setMathjaxCookie()) ([What is MathJax?](https://info.arxiv.org/help/mathjax.html)) 
+
+*   [About](https://info.arxiv.org/about)
+*   [Help](https://info.arxiv.org/help)
+
+*   [Contact](https://info.arxiv.org/help/contact.html)
+*   [Subscribe](https://info.arxiv.org/help/subscribe)
+
+*   [Copyright](https://info.arxiv.org/help/license/index.html)
+*   [Privacy Policy](https://info.arxiv.org/help/policies/privacy_policy.html)
+
+*   [Web Accessibility Assistance](https://info.arxiv.org/help/web_accessibility.html)
+*   [arXiv Operational Status](https://status.arxiv.org/)

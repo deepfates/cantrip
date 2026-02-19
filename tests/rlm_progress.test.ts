@@ -1,10 +1,13 @@
+// cantrip-migration: uses createRlmAgent (RLM-internal factory).
+// Tests progress event callbacks for sub-agent spawning and batching —
+// genuinely below the cantrip API level.
 import { describe, expect, test, afterEach } from "bun:test";
-import { createRlmAgent } from "../src/rlm/service";
-import { JsAsyncContext } from "../src/tools/builtin/js_async_context";
-import type { BaseChatModel } from "../src/llm/base";
-import type { AnyMessage } from "../src/llm/messages";
-import type { ChatInvokeCompletion } from "../src/llm/views";
-import type { RlmProgressEvent } from "../src/rlm/tools";
+import { createRlmAgent } from "../src/circle/gate/builtin/call_agent";
+import { JsAsyncContext } from "../src/circle/gate/builtin/js_async_context";
+import type { BaseChatModel } from "../src/crystal/crystal";
+import type { AnyMessage } from "../src/crystal/messages";
+import type { ChatInvokeCompletion } from "../src/crystal/views";
+import type { RlmProgressEvent } from "../src/circle/gate/builtin/call_agent_tools";
 
 class MockLlm implements BaseChatModel {
   model = "mock";

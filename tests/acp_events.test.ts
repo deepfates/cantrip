@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mapEvent } from "../src/acp/events";
+import { mapEvent } from "../src/entity/acp/events";
 import {
   TextEvent,
   ThinkingEvent,
@@ -10,7 +10,7 @@ import {
   StepCompleteEvent,
   UsageEvent,
   HiddenUserMessageEvent,
-} from "../src/agent/events";
+} from "../src/entity/events";
 
 /** Captures sessionUpdate calls for assertions. */
 function mockConnection() {
