@@ -117,20 +117,29 @@ export async function createRlmAgent(
   await medium.init(gates, dependency_overrides || null);
   const sandbox = getJsMediumSandbox(medium)!;
 
-  // 4. Analyze the context structure to generate the System Prompt
+  // 4. Build Circle with the JS medium, gates, and wards
+  const circle = Circle({
+    medium,
+    gates,
+    wards: [max_turns(20), require_done()],
+  });
+
+  // 5. Analyze the context structure and generate the System Prompt.
+  // Uses circle.capabilityDocs() so the prompt reflects the circle's actual capabilities.
   const metadata = analyzeContext(context);
   const systemPrompt = getRlmSystemPrompt({
     contextType: metadata.type,
     contextLength: metadata.length,
     contextPreview: metadata.preview,
     gates,
+    capabilityDocs: circle.capabilityDocs(),
     hasBrowser: !!browserContext,
     browserAllowedFunctions: browserContext
       ? new Set(browserContext.getAllowedFunctions())
       : undefined,
   });
 
-  // 5. Register remaining RLM Host Functions (browser, etc.)
+  // 6. Register remaining RLM Host Functions (browser, etc.)
   // When gates exist (depth < maxDepth), the medium already registered llm_query and llm_batch.
   // onLlmQuery is only used as a fallback when skipLlmQuery is false (depth >= maxDepth).
   await registerRlmFunctions({
@@ -183,13 +192,6 @@ export async function createRlmAgent(
         child.sandbox.dispose();
       }
     },
-  });
-
-  // 6. Build Circle with the JS medium, gates, and wards
-  const circle = Circle({
-    medium,
-    gates,
-    wards: [max_turns(20), require_done()],
   });
 
   // 7. Create Entity via cantrip API with shared usage tracker and folding
@@ -342,7 +344,15 @@ export async function createRlmAgentWithMemory(
   await medium.init(gates, null);
   const sandbox = getJsMediumSandbox(medium)!;
 
-  // 4. Generate system prompt that explains the memory feature
+  // 4. Build Circle with the JS medium, gates, and wards
+  const circle = Circle({
+    medium,
+    gates,
+    wards: [max_turns(20), require_done()],
+  });
+
+  // 5. Generate system prompt that explains the memory feature.
+  // Uses circle.capabilityDocs() so the prompt reflects the circle's actual capabilities.
   const dataMetadata = data ? analyzeContext(data) : null;
   const systemPrompt = getRlmMemorySystemPrompt({
     hasData: !!data,
@@ -351,13 +361,14 @@ export async function createRlmAgentWithMemory(
     dataPreview: dataMetadata?.preview,
     windowSize,
     gates,
+    capabilityDocs: circle.capabilityDocs(),
     hasBrowser: !!browserContext,
     browserAllowedFunctions: browserContext
       ? new Set(browserContext.getAllowedFunctions())
       : undefined,
   });
 
-  // 5. Register remaining RLM functions (browser, etc.)
+  // 6. Register remaining RLM functions (browser, etc.)
   // When gates exist (maxDepth > 0), the medium already registered llm_query and llm_batch.
   // onLlmQuery is only used as a fallback when skipLlmQuery is false (maxDepth <= 0).
   await registerRlmFunctions({
@@ -411,13 +422,6 @@ export async function createRlmAgentWithMemory(
         child.sandbox.dispose();
       }
     },
-  });
-
-  // 6. Build Circle with the JS medium, gates, and wards
-  const circle = Circle({
-    medium,
-    gates,
-    wards: [max_turns(20), require_done()],
   });
 
   // 7. Create Entity via cantrip API with shared usage tracker and folding

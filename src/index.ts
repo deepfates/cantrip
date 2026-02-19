@@ -47,7 +47,7 @@ export { JsContext, getJsContext } from "./circle/medium/js/context";
 export { BrowserContext, getBrowserContext } from "./circle/medium/browser/context";
 export { createRlmAgent, createRlmAgentWithMemory } from "./circle/recipe/rlm";
 export type { RlmOptions, RlmMemoryOptions, RlmMemoryAgent } from "./circle/recipe/rlm";
-export { createRlmConsoleRenderer, patchStderrForRlm } from "./circle/recipe/rlm_console";
+export { createRlmConsoleRenderer, patchStderrForRlm } from "./ui/rlm_console";
 export { call_entity as call_entity_gate, call_entity_batch as call_entity_batch_gate } from "./circle/gate/builtin/call_entity_gate";
 export type { CallEntityGateOptions } from "./circle/gate/builtin/call_entity_gate";
 

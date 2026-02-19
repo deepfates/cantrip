@@ -15,7 +15,7 @@ import {
   FinalResponseEvent,
   UsageEvent,
   type TurnEvent,
-} from "../../entity/events";
+} from "../entity/events";
 
 // ANSI color codes
 const c = {

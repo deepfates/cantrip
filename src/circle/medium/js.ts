@@ -9,7 +9,16 @@ import {
   JsAsyncContext,
   createAsyncModule,
 } from "./js/async_context";
-import { formatRlmMetadata } from "../recipe/rlm_tools";
+/**
+ * Formats sandbox execution results into a compact metadata string.
+ * This prevents the entity's prompt history from being flooded with large data dumps.
+ */
+export function formatRlmMetadata(output: string): string {
+  if (!output || output === "undefined") return "[Result: undefined]";
+  const length = output.length;
+  const preview = output.slice(0, 150).replace(/\n/g, " ");
+  return `[Result: ${length} chars] "${preview}${length > 150 ? "..." : ""}"`;
+}
 import { TaskComplete } from "../../entity/errors";
 import {
   StepStartEvent,

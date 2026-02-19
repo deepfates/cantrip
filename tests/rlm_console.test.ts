@@ -3,7 +3,7 @@ import { describe, test, expect } from "bun:test";
 import {
   createRlmConsoleRenderer,
   patchStderrForRlm,
-} from "../src/circle/recipe/rlm_console";
+} from "../src/ui/rlm_console";
 import {
   ToolCallEvent,
   ToolResultEvent,
