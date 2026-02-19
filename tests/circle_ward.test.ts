@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { Agent, TaskComplete } from "../src/entity/service";
+import { TaskComplete } from "../src/entity/errors";
+import { Entity } from "../src/cantrip/entity";
+import { Circle } from "../src/circle/circle";
 import { tool } from "../src/circle/gate/decorator";
 import { renderGateDefinitions } from "../src/cantrip/call";
-import type { Circle } from "../src/circle/circle";
-import { DEFAULT_WARD } from "../src/circle/ward";
+import { DEFAULT_WARD, resolveWards } from "../src/circle/ward";
 import type { Ward } from "../src/circle/ward";
 import type { Call } from "../src/cantrip/call";
 
@@ -106,106 +107,48 @@ describe("Ward", () => {
   });
 });
 
-// ── Circle wiring into Agent ───────────────────────────────────────
+// ── Circle wiring into Entity ────────────────────────────────────
 
-describe("Agent with Circle", () => {
-  test("accepts Circle and derives tools from gates", () => {
-    const circle: Circle = {
+describe("Entity with Circle", () => {
+  test("Circle gates are accessible on the circle", () => {
+    const circle = Circle({
       gates: [add, done],
       wards: [{ max_turns: 50, require_done_tool: true }],
-    };
-
-    const agent = new Agent({ llm: dummyLlm as any, circle });
-    // Agent should have the tools from the circle
-    expect(agent.tools).toHaveLength(2);
-    expect(agent.tools[0].name).toBe("add");
-    expect(agent.tools[1].name).toBe("done");
-  });
-
-  test("Circle ward overrides max_iterations", () => {
-    const circle: Circle = {
-      gates: [add],
-      wards: [{ max_turns: 42, require_done_tool: false }],
-    };
-
-    const agent = new Agent({ llm: dummyLlm as any, circle });
-    expect(agent.max_iterations).toBe(42);
-  });
-
-  test("Circle ward overrides require_done_tool", () => {
-    const circle: Circle = {
-      gates: [add],
-      wards: [{ max_turns: 100, require_done_tool: true }],
-    };
-
-    const agent = new Agent({ llm: dummyLlm as any, circle });
-    expect(agent.require_done_tool).toBe(true);
-  });
-
-  test("explicit options take precedence over Circle ward", () => {
-    const circle: Circle = {
-      gates: [add],
-      wards: [{ max_turns: 42, require_done_tool: true }],
-    };
-
-    const agent = new Agent({
-      llm: dummyLlm as any,
-      circle,
-      max_iterations: 10,
-      require_done_tool: false,
     });
-    // Explicit options win
-    expect(agent.max_iterations).toBe(10);
-    expect(agent.require_done_tool).toBe(false);
+
+    expect(circle.gates).toHaveLength(2);
+    expect(circle.gates[0].name).toBe("add");
+    expect(circle.gates[1].name).toBe("done");
   });
 
-  test("explicit tools take precedence over Circle gates", () => {
-    const circle: Circle = {
+  test("Circle wards are resolved correctly", () => {
+    const circle = Circle({
       gates: [add, done],
-      wards: [DEFAULT_WARD],
-    };
-
-    const agent = new Agent({
-      llm: dummyLlm as any,
-      tools: [add],
-      circle,
+      wards: [{ max_turns: 42, require_done_tool: true }],
     });
-    // Explicit tools wins
-    expect(agent.tools).toHaveLength(1);
-    expect(agent.tools[0].name).toBe("add");
+
+    const resolved = resolveWards(circle.wards);
+    expect(resolved.max_turns).toBe(42);
+    expect(resolved.require_done_tool).toBe(true);
   });
 
-  test("backward compatible: Agent without circle still works", () => {
-    const agent = new Agent({
-      llm: dummyLlm as any,
-      tools: [add],
-      max_iterations: 5,
-      require_done_tool: true,
-    });
-    expect(agent.tools).toHaveLength(1);
-    expect(agent.max_iterations).toBe(5);
-    expect(agent.require_done_tool).toBe(true);
-  });
-
-  test("Circle with no wards uses DEFAULT_WARD", () => {
-    const circle: Circle = {
-      gates: [add],
-      wards: [],
-    };
-
-    const agent = new Agent({ llm: dummyLlm as any, circle });
-    expect(agent.max_iterations).toBe(DEFAULT_WARD.max_turns);
-    expect(agent.require_done_tool).toBe(DEFAULT_WARD.require_done_tool);
-  });
-
-  test("Agent with Circle can query", async () => {
-    const circle: Circle = {
-      gates: [add],
+  test("Entity with Circle can turn", async () => {
+    const circle = Circle({
+      gates: [add, done],
       wards: [{ max_turns: 10, require_done_tool: false }],
-    };
+    });
 
-    const agent = new Agent({ llm: dummyLlm as any, circle });
-    const result = await agent.query("hello");
+    const entity = new Entity({
+      crystal: dummyLlm as any,
+      call: {
+        system_prompt: null,
+        hyperparameters: { tool_choice: "auto" },
+        gate_definitions: [],
+      },
+      circle,
+      dependency_overrides: null,
+    });
+    const result = await entity.turn("hello");
     expect(result).toBe("ok");
   });
 });

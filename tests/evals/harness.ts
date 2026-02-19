@@ -1,17 +1,18 @@
 /**
  * Evaluation harness for real LLM benchmarks.
  *
- * Runs the same task against RLM and Agent+JS baselines with real LLMs,
+ * Runs the same task against RLM and Entity+JS baselines with real LLMs,
  * collecting actual token usage from the API.
  *
  * Addresses fairness concerns from code review:
- * - Three baselines: RLM, Agent+JS (full output), Agent+JS (metadata-only)
- * - Prompt parity: Agent baselines get equivalent prompt quality to RLM
+ * - Three baselines: RLM, Entity+JS (full output), Entity+JS (metadata-only)
+ * - Prompt parity: Entity baselines get equivalent prompt quality to RLM
  * - Both use require_done_tool: true for symmetric termination
  * - Context preview provided to all approaches
  * - Cached tokens tracked separately
  */
-import { Agent } from "../../src/entity/service";
+import { Entity } from "../../src/cantrip/entity";
+import { Circle } from "../../src/circle/circle";
 import { analyzeContext, createRlmAgent } from "../../src/circle/gate/builtin/call_agent";
 import { JsContext, getJsContext } from "../../src/circle/gate/builtin/js_context";
 import { js } from "../../src/circle/gate/builtin/js";
@@ -130,9 +131,9 @@ const js_meta = tool(
   },
 );
 
-// --- Agent System Prompt (parity with RLM prompt) ---
+// --- Entity System Prompt (parity with RLM prompt) ---
 
-function getAgentSystemPrompt(
+function getEntitySystemPrompt(
   meta: { type: string; length: number; preview: string },
   metadataOnly: boolean,
 ): string {
@@ -240,7 +241,7 @@ export async function runRlmEval(options: {
     typeof context === "string" ? context : JSON.stringify(context);
 
   const start = Date.now();
-  const { agent, sandbox } = await createRlmAgent({
+  const { entity, sandbox } = await createRlmAgent({
     llm,
     context,
     usage,
@@ -251,7 +252,7 @@ export async function runRlmEval(options: {
   const EVAL_TIMEOUT_MS = 240_000; // 4 minutes hard wall-clock limit
   try {
     answer = await Promise.race([
-      agent.query(query),
+      entity.turn(query),
       new Promise<string>((_, reject) =>
         setTimeout(
           () => reject(new Error("RLM eval timeout")),
@@ -282,11 +283,11 @@ export async function runRlmEval(options: {
 }
 
 /**
- * Run a task using a standard Agent with the JS tool (full output).
+ * Run a task using an Entity with the JS tool (full output).
  * Context is pre-loaded into a JsContext sandbox.
  * Uses prompt parity with RLM and require_done_tool for symmetric termination.
  */
-export async function runAgentWithJsEval(options: {
+export async function runEntityWithJsEval(options: {
   llm: BaseChatModel;
   task: string;
   query: string;
@@ -305,22 +306,28 @@ export async function runAgentWithJsEval(options: {
   overrides.set(getJsContext, () => jsCtx);
 
   const meta = analyzeContext(context);
-  const systemPrompt = getAgentSystemPrompt(meta, false);
+  const systemPrompt = getEntitySystemPrompt(meta, false);
 
   const start = Date.now();
-  const agent = new Agent({
-    llm,
-    tools: [js, done],
-    system_prompt: systemPrompt,
+  const circle = Circle({
+    gates: [js, done],
+    wards: [{ max_turns: 20, require_done_tool: true }],
+  });
+  const entity = new Entity({
+    crystal: llm,
+    call: {
+      system_prompt: systemPrompt,
+      hyperparameters: { tool_choice: "auto" },
+      gate_definitions: [],
+    },
+    circle,
     dependency_overrides: overrides,
     usage_tracker: usage,
-    max_iterations: 20,
-    require_done_tool: true,
   });
 
   let answer: string;
   try {
-    answer = await agent.query(query);
+    answer = await entity.turn(query);
   } finally {
     jsCtx.dispose();
   }
@@ -330,7 +337,7 @@ export async function runAgentWithJsEval(options: {
   const accuracy = checkAnswer(answer, expected);
 
   return {
-    approach: "agent+js",
+    approach: "entity+js",
     task,
     context_size: contextStr.length,
     accuracy,
@@ -342,11 +349,11 @@ export async function runAgentWithJsEval(options: {
 }
 
 /**
- * Run a task using a standard Agent with metadata-only JS tool output.
+ * Run a task using an Entity with metadata-only JS tool output.
  * This is the fairest comparison to RLM: same metadata policy, same prompt,
- * but using the standard Agent loop (not RLM's sandbox/submit_answer).
+ * but using the standard Entity loop (not RLM's sandbox/submit_answer).
  */
-export async function runAgentMetaJsEval(options: {
+export async function runEntityMetaJsEval(options: {
   llm: BaseChatModel;
   task: string;
   query: string;
@@ -365,22 +372,28 @@ export async function runAgentMetaJsEval(options: {
   overrides.set(getJsContext, () => jsCtx);
 
   const meta = analyzeContext(context);
-  const systemPrompt = getAgentSystemPrompt(meta, true);
+  const systemPrompt = getEntitySystemPrompt(meta, true);
 
   const start = Date.now();
-  const agent = new Agent({
-    llm,
-    tools: [js_meta, done],
-    system_prompt: systemPrompt,
+  const circle = Circle({
+    gates: [js_meta, done],
+    wards: [{ max_turns: 20, require_done_tool: true }],
+  });
+  const entity = new Entity({
+    crystal: llm,
+    call: {
+      system_prompt: systemPrompt,
+      hyperparameters: { tool_choice: "auto" },
+      gate_definitions: [],
+    },
+    circle,
     dependency_overrides: overrides,
     usage_tracker: usage,
-    max_iterations: 20,
-    require_done_tool: true,
   });
 
   let answer: string;
   try {
-    answer = await agent.query(query);
+    answer = await entity.turn(query);
   } finally {
     jsCtx.dispose();
   }
@@ -390,7 +403,7 @@ export async function runAgentMetaJsEval(options: {
   const accuracy = checkAnswer(answer, expected);
 
   return {
-    approach: "agent+js-meta",
+    approach: "entity+js-meta",
     task,
     context_size: contextStr.length,
     accuracy,

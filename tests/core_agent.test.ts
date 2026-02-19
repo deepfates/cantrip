@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { CoreAgent } from "../src/entity/core";
+import { Entity } from "../src/cantrip/entity";
+import { Circle } from "../src/circle/circle";
 import { rawTool } from "../src/circle/gate/raw";
 import { TaskComplete } from "../src/entity/errors";
 
@@ -34,14 +35,36 @@ const done = rawTool(
   },
 );
 
-describe("core agent", () => {
+/** Helper to create an Entity with minimal boilerplate. */
+function createEntity(opts: {
+  llm: any;
+  gates: any[];
+  wards?: any[];
+}) {
+  const circle = Circle({
+    gates: opts.gates,
+    wards: opts.wards ?? [{ max_turns: 200, require_done_tool: false }],
+  });
+  return new Entity({
+    crystal: opts.llm,
+    call: {
+      system_prompt: null,
+      hyperparameters: { tool_choice: "auto" },
+      gate_definitions: [],
+    },
+    circle,
+    dependency_overrides: null,
+  });
+}
+
+describe("entity (from core agent tests)", () => {
   test("executes tool calls and returns content", async () => {
     const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
       async ainvoke(messages: any[]) {
-        if (messages.filter((m) => m.role === "tool").length === 0) {
+        if (messages.filter((m: any) => m.role === "tool").length === 0) {
           return {
             content: null,
             tool_calls: [
@@ -60,8 +83,11 @@ describe("core agent", () => {
       },
     };
 
-    const agent = new CoreAgent({ llm: llm as any, tools: [add] });
-    const result = await agent.query("What is 2 + 3?");
+    const entity = createEntity({
+      llm: llm as any,
+      gates: [add, done],
+    });
+    const result = await entity.turn("What is 2 + 3?");
     expect(result).toBe("Result is 5");
   });
 
@@ -92,17 +118,17 @@ describe("core agent", () => {
       },
     };
 
-    const agent = new CoreAgent({
+    const entity = createEntity({
       llm: llm as any,
-      tools: [done],
-      require_done_tool: true,
+      gates: [done],
+      wards: [{ max_turns: 200, require_done_tool: true }],
     });
 
-    const result = await agent.query("finish");
+    const result = await entity.turn("finish");
     expect(result).toBe("all set");
   });
 
-  test("does not retry on errors", async () => {
+  test("propagates non-retryable errors", async () => {
     const llm = {
       model: "dummy",
       provider: "dummy",
@@ -112,7 +138,10 @@ describe("core agent", () => {
       },
     };
 
-    const agent = new CoreAgent({ llm: llm as any, tools: [] });
-    await expect(agent.query("hi")).rejects.toThrow("boom");
+    const entity = createEntity({
+      llm: llm as any,
+      gates: [done],
+    });
+    await expect(entity.turn("hi")).rejects.toThrow("boom");
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 
-import { Agent, TaskComplete } from "../src/entity/service";
+import { TaskComplete } from "../src/entity/errors";
 import { tool } from "../src/circle/gate/decorator";
 import {
   Loom,

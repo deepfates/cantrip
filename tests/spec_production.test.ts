@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { Agent, TaskComplete } from "../src/entity/service";
+import { TaskComplete } from "../src/entity/errors";
+import { Entity } from "../src/cantrip/entity";
+import { Circle } from "../src/circle/circle";
 import { cantrip } from "../src/cantrip/cantrip";
 import { tool } from "../src/circle/gate/decorator";
-import type { Circle } from "../src/circle/circle";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 
@@ -31,15 +32,37 @@ const echoGate = tool("Echo text back", async ({ text }: { text: string }) => te
   },
 });
 
+/** Helper to create an Entity with minimal boilerplate. */
+function createEntity(opts: {
+  llm: any;
+  gates: any[];
+  wards?: any[];
+  system_prompt?: string | null;
+  retry?: { max_retries?: number; base_delay?: number; max_delay?: number };
+}) {
+  const circle = Circle({
+    gates: opts.gates,
+    wards: opts.wards ?? [{ max_turns: 10, require_done_tool: true }],
+  });
+  return new Entity({
+    crystal: opts.llm,
+    call: {
+      system_prompt: opts.system_prompt ?? null,
+      hyperparameters: { tool_choice: "auto" },
+      gate_definitions: [],
+    },
+    circle,
+    dependency_overrides: null,
+    retry: opts.retry,
+  });
+}
+
 // ── PROD-1: protocol does not alter entity behavior ────────────────
 // DELETED: With deterministic mocks, two identical cantrips always produce
 // the same result trivially. This test was meaningful only with real providers
 // where observability config could introduce side effects. Skipped per audit.
 
 // ── PROD-2: retried invocation appears as single turn ──────────────
-// NOTE: Uses new Agent() directly because retry config (llm_max_retries,
-// llm_retry_base_delay) is not yet exposed through the cantrip() API.
-// TODO: expose retry config in cantrip() and rewrite to use cantrip API.
 
 describe("PROD-2: retried invocation appears as single turn", () => {
   test("PROD-2: retries on 429 and produces single result", async () => {
@@ -71,19 +94,14 @@ describe("PROD-2: retried invocation appears as single turn", () => {
       },
     };
 
-    const agent = new Agent({
+    const entity = createEntity({
       llm: crystal as any,
-      circle: {
-        gates: [doneGate],
-        wards: [{ max_turns: 10, require_done_tool: true }],
-      },
+      gates: [doneGate],
       system_prompt: "test",
-      llm_max_retries: 3,
-      llm_retry_base_delay: 0,
-      llm_retry_max_delay: 0,
+      retry: { max_retries: 3, base_delay: 0, max_delay: 0 },
     });
 
-    const result = await agent.query("test retry");
+    const result = await entity.turn("test retry");
     expect(result).toBe("ok");
     expect(calls).toBe(3); // 2 failures + 1 success
   });
@@ -117,30 +135,23 @@ describe("PROD-2: retried invocation appears as single turn", () => {
       },
     };
 
-    const agent = new Agent({
+    const entity = createEntity({
       llm: crystal as any,
-      circle: {
-        gates: [doneGate],
-        wards: [{ max_turns: 10, require_done_tool: true }],
-      },
+      gates: [doneGate],
       system_prompt: "test",
-      llm_max_retries: 3,
-      llm_retry_base_delay: 0,
-      llm_retry_max_delay: 0,
+      retry: { max_retries: 3, base_delay: 0, max_delay: 0 },
     });
 
-    const result = await agent.query("test retry");
+    const result = await entity.turn("test retry");
     expect(result).toBe("ok");
-    // Despite the retry, agent.history should reflect a single completed interaction
+    // Despite the retry, history should reflect a single completed interaction
     // (not duplicate assistant messages from the retry)
-    const assistantMessages = agent.history.filter((m) => m.role === "assistant");
+    const assistantMessages = entity.history.filter((m) => m.role === "assistant");
     expect(assistantMessages.length).toBe(1);
   });
 });
 
 // ── PROD-3: cumulative token tracking ──────────────────────────────
-// NOTE: Uses new Agent() directly because get_usage() is not yet exposed
-// through the Entity/cantrip API. TODO: add Entity.usage and rewrite.
 
 describe("PROD-3: cumulative token tracking", () => {
   test("PROD-3: usage tracker accumulates tokens across turns", async () => {
@@ -185,18 +196,15 @@ describe("PROD-3: cumulative token tracking", () => {
       },
     };
 
-    const agent = new Agent({
+    const entity = createEntity({
       llm: crystal as any,
-      circle: {
-        gates: [doneGate, echoGate],
-        wards: [{ max_turns: 10, require_done_tool: true }],
-      },
+      gates: [doneGate, echoGate],
       system_prompt: "test",
     });
 
-    await agent.query("test usage tracking");
+    await entity.turn("test usage tracking");
 
-    const usage = await agent.get_usage();
+    const usage = await entity.get_usage();
     // Should have accumulated usage from both calls
     expect(usage.total_prompt_tokens).toBe(300);
     expect(usage.total_completion_tokens).toBe(80);
@@ -210,9 +218,6 @@ describe("PROD-3: cumulative token tracking", () => {
 // returns usage data would be needed to verify folding compresses messages.
 
 // ── PROD-5: ephemeral gate full result stored in loom ──────────────
-// NOTE: Uses new Agent() directly because ephemeral gate behavior requires
-// inspecting agent.history internals (destroyed flag). TODO: expose
-// ephemeral status through Entity or Loom API and rewrite.
 
 describe("PROD-5: ephemeral gate full result stored in loom", () => {
   test("PROD-5: ephemeral tool messages are destroyed after subsequent use", async () => {
@@ -268,20 +273,17 @@ describe("PROD-5: ephemeral gate full result stored in loom", () => {
       },
     };
 
-    const agent = new Agent({
+    const entity = createEntity({
       llm: crystal as any,
-      circle: {
-        gates: [doneGate, ephemeralGate],
-        wards: [{ max_turns: 10, require_done_tool: true }],
-      },
+      gates: [doneGate, ephemeralGate],
       system_prompt: "test",
     });
 
-    const result = await agent.query("test ephemeral");
+    const result = await entity.turn("test ephemeral");
     expect(result).toBe("ok");
 
     // The first ephemeral tool message should be destroyed, second still active
-    const toolMessages = agent.history.filter((m) => m.role === "tool") as any[];
+    const toolMessages = entity.history.filter((m) => m.role === "tool") as any[];
     // Should have at least 2 ephemeral tool messages (+ possibly done tool message)
     expect(toolMessages.length).toBeGreaterThanOrEqual(2);
     // First ephemeral call should be destroyed

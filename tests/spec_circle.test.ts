@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { cantrip } from "../src/cantrip/cantrip";
-import { Agent, TaskComplete } from "../src/entity/service";
+import { TaskComplete } from "../src/entity/errors";
 import { tool } from "../src/circle/gate/decorator";
 import { Circle as CircleConstructor } from "../src/circle/circle";
 import type { Circle } from "../src/circle/circle";

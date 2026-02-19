@@ -1,6 +1,5 @@
 import readline from "readline";
 
-import { Agent } from "./service";
 import type { Entity } from "../cantrip/entity";
 import {
   createConsoleRenderer,
@@ -8,22 +7,8 @@ import {
   type ConsoleRendererOptions,
 } from "./console";
 
-/** Resolve a streamable source — Entity preferred, Agent for backward compat. */
-function resolveStreamable(options: { agent?: Agent; entity?: Entity }): {
-  stream: (task: string) => AsyncGenerator<any>;
-} {
-  if (options.entity) {
-    return { stream: (task: string) => options.entity!.turn_stream(task) };
-  }
-  if (options.agent) {
-    return { stream: (task: string) => options.agent!.query_stream(task) };
-  }
-  throw new Error("Either agent or entity is required");
-}
-
 export type ExecOptions = {
-  agent?: Agent;
-  entity?: Entity;
+  entity: Entity;
   task: string;
   verbose?: boolean;
   /** Custom renderer — overrides the default console renderer */
@@ -34,25 +19,23 @@ export type ExecOptions = {
 };
 
 /**
- * Run an agent once with a task and print the result to stdout.
+ * Run an entity once with a task and print the result to stdout.
  * Unix-friendly: no prompts, no decoration, just output.
  */
 export async function exec(options: ExecOptions): Promise<void> {
-  const { stream } = resolveStreamable(options);
-  const { task } = options;
+  const { entity, task } = options;
   const verbose = options.verbose ?? false;
 
   const renderer = options.renderer ?? createConsoleRenderer({ verbose });
   const state = renderer.createState();
 
-  for await (const event of stream(task)) {
+  for await (const event of entity.turn_stream(task)) {
     renderer.handle(event, state);
   }
 }
 
 export type ReplOptions = {
-  agent?: Agent;
-  entity?: Entity;
+  entity: Entity;
   prompt?: string;
   verbose?: boolean;
   greeting?: string;
@@ -67,7 +50,7 @@ export type ReplOptions = {
 };
 
 /**
- * Run an interactive REPL for the given agent.
+ * Run an interactive REPL for the given entity.
  *
  * Handles three modes:
  * - CLI args: `bun run agent.ts "What is 2+2?"` runs once and exits
@@ -75,8 +58,8 @@ export type ReplOptions = {
  * - Interactive: opens a REPL prompt
  */
 export async function runRepl(options: ReplOptions): Promise<void> {
-  const { stream } = resolveStreamable(options);
-  const { onClose, onTurn } = options;
+  const { entity, onClose, onTurn } = options;
+  const stream = (task: string) => entity.turn_stream(task);
   const prompt = options.prompt ?? "› ";
   const verbose =
     options.verbose ??
