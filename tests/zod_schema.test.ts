@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { tool } from "../src/tools/decorator";
+import { tool } from "../src/circle/gate/decorator";
 
 describe("zod schema inference", () => {
   test("infers schema from zod object", async () => {

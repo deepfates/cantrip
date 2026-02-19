@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { OpenAIMessageSerializer } from "../src/llm/openai/serializer";
+import { OpenAIMessageSerializer } from "../src/crystal/providers/openai/serializer";
 
 const toolMessage = {
   role: "tool",

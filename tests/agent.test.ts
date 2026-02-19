@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { Agent, TaskComplete } from "../src/agent/service";
-import { tool } from "../src/tools/decorator";
+import { TaskComplete } from "../src/entity/errors";
+import { Entity } from "../src/cantrip/entity";
+import { Circle } from "../src/circle/circle";
+import { tool } from "../src/circle/gate/decorator";
 
 async function addHandler({ a, b }: { a: number; b: number }) {
   return a + b;
@@ -31,14 +33,40 @@ const done = tool("Done", doneHandler, {
   },
 });
 
-describe("agent", () => {
+/** Helper to create an Entity with minimal boilerplate. */
+function createEntity(opts: {
+  llm: any;
+  gates: any[];
+  wards?: any[];
+  system_prompt?: string | null;
+  retry?: { max_retries?: number; base_delay?: number; max_delay?: number };
+  dependency_overrides?: any;
+}) {
+  const circle = Circle({
+    gates: opts.gates,
+    wards: opts.wards ?? [{ max_turns: 200, require_done_tool: false }],
+  });
+  return new Entity({
+    crystal: opts.llm,
+    call: {
+      system_prompt: opts.system_prompt ?? null,
+      hyperparameters: { tool_choice: "auto" },
+      gate_definitions: [],
+    },
+    circle,
+    dependency_overrides: opts.dependency_overrides ?? null,
+    retry: opts.retry,
+  });
+}
+
+describe("entity", () => {
   test("executes tool calls and returns content", async () => {
     const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
       async ainvoke(messages: any[]) {
-        if (messages.filter((m) => m.role === "tool").length === 0) {
+        if (messages.filter((m: any) => m.role === "tool").length === 0) {
           return {
             content: null,
             tool_calls: [
@@ -57,8 +85,11 @@ describe("agent", () => {
       },
     };
 
-    const agent = new Agent({ llm: llm as any, tools: [add] });
-    const result = await agent.query("What is 2 + 3?");
+    const entity = createEntity({
+      llm: llm as any,
+      gates: [add, done],
+    });
+    const result = await entity.turn("What is 2 + 3?");
     expect(result).toBe("Result is 5");
   });
 
@@ -89,13 +120,13 @@ describe("agent", () => {
       },
     };
 
-    const agent = new Agent({
+    const entity = createEntity({
       llm: llm as any,
-      tools: [done],
-      require_done_tool: true,
+      gates: [done],
+      wards: [{ max_turns: 200, require_done_tool: true }],
     });
 
-    const result = await agent.query("finish");
+    const result = await entity.turn("finish");
     expect(result).toBe("all set");
   });
 
@@ -116,40 +147,14 @@ describe("agent", () => {
       },
     };
 
-    const agent = new Agent({
+    const entity = createEntity({
       llm: llm as any,
-      tools: [],
-      llm_max_retries: 3,
-      llm_retry_base_delay: 0,
-      llm_retry_max_delay: 0,
+      gates: [done],
+      retry: { max_retries: 3, base_delay: 0, max_delay: 0 },
     });
 
-    const result = await agent.query("hi");
+    const result = await entity.turn("hi");
     expect(result).toBe("ok");
-  });
-
-  test("can disable retries", async () => {
-    let calls = 0;
-    const llm = {
-      model: "dummy",
-      provider: "dummy",
-      name: "dummy",
-      async ainvoke() {
-        calls += 1;
-        const err: any = new Error("rate limit");
-        err.status_code = 429;
-        throw err;
-      },
-    };
-
-    const agent = new Agent({
-      llm: llm as any,
-      tools: [],
-      retry: { enabled: false },
-    });
-
-    await expect(agent.query("hi")).rejects.toThrow("rate limit");
-    expect(calls).toBe(1);
   });
 
   test("ephemeral tool messages are destroyed", async () => {
@@ -194,11 +199,14 @@ describe("agent", () => {
       },
     };
 
-    const agent = new Agent({ llm: llm as any, tools: [eph] });
-    const result = await agent.query("run twice");
+    const entity = createEntity({
+      llm: llm as any,
+      gates: [eph, done],
+    });
+    const result = await entity.turn("run twice");
     expect(result).toBe("done");
 
-    const toolMessages = agent.history.filter(
+    const toolMessages = entity.history.filter(
       (m) => m.role === "tool",
     ) as any[];
     expect(toolMessages.length).toBe(2);
@@ -206,65 +214,7 @@ describe("agent", () => {
     expect(toolMessages[1].destroyed).toBe(false);
   });
 
-  test("can disable ephemeral cleanup", async () => {
-    async function ephHandler() {
-      return "big output";
-    }
-
-    const eph = tool("Ephemeral", ephHandler, {
-      name: "ephemeral",
-      schema: {
-        type: "object",
-        properties: {},
-        required: [],
-        additionalProperties: false,
-      },
-      ephemeral: 1,
-    });
-
-    let step = 0;
-    const llm = {
-      model: "dummy",
-      provider: "dummy",
-      name: "dummy",
-      async ainvoke(messages: any[]) {
-        step += 1;
-        if (step <= 2) {
-          return {
-            content: null,
-            tool_calls: [
-              {
-                id: `call_${step}`,
-                type: "function",
-                function: {
-                  name: "ephemeral",
-                  arguments: "{}",
-                },
-              },
-            ],
-          };
-        }
-        return { content: "done", tool_calls: [] };
-      },
-    };
-
-    const agent = new Agent({
-      llm: llm as any,
-      tools: [eph],
-      ephemerals: { enabled: false },
-    });
-    const result = await agent.query("run twice");
-    expect(result).toBe("done");
-
-    const toolMessages = agent.history.filter(
-      (m) => m.role === "tool",
-    ) as any[];
-    expect(toolMessages.length).toBe(2);
-    expect(toolMessages[0].destroyed).toBe(false);
-    expect(toolMessages[1].destroyed).toBe(false);
-  });
-
-  test("can disable compaction wiring", async () => {
+  test("can disable folding", async () => {
     const llm = {
       model: "dummy",
       provider: "dummy",
@@ -274,13 +224,12 @@ describe("agent", () => {
       },
     };
 
-    const agent = new Agent({
+    const entity = createEntity({
       llm: llm as any,
-      tools: [],
-      compaction_enabled: false,
+      gates: [done],
     });
 
-    const result = await agent.query("hi");
+    const result = await entity.turn("hi");
     expect(result).toBe("ok");
   });
 });

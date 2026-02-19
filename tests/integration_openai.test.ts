@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatOpenAI } from "../src/llm/openai/chat";
-import type { ToolDefinition } from "../src/llm/base";
+import { ChatOpenAI } from "../src/crystal/providers/openai/chat";
+import type { GateDefinition } from "../src/crystal/crystal";
 import { loadEnv } from "./helpers/env";
 
 loadEnv();
@@ -11,7 +11,7 @@ const it = hasKey ? test : test.skip;
 
 const model = process.env.OPENAI_MODEL ?? "gpt-5-mini";
 
-const echoTool: ToolDefinition = {
+const echoTool: GateDefinition = {
   name: "echo",
   description: "Echo back the input",
   parameters: {

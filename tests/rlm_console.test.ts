@@ -1,14 +1,15 @@
+// cantrip-migration: no Agent usage — tests the console renderer (pure event → string)
 import { describe, test, expect } from "bun:test";
 import {
   createRlmConsoleRenderer,
   patchStderrForRlm,
-} from "../src/rlm/console";
+} from "../src/circle/gate/builtin/call_agent_console";
 import {
   ToolCallEvent,
   ToolResultEvent,
   TextEvent,
   FinalResponseEvent,
-} from "../src/agent/events";
+} from "../src/entity/events";
 
 describe("RLM console renderer", () => {
   /** Capture writes to a fake stream. */

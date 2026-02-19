@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { GoogleMessageSerializer } from "../src/llm/google/serializer";
+import { GoogleMessageSerializer } from "../src/crystal/providers/google/serializer";
 
 const messages = [
   { role: "tool", tool_call_id: "1", tool_name: "t", content: "ok" },

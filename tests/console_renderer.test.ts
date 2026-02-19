@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { PassThrough } from "stream";
 
-import { createConsoleRenderer } from "../src/agent/console";
+import { createConsoleRenderer } from "../src/entity/console";
 import {
   FinalResponseEvent,
   TextEvent,
   ToolCallEvent,
   ToolResultEvent,
-} from "../src/agent/events";
+} from "../src/entity/events";
 
 const createCaptureStream = () => {
   const stream = new PassThrough();

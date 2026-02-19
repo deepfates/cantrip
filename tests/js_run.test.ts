@@ -1,9 +1,9 @@
 import { describe, test, expect } from "bun:test";
-import { createJsRunTool, js_run } from "../src/tools/builtin/js_run";
-import type { ToolContent } from "../src/tools/decorator";
+import { createJsRunTool, js_run } from "../src/circle/gate/builtin/js_run";
+import type { GateContent } from "../src/circle/gate/decorator";
 
 describe("js_run tool", () => {
-  function expectString(result: ToolContent): asserts result is string {
+  function expectString(result: GateContent): asserts result is string {
     if (typeof result !== "string") {
       throw new Error("Expected string tool output");
     }

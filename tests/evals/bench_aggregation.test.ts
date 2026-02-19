@@ -4,18 +4,18 @@
  * Uses real LLMs to count/filter records across datasets of increasing size.
  * Three approaches compared:
  * - RLM: context in sandbox, metadata-only output
- * - Agent+JS: context in sandbox, full output to LLM
- * - Agent+JS-meta: context in sandbox, metadata-only output (fair control)
+ * - Entity+JS: context in sandbox, full output to LLM
+ * - Entity+JS-meta: context in sandbox, metadata-only output (fair control)
  *
  * Requires OPENAI_API_KEY in .env (skips gracefully if missing).
  */
 import { describe, test, expect } from "bun:test";
-import { ChatOpenAI } from "../../src/llm/openai/chat";
+import { ChatOpenAI } from "../../src/crystal/providers/openai/chat";
 import { generatePersonRecords, computePersonAnswers } from "./generators";
 import {
   runRlmEval,
-  runAgentWithJsEval,
-  runAgentMetaJsEval,
+  runEntityWithJsEval,
+  runEntityMetaJsEval,
   runInContextEval,
   printComparisonTable,
   type EvalResult,
@@ -58,9 +58,9 @@ describe("Aggregation Benchmark (real LLM)", () => {
       // Accuracy recorded in results table; no hard assert
     }, 180_000);
 
-    it(`Agent+JS @ ${count} records`, async () => {
+    it(`Entity+JS @ ${count} records`, async () => {
       const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
-      const result = await runAgentWithJsEval({
+      const result = await runEntityWithJsEval({
         llm,
         task: `agg-${count}`,
         query,
@@ -69,13 +69,13 @@ describe("Aggregation Benchmark (real LLM)", () => {
       });
       allResults.push(result);
       console.log(
-        `  Agent+JS @ ${count}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
+        `  Entity+JS @ ${count}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
       );
     }, 180_000);
 
-    it(`Agent+JS-meta @ ${count} records`, async () => {
+    it(`Entity+JS-meta @ ${count} records`, async () => {
       const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
-      const result = await runAgentMetaJsEval({
+      const result = await runEntityMetaJsEval({
         llm,
         task: `agg-${count}`,
         query,
@@ -84,7 +84,7 @@ describe("Aggregation Benchmark (real LLM)", () => {
       });
       allResults.push(result);
       console.log(
-        `  Agent+JS-meta @ ${count}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
+        `  Entity+JS-meta @ ${count}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
       );
       // Accuracy recorded in results table; no hard assert
     }, 180_000);

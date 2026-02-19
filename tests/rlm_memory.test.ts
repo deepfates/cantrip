@@ -1,6 +1,10 @@
+// cantrip-migration: uses createRlmAgentWithMemory (RLM-internal factory).
+// Tests WASM sandbox memory windowing and agent.messages manipulation —
+// genuinely below the cantrip API level.
 import { describe, test, expect, mock } from "bun:test";
-import { createRlmAgentWithMemory } from "../src/rlm/service";
-import { BaseChatModel, ModelResponse } from "../src/llm/base";
+import { createRlmAgentWithMemory } from "../src/circle/gate/builtin/call_agent";
+import { BaseChatModel } from "../src/crystal/crystal";
+import type { ChatInvokeCompletion } from "../src/crystal/views";
 
 // Mock LLM that responds predictably
 function createMockLlm(responses: string[]): BaseChatModel {
@@ -9,7 +13,7 @@ function createMockLlm(responses: string[]): BaseChatModel {
     model: "mock",
     provider: "mock",
     name: "mock",
-    async ainvoke(): Promise<ModelResponse> {
+    async ainvoke(): Promise<ChatInvokeCompletion> {
       const response = responses[callIndex % responses.length];
       callIndex++;
 
@@ -63,7 +67,7 @@ describe("RLM Memory", () => {
     );
     expect(result.ok).toBe(true);
 
-    const parsed = JSON.parse(result.output!);
+    const parsed = JSON.parse((result as any).output);
     expect(parsed.hasData).toBe(false);
     expect(parsed.historyLength).toBe(0);
 
@@ -86,7 +90,7 @@ describe("RLM Memory", () => {
     );
     expect(result.ok).toBe(true);
 
-    const parsed = JSON.parse(result.output!);
+    const parsed = JSON.parse((result as any).output);
     expect(parsed.data).toEqual(testData);
     expect(parsed.historyLength).toBe(0);
 
@@ -100,7 +104,7 @@ describe("RLM Memory", () => {
       model: "mock",
       provider: "mock",
       name: "mock",
-      async ainvoke(): Promise<ModelResponse> {
+      async ainvoke(): Promise<ChatInvokeCompletion> {
         callCount++;
         return {
           content: null,
@@ -134,14 +138,14 @@ describe("RLM Memory", () => {
 
     // After 2 turns, nothing should be in history yet (within window)
     let result = await sandbox.evalCode("context.history.length");
-    expect(result.output).toBe("0");
+    expect((result as any).output).toBe("0");
 
     await agent.query("Turn 3");
     manageMemory();
 
     // After 3 turns with window=2, turn 1 should be in history
     result = await sandbox.evalCode("context.history.length");
-    expect(parseInt(result.output!)).toBeGreaterThan(0);
+    expect(parseInt((result as any).output)).toBeGreaterThan(0);
 
     await agent.query("Turn 4");
     manageMemory();
@@ -150,7 +154,7 @@ describe("RLM Memory", () => {
     result = await sandbox.evalCode(
       "context.history.filter(m => m.role === 'user').length",
     );
-    const historyUserCount = parseInt(result.output!);
+    const historyUserCount = parseInt((result as any).output);
     expect(historyUserCount).toBe(2);
 
     const activeUserMessages = agent.messages.filter(

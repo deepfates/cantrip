@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { AnthropicMessageSerializer } from "../src/llm/anthropic/serializer";
+import { AnthropicMessageSerializer } from "../src/crystal/providers/anthropic/serializer";
 
 const messages = [
   { role: "user", content: "hi", cache: true },

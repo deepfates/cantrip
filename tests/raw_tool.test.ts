@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { rawTool } from "../src/tools/raw";
+import { rawTool } from "../src/circle/gate/raw";
 
 describe("raw tool", () => {
   test("exposes definition and executes handler", async () => {

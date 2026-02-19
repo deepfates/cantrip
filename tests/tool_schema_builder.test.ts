@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { ToolSchema } from "../src/tools/schema";
+import { GateSchema } from "../src/circle/gate/schema";
 
 describe("tool schema builder", () => {
   test("builds object schema with required and optional fields", () => {
-    const schema = ToolSchema.create()
+    const schema = GateSchema.create()
       .addString("query")
       .addNumber("limit", { optional: true })
       .addEnum("mode", ["fast", "slow"])

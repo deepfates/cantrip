@@ -1,10 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { js } from "../src/tools/builtin/js";
-import { getJsContext, JsContext } from "../src/tools/builtin/js_context";
-import type { ToolContent } from "../src/tools/decorator";
+import { js } from "../src/circle/gate/builtin/js";
+import { getJsContext, JsContext } from "../src/circle/gate/builtin/js_context";
+import type { GateContent } from "../src/circle/gate/decorator";
 
 describe("js tool", () => {
-  function expectString(result: ToolContent): asserts result is string {
+  function expectString(result: GateContent): asserts result is string {
     if (typeof result !== "string") {
       throw new Error("Expected string tool output");
     }

@@ -3,20 +3,20 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import { pathToFileURL } from "url";
-import type { ToolContent } from "../src/tools/decorator";
+import type { GateContent } from "../src/circle/gate/decorator";
 
 // These will be implemented
 import {
   browser,
   browser_interactive,
   browser_readonly,
-} from "../src/tools/builtin/browser";
+} from "../src/circle/gate/builtin/browser";
 import {
   BrowserContext,
   getBrowserContext,
   getBrowserContextInteractive,
   getBrowserContextReadonly,
-} from "../src/tools/builtin/browser_context";
+} from "../src/circle/gate/builtin/browser_context";
 
 describe("browser tool", () => {
   let ctx: BrowserContext;
@@ -42,7 +42,7 @@ describe("browser tool", () => {
   let exampleUrl = "";
   let tempDir = "";
 
-  function expectString(result: ToolContent): asserts result is string {
+  function expectString(result: GateContent): asserts result is string {
     if (typeof result !== "string") {
       throw new Error("Expected string tool output");
     }

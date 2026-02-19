@@ -7,18 +7,18 @@
  * Four approaches compared:
  * - RLM (depth=0): no sub-delegation
  * - RLM (depth=1): with sub-delegation
- * - Agent+JS: full output
- * - Agent+JS-meta: metadata-only output (fair control)
+ * - Entity+JS: full output
+ * - Entity+JS-meta: metadata-only output (fair control)
  *
  * Requires OPENAI_API_KEY in .env (skips gracefully if missing).
  */
 import { describe, test, expect } from "bun:test";
-import { ChatOpenAI } from "../../src/llm/openai/chat";
+import { ChatOpenAI } from "../../src/crystal/providers/openai/chat";
 import { generateMultihopDocuments } from "./generators";
 import {
   runRlmEval,
-  runAgentWithJsEval,
-  runAgentMetaJsEval,
+  runEntityWithJsEval,
+  runEntityMetaJsEval,
   runInContextEval,
   printComparisonTable,
   type EvalResult,
@@ -76,9 +76,9 @@ describe("Multi-hop Benchmark (real LLM)", () => {
       );
     }, 120_000);
 
-    it(`Agent+JS @ ${distractorCount}`, async () => {
+    it(`Entity+JS @ ${distractorCount}`, async () => {
       const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
-      const result = await runAgentWithJsEval({
+      const result = await runEntityWithJsEval({
         llm,
         task: `mh-${distractorCount}`,
         query,
@@ -87,13 +87,13 @@ describe("Multi-hop Benchmark (real LLM)", () => {
       });
       allResults.push(result);
       console.log(
-        `  Agent+JS @ ${distractorCount}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
+        `  Entity+JS @ ${distractorCount}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
       );
     }, 120_000);
 
-    it(`Agent+JS-meta @ ${distractorCount}`, async () => {
+    it(`Entity+JS-meta @ ${distractorCount}`, async () => {
       const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
-      const result = await runAgentMetaJsEval({
+      const result = await runEntityMetaJsEval({
         llm,
         task: `mh-${distractorCount}`,
         query,
@@ -102,7 +102,7 @@ describe("Multi-hop Benchmark (real LLM)", () => {
       });
       allResults.push(result);
       console.log(
-        `  Agent+JS-meta @ ${distractorCount}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
+        `  Entity+JS-meta @ ${distractorCount}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
       );
     }, 120_000);
 
