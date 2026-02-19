@@ -4,6 +4,7 @@ import { JsAsyncContext } from "../medium/js/async_context";
 import { TaskComplete } from "../../entity/errors";
 import { Depends } from "../gate/depends";
 import type { BrowserContext } from "../medium/browser/context";
+import { formatRlmMetadata } from "../medium/js";
 
 /** JSON.stringify that tolerates circular references. */
 export function safeStringify(value: unknown, indent?: number): string {
@@ -63,16 +64,9 @@ export function defaultProgress(depth: number): RlmProgressCallback {
   };
 }
 
-/**
- * Formats sandbox execution results into a compact metadata string.
- * This prevents the Agent's prompt history from being flooded with large data dumps.
- */
-export function formatRlmMetadata(output: string): string {
-  if (!output || output === "undefined") return "[Result: undefined]";
-  const length = output.length;
-  const preview = output.slice(0, 150).replace(/\n/g, " ");
-  return `[Result: ${length} chars] "${preview}${length > 150 ? "..." : ""}"`;
-}
+// formatRlmMetadata is now defined in the JS medium (where it's used).
+// Re-export for backward compatibility.
+export { formatRlmMetadata } from "../medium/js";
 
 /**
  * Dependency key for injecting the RLM sandbox into the tool execution context.

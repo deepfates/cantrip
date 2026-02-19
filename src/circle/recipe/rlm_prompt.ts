@@ -5,12 +5,12 @@ const CONSOLE_LOG_DOC =
   "- `console.log(...args)`: Prints output. You will only see truncated outputs from the sandbox, so you should use the query LLM function on variables you want to analyze.";
 
 /**
- * Build the HOST FUNCTIONS section of the system prompt from the actual gates present.
- * Delegates to Circle's buildCapabilityDocs for the core gate→docs logic,
- * then layers RLM-specific additions (console.log).
+ * Build the HOST FUNCTIONS section of the system prompt.
+ * Accepts either pre-built capability docs (string) or gates (BoundGate[]).
+ * Layers RLM-specific additions (console.log) on top.
  */
-export function buildHostFunctionsSection(gates: BoundGate[]): string {
-  const coreDocs = buildCapabilityDocs(gates);
+export function buildHostFunctionsSection(gatesOrDocs: BoundGate[] | string): string {
+  const coreDocs = typeof gatesOrDocs === "string" ? gatesOrDocs : buildCapabilityDocs(gatesOrDocs);
 
   if (coreDocs === "") {
     // No gates with docs — fall back to just console.log
@@ -231,8 +231,10 @@ export function getRlmSystemPrompt(options: {
   contextType: string;
   contextLength: number;
   contextPreview: string;
-  /** Gates active in this circle — used to build the HOST FUNCTIONS section. Defaults to []. */
+  /** Gates active in this circle — used to build the HOST FUNCTIONS section and derive hasRecursion. Defaults to []. */
   gates?: BoundGate[];
+  /** Pre-built capability docs from circle.capabilityDocs(). When provided, used instead of computing from gates. */
+  capabilityDocs?: string;
   /** Whether browser automation functions are available. Default: false. */
   hasBrowser?: boolean;
   /** Set of allowed browser function names (from BrowserContext.getAllowedFunctions()). */
@@ -243,6 +245,7 @@ export function getRlmSystemPrompt(options: {
     contextLength,
     contextPreview,
     gates = [],
+    capabilityDocs,
     hasBrowser = false,
     browserAllowedFunctions,
   } = options;
@@ -416,7 +419,7 @@ Make sure you look through the context sufficiently before answering your query.
 2. **NO ASYNC/AWAIT**: Do NOT use \`async\`, \`await\`, or \`Promise\`. They will crash the sandbox.
 3. **PERSISTENCE**: Use \`var\` or \`globalThis\` to save state between \`js\` tool calls.
 
-${buildHostFunctionsSection(gates)}${
+${buildHostFunctionsSection(capabilityDocs ?? gates)}${
     hasBrowser
       ? `
 
@@ -448,6 +451,8 @@ export function getRlmMemorySystemPrompt(options: {
   windowSize: number;
   /** Gates active in this circle — used to build the HOST FUNCTIONS section. Defaults to []. */
   gates?: BoundGate[];
+  /** Pre-built capability docs from circle.capabilityDocs(). When provided, used instead of computing from gates. */
+  capabilityDocs?: string;
   /** Whether browser automation functions are available. Default: false. */
   hasBrowser?: boolean;
   /** Set of allowed browser function names (from BrowserContext.getAllowedFunctions()). */
@@ -460,6 +465,7 @@ export function getRlmMemorySystemPrompt(options: {
     dataPreview,
     windowSize,
     gates = [],
+    capabilityDocs,
     hasBrowser = false,
     browserAllowedFunctions,
   } = options;
@@ -492,7 +498,7 @@ You MUST use the \`js\` tool to explore context and recall past conversations.
 2. **NO ASYNC/AWAIT**: Do NOT use \`async\`, \`await\`, or \`Promise\`. They will crash the sandbox.
 3. **PERSISTENCE**: Use \`var\` or \`globalThis\` to save state between \`js\` tool calls.
 
-${buildHostFunctionsSection(gates)}${
+${buildHostFunctionsSection(capabilityDocs ?? gates)}${
     hasBrowser
       ? `
 
