@@ -37,7 +37,6 @@ export async function main() {
       contextType: metadata.type,
       contextLength: metadata.length,
       contextPreview: metadata.preview,
-      hasRecursion: false,
     });
 
     const entity = cantrip({

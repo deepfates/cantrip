@@ -15,7 +15,7 @@ import {
   generateMaxIterationsSummary,
   runLoop,
 } from "../entity/runtime";
-import { recordCallRoot, recordTurn, checkAndFold } from "../entity/service";
+import { recordCallRoot, recordTurn, checkAndFold } from "../entity/recording";
 import type { Loom } from "../loom";
 import type { FoldingConfig } from "../loom/folding";
 import { DEFAULT_FOLDING_CONFIG } from "../loom/folding";

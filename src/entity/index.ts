@@ -1,4 +1,4 @@
-export { TaskComplete } from "./service";
+export { TaskComplete } from "./recording";
 export { createConsoleRenderer } from "./console";
 export { exec, runRepl } from "./repl";
 export type { ExecOptions, ReplOptions } from "./repl";
