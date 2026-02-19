@@ -1,17 +1,13 @@
 // Composition — delegate work to sub-agents via RLM.
 // The JS medium puts data outside the prompt; the entity explores via code.
-//
-// Two approaches shown:
-// 1. New cantrip API: Circle({ medium: js(...) }) + cantrip()
-// 2. Legacy API: createRlmAgent() (still works)
 
 import "./env";
-import { cantrip, Circle, max_turns, require_done, ChatOpenAI, createRlmAgent } from "../src";
+import { cantrip, Circle, max_turns, require_done, ChatOpenAI } from "../src";
 import { js } from "../src/circle/medium/js";
 import { getRlmSystemPrompt } from "../src/circle/gate/builtin/call_agent_prompt";
 import { analyzeContext } from "../src/circle/gate/builtin/call_agent";
 
-// ── New API: cantrip + JS medium ────────────────────────────────────
+// ── cantrip + JS medium ─────────────────────────────────────────────
 
 export async function main() {
   const crystal = new ChatOpenAI({ model: "gpt-5-mini" });
@@ -51,33 +47,6 @@ export async function main() {
     console.log("Answer:", answer);
   } finally {
     await circle.dispose?.();
-  }
-}
-
-// ── Legacy API: createRlmAgent ──────────────────────────────────────
-
-export async function legacyMain() {
-  const crystal = new ChatOpenAI({ model: "gpt-5-mini" });
-
-  const hugeContext = {
-    documents: [
-      { id: 1, type: "noise", content: "The weather is nice today." },
-      { id: 2, type: "signal", content: "The secret password is: FLYING-FISH" },
-      { id: 3, type: "noise", content: "Remember to buy milk." },
-    ],
-  };
-
-  const { agent, sandbox } = await createRlmAgent({
-    llm: crystal,
-    context: hugeContext,
-    maxDepth: 1,
-  });
-
-  try {
-    const answer = await agent.query("Find the secret password in the documents.");
-    console.log("Answer:", answer);
-  } finally {
-    sandbox.dispose();
   }
 }
 

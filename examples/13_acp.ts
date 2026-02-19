@@ -39,7 +39,7 @@ export async function main() {
     }).invoke();
 
     return {
-      agent: entity.agent,
+      entity,
       onClose: async () => {
         if (browserCtx) await browserCtx.dispose();
       },
