@@ -17,7 +17,7 @@ import { analyzeContext, createRlmAgent } from "../../src/circle/gate/builtin/ca
 import { JsContext, getJsContext } from "../../src/circle/gate/builtin/js_context";
 import { js } from "../../src/circle/gate/builtin/js";
 import { done } from "../../src/circle/gate/builtin/done";
-import { tool } from "../../src/circle/gate/decorator";
+import { gate } from "../../src/circle/gate/decorator";
 import { z } from "zod";
 import { UsageTracker } from "../../src/crystal/tokens/usage";
 import type { BaseChatModel } from "../../src/crystal/crystal";
@@ -107,7 +107,7 @@ function formatMetadata(output: string): string {
  * but using the standard sync JsContext (not async). This isolates the
  * metadata-vs-full-output variable from the sandbox implementation.
  */
-const js_meta = tool(
+const js_meta = gate(
   "Execute JavaScript in the persistent sandbox. Results are returned as metadata summaries, not full output. Use console.log() to inspect values.",
   async ({ code, timeout_ms }: { code: string; timeout_ms?: number }, deps) => {
     const ctx = deps.ctx as JsContext;

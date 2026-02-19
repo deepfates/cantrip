@@ -1,4 +1,4 @@
-import { tool } from "../decorator";
+import { gate } from "../decorator";
 import { z } from "zod";
 import { loadQuickJs, type SandboxOptions } from "@sebastianwessel/quickjs";
 import variant from "@jitl/quickjs-ng-wasmfile-release-sync";
@@ -38,10 +38,10 @@ async function getRunSandboxed() {
   return runSandboxedPromise;
 }
 
-export function createJsRunTool(config: JsRunConfig = {}) {
+export function createJsRunGate(config: JsRunConfig = {}) {
   const defaults = getProfileDefaults(config.profile);
 
-  return tool(
+  return gate(
     "Execute JavaScript in a fresh sandbox (no state). Use `export default` to return a value. Fetch/fs depend on profile/config; any fs is virtual/limited.",
     async ({ code, timeout_ms, max_output_chars }: JsRunOptions) => {
       const maxChars = max_output_chars ?? DEFAULT_MAX_OUTPUT_CHARS;
@@ -106,7 +106,7 @@ export function createJsRunTool(config: JsRunConfig = {}) {
   );
 }
 
-export const js_run = createJsRunTool();
+export const js_run = createJsRunGate();
 
 function getProfileDefaults(
   profile?: JsRunProfile,

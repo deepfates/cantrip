@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { TaskComplete } from "../src/entity/errors";
 import { Entity } from "../src/cantrip/entity";
 import { Circle } from "../src/circle/circle";
-import { tool } from "../src/circle/gate/decorator";
+import { gate } from "../src/circle/gate/decorator";
 import { renderGateDefinitions } from "../src/cantrip/call";
 import { DEFAULT_WARD, resolveWards } from "../src/circle/ward";
 import type { Ward } from "../src/circle/ward";
@@ -15,7 +15,7 @@ async function addHandler({ a, b }: { a: number; b: number }) {
   return a + b;
 }
 
-const add = tool("Add two numbers", addHandler, {
+const add = gate("Add two numbers", addHandler, {
   name: "add",
   schema: {
     type: "object",
@@ -29,7 +29,7 @@ async function doneHandler({ message }: { message: string }) {
   throw new TaskComplete(message);
 }
 
-const done = tool("Mark task as done", doneHandler, {
+const done = gate("Mark task as done", doneHandler, {
   name: "done",
   schema: {
     type: "object",

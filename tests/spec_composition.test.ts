@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/errors";
-import { tool } from "../src/circle/gate/decorator";
+import { gate } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
 
 // ── Shared helpers ─────────────────────────────────────────────────
@@ -16,7 +16,7 @@ async function doneHandler({ message }: { message: string }) {
   throw new TaskComplete(message);
 }
 
-const doneGate = tool("Signal completion", doneHandler, {
+const doneGate = gate("Signal completion", doneHandler, {
   name: "done",
   schema: {
     type: "object",
@@ -72,7 +72,7 @@ describe("COMP-1: child circle is subset of parent", () => {
     });
 
     // Create a gate that delegates to the child cantrip
-    const callAgentGate = tool(
+    const callAgentGate = gate(
       "Call a child agent",
       async ({ intent }: { intent: string }) => {
         const result = await childSpell.cast(intent);
@@ -167,7 +167,7 @@ describe("COMP-2: call_entity blocks parent until child completes", () => {
       }),
     });
 
-    const callAgentGate = tool(
+    const callAgentGate = gate(
       "Call agent",
       async ({ intent }: { intent: string }) => {
         executionOrder.push("parent_calling_child");
@@ -271,7 +271,7 @@ describe("COMP-3: call_entity_batch returns results in request order", () => {
     const childB = makeChildCantrip("B");
     const childC = makeChildCantrip("C");
 
-    const batchGate = tool(
+    const batchGate = gate(
       "Call agent batch",
       async ({ intents }: { intents: string[] }) => {
         // Run all children and return results in order
@@ -374,7 +374,7 @@ describe("COMP-4: child entity has independent context", () => {
       }),
     });
 
-    const callAgentGate = tool(
+    const callAgentGate = gate(
       "Call agent",
       async ({ intent }: { intent: string }) => {
         return await childSpell.cast(intent);
@@ -469,7 +469,7 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
     let depth = 0;
     const maxDepth = 0;
 
-    const callAgentGate = tool(
+    const callAgentGate = gate(
       "Call agent",
       async ({ intent }: { intent: string }) => {
         if (depth >= maxDepth) {
@@ -545,7 +545,7 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
     let currentDepth = 0;
 
     function makeRecursiveCantrip(depth: number): ReturnType<typeof cantrip> {
-      const callAgentGate = tool(
+      const callAgentGate = gate(
         "Call agent",
         async ({ intent }: { intent: string }) => {
           currentDepth++;
@@ -659,7 +659,7 @@ describe("COMP-7: child can use different crystal", () => {
       }),
     });
 
-    const callAgentGate = tool(
+    const callAgentGate = gate(
       "Call agent",
       async ({ intent }: { intent: string }) => childSpell.cast(intent),
       {
@@ -749,7 +749,7 @@ describe("COMP-8: child failure returns error to parent", () => {
       }),
     });
 
-    const callAgentGate = tool(
+    const callAgentGate = gate(
       "Call agent",
       async ({ intent }: { intent: string }) => {
         return await childSpell.cast(intent);

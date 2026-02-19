@@ -4,7 +4,7 @@ import { TaskComplete } from "../src/entity/errors";
 import { Entity } from "../src/cantrip/entity";
 import { Circle } from "../src/circle/circle";
 import { cantrip } from "../src/cantrip/cantrip";
-import { tool } from "../src/circle/gate/decorator";
+import { gate } from "../src/circle/gate/decorator";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 
@@ -12,7 +12,7 @@ async function doneHandler({ message }: { message: string }) {
   throw new TaskComplete(message);
 }
 
-const doneGate = tool("Signal completion", doneHandler, {
+const doneGate = gate("Signal completion", doneHandler, {
   name: "done",
   schema: {
     type: "object",
@@ -22,7 +22,7 @@ const doneGate = tool("Signal completion", doneHandler, {
   },
 });
 
-const echoGate = tool("Echo text back", async ({ text }: { text: string }) => text, {
+const echoGate = gate("Echo text back", async ({ text }: { text: string }) => text, {
   name: "echo",
   schema: {
     type: "object",
@@ -223,7 +223,7 @@ describe("PROD-5: ephemeral gate full result stored in loom", () => {
   test("PROD-5: ephemeral tool messages are destroyed after subsequent use", async () => {
     // Ephemeral with value 1 means: destroy the tool message after 1 newer
     // invocation of the same tool. So we need 2 calls to the ephemeral gate.
-    const ephemeralGate = tool("Read ephemeral", async () => "very large content here...", {
+    const ephemeralGate = gate("Read ephemeral", async () => "very large content here...", {
       name: "read_ephemeral",
       schema: {
         type: "object",

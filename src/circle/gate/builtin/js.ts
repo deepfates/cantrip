@@ -1,11 +1,11 @@
-import { tool } from "../decorator";
+import { gate } from "../decorator";
 import { z } from "zod";
 import { JsContext, getJsContext } from "./js_context";
 
 // Mimicking the output limits from fs.ts
 const DEFAULT_MAX_OUTPUT_CHARS = 9500;
 
-export const js = tool(
+export const js = gate(
   "Execute JavaScript in a persistent, isolated sandbox. State persists across calls. No host adapters (fetch/fs); use tools for I/O.",
   async (
     {

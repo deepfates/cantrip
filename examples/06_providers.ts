@@ -3,11 +3,11 @@
 
 import "./env";
 import {
-  cantrip, Circle, done, tool, max_turns,
+  cantrip, Circle, done, gate, max_turns,
   ChatAnthropic, ChatOpenAI, ChatGoogle, ChatOpenRouter, ChatLMStudio,
 } from "../src";
 
-const add = tool("Add two numbers", async ({ a, b }: { a: number; b: number }) => a + b, {
+const add = gate("Add two numbers", async ({ a, b }: { a: number; b: number }) => a + b, {
   name: "add",
   params: { a: "number", b: "number" },
 });

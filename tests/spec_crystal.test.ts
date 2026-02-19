@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/errors";
-import { tool } from "../src/circle/gate/decorator";
+import { gate } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
 import type { GateResult } from "../src/circle/gate/gate";
 
@@ -12,7 +12,7 @@ async function doneHandler({ message }: { message: string }) {
   throw new TaskComplete(message);
 }
 
-const doneGate = tool("Signal completion", doneHandler, {
+const doneGate = gate("Signal completion", doneHandler, {
   name: "done",
   schema: {
     type: "object",
@@ -22,7 +22,7 @@ const doneGate = tool("Signal completion", doneHandler, {
   },
 });
 
-const echoGate = tool("Echo text back", async ({ text }: { text: string }) => text, {
+const echoGate = gate("Echo text back", async ({ text }: { text: string }) => text, {
   name: "echo",
   schema: {
     type: "object",

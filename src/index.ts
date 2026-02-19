@@ -26,9 +26,9 @@ export type { Ward, ResolvedWard } from "./circle/ward";
 export { DEFAULT_WARD, max_turns, require_done, max_depth, resolveWards } from "./circle/ward";
 
 // ── Circle / Gate (tool framework) ──────────────────────────────────
-export { Tool, tool, serializeGateResult } from "./circle/gate/decorator";
+export { Gate, gate, serializeGateResult } from "./circle/gate/decorator";
 export { Depends } from "./circle/gate/depends";
-export { rawTool } from "./circle/gate/raw";
+export { rawGate } from "./circle/gate/raw";
 export { GateSchema, GateSchemaBuilder } from "./circle/gate/schema";
 export type { GateContent, GateHandler, GateOptions } from "./circle/gate/decorator";
 export type { DependencyOverrides, DependencyFactory } from "./circle/gate/depends";
@@ -47,6 +47,8 @@ export { BrowserContext, getBrowserContext } from "./circle/gate/builtin/browser
 export { createRlmAgent, createRlmAgentWithMemory } from "./circle/gate/builtin/call_entity";
 export type { RlmOptions, RlmMemoryOptions, RlmMemoryAgent } from "./circle/gate/builtin/call_entity";
 export { createRlmConsoleRenderer, patchStderrForRlm } from "./circle/gate/builtin/call_entity_console";
+export { call_entity as call_entity_gate, call_entity_batch as call_entity_batch_gate } from "./circle/gate/builtin/call_entity_gate";
+export type { CallEntityGateOptions } from "./circle/gate/builtin/call_entity_gate";
 
 // ── Cantrip (the recipe — primary public API) ──────────────────────
 export { cantrip } from "./cantrip/cantrip";

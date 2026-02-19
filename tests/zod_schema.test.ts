@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { tool } from "../src/circle/gate/decorator";
+import { gate } from "../src/circle/gate/decorator";
 
 describe("zod schema inference", () => {
   test("infers schema from zod object", async () => {
@@ -18,7 +18,7 @@ describe("zod schema inference", () => {
       tags: z.array(z.string()),
     });
 
-    const t = tool("Zod", async (_: any) => "ok", {
+    const t = gate("Zod", async (_: any) => "ok", {
       name: "zod",
       zodSchema: schema,
     } as any);

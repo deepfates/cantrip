@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 
 import { TaskComplete } from "../src/entity/errors";
-import { tool } from "../src/circle/gate/decorator";
+import { gate } from "../src/circle/gate/decorator";
 import {
   Loom,
   MemoryStorage,
@@ -18,7 +18,7 @@ async function doneHandler({ message }: { message: string }) {
   throw new TaskComplete(message);
 }
 
-const doneGate = tool("Signal completion", doneHandler, {
+const doneGate = gate("Signal completion", doneHandler, {
   name: "done",
   schema: {
     type: "object",
@@ -28,7 +28,7 @@ const doneGate = tool("Signal completion", doneHandler, {
   },
 });
 
-const echoGate = tool("Echo text back", async ({ text }: { text: string }) => text, {
+const echoGate = gate("Echo text back", async ({ text }: { text: string }) => text, {
   name: "echo",
   schema: {
     type: "object",

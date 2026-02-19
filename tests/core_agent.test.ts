@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import { Entity } from "../src/cantrip/entity";
 import { Circle } from "../src/circle/circle";
-import { rawTool } from "../src/circle/gate/raw";
+import { rawGate } from "../src/circle/gate/raw";
 import { TaskComplete } from "../src/entity/errors";
 
-const add = rawTool(
+const add = rawGate(
   {
     name: "add",
     description: "Add",
@@ -19,7 +19,7 @@ const add = rawTool(
   async ({ a, b }: { a: number; b: number }) => a + b,
 );
 
-const done = rawTool(
+const done = rawGate(
   {
     name: "done",
     description: "Done",

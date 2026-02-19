@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { tool } from "../src/circle/gate/decorator";
+import { gate } from "../src/circle/gate/decorator";
 
 describe("tool schema inference", () => {
   test("builds schema from params map", () => {
-    const t = tool(
+    const t = gate(
       "Test",
       async (_: any) => "ok",
       {

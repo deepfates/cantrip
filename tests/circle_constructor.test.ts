@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { TaskComplete } from "../src/entity/service";
-import { tool } from "../src/circle/gate/decorator";
+import { gate } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
 import { max_turns, require_done, max_depth, resolveWards } from "../src/circle/ward";
 
 // ── Test fixtures ──────────────────────────────────────────────────
 
-const done = tool("Signal task completion", async ({ message }: { message: string }) => {
+const done = gate("Signal task completion", async ({ message }: { message: string }) => {
   throw new TaskComplete(message);
 }, {
   name: "done",
@@ -19,7 +19,7 @@ const done = tool("Signal task completion", async ({ message }: { message: strin
   },
 });
 
-const add = tool("Add two numbers", async ({ a, b }: { a: number; b: number }) => a + b, {
+const add = gate("Add two numbers", async ({ a, b }: { a: number; b: number }) => a + b, {
   name: "add",
   schema: {
     type: "object",

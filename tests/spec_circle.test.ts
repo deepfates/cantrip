@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/errors";
-import { tool } from "../src/circle/gate/decorator";
+import { gate } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
 import type { GateResult } from "../src/circle/gate/gate";
 import { max_turns, require_done, max_depth, resolveWards } from "../src/circle/ward";
@@ -13,7 +13,7 @@ async function doneHandler({ message }: { message: string }) {
   throw new TaskComplete(message);
 }
 
-const doneGate = tool("Signal completion", doneHandler, {
+const doneGate = gate("Signal completion", doneHandler, {
   name: "done",
   schema: {
     type: "object",
@@ -23,7 +23,7 @@ const doneGate = tool("Signal completion", doneHandler, {
   },
 });
 
-const echoGate = tool("Echo text back", async ({ text }: { text: string }) => text, {
+const echoGate = gate("Echo text back", async ({ text }: { text: string }) => text, {
   name: "echo",
   schema: {
     type: "object",
@@ -56,7 +56,7 @@ function makeLlm(responses: (() => any)[]) {
 
 describe("CIRCLE-1: circle must have done gate", () => {
   test("CIRCLE-1: Circle constructor throws when no done gate present", () => {
-    const notDone = tool("Not done", async () => "ok", {
+    const notDone = gate("Not done", async () => "ok", {
       name: "other",
       schema: { type: "object", properties: {}, additionalProperties: false },
     });
@@ -79,7 +79,7 @@ describe("CIRCLE-1: circle must have done gate", () => {
 
   test("CIRCLE-1: cantrip also validates done gate", () => {
     const crystal = makeLlm([]);
-    const notDone = tool("Not done", async () => "ok", {
+    const notDone = gate("Not done", async () => "ok", {
       name: "other",
       schema: { type: "object", properties: {}, additionalProperties: false },
     });
@@ -110,7 +110,7 @@ describe("CIRCLE-3: gate execution is synchronous from entity perspective", () =
     const messagesPerCall: any[][] = [];
     let callCount = 0;
 
-    const slowGate = tool("Slow gate", async ({ delay_ms }: { delay_ms: number }) => {
+    const slowGate = gate("Slow gate", async ({ delay_ms }: { delay_ms: number }) => {
       // Simulate async work
       await new Promise((resolve) => setTimeout(resolve, 10));
       return "completed";
@@ -246,7 +246,7 @@ describe("CIRCLE-4: gate results visible in context", () => {
 
 describe("CIRCLE-5: gate errors returned as observations", () => {
   test("CIRCLE-5: failing gate returns error, entity can recover", async () => {
-    const failingGate = tool("Failing gate", async () => {
+    const failingGate = gate("Failing gate", async () => {
       throw new Error("something went wrong");
     }, {
       name: "failing_gate",
@@ -364,7 +364,7 @@ describe("CIRCLE-7: multiple gate calls in one utterance executed in order", () 
   test("CIRCLE-7: gates execute in the order they appear in tool_calls", async () => {
     const gateCallOrder: string[] = [];
 
-    const echoTracked = tool("Echo", async ({ text }: { text: string }) => {
+    const echoTracked = gate("Echo", async ({ text }: { text: string }) => {
       gateCallOrder.push(`echo:${text}`);
       return text;
     }, {
@@ -377,7 +377,7 @@ describe("CIRCLE-7: multiple gate calls in one utterance executed in order", () 
       },
     });
 
-    const doneTracked = tool("Done", async ({ message }: { message: string }) => {
+    const doneTracked = gate("Done", async ({ message }: { message: string }) => {
       gateCallOrder.push("done");
       throw new TaskComplete(message);
     }, {
@@ -479,7 +479,7 @@ describe("CIRCLE-10: gate dependencies injected at construction", () => {
     // Create a named factory function so Record-based overrides can match by name
     function fsRoot() { return "/default/root"; }
 
-    const readGateWithDep = tool(
+    const readGateWithDep = gate(
       "Read with deps",
       async ({ path }: { path: string }, deps: any) => {
         return deps.root ? `${deps.root}/${path}` : path;

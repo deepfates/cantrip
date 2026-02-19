@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { cantrip } from "../src/cantrip/cantrip";
 import { TaskComplete } from "../src/entity/errors";
-import { tool } from "../src/circle/gate/decorator";
+import { gate } from "../src/circle/gate/decorator";
 import { Circle } from "../src/circle/circle";
 import type { GateResult } from "../src/circle/gate/gate";
 
@@ -12,7 +12,7 @@ async function doneHandler({ message }: { message: string }) {
   throw new TaskComplete(message);
 }
 
-const doneGate = tool("Signal completion", doneHandler, {
+const doneGate = gate("Signal completion", doneHandler, {
   name: "done",
   schema: {
     type: "object",
@@ -22,7 +22,7 @@ const doneGate = tool("Signal completion", doneHandler, {
   },
 });
 
-const echoGate = tool("Echo text back", async ({ text }: { text: string }) => text, {
+const echoGate = gate("Echo text back", async ({ text }: { text: string }) => text, {
   name: "echo",
   schema: {
     type: "object",
@@ -98,7 +98,7 @@ describe("LOOP-2: cantrip without truncation ward is invalid", () => {
 
   test("LOOP-2: cantrip with require_done but no done gate throws via CANTRIP-3", () => {
     const crystal = makeLlm([]);
-    const notDone = tool("Other", async () => "ok", {
+    const notDone = gate("Other", async () => "ok", {
       name: "other",
       schema: { type: "object", properties: {}, additionalProperties: false },
     });
@@ -118,7 +118,7 @@ describe("LOOP-3: done gate stops the loop immediately", () => {
   test("LOOP-3: when done is called alongside other gates, loop stops after done", async () => {
     const gateCallOrder: string[] = [];
 
-    const echoTracked = tool("Echo", async ({ text }: { text: string }) => {
+    const echoTracked = gate("Echo", async ({ text }: { text: string }) => {
       gateCallOrder.push("echo");
       return text;
     }, {
@@ -131,7 +131,7 @@ describe("LOOP-3: done gate stops the loop immediately", () => {
       },
     });
 
-    const doneTracked = tool("Done", async ({ message }: { message: string }) => {
+    const doneTracked = gate("Done", async ({ message }: { message: string }) => {
       gateCallOrder.push("done");
       throw new TaskComplete(message);
     }, {

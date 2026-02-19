@@ -2,9 +2,9 @@
 // A circle defines the capability envelope: what gates are available,
 // and what wards constrain execution.
 
-import { Circle, done, tool, max_turns, require_done } from "../src";
+import { Circle, done, gate, max_turns, require_done } from "../src";
 
-const greet = tool("Say hello", async ({ name }: { name: string }) => `Hello, ${name}!`, {
+const greet = gate("Say hello", async ({ name }: { name: string }) => `Hello, ${name}!`, {
   name: "greet",
   params: { name: "string" },
 });

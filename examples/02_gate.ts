@@ -1,10 +1,10 @@
 // Gate — define tools the entity can use.
 // Gates are the actions available inside a circle. The `done` gate is required.
 
-import { tool, done, TaskComplete } from "../src";
+import { gate, done, TaskComplete } from "../src";
 
 // Define a custom gate with the @tool decorator pattern.
-const add = tool("Add two numbers", async ({ a, b }: { a: number; b: number }) => a + b, {
+const add = gate("Add two numbers", async ({ a, b }: { a: number; b: number }) => a + b, {
   name: "add",
   params: { a: "number", b: "number" },
 });

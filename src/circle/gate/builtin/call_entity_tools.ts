@@ -1,4 +1,4 @@
-import { tool } from "../decorator";
+import { gate } from "../decorator";
 import { z } from "zod";
 import { JsAsyncContext } from "./js_async_context";
 import { TaskComplete } from "../../../entity/errors";
@@ -30,7 +30,7 @@ export type RlmProgressEvent =
 export type RlmProgressCallback = (event: RlmProgressEvent) => void;
 
 /** Default progress callback: logs to stderr in the tree format used by the REPL. */
-function defaultProgress(depth: number): RlmProgressCallback {
+export function defaultProgress(depth: number): RlmProgressCallback {
   const indent = "  ".repeat(depth);
   return (event) => {
     switch (event.type) {
@@ -87,7 +87,7 @@ export const getRlmSandbox = new Depends<JsAsyncContext>(
  * The core 'js' tool for Recursive Language Models.
  * Executes JavaScript in the sandbox and returns only metadata to the LLM.
  */
-export const js_rlm = tool(
+export const js_rlm = gate(
   "Execute JavaScript in the persistent sandbox. Results are returned as metadata. You MUST use submit_answer() to return your final result.",
   async ({ code, timeout_ms }: { code: string; timeout_ms?: number }, deps) => {
     const sandbox = deps.sandbox as JsAsyncContext;
@@ -146,103 +146,45 @@ export async function registerRlmFunctions(options: {
   /** Progress callback for sub-agent activity. Defaults to console.error logging. */
   onProgress?: RlmProgressCallback;
   browserContext?: BrowserContext;
+  /** Skip llm_query registration — the medium already presents the call_entity gate as llm_query. */
+  skipLlmQuery?: boolean;
 }) {
-  const { sandbox, context, onLlmQuery, depth = 0, browserContext } = options;
+  const { sandbox, context, onLlmQuery, depth = 0, browserContext, skipLlmQuery = false } = options;
   const progress = options.onProgress ?? defaultProgress(depth);
 
   // 1. Inject the data context as a global variable.
   sandbox.setGlobal("context", context);
 
-  // 2. submit_answer: The canonical way to return a result to the user.
-  sandbox.registerAsyncFunction("submit_answer", async (value) => {
-    const result =
-      typeof value === "string" ? value : JSON.stringify(value, null, 2);
-    throw new Error(`SIGNAL_FINAL:${result}`);
-  });
+  // 2. submit_answer is now a proper done gate (done_for_medium) — registered by the medium.
 
   // 3. llm_query: Recursive delegation to a sub-agent.
-  sandbox.registerAsyncFunction("llm_query", async (query, subContext) => {
-    let q = query;
-    let c = subContext;
+  // When skipLlmQuery is true, the medium already presents the call_entity gate as llm_query.
+  if (!skipLlmQuery) {
+    sandbox.registerAsyncFunction("llm_query", async (query, subContext) => {
+      let q = query;
+      let c = subContext;
 
-    // Robustness: handle case where LLM passes an object { query, context } or { input }
-    if (typeof query === "object" && query !== null) {
-      q = (query as any).query ?? (query as any).input ?? (query as any).task;
-      c = c ?? (query as any).context ?? (query as any).subContext;
-    }
+      // Robustness: handle case where LLM passes an object { query, context } or { input }
+      if (typeof query === "object" && query !== null) {
+        q = (query as any).query ?? (query as any).input ?? (query as any).task;
+        c = c ?? (query as any).context ?? (query as any).subContext;
+      }
 
-    if (typeof q !== "string") {
-      throw new Error("llm_query(query, context) requires a string query.");
-    }
+      if (typeof q !== "string") {
+        throw new Error("llm_query(query, context) requires a string query.");
+      }
 
-    const childDepth = depth + 1;
-    progress({ type: "sub_entity_start", depth: childDepth, query: q });
+      const childDepth = depth + 1;
+      progress({ type: "sub_entity_start", depth: childDepth, query: q });
 
-    const result = await onLlmQuery(q, c);
+      const result = await onLlmQuery(q, c);
 
-    progress({ type: "sub_entity_end", depth: childDepth });
-    return result;
-  });
+      progress({ type: "sub_entity_end", depth: childDepth });
+      return result;
+    });
+  }
 
-  // 4. llm_batch: Parallel delegation for processing multiple snippets.
-  // Limit concurrency to avoid resource exhaustion from LLM-controlled input
-  const MAX_BATCH_CONCURRENCY = 8;
-
-  sandbox.registerAsyncFunction("llm_batch", async (tasks) => {
-    if (!Array.isArray(tasks)) {
-      throw new Error("llm_batch(tasks) requires an array of task objects.");
-    }
-
-    // Cap array size to prevent DoS
-    const MAX_BATCH_SIZE = 50;
-    if (tasks.length > MAX_BATCH_SIZE) {
-      throw new Error(
-        `llm_batch: array too large (${tasks.length} > ${MAX_BATCH_SIZE}). Split into smaller batches.`,
-      );
-    }
-
-    const childDepth = depth + 1;
-    progress({ type: "batch_start", depth: childDepth, count: tasks.length });
-
-    // Process in chunks to limit concurrency
-    const results: string[] = [];
-    for (let i = 0; i < tasks.length; i += MAX_BATCH_CONCURRENCY) {
-      const chunk = tasks.slice(i, i + MAX_BATCH_CONCURRENCY);
-      const chunkResults = await Promise.all(
-        chunk.map(async (task: any, j: number) => {
-          const idx = i + j;
-          let q =
-            typeof task === "string"
-              ? task
-              : task != null
-                ? (task.query ?? task.input)
-                : undefined;
-          if (typeof q !== "string") {
-            throw new Error(
-              `llm_batch: task[${idx}].query must be a string, got ${typeof q}`,
-            );
-          }
-          const c =
-            typeof task === "object"
-              ? (task.context ?? task.subContext)
-              : undefined;
-          progress({
-            type: "batch_item",
-            depth: childDepth,
-            index: idx,
-            total: tasks.length,
-            query: q,
-          });
-          const result = await onLlmQuery(q, c);
-          return result;
-        }),
-      );
-      results.push(...chunkResults);
-    }
-
-    progress({ type: "batch_end", depth: childDepth });
-    return results;
-  });
+  // 4. llm_batch is now a proper gate (call_entity_batch) — registered by the medium.
 
   // 5. Browser automation via opaque handle pattern (optional).
   if (browserContext) {

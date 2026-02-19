@@ -1,6 +1,6 @@
-export { Tool, tool, serializeGateResult } from "./decorator";
+export { Gate, gate, serializeGateResult } from "./decorator";
 export { Depends } from "./depends";
-export { rawTool } from "./raw";
+export { rawGate } from "./raw";
 export { GateSchema, GateSchemaBuilder } from "./schema";
 export type { GateContent, GateHandler, GateOptions } from "./decorator";
 export type { DependencyOverrides, DependencyFactory } from "./depends";

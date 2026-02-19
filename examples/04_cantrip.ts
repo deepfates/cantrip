@@ -2,9 +2,9 @@
 // Cast a cantrip on an intent, an entity arises.
 
 import "./env";
-import { cantrip, Circle, ChatAnthropic, done, tool, max_turns } from "../src";
+import { cantrip, Circle, ChatAnthropic, done, gate, max_turns } from "../src";
 
-const add = tool("Add two numbers", async ({ a, b }: { a: number; b: number }) => a + b, {
+const add = gate("Add two numbers", async ({ a, b }: { a: number; b: number }) => a + b, {
   name: "add",
   params: { a: "number", b: "number" },
 });
