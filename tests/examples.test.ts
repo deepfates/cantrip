@@ -49,8 +49,9 @@ describe("examples", () => {
   test.skipIf(!hasAnthropicKey)("01_crystal: raw model call returns content", async () => {
     const { main } = await import("../examples/01_crystal");
     const result = await main();
+    expect(result).not.toBeNull();
     expect(typeof result).toBe("string");
-    expect(result.length).toBeGreaterThan(0);
+    expect(result!.length).toBeGreaterThan(0);
   }, 30_000);
 
   test.skipIf(!hasAnthropicKey)("04_cantrip: casts and returns results", async () => {

@@ -1,4 +1,4 @@
-import { TaskComplete } from "../../../entity/service";
+import { TaskComplete } from "../../../entity/recording";
 import { gate } from "../decorator";
 import type { GateResult } from "../gate";
 

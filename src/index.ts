@@ -80,7 +80,7 @@ export {
 } from "./loom/folding";
 
 // ── Entity (the running instance) ───────────────────────────────────
-export { TaskComplete } from "./entity/service";
+export { TaskComplete } from "./entity/recording";
 export { createConsoleRenderer } from "./entity/console";
 export { exec, runRepl } from "./entity/repl";
 export type { ExecOptions, ReplOptions } from "./entity/repl";
