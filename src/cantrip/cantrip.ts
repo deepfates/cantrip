@@ -2,10 +2,9 @@ import type { BaseChatModel } from "../crystal/crystal";
 import type { AnyMessage } from "../crystal/messages";
 import type { Call } from "./call";
 import { renderGateDefinitions } from "./call";
-import type { Circle } from "../circle/circle";
+import { Circle } from "../circle/circle";
 import { resolveWards } from "../circle/ward";
 import type { DependencyOverrides } from "../circle/gate/depends";
-import type { GateResult } from "../circle/gate";
 import type { Intent } from "./intent";
 import { Entity } from "./entity";
 import { UsageTracker } from "../crystal/tokens";
@@ -124,17 +123,18 @@ export function cantrip(input: CantripInput): Cantrip {
       }
 
       // CANTRIP-2: fresh state per cast
-      const ward = resolveWards(circle.wards);
-      const tools = circle.gates;
-      const tool_map = new Map<string, GateResult>();
-      for (const tool of tools) {
-        tool_map.set(tool.name, tool);
-      }
+      // Ensure we have a fully constructed Circle with execute().
+      // Users may pass a plain {gates, wards} object — wrap it if needed.
+      const execCircle = circle.execute
+        ? circle
+        : Circle({ gates: circle.gates, wards: circle.wards });
+      const ward = resolveWards(execCircle.wards);
+      const tools = execCircle.gates;
       const effectiveToolChoice = ward.require_done_tool
         ? "required"
         : resolvedCall.hyperparameters.tool_choice;
       // Circle provides crystalView when constructed via Circle()
-      const crystalView = circle.crystalView?.(effectiveToolChoice);
+      const crystalView = execCircle.crystalView?.(effectiveToolChoice);
       const tool_definitions =
         crystalView?.tool_definitions ?? resolvedCall.gate_definitions;
       const viewToolChoice =
@@ -156,15 +156,12 @@ export function cantrip(input: CantripInput): Cantrip {
       return runAgentLoop({
         llm: crystal,
         tools,
-        tool_map,
-        tool_definitions,
-        tool_choice: viewToolChoice,
+        circle: execCircle,
         messages,
         system_prompt: resolvedCall.system_prompt,
         max_iterations: ward.max_turns,
         require_done_tool: ward.require_done_tool,
         dependency_overrides: dependency_overrides ?? null,
-        ...(circle.execute ? { circle } : {}),
         invoke_llm: async () =>
           invokeLLMWithRetries({
             llm: crystal,

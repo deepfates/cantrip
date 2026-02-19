@@ -9,7 +9,7 @@ import type { ChatInvokeCompletion } from "../crystal/views";
 import { hasGateCalls } from "../crystal/views";
 import type { GateResult } from "../circle/gate";
 import type { DependencyOverrides } from "../circle/gate/depends";
-import type { Circle } from "../circle/circle";
+import { Circle } from "../circle/circle";
 import { DEFAULT_WARD, resolveWards } from "../circle/ward";
 import {
   fold,
@@ -237,6 +237,7 @@ export class Agent {
 
   private messages: AnyMessage[] = [];
   private tool_map: Map<string, GateResult> = new Map();
+  private circle: Circle;
   private usage_tracker: UsageTracker;
   private loom: Loom | null;
   private cantrip_id: string;
@@ -271,6 +272,112 @@ export class Agent {
 
     for (const tool of this.tools) {
       this.tool_map.set(tool.name, tool);
+    }
+
+    // Build or reuse a Circle for tool dispatch.
+    // If a Circle was provided in options, use it. Otherwise construct one
+    // from the flat tools/wards. We build the object directly (not via Circle()
+    // constructor) because Agent supports running without a done gate when
+    // require_done_tool is false — Circle() would reject that.
+    if (circle?.execute) {
+      this.circle = circle;
+    } else {
+      const tool_map = this.tool_map;
+      const gates = this.tools;
+      const tool_definitions: GateDefinition[] = this.tools.map((t) => t.definition);
+      this.circle = {
+        gates,
+        wards: [{ max_turns: this.max_iterations, require_done_tool: this.require_done_tool }],
+        crystalView(toolChoice?: ToolChoice) {
+          return { tool_definitions, tool_choice: toolChoice ?? "auto" };
+        },
+        async execute(utterance, execOptions) {
+          const { dependency_overrides, on_event, on_tool_result } = execOptions;
+          const emit = on_event ?? (() => {});
+          const messages: ToolMessage[] = [];
+          const gate_calls: { gate_name: string; arguments: string; result: string; is_error: boolean }[] = [];
+
+          let stepNumber = 0;
+          for (const toolCall of utterance.tool_calls ?? []) {
+            stepNumber += 1;
+            let args: Record<string, any> = {};
+            try {
+              args = JSON.parse(toolCall.function.arguments ?? "{}");
+            } catch {
+              args = { _raw: toolCall.function.arguments };
+            }
+
+            emit(new StepStartEvent(toolCall.id, toolCall.function.name, stepNumber));
+            emit(new ToolCallEvent(toolCall.function.name, args, toolCall.id, toolCall.function.name));
+
+            const stepStart = Date.now();
+            try {
+              const toolResult = await executeToolCall({
+                tool_call: toolCall,
+                tool_map,
+                dependency_overrides,
+              });
+              messages.push(toolResult);
+              if (on_tool_result) on_tool_result(toolResult);
+
+              const resultText = typeof toolResult.content === "string"
+                ? toolResult.content
+                : JSON.stringify(toolResult.content);
+
+              emit(new ToolResultEvent(
+                toolCall.function.name,
+                extractToolMessageText(toolResult),
+                toolCall.id,
+                toolResult.is_error ?? false,
+                extractScreenshot(toolResult),
+              ));
+              emit(new StepCompleteEvent(
+                toolCall.id,
+                toolResult.is_error ? "error" : "completed",
+                Date.now() - stepStart,
+              ));
+
+              gate_calls.push({
+                gate_name: toolCall.function.name,
+                arguments: toolCall.function.arguments ?? "{}",
+                result: resultText,
+                is_error: toolResult.is_error ?? false,
+              });
+            } catch (err) {
+              if (err instanceof TaskComplete) {
+                const completionMsg: ToolMessage = {
+                  role: "tool",
+                  tool_call_id: toolCall.id,
+                  tool_name: toolCall.function.name,
+                  content: `Task completed: ${err.message}`,
+                  is_error: false,
+                } as ToolMessage;
+                messages.push(completionMsg);
+
+                emit(new ToolResultEvent(
+                  toolCall.function.name,
+                  `Task completed: ${err.message}`,
+                  toolCall.id,
+                  false,
+                ));
+                emit(new FinalResponseEvent(err.message));
+
+                gate_calls.push({
+                  gate_name: toolCall.function.name,
+                  arguments: toolCall.function.arguments ?? "{}",
+                  result: `Task completed: ${err.message}`,
+                  is_error: false,
+                });
+
+                return { messages, gate_calls, done: err.message };
+              }
+              throw err;
+            }
+          }
+
+          return { messages, gate_calls };
+        },
+      };
     }
 
     this.usage_tracker = options.usage_tracker ?? new UsageTracker();
@@ -372,9 +479,7 @@ export class Agent {
     const result = await runAgentLoop({
       llm: this.llm,
       tools: this.tools,
-      tool_map: this.tool_map,
-      tool_definitions: this.tool_definitions,
-      tool_choice: effectiveToolChoice,
+      circle: this.circle,
       messages: this.messages,
       system_prompt: this.system_prompt,
       max_iterations: this.max_iterations,
@@ -544,70 +649,22 @@ export class Agent {
         yield new TextEvent(response.content);
       }
 
-      let stepNumber = 0;
-      for (const toolCall of response.tool_calls ?? []) {
-        stepNumber += 1;
-        let args: Record<string, any> = {};
-        try {
-          args = JSON.parse(toolCall.function.arguments ?? "{}");
-        } catch {
-          args = { _raw: toolCall.function.arguments };
-        }
+      // Delegate tool dispatch to the circle
+      const events: AgentEvent[] = [];
+      const result = await this.circle.execute(assistantMessage, {
+        dependency_overrides: this.dependency_overrides,
+        on_event: (event) => events.push(event),
+      });
 
-        yield new StepStartEvent(
-          toolCall.id,
-          toolCall.function.name,
-          stepNumber,
-        );
-        yield new ToolCallEvent(
-          toolCall.function.name,
-          args,
-          toolCall.id,
-          toolCall.function.name,
-        );
+      // Yield collected events
+      for (const event of events) {
+        yield event;
+      }
 
-        const start = Date.now();
-        try {
-          const toolResult = await executeToolCall({
-            tool_call: toolCall,
-            tool_map: this.tool_map,
-            dependency_overrides: this.dependency_overrides,
-          });
-          this.messages.push(toolResult);
-          const screenshot = extractScreenshot(toolResult);
-          yield new ToolResultEvent(
-            toolCall.function.name,
-            extractToolMessageText(toolResult),
-            toolCall.id,
-            toolResult.is_error ?? false,
-            screenshot,
-          );
-          const duration = Date.now() - start;
-          yield new StepCompleteEvent(
-            toolCall.id,
-            toolResult.is_error ? "error" : "completed",
-            duration,
-          );
-        } catch (err) {
-          if (err instanceof TaskComplete) {
-            this.messages.push({
-              role: "tool",
-              tool_call_id: toolCall.id,
-              tool_name: toolCall.function.name,
-              content: `Task completed: ${err.message}`,
-              is_error: false,
-            } as ToolMessage);
-            yield new ToolResultEvent(
-              toolCall.function.name,
-              `Task completed: ${err.message}`,
-              toolCall.id,
-              false,
-            );
-            yield new FinalResponseEvent(err.message);
-            return;
-          }
-          throw err;
-        }
+      this.messages.push(...result.messages);
+
+      if (result.done) {
+        return;
       }
 
       await this._checkAndFold(response);

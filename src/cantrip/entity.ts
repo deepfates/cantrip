@@ -1,7 +1,7 @@
 import type { BaseChatModel } from "../crystal/crystal";
 import type { AnyMessage } from "../crystal/messages";
 import type { Call } from "./call";
-import type { Circle } from "../circle/circle";
+import { Circle } from "../circle/circle";
 import type { DependencyOverrides } from "../circle/gate/depends";
 import type { GateResult } from "../circle/gate";
 import type { Intent } from "./intent";
@@ -63,7 +63,10 @@ export class Entity {
   constructor(options: EntityOptions) {
     this.crystal = options.crystal;
     this.call = options.call;
-    this.circle = options.circle;
+    // Ensure we have a fully constructed Circle with execute().
+    this.circle = options.circle.execute
+      ? options.circle
+      : Circle({ gates: options.circle.gates, wards: options.circle.wards });
     this.dependency_overrides = options.dependency_overrides;
     this.usage_tracker = options.usage_tracker ?? new UsageTracker();
 
@@ -176,9 +179,7 @@ export class Entity {
     return runAgentLoop({
       llm: this.crystal,
       tools: this.circle.gates,
-      tool_map: this.tool_map,
-      tool_definitions,
-      tool_choice: viewToolChoice,
+      circle: this.circle,
       messages: this.messages,
       system_prompt: this.call.system_prompt,
       max_iterations: ward.max_turns,
@@ -186,7 +187,6 @@ export class Entity {
       dependency_overrides: this.dependency_overrides ?? null,
       usage_tracker: this.usage_tracker,
       on_event,
-      ...(this.circle.execute ? { circle: this.circle } : {}),
       invoke_llm: async () =>
         invokeLLMWithRetries({
           llm: this.crystal,

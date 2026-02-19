@@ -8,7 +8,6 @@ import type {
   GateCall,
   ToolMessage,
 } from "../crystal/messages";
-import { extractToolMessageText } from "../crystal/messages";
 import type { ChatInvokeCompletion } from "../crystal/views";
 import { hasGateCalls } from "../crystal/views";
 import type { Circle } from "../circle/circle";
@@ -19,12 +18,8 @@ import { TaskComplete } from "./errors";
 import type { AgentEvent } from "./events";
 import {
   FinalResponseEvent,
-  StepCompleteEvent,
-  StepStartEvent,
   TextEvent,
   ThinkingEvent,
-  ToolCallEvent,
-  ToolResultEvent,
   UsageEvent,
 } from "./events";
 
@@ -273,12 +268,6 @@ Keep the summary brief but informative.`;
 export async function runAgentLoop(options: {
   llm: BaseChatModel;
   tools: GateResult[];
-  /** Required when circle is not provided (legacy inline dispatch path). */
-  tool_map?: Map<string, GateResult>;
-  /** Required when circle is not provided (legacy inline dispatch path). */
-  tool_definitions?: GateDefinition[];
-  /** Required when circle is not provided (legacy inline dispatch path). */
-  tool_choice?: ToolChoice;
   messages: AnyMessage[];
   system_prompt: string | null;
   max_iterations: number;
@@ -305,15 +294,12 @@ export async function runAgentLoop(options: {
   }) => Promise<void>;
   /** Streaming event callback — when provided, runAgentLoop emits AgentEvents inline. */
   on_event?: (event: AgentEvent) => void;
-  /** When provided, the loop delegates tool dispatch to the circle. tool_map/tool_definitions/tool_choice become optional. */
-  circle?: Circle;
+  /** The circle handles all tool dispatch. */
+  circle: Circle;
 }): Promise<string> {
   const {
     llm,
     tools,
-    tool_map,
-    tool_definitions,
-    tool_choice,
     messages,
     system_prompt,
     max_iterations,
@@ -404,33 +390,17 @@ export async function runAgentLoop(options: {
       emit(new TextEvent(response.content));
     }
 
-    if (circle) {
-      // Delegate tool dispatch to the circle
-      const result = await circle.execute(assistantMessage, {
-        dependency_overrides,
-        on_event,
-        on_tool_result,
-      });
+    // Delegate tool dispatch to the circle
+    const result = await circle.execute(assistantMessage, {
+      dependency_overrides,
+      on_event,
+      on_tool_result,
+    });
 
-      messages.push(...result.messages);
-      const observation = result.gate_calls.map((gc) => gc.result).join("\n");
+    messages.push(...result.messages);
+    const observation = result.gate_calls.map((gc) => gc.result).join("\n");
 
-      if (result.done) {
-        if (on_turn_complete) {
-          await on_turn_complete({
-            iteration: iterations,
-            utterance: response.content ?? "",
-            observation,
-            gate_calls: result.gate_calls,
-            usage: response.usage,
-            duration_ms: Date.now() - turnStart,
-            terminated: true,
-            truncated: false,
-          });
-        }
-        return result.done;
-      }
-
+    if (result.done) {
       if (on_turn_complete) {
         await on_turn_complete({
           iteration: iterations,
@@ -439,125 +409,28 @@ export async function runAgentLoop(options: {
           gate_calls: result.gate_calls,
           usage: response.usage,
           duration_ms: Date.now() - turnStart,
-          terminated: false,
+          terminated: true,
           truncated: false,
         });
       }
+      return result.done;
+    }
 
-      if (after_response) {
-        await after_response(response, { has_tool_calls: true });
-      }
-    } else {
-      // Legacy path: inline tool dispatch
-      const turnGateCalls: { gate_name: string; arguments: string; result: string; is_error: boolean }[] = [];
-      const observationParts: string[] = [];
+    if (on_turn_complete) {
+      await on_turn_complete({
+        iteration: iterations,
+        utterance: response.content ?? "",
+        observation,
+        gate_calls: result.gate_calls,
+        usage: response.usage,
+        duration_ms: Date.now() - turnStart,
+        terminated: false,
+        truncated: false,
+      });
+    }
 
-      let stepNumber = 0;
-      for (const toolCall of response.tool_calls ?? []) {
-        stepNumber += 1;
-        let args: Record<string, any> = {};
-        try {
-          args = JSON.parse(toolCall.function.arguments ?? "{}");
-        } catch {
-          args = { _raw: toolCall.function.arguments };
-        }
-
-        emit(new StepStartEvent(toolCall.id, toolCall.function.name, stepNumber));
-        emit(new ToolCallEvent(toolCall.function.name, args, toolCall.id, toolCall.function.name));
-
-        const stepStart = Date.now();
-        try {
-          const toolResult = await executeToolCall({
-            tool_call: toolCall,
-            tool_map,
-            dependency_overrides,
-          });
-          messages.push(toolResult);
-          if (on_tool_result) on_tool_result(toolResult);
-
-          const resultText = typeof toolResult.content === "string"
-            ? toolResult.content
-            : JSON.stringify(toolResult.content);
-
-          emit(new ToolResultEvent(
-            toolCall.function.name,
-            extractToolMessageText(toolResult),
-            toolCall.id,
-            toolResult.is_error ?? false,
-            extractScreenshot(toolResult),
-          ));
-          emit(new StepCompleteEvent(
-            toolCall.id,
-            toolResult.is_error ? "error" : "completed",
-            Date.now() - stepStart,
-          ));
-
-          turnGateCalls.push({
-            gate_name: toolCall.function.name,
-            arguments: toolCall.function.arguments ?? "{}",
-            result: resultText,
-            is_error: toolResult.is_error ?? false,
-          });
-          observationParts.push(resultText);
-        } catch (err) {
-          if (err instanceof TaskComplete) {
-            messages.push({
-              role: "tool",
-              tool_call_id: toolCall.id,
-              tool_name: toolCall.function.name,
-              content: `Task completed: ${err.message}`,
-              is_error: false,
-            } as ToolMessage);
-
-            emit(new ToolResultEvent(
-              toolCall.function.name,
-              `Task completed: ${err.message}`,
-              toolCall.id,
-              false,
-            ));
-            emit(new FinalResponseEvent(err.message));
-
-            turnGateCalls.push({
-              gate_name: toolCall.function.name,
-              arguments: toolCall.function.arguments ?? "{}",
-              result: `Task completed: ${err.message}`,
-              is_error: false,
-            });
-
-            if (on_turn_complete) {
-              await on_turn_complete({
-                iteration: iterations,
-                utterance: response.content ?? "",
-                observation: observationParts.join("\n"),
-                gate_calls: turnGateCalls,
-                usage: response.usage,
-                duration_ms: Date.now() - turnStart,
-                terminated: true,
-                truncated: false,
-              });
-            }
-            return err.message;
-          }
-          throw err;
-        }
-      }
-
-      if (on_turn_complete) {
-        await on_turn_complete({
-          iteration: iterations,
-          utterance: response.content ?? "",
-          observation: observationParts.join("\n"),
-          gate_calls: turnGateCalls,
-          usage: response.usage,
-          duration_ms: Date.now() - turnStart,
-          terminated: false,
-          truncated: false,
-        });
-      }
-
-      if (after_response) {
-        await after_response(response, { has_tool_calls: true });
-      }
+    if (after_response) {
+      await after_response(response, { has_tool_calls: true });
     }
   }
 
