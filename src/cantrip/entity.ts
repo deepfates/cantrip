@@ -15,6 +15,10 @@ import {
   generateMaxIterationsSummary,
   runAgentLoop,
 } from "../entity/runtime";
+import { recordCallRoot, recordTurn, checkAndFold } from "../entity/service";
+import type { Loom } from "../loom";
+import type { FoldingConfig } from "../loom/folding";
+import { DEFAULT_FOLDING_CONFIG } from "../loom/folding";
 
 /**
  * Options for constructing an Entity.
@@ -27,6 +31,23 @@ export type EntityOptions = {
   dependency_overrides: DependencyOverrides | null;
   /** Optional shared usage tracker (for aggregating across recursive entities). */
   usage_tracker?: UsageTracker;
+  /** Optional loom for recording turns. */
+  loom?: Loom;
+  /** Cantrip ID for loom recording. */
+  cantrip_id?: string;
+  /** Entity ID for loom recording. */
+  entity_id?: string;
+  /** Folding configuration. */
+  folding?: FoldingConfig;
+  /** Whether folding is enabled. */
+  folding_enabled?: boolean;
+  /** Retry configuration for LLM calls. */
+  retry?: {
+    max_retries?: number;
+    base_delay?: number;
+    max_delay?: number;
+    retryable_status_codes?: Set<number>;
+  };
 };
 
 /**
@@ -60,6 +81,32 @@ export class Entity {
   /** Tracks token usage across turns. */
   private usage_tracker: UsageTracker;
 
+  /** Optional loom for recording turns. */
+  private loom?: Loom;
+
+  /** Cantrip ID for loom recording. */
+  private cantrip_id: string;
+
+  /** Entity ID for loom recording. */
+  private entity_id: string;
+
+  /** Last turn ID in the loom (for parent chaining). */
+  private last_turn_id: string | null = null;
+
+  /** Folding configuration. */
+  private folding: FoldingConfig;
+
+  /** Whether folding is enabled. */
+  private folding_enabled: boolean;
+
+  /** Retry configuration. */
+  private retry?: {
+    max_retries?: number;
+    base_delay?: number;
+    max_delay?: number;
+    retryable_status_codes?: Set<number>;
+  };
+
   constructor(options: EntityOptions) {
     this.crystal = options.crystal;
     this.call = options.call;
@@ -69,6 +116,12 @@ export class Entity {
       : Circle({ gates: options.circle.gates, wards: options.circle.wards });
     this.dependency_overrides = options.dependency_overrides;
     this.usage_tracker = options.usage_tracker ?? new UsageTracker();
+    this.loom = options.loom;
+    this.cantrip_id = options.cantrip_id ?? "unknown";
+    this.entity_id = options.entity_id ?? "unknown";
+    this.folding = options.folding ?? DEFAULT_FOLDING_CONFIG;
+    this.folding_enabled = options.folding_enabled ?? false;
+    this.retry = options.retry;
 
     for (const gate of this.circle.gates) {
       this.tool_map.set(gate.name, gate);
@@ -176,6 +229,17 @@ export class Entity {
     const tool_definitions = crystalView?.tool_definitions ?? this.call.gate_definitions;
     const viewToolChoice = crystalView?.tool_choice ?? effectiveToolChoice;
 
+    // CALL-4: Record the call as the loom root before the first turn
+    if (this.loom && this.last_turn_id === null) {
+      this.last_turn_id = await recordCallRoot({
+        loom: this.loom,
+        cantrip_id: this.cantrip_id,
+        entity_id: this.entity_id,
+        system_prompt: this.call.system_prompt,
+        tool_definitions: crystalView?.tool_definitions ?? this.call.gate_definitions,
+      });
+    }
+
     return runAgentLoop({
       llm: this.crystal,
       tools: this.circle.gates,
@@ -195,10 +259,10 @@ export class Entity {
           tool_definitions,
           tool_choice: viewToolChoice,
           usage_tracker: this.usage_tracker,
-          llm_max_retries: 5,
-          llm_retry_base_delay: 1.0,
-          llm_retry_max_delay: 60.0,
-          llm_retryable_status_codes: new Set([429, 500, 502, 503, 504]),
+          llm_max_retries: this.retry?.max_retries ?? 5,
+          llm_retry_base_delay: this.retry?.base_delay ?? 1.0,
+          llm_retry_max_delay: this.retry?.max_delay ?? 60.0,
+          llm_retryable_status_codes: this.retry?.retryable_status_codes ?? new Set([429, 500, 502, 503, 504]),
         }),
       on_max_iterations: async () =>
         generateMaxIterationsSummary({
@@ -212,6 +276,35 @@ export class Entity {
           tool_map: this.tool_map,
         });
       },
+      on_turn_complete: this.loom
+        ? async (turnData) => {
+            this.last_turn_id = await recordTurn({
+              loom: this.loom!,
+              parent_id: this.last_turn_id,
+              cantrip_id: this.cantrip_id,
+              entity_id: this.entity_id,
+              turnData,
+            });
+          }
+        : undefined,
+      after_response: (this.loom && this.folding_enabled)
+        ? async (response) => {
+            const newMessages = await checkAndFold({
+              messages: this.messages,
+              loom: this.loom!,
+              last_turn_id: this.last_turn_id!,
+              folding: this.folding,
+              folding_enabled: this.folding_enabled,
+              llm: this.crystal,
+              system_prompt: this.call.system_prompt,
+              response,
+            });
+            if (newMessages) {
+              this.messages = newMessages;
+              return true;
+            }
+          }
+        : undefined,
     });
   }
 }

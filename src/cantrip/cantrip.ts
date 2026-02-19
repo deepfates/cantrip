@@ -13,6 +13,8 @@ import {
   generateMaxIterationsSummary,
   runAgentLoop,
 } from "../entity/runtime";
+import type { Loom } from "../loom";
+import type { FoldingConfig } from "../loom/folding";
 
 /**
  * A Cantrip is the minimal recipe for creating an Entity.
@@ -59,6 +61,21 @@ export type CantripInput = {
   circle: Circle;
   /** Optional dependency overrides for gate DI (e.g., sandbox contexts). */
   dependency_overrides?: DependencyOverrides | null;
+  /** Optional loom for recording turns. */
+  loom?: Loom;
+  /** Cantrip ID for loom recording. */
+  cantrip_id?: string;
+  /** Folding configuration. */
+  folding?: FoldingConfig;
+  /** Whether folding is enabled. */
+  folding_enabled?: boolean;
+  /** Retry configuration for LLM calls. */
+  retry?: {
+    max_retries?: number;
+    base_delay?: number;
+    max_delay?: number;
+    retryable_status_codes?: Set<number>;
+  };
 };
 
 /**
@@ -194,6 +211,11 @@ export function cantrip(input: CantripInput): Cantrip {
         call: resolvedCall,
         circle,
         dependency_overrides: dependency_overrides ?? null,
+        loom: input.loom,
+        cantrip_id: input.cantrip_id,
+        folding: input.folding,
+        folding_enabled: input.folding_enabled,
+        retry: input.retry,
       });
     },
   };

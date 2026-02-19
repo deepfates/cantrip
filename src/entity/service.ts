@@ -108,7 +108,7 @@ export async function recordCallRoot(params: {
   tool_definitions: GateDefinition[];
 }): Promise<string> {
   const gateDefinitions = params.tool_definitions
-    .map((g) => `- ${g.function.name}: ${g.function.description ?? "(no description)"}`)
+    .map((g) => `- ${g.name}: ${g.description ?? "(no description)"}`)
     .join("\n");
 
   const turn: Turn = {
