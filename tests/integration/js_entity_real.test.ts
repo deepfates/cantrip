@@ -19,13 +19,9 @@ const modelName =
   process.env.OPENAI_MODEL ?? "gpt-5-mini";
 
 const CALL_STRATEGY = [
-  "You are a data exploration agent working inside a JavaScript sandbox.",
-  "The `context` global contains the data you need to explore.",
-  "ALWAYS start by inspecting context: console.log(typeof context, JSON.stringify(context).slice(0, 500))",
-  "For strings: use .indexOf(), .match(), .slice() to search.",
-  "For objects/arrays: use JSON.stringify(), Object.keys(), .filter(), .find().",
-  "Use console.log() to see intermediate results.",
-  "When you have the answer, call submit_answer(result) with just the answer.",
+  "Explore the context using code. Always inspect data with console.log() before answering.",
+  "For strings: use .indexOf() or .match() to search, then .slice() to extract.",
+  "When you have the answer, call submit_answer() with your result.",
 ].join("\n");
 
 function createTestCircle(context: unknown) {

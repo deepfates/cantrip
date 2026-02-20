@@ -40,6 +40,32 @@ function getParameterNames(definition: GateDefinition): string[] {
   return Object.keys(props as Record<string, unknown>);
 }
 
+/** Produce a rich one-line description of a state entry for capabilityDocs(). */
+function describeStateEntry(val: unknown): string {
+  if (typeof val === "string") {
+    const preview = val.slice(0, 100).replace(/\n/g, " ");
+    return `string(${val.length} chars) — "${preview}${val.length > 100 ? "..." : ""}"`;
+  }
+  if (Array.isArray(val)) {
+    const elemType = val.length > 0 ? typeof val[0] : "empty";
+    let preview: string;
+    try { preview = JSON.stringify(val.slice(0, 3)); } catch { preview = "[...]"; }
+    if (preview.length > 200) preview = preview.slice(0, 200) + "...";
+    return `Array(${val.length} items, ${elemType}) — ${preview}`;
+  }
+  if (typeof val === "object" && val !== null) {
+    const keys = Object.keys(val);
+    let preview: string;
+    try { preview = JSON.stringify(val); } catch { preview = "{...}"; }
+    if (preview.length > 200) preview = preview.slice(0, 200) + "...";
+    return `Object{${keys.length} keys: ${keys.join(", ")}} — ${preview}`;
+  }
+  if (typeof val === "number" || typeof val === "boolean") {
+    return `${typeof val}(${val})`;
+  }
+  return typeof val;
+}
+
 /**
  * Creates a JS medium — a QuickJS sandbox that the entity works in.
  *
@@ -311,12 +337,7 @@ export function js(opts?: JsMediumOptions): Medium {
           lines.push("The following globals are pre-loaded in the sandbox:");
           for (const key of keys) {
             const val = opts.state[key];
-            const type = Array.isArray(val)
-              ? `Array(${val.length})`
-              : typeof val === "string"
-                ? `string(${val.length} chars)`
-                : typeof val;
-            lines.push(`- \`${key}\`: ${type}`);
+            lines.push(`- \`${key}\`: ${describeStateEntry(val)}`);
           }
         }
       }
