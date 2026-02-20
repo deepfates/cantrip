@@ -1,13 +1,57 @@
-// cantrip-migration: uses createRlmAgent (RLM-internal factory).
-// Tests progress event callbacks for sub-agent spawning and batching —
-// genuinely below the cantrip API level.
+// Tests progress event callbacks for sub-agent spawning and batching
+// using cantrip() composition.
 import { describe, expect, test, afterEach } from "bun:test";
-import { createRlmAgent } from "../src/circle/recipe/rlm";
 import { JsAsyncContext } from "../src/circle/medium/js/async_context";
 import type { BaseChatModel } from "../src/crystal/crystal";
 import type { AnyMessage } from "../src/crystal/messages";
 import type { ChatInvokeCompletion } from "../src/crystal/views";
-import type { RlmProgressEvent } from "../src/circle/recipe/rlm_tools";
+import type { ProgressEvent, ProgressCallback } from "../src/entity/progress";
+import { cantrip } from "../src/cantrip/cantrip";
+import { Circle } from "../src/circle/circle";
+import { js, getJsMediumSandbox } from "../src/circle/medium/js";
+import { max_turns, require_done } from "../src/circle/ward";
+import { call_entity, call_entity_batch, progressBinding } from "../src/circle/gate/builtin/call_entity_gate";
+import { done_for_medium } from "../src/circle/gate/builtin/done";
+import type { Entity } from "../src/cantrip/entity";
+
+/**
+ * Local helper for progress tests.
+ */
+async function createTestAgent(opts: {
+  llm: BaseChatModel;
+  context: unknown;
+  maxDepth?: number;
+  onProgress?: ProgressCallback;
+}): Promise<{ entity: Entity; sandbox: JsAsyncContext }> {
+  const medium = js({ state: { context: opts.context } });
+  const gates = [done_for_medium()];
+  const entityGate = call_entity({ max_depth: opts.maxDepth ?? 2, depth: 0, parent_context: opts.context });
+  if (entityGate) gates.push(entityGate);
+  const batchGate = call_entity_batch({ max_depth: opts.maxDepth ?? 2, depth: 0, parent_context: opts.context });
+  if (batchGate) gates.push(batchGate);
+
+  const depOverrides = new Map<any, any>();
+  if (opts.onProgress) {
+    depOverrides.set(progressBinding, () => opts.onProgress);
+  }
+
+  const circle = Circle({ medium, gates, wards: [max_turns(20), require_done()] });
+  const spell = cantrip({
+    crystal: opts.llm,
+    call: "Explore the context using code. Use submit_answer() to provide your final answer.",
+    circle,
+    dependency_overrides: depOverrides.size > 0 ? depOverrides : null,
+  });
+  const entity = spell.invoke();
+
+  // Merge entity's auto-populated bindings with user-provided overrides
+  const mergedOverrides = new Map(entity.dependency_overrides ?? []);
+  for (const [k, v] of depOverrides) mergedOverrides.set(k, v);
+  await medium.init(gates, mergedOverrides);
+  const sandbox = getJsMediumSandbox(medium)!;
+
+  return { entity, sandbox };
+}
 
 class MockLlm implements BaseChatModel {
   model = "mock";
@@ -34,7 +78,7 @@ class MockLlm implements BaseChatModel {
   }
 }
 
-describe("RLM progress events", () => {
+describe("Entity progress events", () => {
   let activeSandbox: JsAsyncContext | null = null;
 
   afterEach(() => {
@@ -45,7 +89,7 @@ describe("RLM progress events", () => {
   });
 
   test("llm_query emits sub_entity_start and sub_entity_end", async () => {
-    const events: RlmProgressEvent[] = [];
+    const events: ProgressEvent[] = [];
 
     const mockLlm = new MockLlm([
       (msgs) => {
@@ -88,7 +132,7 @@ describe("RLM progress events", () => {
       },
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: {},
       maxDepth: 1,
@@ -110,7 +154,7 @@ describe("RLM progress events", () => {
   });
 
   test("llm_batch emits batch_start, batch_item, and batch_end", async () => {
-    const events: RlmProgressEvent[] = [];
+    const events: ProgressEvent[] = [];
 
     const mockLlm = new MockLlm([
       (msgs) => {
@@ -150,7 +194,7 @@ describe("RLM progress events", () => {
       },
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: {},
       maxDepth: 1,
@@ -177,70 +221,45 @@ describe("RLM progress events", () => {
     expect(batchEnds).toHaveLength(1);
   });
 
-  test("onProgress defaults to console.error when not provided", async () => {
-    const stderrOutput: string[] = [];
-    const origError = console.error;
-    console.error = (...args: any[]) => stderrOutput.push(args.join(" "));
-
-    try {
-      const mockLlm = new MockLlm([
-        (msgs) => {
-          const last = msgs[msgs.length - 1];
-          if (last.content === "Go") {
-            return {
-              content: "Delegating",
-              tool_calls: [
-                {
-                  id: "p1",
-                  type: "function",
-                  function: {
-                    name: "js",
-                    arguments: JSON.stringify({
-                      code: "var r = llm_query('sub'); submit_answer(r);",
-                    }),
-                  },
+  test("llm_query works without onProgress callback (defaults to null)", async () => {
+    const mockLlm = new MockLlm([
+      (msgs) => {
+        const last = msgs[msgs.length - 1];
+        if (last.content === "Go") {
+          return {
+            content: "Delegating",
+            tool_calls: [
+              {
+                id: "p1",
+                type: "function",
+                function: {
+                  name: "js",
+                  arguments: JSON.stringify({
+                    code: "var r = llm_query('sub'); submit_answer(r);",
+                  }),
                 },
-              ],
-            };
-          }
-          if (last.content === "sub") {
-            return {
-              content: "Child",
-              tool_calls: [
-                {
-                  id: "c1",
-                  type: "function",
-                  function: {
-                    name: "js",
-                    arguments: JSON.stringify({
-                      code: "submit_answer('ok');",
-                    }),
-                  },
-                },
-              ],
-            };
-          }
-          return { content: "?", tool_calls: [] };
-        },
-      ]);
+              },
+            ],
+          };
+        }
+        // Default spawn sends "Task: sub\n\nContext:\n..."
+        const content = typeof last.content === "string" ? last.content : "";
+        if (content.includes("sub")) {
+          return { content: "child result", tool_calls: [] };
+        }
+        return { content: "?", tool_calls: [] };
+      },
+    ]);
 
-      const { entity, sandbox } = await createRlmAgent({
-        llm: mockLlm,
-        context: {},
-        maxDepth: 1,
-        // No onProgress — should default to console.error logging
-      });
-      activeSandbox = sandbox;
+    const { entity, sandbox } = await createTestAgent({
+      llm: mockLlm,
+      context: {},
+      maxDepth: 1,
+      // No onProgress — progressBinding defaults to null, no crash
+    });
+    activeSandbox = sandbox;
 
-      await entity.cast("Go");
-
-      // Should have logged sub-agent start/end to stderr
-      const hasStart = stderrOutput.some((line) => line.includes("[depth:1]"));
-      const hasDone = stderrOutput.some((line) => line.includes("done"));
-      expect(hasStart).toBe(true);
-      expect(hasDone).toBe(true);
-    } finally {
-      console.error = origError;
-    }
+    const result = await entity.cast("Go");
+    expect(result).toBe("child result");
   });
 });

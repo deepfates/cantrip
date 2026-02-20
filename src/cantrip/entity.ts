@@ -19,6 +19,12 @@ import { recordCallRoot, recordTurn, checkAndFold } from "../entity/recording";
 import type { Loom } from "../loom";
 import type { FoldingConfig } from "../loom/folding";
 import { DEFAULT_FOLDING_CONFIG } from "../loom/folding";
+import {
+  currentTurnIdBinding,
+  spawnBinding,
+  progressBinding,
+  type SpawnFn,
+} from "../circle/gate/builtin/call_entity_gate";
 
 /**
  * Options for constructing an Entity.
@@ -116,7 +122,6 @@ export class Entity {
     this.crystal = options.crystal;
     this.call = options.call;
     this.circle = options.circle;
-    this.dependency_overrides = options.dependency_overrides;
     this.usage_tracker = options.usage_tracker ?? new UsageTracker();
     this.loom = options.loom;
     this.cantrip_id = options.cantrip_id ?? crypto.randomUUID();
@@ -129,6 +134,59 @@ export class Entity {
     for (const gate of this.circle.gates) {
       this.tool_map.set(gate.name, gate);
     }
+
+    // Auto-populate framework bindings for call_entity if that gate is present.
+    // Framework bindings use Depends instances as Map keys, so we need a Map.
+    // If the user passed a Record, convert entries to Map keyed by the factory function.
+    const userOverrides = options.dependency_overrides;
+    let overrides: DependencyOverrides | null = userOverrides ?? null;
+
+    if (this.tool_map.has("call_entity")) {
+      // Ensure we have a Map for framework bindings
+      let bindingMap: Map<any, any>;
+      if (userOverrides instanceof Map) {
+        bindingMap = userOverrides;
+      } else if (userOverrides && typeof userOverrides === "object") {
+        // Convert Record overrides to Map (keyed by factory function for Depends.resolve)
+        bindingMap = new Map();
+        for (const [name, factory] of Object.entries(userOverrides)) {
+          bindingMap.set(name, factory);
+        }
+      } else {
+        bindingMap = new Map();
+      }
+
+      // currentTurnIdBinding: provide a getter that always reads current last_turn_id
+      if (!bindingMap.has(currentTurnIdBinding)) {
+        bindingMap.set(currentTurnIdBinding, () => () => this.last_turn_id);
+      }
+      // spawnBinding: provide a default spawn that creates a minimal child entity.
+      // Callers can override via dependency_overrides for richer child configs.
+      if (!bindingMap.has(spawnBinding)) {
+        bindingMap.set(spawnBinding, (): SpawnFn => {
+          return async (query: string, context: unknown): Promise<string> => {
+            const contextStr = typeof context === "string"
+              ? context
+              : JSON.stringify(context, null, 2);
+            const truncated = contextStr.length > 10000
+              ? contextStr.slice(0, 10000) + "\n... [truncated]"
+              : contextStr;
+            // Minimal child: direct LLM query (no circle, no recursion)
+            const res = await this.crystal.query([
+              { role: "user", content: `Task: ${query}\n\nContext:\n${truncated}` },
+            ]);
+            if (res.usage) {
+              this.usage_tracker.add(this.crystal.model, res.usage);
+            }
+            return res.content ?? "";
+          };
+        });
+      }
+
+      overrides = bindingMap;
+    }
+
+    this.dependency_overrides = overrides;
   }
 
   /** The ID of the last turn recorded in the loom. Used by call_entity to thread children. */
@@ -222,9 +280,15 @@ export class Entity {
 
     // Initialize system prompt if this is a fresh conversation
     if (!this.messages.length && this.call.system_prompt) {
+      // Auto-prepend circle capability docs (medium physics + gate docs)
+      // so the developer's Call string is pure strategy.
+      const capDocs = this.circle.capabilityDocs();
+      const systemContent = capDocs
+        ? capDocs + "\n\n" + this.call.system_prompt
+        : this.call.system_prompt;
       this.messages.push({
         role: "system",
-        content: this.call.system_prompt,
+        content: systemContent,
         cache: true,
       } as AnyMessage);
     }

@@ -83,7 +83,7 @@ export interface Circle {
 
 /**
  * Build capability docs string from gates. Pure function, shared by both circle variants.
- * Exported so recipe-level code (e.g., rlm_prompt) can reuse the core logic.
+ * Exported so recipe-level code can reuse the core logic.
  */
 export function buildCapabilityDocs(gates: BoundGate[]): string {
   const sectionedGates = gates.filter(
@@ -152,7 +152,15 @@ export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward
       hasMedium: true,
 
       capabilityDocs() {
-        return buildCapabilityDocs(gates);
+        const parts: string[] = [];
+        if (medium.capabilityDocs) {
+          parts.push(medium.capabilityDocs());
+        }
+        const gateDocs = buildCapabilityDocs(gates);
+        if (gateDocs) {
+          parts.push(gateDocs);
+        }
+        return parts.join("\n\n");
       },
 
       crystalView(_toolChoice?: ToolChoice) {

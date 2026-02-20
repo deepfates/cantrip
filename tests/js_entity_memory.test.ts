@@ -1,10 +1,86 @@
-// cantrip-migration: uses createRlmAgentWithMemory (RLM-internal factory).
-// Tests WASM sandbox memory windowing and entity.history manipulation —
-// genuinely below the cantrip API level.
+// Tests WASM sandbox memory windowing and entity.history manipulation
+// using cantrip() composition.
 import { describe, test, expect, mock } from "bun:test";
-import { createRlmAgentWithMemory } from "../src/circle/recipe/rlm";
 import { BaseChatModel } from "../src/crystal/crystal";
+import type { AnyMessage } from "../src/crystal/messages";
 import type { ChatInvokeCompletion } from "../src/crystal/views";
+import { cantrip } from "../src/cantrip/cantrip";
+import { Circle } from "../src/circle/circle";
+import { js, getJsMediumSandbox } from "../src/circle/medium/js";
+import { max_turns, require_done } from "../src/circle/ward";
+import { call_entity, call_entity_batch } from "../src/circle/gate/builtin/call_entity_gate";
+import { done_for_medium } from "../src/circle/gate/builtin/done";
+import { JsAsyncContext } from "../src/circle/medium/js/async_context";
+import type { Entity } from "../src/cantrip/entity";
+
+type MemoryAgent = {
+  entity: Entity;
+  sandbox: JsAsyncContext;
+  manageMemory: () => void;
+};
+
+/**
+ * Local helper for memory-windowing tests.
+ * Creates an entity with sliding-window memory management.
+ */
+async function createTestAgentWithMemory(opts: {
+  llm: BaseChatModel;
+  data?: unknown;
+  windowSize: number;
+}): Promise<MemoryAgent> {
+  const { llm, data, windowSize } = opts;
+
+  const context: { data: unknown; history: AnyMessage[] } = {
+    data: data ?? null,
+    history: [],
+  };
+
+  const medium = js({ state: { context } });
+  const gates = [done_for_medium()];
+  const entityGate = call_entity({ max_depth: 2, depth: 0, parent_context: context });
+  if (entityGate) gates.push(entityGate);
+  const batchGate = call_entity_batch({ max_depth: 2, depth: 0, parent_context: context });
+  if (batchGate) gates.push(batchGate);
+
+  const circle = Circle({ medium, gates, wards: [max_turns(20), require_done()] });
+
+  const spell = cantrip({
+    crystal: llm,
+    call: "Conversational agent with persistent memory. Use submit_answer() to respond.",
+    circle,
+  });
+  const entity = spell.invoke();
+
+  // Init medium AFTER entity so spawnBinding is available
+  await medium.init(gates, entity.dependency_overrides);
+  const sandbox = getJsMediumSandbox(medium)!;
+
+  // Memory management function — slides old turns into context.history
+  const manageMemory = () => {
+    while (true) {
+      let messages = entity.history;
+      const activeUserCount = messages.filter((m) => m.role === "user").length;
+      if (activeUserCount <= windowSize) break;
+      const startIndex = messages[0]?.role === "system" ? 1 : 0;
+      let cutIndex = startIndex;
+      while (cutIndex < messages.length && messages[cutIndex].role !== "user") cutIndex++;
+      if (cutIndex >= messages.length) break;
+      cutIndex++;
+      while (cutIndex < messages.length && messages[cutIndex].role !== "user") cutIndex++;
+      if (cutIndex <= startIndex) break;
+      const toMove = messages.slice(startIndex, cutIndex);
+      context.history.push(...toMove);
+      messages = [
+        ...(startIndex === 1 ? [messages[0]] : []),
+        ...messages.slice(cutIndex),
+      ];
+      entity.load_history(messages);
+    }
+    sandbox.setGlobal("context", context);
+  };
+
+  return { entity, sandbox, manageMemory };
+}
 
 // Mock LLM that responds predictably
 function createMockLlm(responses: string[]): BaseChatModel {
@@ -37,11 +113,11 @@ function createMockLlm(responses: string[]): BaseChatModel {
   } as BaseChatModel;
 }
 
-describe("RLM Memory", () => {
+describe("JS Entity Memory", () => {
   test("creates entity with memory support", async () => {
     const llm = createMockLlm(["hello"]);
 
-    const { entity, sandbox, manageMemory } = await createRlmAgentWithMemory({
+    const { entity, sandbox, manageMemory } = await createTestAgentWithMemory({
       llm,
       windowSize: 3,
     });
@@ -56,7 +132,7 @@ describe("RLM Memory", () => {
   test("context starts with empty history", async () => {
     const llm = createMockLlm(["check"]);
 
-    const { sandbox } = await createRlmAgentWithMemory({
+    const { sandbox } = await createTestAgentWithMemory({
       llm,
       windowSize: 3,
     });
@@ -79,7 +155,7 @@ describe("RLM Memory", () => {
 
     const testData = { foo: "bar", items: [1, 2, 3] };
 
-    const { sandbox } = await createRlmAgentWithMemory({
+    const { sandbox } = await createTestAgentWithMemory({
       llm,
       data: testData,
       windowSize: 3,
@@ -124,7 +200,7 @@ describe("RLM Memory", () => {
       },
     } as BaseChatModel;
 
-    const { entity, sandbox, manageMemory } = await createRlmAgentWithMemory({
+    const { entity, sandbox, manageMemory } = await createTestAgentWithMemory({
       llm,
       windowSize: 2, // Keep only 2 turns in active prompt
     });

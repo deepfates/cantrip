@@ -13,7 +13,7 @@ import {
  * Formats sandbox execution results into a compact metadata string.
  * This prevents the entity's prompt history from being flooded with large data dumps.
  */
-export function formatRlmMetadata(output: string): string {
+export function formatSandboxMetadata(output: string): string {
   if (!output || output === "undefined") return "[Result: undefined]";
   const length = output.length;
   const preview = output.slice(0, 150).replace(/\n/g, " ");
@@ -67,7 +67,7 @@ export function js(opts?: JsMediumOptions): Medium {
   };
 
   const medium: Medium = {
-    async init(gates: BoundGate[], _dependency_overrides?: DependencyOverrides | null) {
+    async init(gates: BoundGate[], dependency_overrides?: DependencyOverrides | null) {
       if (initialized) return;
 
       const module = await createAsyncModule();
@@ -82,6 +82,8 @@ export function js(opts?: JsMediumOptions): Medium {
 
       // Project gates as host functions in the sandbox
       // The done gate (with docs.sandbox_name: "submit_answer") is projected like any other gate.
+      // dependency_overrides are captured and forwarded to gate.execute() for Depends resolution.
+      const overrides = dependency_overrides ?? undefined;
       for (const gate of gates) {
         const sandboxName = gate.docs?.sandbox_name ?? gate.name;
         const paramNames = getParameterNames(gate.definition);
@@ -89,7 +91,7 @@ export function js(opts?: JsMediumOptions): Medium {
         sandbox.registerAsyncFunction(sandboxName, async (...args: unknown[]) => {
           // If a single plain object argument (not an array), pass it as the args map
           if (args.length === 1 && typeof args[0] === "object" && args[0] !== null && !Array.isArray(args[0])) {
-            return await gate.execute(args[0] as Record<string, unknown>);
+            return await gate.execute(args[0] as Record<string, unknown>, overrides);
           }
           // Map positional args to named parameters from the gate definition
           if (paramNames.length > 0) {
@@ -97,9 +99,9 @@ export function js(opts?: JsMediumOptions): Medium {
             for (let i = 0; i < args.length && i < paramNames.length; i++) {
               argMap[paramNames[i]] = args[i];
             }
-            return await gate.execute(argMap);
+            return await gate.execute(argMap, overrides);
           }
-          return await gate.execute({ args });
+          return await gate.execute({ args }, overrides);
         });
       }
 
@@ -205,7 +207,7 @@ export function js(opts?: JsMediumOptions): Medium {
             });
           } else {
             // Success — format as metadata
-            const metadata = formatRlmMetadata(result.output);
+            const metadata = formatSandboxMetadata(result.output);
 
             const successMsg: ToolMessage = {
               role: "tool",
@@ -289,6 +291,37 @@ export function js(opts?: JsMediumOptions): Medium {
         sandbox = null;
         initialized = false;
       }
+    },
+
+    capabilityDocs(): string {
+      const lines: string[] = [
+        "### SANDBOX PHYSICS (QuickJS)",
+        "1. **BLOCKING ONLY**: All host functions are synchronous and blocking.",
+        "2. **NO ASYNC/AWAIT**: Do NOT use `async`, `await`, or `Promise`. They will crash the sandbox.",
+        "3. **PERSISTENCE**: Use `var` or `globalThis` to save state between `js` tool calls.",
+        "- `console.log(...args)`: Prints output (truncated in results).",
+      ];
+
+      // Describe initial state if present
+      if (opts?.state) {
+        const keys = Object.keys(opts.state);
+        if (keys.length > 0) {
+          lines.push("");
+          lines.push("### INITIAL STATE");
+          lines.push("The following globals are pre-loaded in the sandbox:");
+          for (const key of keys) {
+            const val = opts.state[key];
+            const type = Array.isArray(val)
+              ? `Array(${val.length})`
+              : typeof val === "string"
+                ? `string(${val.length} chars)`
+                : typeof val;
+            lines.push(`- \`${key}\`: ${type}`);
+          }
+        }
+      }
+
+      return lines.join("\n");
     },
   };
 

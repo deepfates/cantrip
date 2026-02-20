@@ -4,16 +4,30 @@
 
 import "./env";
 import {
-  cantrip, runRepl, Circle, ChatAnthropic, max_turns,
-  SandboxContext, getSandboxContext, safeFsGates, done,
+  cantrip,
+  runRepl,
+  Circle,
+  ChatAnthropic,
+  max_turns,
+  SandboxContext,
+  getSandboxContext,
+  safeFsGates,
+  done,
 } from "../src";
 
 export async function main() {
   console.log("=== Example 07: Conversation Medium ===");
-  console.log("No medium: parameter means conversation medium (tool-calling baseline).");
-  console.log("Gates cross INTO the circle from outside — filesystem access here.\n");
+  console.log(
+    "No medium: parameter means conversation medium (tool-calling baseline).",
+  );
+  console.log(
+    "Gates cross INTO the circle from outside — filesystem access here.\n",
+  );
 
-  const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+  const crystal = new ChatAnthropic({
+    model: "claude-3-opus-20240229",
+    max_tokens: 2000,
+  });
   const ctx = await SandboxContext.create();
 
   const circle = Circle({
@@ -23,7 +37,9 @@ export async function main() {
 
   const entity = cantrip({
     crystal,
-    call: { system_prompt: `Coding assistant. Working dir: ${ctx.working_dir}\nCall done when finished.` },
+    call: {
+      system_prompt: `Coding assistant. Working dir: ${ctx.working_dir}\nCall done when finished.`,
+    },
     circle,
     dependency_overrides: new Map([[getSandboxContext, () => ctx]]),
   }).invoke();

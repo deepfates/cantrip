@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAcpProgressCallback } from "../src/entity/acp/plans";
-import type { RlmProgressEvent } from "../src/circle/recipe/rlm_tools";
+import type { ProgressEvent } from "../src/entity/progress";
 
 /** Captures sessionUpdate calls and extracts plan entries. */
 function mockConnection() {

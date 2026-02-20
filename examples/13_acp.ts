@@ -9,8 +9,6 @@ import {
   SandboxContext, getSandboxContext, safeFsGates,
 } from "../src";
 import { js } from "../src/circle/medium/js";
-import { getRlmSystemPrompt } from "../src/circle/recipe/rlm_prompt";
-import { analyzeContext } from "../src/circle/recipe/rlm";
 
 export async function main() {
   console.log("--- Example 13: ACP Server ---");
@@ -32,16 +30,10 @@ export async function main() {
       wards: [max_turns(200)],
     });
 
-    const metadata = analyzeContext(workspace);
-    const systemPrompt = getRlmSystemPrompt({
-      contextType: metadata.type,
-      contextLength: metadata.length,
-      contextPreview: metadata.preview,
-    });
-
+    // The entity auto-prepends capability docs from the circle.
     const entity = cantrip({
       crystal,
-      call: { system_prompt: `${systemPrompt}\n\nCoding assistant. Working dir: ${ctx.working_dir}` },
+      call: `Coding assistant. Working dir: ${ctx.working_dir}`,
       circle,
       dependency_overrides: new Map([[getSandboxContext, () => ctx]]),
     }).invoke();

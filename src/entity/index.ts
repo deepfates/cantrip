@@ -1,5 +1,5 @@
 export { TaskComplete } from "./recording";
-export { createConsoleRenderer } from "./console";
+export { createConsoleRenderer, patchStderrForEntities } from "./console";
 export { exec, runRepl } from "./repl";
 export type { ExecOptions, ReplOptions } from "./repl";
 export type {

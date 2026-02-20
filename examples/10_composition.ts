@@ -5,8 +5,6 @@
 import "./env";
 import { cantrip, Circle, max_turns, require_done, ChatOpenAI } from "../src";
 import { js } from "../src/circle/medium/js";
-import { getRlmSystemPrompt } from "../src/circle/recipe/rlm_prompt";
-import { analyzeContext } from "../src/circle/recipe/rlm";
 
 export async function main() {
   console.log("--- Example 10: Composition ---");
@@ -28,16 +26,10 @@ export async function main() {
     wards: [max_turns(20), require_done()],
   });
 
-  const metadata = analyzeContext(data);
-  const systemPrompt = getRlmSystemPrompt({
-    contextType: metadata.type,
-    contextLength: metadata.length,
-    contextPreview: metadata.preview,
-  });
-
+  // The entity auto-prepends capability docs from the circle.
   const spell = cantrip({
     crystal,
-    call: { system_prompt: systemPrompt },
+    call: "Explore the context variable using the js tool. Use submit_answer() when you have a final answer.",
     circle,
   });
 

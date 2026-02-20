@@ -21,7 +21,7 @@ import { mapEvent } from "./events";
 
 /**
  * Extended session handle returned by the factory.
- * Allows lifecycle hooks for features like RLM memory management.
+ * Allows lifecycle hooks for features like memory management.
  */
 export type CantripSessionHandle = {
   entity: Entity;
@@ -178,7 +178,7 @@ class CantripACPEntity implements ACPAgent {
           hasStreamedText = true;
         }
 
-        // RLM entities use submit_answer() which produces a FinalResponseEvent
+        // JS-medium entities use submit_answer() which produces a FinalResponseEvent
         // with content but no preceding TextEvents. Send it as a message chunk
         // so the client actually sees the response.
         if (

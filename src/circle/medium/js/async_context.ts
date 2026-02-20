@@ -103,12 +103,12 @@ export class JsAsyncContext {
    *
    * @example
    * ```ts
-   * ctx.registerAsyncFunction("sub_rlm", async (query, context) => {
+   * ctx.registerAsyncFunction("llm_query", async (query, context) => {
    *   const result = await llm.complete(query, context);
    *   return result;
    * });
    *
-   * // In sandbox: const answer = sub_rlm("summarize", chunk);
+   * // In sandbox: const answer = llm_query("summarize", chunk);
    * ```
    */
   registerAsyncFunction(name: string, fn: AsyncHostFunction): void {
