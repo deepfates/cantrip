@@ -1,25 +1,24 @@
 /**
- * Test for ACP RLM Browser example
- * 
- * Verifies that the module can be imported and has the expected structure.
- * Full integration tests require spawning browser processes and are better
- * suited for manual testing or CI with proper browser setup.
+ * Test for ACP Browser example
+ *
+ * Verifies that the cantrip composition modules and browser context
+ * can be imported and have the expected structure.
  */
 
 import { describe, test, expect } from "bun:test";
-import { ChatAnthropic } from "../src/crystal/providers/anthropic/chat";
-import { createRlmAgent, createRlmAgentWithMemory } from "../src/circle/recipe/rlm";
+import { cantrip } from "../src/cantrip/cantrip";
+import { Circle } from "../src/circle/circle";
+import { js } from "../src/circle/medium/js";
 import { BrowserContext } from "../src/circle/medium/browser/context";
 
-describe("ACP RLM Browser Agent", () => {
-  test("createRlmAgent with browserContext option is defined", () => {
-    expect(createRlmAgent).toBeDefined();
-    expect(typeof createRlmAgent).toBe("function");
-  });
-
-  test("createRlmAgentWithMemory with browserContext option is defined", () => {
-    expect(createRlmAgentWithMemory).toBeDefined();
-    expect(typeof createRlmAgentWithMemory).toBe("function");
+describe("ACP JS Browser Entity", () => {
+  test("cantrip composition functions are defined", () => {
+    expect(cantrip).toBeDefined();
+    expect(typeof cantrip).toBe("function");
+    expect(Circle).toBeDefined();
+    expect(typeof Circle).toBe("function");
+    expect(js).toBeDefined();
+    expect(typeof js).toBe("function");
   });
 
   test("BrowserContext.create is defined", () => {

@@ -1,53 +1,63 @@
 import type { BoundGate, GateDocs } from "../gate";
-import type { BaseChatModel } from "../../../crystal/crystal";
-import type { UsageTracker } from "../../../crystal/tokens/usage";
-import type { RlmProgressCallback } from "../../recipe/rlm_tools";
-import type { BrowserContext } from "../../medium/browser/context";
-import type { Loom } from "../../../loom";
+import type { DependencyOverrides } from "../depends";
+import type { ProgressCallback } from "../../../entity/progress";
+import { Depends } from "../depends";
+import { rawGate } from "../raw";
+
+/**
+ * SpawnFn: creates a child entity, runs it on a query, returns the result string.
+ * The spawn function is provided by the Entity at runtime via dependency_overrides.
+ */
+export type SpawnFn = (query: string, context: unknown) => Promise<string>;
+
+/**
+ * Framework-owned Depends instances.
+ * The Entity auto-populates these via dependency_overrides at construction time.
+ */
+export const currentTurnIdBinding = new Depends<() => string | null>(
+  () => { throw new Error("currentTurnId binding must be provided by entity"); },
+);
+
+export const spawnBinding = new Depends<SpawnFn>(
+  () => { throw new Error("spawn binding must be provided by entity"); },
+);
+
+export const progressBinding = new Depends<ProgressCallback | null>(
+  () => null,
+);
+
+export const depthBinding = new Depends<number>(
+  () => 0,
+);
 
 export type CallEntityGateOptions = {
-  /** Crystal (LLM) for child entities */
-  crystal: BaseChatModel;
-  /** Crystal for recursive children below this level (defaults to crystal) */
-  sub_crystal?: BaseChatModel;
   /** Maximum recursion depth. At depth >= max_depth, this gate returns null. */
   max_depth?: number;
   /** Current depth (0 = top-level). Framework manages this internally. */
   depth?: number;
-  /** Shared usage tracker */
-  usage?: UsageTracker;
   /** Parent context — used as fallback when the child is called without explicit context. */
   parent_context?: unknown;
   /** Progress callback for sub-agent activity. */
-  onProgress?: RlmProgressCallback;
-  /** Optional browser context to propagate to child agents. */
-  browserContext?: BrowserContext;
-  /** Parent's loom — when provided, child entities record into it (unified tree). */
-  loom?: Loom;
-  /** Returns the parent entity's most recent turn ID. Used as parent_turn_id for children. */
-  getCurrentTurnId?: () => string | null;
+  onProgress?: ProgressCallback;
 };
 
 /**
- * Gate factory: call_entity({ crystal, max_depth }) → BoundGate | null
+ * Gate factory: call_entity({ max_depth }) → BoundGate | null
  *
  * When invoked, spawns a child entity with an independent circle.
  * The child blocks the parent until it completes (COMP-2).
  * Child failure returns as an error string, doesn't kill the parent (COMP-8).
  * At depth >= max_depth, this gate returns null and should be excluded from the circle (COMP-6).
+ *
+ * Dynamic state (getCurrentTurnId, spawn function) is provided via Depends bindings,
+ * populated by the Entity at construction time through dependency_overrides.
  */
-export function call_entity(opts: CallEntityGateOptions): BoundGate | null {
+export function call_entity(opts: CallEntityGateOptions = {}): BoundGate | null {
   const {
-    crystal,
-    sub_crystal = crystal,
     max_depth = 2,
     depth = 0,
-    usage,
     parent_context,
     onProgress,
-    browserContext,
-    loom,
-    getCurrentTurnId,
   } = opts;
 
   // COMP-6: At depth >= max_depth, remove call_entity from the circle
@@ -67,9 +77,10 @@ export function call_entity(opts: CallEntityGateOptions): BoundGate | null {
     section: "HOST FUNCTIONS",
   };
 
-  return {
-    name: "call_entity",
-    definition: {
+  const childDepth = depth + 1;
+
+  const gate = rawGate(
+    {
       name: "call_entity",
       description:
         "Spawn a child entity to handle a subtask. The child gets independent context and blocks until completion.",
@@ -90,16 +101,12 @@ export function call_entity(opts: CallEntityGateOptions): BoundGate | null {
         additionalProperties: false,
       },
     },
-    ephemeral: false,
-    docs,
-    execute: async (args) => {
+    async (args: Record<string, any>, deps: Record<string, any>) => {
       const query = args.query as string;
       const rawContext = args.context;
       let childContext: unknown = undefined;
 
       if (rawContext !== undefined) {
-        // Context may arrive as a string (JSON from tool-calling) or as an object
-        // (direct value from sandbox positional arg mapping)
         if (typeof rawContext === "string") {
           try {
             childContext = JSON.parse(rawContext);
@@ -113,67 +120,55 @@ export function call_entity(opts: CallEntityGateOptions): BoundGate | null {
 
       // Fall back to parent_context when no explicit context is provided
       const contextToPass = childContext ?? parent_context ?? "No context provided";
-      const childDepth = depth + 1;
 
-      if (onProgress) {
-        onProgress({ type: "sub_entity_start", depth: childDepth, query });
+      const progress: ProgressCallback | null = deps.onProgress;
+      if (progress) {
+        progress({ type: "sub_entity_start", depth: childDepth, query });
       }
 
       try {
-        const { createRlmAgent } = await import("../../recipe/rlm");
-
-        const parentTurnId = getCurrentTurnId?.() ?? undefined;
-        const child = await createRlmAgent({
-          llm: sub_crystal,
-          subLlm: sub_crystal,
-          context: contextToPass,
-          maxDepth: max_depth,
-          depth: childDepth,
-          usage,
-          onProgress,
-          browserContext,
-          loom,
-          parent_turn_id: parentTurnId,
-        });
-
-        try {
-          const result = await child.entity.cast(query);
-          return result;
-        } finally {
-          child.sandbox.dispose();
-          if (onProgress) {
-            onProgress({ type: "sub_entity_end", depth: childDepth });
-          }
-        }
+        const spawn: SpawnFn = deps.spawn;
+        const result = await spawn(query, contextToPass);
+        return result;
       } catch (err: any) {
         // COMP-8: Child failure returns as gate result, doesn't kill parent
         return `Error from child entity: ${err?.message ?? String(err)}`;
+      } finally {
+        if (progress) {
+          progress({ type: "sub_entity_end", depth: childDepth });
+        }
       }
     },
-  };
+    {
+      dependencies: {
+        spawn: spawnBinding,
+        currentTurnId: currentTurnIdBinding,
+        onProgress: progressBinding,
+      },
+    },
+  );
+
+  // Attach docs to the raw gate
+  (gate as any).docs = docs;
+
+  return gate;
 }
 
 const MAX_BATCH_CONCURRENCY = 8;
 const MAX_BATCH_SIZE = 50;
 
 /**
- * Gate factory: call_entity_batch({ crystal, max_depth }) → BoundGate | null
+ * Gate factory: call_entity_batch({ max_depth }) → BoundGate | null
  *
  * Parallel delegation to multiple sub-entities. Processes tasks in chunks
  * with concurrency control. At depth >= max_depth, returns null.
  */
-export function call_entity_batch(opts: CallEntityGateOptions): BoundGate | null {
+export function call_entity_batch(opts: CallEntityGateOptions = {}): BoundGate | null {
   const {
-    crystal,
-    sub_crystal = crystal,
     max_depth = 2,
     depth = 0,
-    usage,
     parent_context,
     onProgress,
-    browserContext,
-    loom,
-    getCurrentTurnId,
   } = opts;
 
   // Same depth check as call_entity — at max depth, no batch either
@@ -192,6 +187,10 @@ export function call_entity_batch(opts: CallEntityGateOptions): BoundGate | null
     section: "HOST FUNCTIONS",
   };
 
+  const childDepth = depth + 1;
+
+  // Hand-built BoundGate (not rawGate) because the batch returns a raw array
+  // that must pass through to the sandbox without serializeBoundGate wrapping.
   return {
     name: "call_entity_batch",
     definition: {
@@ -220,7 +219,11 @@ export function call_entity_batch(opts: CallEntityGateOptions): BoundGate | null
     },
     ephemeral: false,
     docs,
-    execute: async (args) => {
+    execute: async (args: Record<string, any>, overrides?: DependencyOverrides) => {
+      // Resolve dependencies via Depends
+      const spawn: SpawnFn = await spawnBinding.resolve(overrides);
+      const progress: ProgressCallback | null = await progressBinding.resolve(overrides);
+
       const tasks = args.tasks;
 
       if (!Array.isArray(tasks)) {
@@ -233,15 +236,12 @@ export function call_entity_batch(opts: CallEntityGateOptions): BoundGate | null
         );
       }
 
-      const childDepth = depth + 1;
-
-      if (onProgress) {
-        onProgress({ type: "batch_start", depth: childDepth, count: tasks.length });
+      if (progress) {
+        progress({ type: "batch_start", depth: childDepth, count: tasks.length });
       }
 
-      const { createRlmAgent } = await import("../../recipe/rlm");
-
       const results: string[] = [];
+
       for (let i = 0; i < tasks.length; i += MAX_BATCH_CONCURRENCY) {
         const chunk = tasks.slice(i, i + MAX_BATCH_CONCURRENCY);
         const chunkResults = await Promise.all(
@@ -264,8 +264,8 @@ export function call_entity_batch(opts: CallEntityGateOptions): BoundGate | null
                 : undefined;
             const contextToPass = taskContext ?? parent_context ?? "No context provided";
 
-            if (onProgress) {
-              onProgress({
+            if (progress) {
+              progress({
                 type: "batch_item",
                 depth: childDepth,
                 index: idx,
@@ -275,25 +275,7 @@ export function call_entity_batch(opts: CallEntityGateOptions): BoundGate | null
             }
 
             try {
-              const parentTurnId = getCurrentTurnId?.() ?? undefined;
-              const child = await createRlmAgent({
-                llm: sub_crystal,
-                subLlm: sub_crystal,
-                context: contextToPass,
-                maxDepth: max_depth,
-                depth: childDepth,
-                usage,
-                onProgress,
-                browserContext,
-                loom,
-                parent_turn_id: parentTurnId,
-              });
-
-              try {
-                return await child.entity.cast(q);
-              } finally {
-                child.sandbox.dispose();
-              }
+              return await spawn(q, contextToPass);
             } catch (err: any) {
               return `Error from child entity: ${err?.message ?? String(err)}`;
             }
@@ -302,8 +284,8 @@ export function call_entity_batch(opts: CallEntityGateOptions): BoundGate | null
         results.push(...chunkResults);
       }
 
-      if (onProgress) {
-        onProgress({ type: "batch_end", depth: childDepth });
+      if (progress) {
+        progress({ type: "batch_end", depth: childDepth });
       }
 
       // Return as array — the JS medium passes this directly to the sandbox.

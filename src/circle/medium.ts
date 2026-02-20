@@ -36,4 +36,10 @@ export interface Medium {
 
   /** Tear down the medium. */
   dispose(): Promise<void>;
+
+  /**
+   * Describe the medium's physics — what the entity can do natively in this substrate.
+   * Optional because the conversation medium has no special physics to describe.
+   */
+  capabilityDocs?(): string;
 }

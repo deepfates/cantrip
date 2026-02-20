@@ -9,8 +9,6 @@ import {
   SandboxContext, getSandboxContext, safeFsGates,
 } from "../src";
 import { js } from "../src/circle/medium/js";
-import { getRlmSystemPrompt } from "../src/circle/recipe/rlm_prompt";
-import { analyzeContext } from "../src/circle/recipe/rlm";
 
 export async function main() {
   console.log("--- Example 12: Full Agent ---");
@@ -31,16 +29,10 @@ export async function main() {
     wards: [max_turns(200)],
   });
 
-  const metadata = analyzeContext(workspace);
-  const systemPrompt = getRlmSystemPrompt({
-    contextType: metadata.type,
-    contextLength: metadata.length,
-    contextPreview: metadata.preview,
-  });
-
+  // The entity auto-prepends capability docs from the circle.
   const entity = cantrip({
     crystal,
-    call: { system_prompt: `${systemPrompt}\n\nYou also have filesystem host functions: read_file, write_file, glob, bash.\nWorking dir: ${fsCtx.working_dir}` },
+    call: `Coding agent with filesystem access. Working dir: ${fsCtx.working_dir}`,
     circle,
     dependency_overrides: new Map([[getSandboxContext, () => fsCtx]]),
   }).invoke();

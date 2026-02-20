@@ -1,11 +1,51 @@
 import { describe, expect, test, afterEach } from "bun:test";
-import { createRlmAgent } from "../src/circle/recipe/rlm";
 import { JsAsyncContext } from "../src/circle/medium/js/async_context";
-import { HandleTable, describeArg } from "../src/circle/recipe/rlm_tools";
+import { HandleTable, describeArg } from "../src/circle/medium/js_browser";
 import type { BaseChatModel } from "../src/crystal/crystal";
 import type { AnyMessage } from "../src/crystal/messages";
 import type { ChatInvokeCompletion } from "../src/crystal/views";
 import type { BrowserContext } from "../src/circle/medium/browser/context";
+import { cantrip } from "../src/cantrip/cantrip";
+import { Circle } from "../src/circle/circle";
+import { js, getJsMediumSandbox } from "../src/circle/medium/js";
+import { jsBrowser } from "../src/circle/medium/js_browser";
+import { max_turns, require_done } from "../src/circle/ward";
+import { call_entity } from "../src/circle/gate/builtin/call_entity_gate";
+import { done_for_medium } from "../src/circle/gate/builtin/done";
+import type { Entity } from "../src/cantrip/entity";
+
+/**
+ * Local helper for tests.
+ * Uses cantrip() + Circle() + js()/jsBrowser() composition.
+ */
+async function createTestAgent(opts: {
+  llm: BaseChatModel;
+  context: unknown;
+  browserContext?: BrowserContext;
+  maxDepth?: number;
+}): Promise<{ entity: Entity; sandbox: JsAsyncContext }> {
+  const medium = opts.browserContext
+    ? jsBrowser({ state: { context: opts.context }, browserContext: opts.browserContext })
+    : js({ state: { context: opts.context } });
+
+  const gates = [done_for_medium()];
+  const entityGate = call_entity({ max_depth: opts.maxDepth ?? 2, depth: 0, parent_context: opts.context });
+  if (entityGate) gates.push(entityGate);
+
+  const circle = Circle({ medium, gates, wards: [max_turns(20), require_done()] });
+
+  const spell = cantrip({
+    crystal: opts.llm,
+    call: "Explore the context using code. Use submit_answer() to provide your final answer.",
+    circle,
+  });
+  const entity = spell.invoke();
+
+  await medium.init(gates, entity.dependency_overrides);
+  const sandbox = getJsMediumSandbox(medium)!;
+
+  return { entity, sandbox };
+}
 
 class MockLlm implements BaseChatModel {
   model = "mock";
@@ -331,7 +371,7 @@ function mockBrowserContext(options?: {
   } as any;
 }
 
-describe("RLM browser handle pattern", () => {
+describe("JS browser handle pattern", () => {
   let activeSandbox: JsAsyncContext | null = null;
 
   afterEach(() => {
@@ -350,7 +390,7 @@ describe("RLM browser handle pattern", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
       browserContext: browserCtx,
@@ -374,7 +414,7 @@ describe("RLM browser handle pattern", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
       browserContext: browserCtx,
@@ -403,7 +443,7 @@ describe("RLM browser handle pattern", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
       browserContext: browserCtx,
@@ -431,7 +471,7 @@ describe("RLM browser handle pattern", () => {
       jsResponse('click("Submit"); submit_answer("clicked string");'),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
       browserContext: browserCtx,
@@ -455,7 +495,7 @@ describe("RLM browser handle pattern", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
       browserContext: browserCtx,
@@ -476,7 +516,7 @@ describe("RLM browser handle pattern", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
       browserContext: browserCtx,
@@ -497,7 +537,7 @@ describe("RLM browser handle pattern", () => {
       jsResponse('submit_answer("recovered");', "tc2"),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
       browserContext: browserCtx,
@@ -522,7 +562,7 @@ describe("RLM browser handle pattern", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
       browserContext: browserCtx,
@@ -546,7 +586,7 @@ describe("RLM browser handle pattern", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
       browserContext: browserCtx,
@@ -575,7 +615,7 @@ describe("RLM browser handle pattern", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: { targetUrl: "https://example.com" },
       browserContext: browserCtx,
@@ -597,7 +637,7 @@ describe("RLM browser handle pattern", () => {
       jsResponse('submit_answer("no browser");', "tc2"),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
     });
@@ -635,7 +675,7 @@ describe("RLM browser handle pattern", () => {
       },
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
       browserContext: browserCtx,
@@ -676,7 +716,7 @@ describe("RLM browser handle pattern", () => {
       },
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
     });
@@ -688,7 +728,7 @@ describe("RLM browser handle pattern", () => {
     expect(capturedSystemPrompt).not.toContain("into(");
   });
 
-  test("browser functions propagate to child agents", async () => {
+  test("llm_query delegates to child via default spawn (plain LLM call)", async () => {
     const browserCtx = mockBrowserContext();
 
     const mockLlm = new MockLlm([
@@ -704,39 +744,27 @@ describe("RLM browser handle pattern", () => {
                 function: {
                   name: "js",
                   arguments: JSON.stringify({
-                    code: 'var r = llm_query("Use the browser"); submit_answer(r);',
+                    code: 'var r = llm_query("Summarize the data"); submit_answer(r);',
                   }),
                 },
               },
             ],
           };
         }
-        // Child agent should have browser functions available
-        if (
-          typeof last.content === "string" &&
-          last.content.includes("Use the browser")
-        ) {
+        // Default spawn sends "Task: Summarize the data\n\nContext:\n..."
+        // Child is a plain LLM call — no sandbox, no browser.
+        const content = typeof last.content === "string" ? last.content : "";
+        if (content.includes("Summarize the data")) {
           return {
-            content: "Using browser",
-            tool_calls: [
-              {
-                id: "c1",
-                type: "function" as const,
-                function: {
-                  name: "js",
-                  arguments: JSON.stringify({
-                    code: "var t = title(); submit_answer(t);",
-                  }),
-                },
-              },
-            ],
+            content: "Summary: test data",
+            tool_calls: [],
           };
         }
         return { content: "?", tool_calls: [] };
       },
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test data",
       maxDepth: 1,
@@ -745,7 +773,7 @@ describe("RLM browser handle pattern", () => {
     activeSandbox = sandbox;
 
     const result = await entity.cast("Start");
-    expect(result).toBe("Example Domain");
+    expect(result).toBe("Summary: test data");
   });
 });
 
@@ -753,7 +781,7 @@ describe("RLM browser handle pattern", () => {
 // Transparent wrapper tests — selectors return objects with callable methods
 // ---------------------------------------------------------------------------
 
-describe("RLM browser transparent wrappers", () => {
+describe("JS browser transparent wrappers", () => {
   let activeSandbox: JsAsyncContext | null = null;
 
   afterEach(() => {
@@ -770,7 +798,7 @@ describe("RLM browser transparent wrappers", () => {
       jsResponse('var t = button("Submit").text(); submit_answer(t);'),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -790,7 +818,7 @@ describe("RLM browser transparent wrappers", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -808,7 +836,7 @@ describe("RLM browser transparent wrappers", () => {
       jsResponse('var v = textBox("Email").value(); submit_answer(v);'),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -827,7 +855,7 @@ describe("RLM browser transparent wrappers", () => {
       jsResponse('var v = link("Home").isVisible(); submit_answer(String(v));'),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -847,7 +875,7 @@ describe("RLM browser transparent wrappers", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -872,7 +900,7 @@ describe("RLM browser transparent wrappers", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -904,7 +932,7 @@ describe("RLM browser transparent wrappers", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -932,7 +960,7 @@ describe("RLM browser transparent wrappers", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -960,7 +988,7 @@ describe("RLM browser transparent wrappers", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -980,7 +1008,7 @@ describe("RLM browser transparent wrappers", () => {
       jsResponse('submit_answer(text("Price").text());'),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1000,7 +1028,7 @@ describe("RLM browser transparent wrappers", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1024,7 +1052,7 @@ describe("RLM browser transparent wrappers", () => {
       jsResponse('var btn = button("Submit"); submit_answer(elem_text(btn));'),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1152,7 +1180,7 @@ describe("describeArg", () => {
 // Sandbox-level edge case tests
 // ---------------------------------------------------------------------------
 
-describe("RLM browser edge cases", () => {
+describe("JS browser edge cases", () => {
   let activeSandbox: JsAsyncContext | null = null;
 
   afterEach(() => {
@@ -1176,7 +1204,7 @@ describe("RLM browser edge cases", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1209,7 +1237,7 @@ describe("RLM browser edge cases", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1245,7 +1273,7 @@ describe("RLM browser edge cases", () => {
       }),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1268,7 +1296,7 @@ describe("RLM browser edge cases", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1284,7 +1312,7 @@ describe("RLM browser edge cases", () => {
 // Full Taiko API surface tests
 // ---------------------------------------------------------------------------
 
-describe("RLM browser full API surface", () => {
+describe("JS browser full API surface", () => {
   let activeSandbox: JsAsyncContext | null = null;
 
   afterEach(() => {
@@ -1303,7 +1331,7 @@ describe("RLM browser full API surface", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1330,7 +1358,7 @@ describe("RLM browser full API surface", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1357,7 +1385,7 @@ describe("RLM browser full API surface", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1381,7 +1409,7 @@ describe("RLM browser full API surface", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1407,7 +1435,7 @@ describe("RLM browser full API surface", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1429,7 +1457,7 @@ describe("RLM browser full API surface", () => {
       jsResponse('emulateDevice("iPhone X"); submit_answer("emulated");'),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1452,7 +1480,7 @@ describe("RLM browser full API surface", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1479,7 +1507,7 @@ describe("RLM browser full API surface", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1506,7 +1534,7 @@ describe("RLM browser full API surface", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,
@@ -1541,7 +1569,7 @@ describe("RLM browser full API surface", () => {
       ),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       browserContext: browserCtx,

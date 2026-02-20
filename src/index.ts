@@ -22,6 +22,8 @@ export type { Medium } from "./circle/medium";
 export { js as jsMedium } from "./circle/medium/js";
 export { getJsMediumSandbox } from "./circle/medium/js";
 export type { JsMediumOptions } from "./circle/medium/js";
+export { jsBrowser as jsBrowserMedium } from "./circle/medium/js_browser";
+export type { JsBrowserMediumOptions } from "./circle/medium/js_browser";
 export { browser as browserMedium } from "./circle/medium/browser";
 export type { BrowserMediumOptions } from "./circle/medium/browser";
 export { bash as bashMedium } from "./circle/medium/bash";
@@ -45,11 +47,8 @@ export { done, defaultGates } from "./circle/gate/builtin/done";
 export { safeFsGates, SandboxContext, getSandboxContext } from "./circle/gate/builtin/fs";
 export { JsContext, getJsContext } from "./circle/medium/js/context";
 export { BrowserContext, getBrowserContext } from "./circle/medium/browser/context";
-export { createRlmAgent, createRlmAgentWithMemory } from "./circle/recipe/rlm";
-export type { RlmOptions, RlmMemoryOptions, RlmMemoryAgent } from "./circle/recipe/rlm";
-export { createRlmConsoleRenderer, patchStderrForRlm } from "./ui/rlm_console";
-export { call_entity as call_entity_gate, call_entity_batch as call_entity_batch_gate } from "./circle/gate/builtin/call_entity_gate";
-export type { CallEntityGateOptions } from "./circle/gate/builtin/call_entity_gate";
+export { call_entity as call_entity_gate, call_entity_batch as call_entity_batch_gate, currentTurnIdBinding, spawnBinding, progressBinding, depthBinding } from "./circle/gate/builtin/call_entity_gate";
+export type { CallEntityGateOptions, SpawnFn } from "./circle/gate/builtin/call_entity_gate";
 
 // ── Cantrip (the recipe — primary public API) ──────────────────────
 export { cantrip } from "./cantrip/cantrip";
@@ -81,7 +80,7 @@ export {
 
 // ── Entity (the running instance) ───────────────────────────────────
 export { TaskComplete } from "./entity/recording";
-export { createConsoleRenderer } from "./entity/console";
+export { createConsoleRenderer, patchStderrForEntities } from "./entity/console";
 export { exec, runRepl } from "./entity/repl";
 export type { ExecOptions, ReplOptions } from "./entity/repl";
 export type {

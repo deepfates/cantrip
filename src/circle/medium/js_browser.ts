@@ -1,194 +1,79 @@
-import { gate } from "../gate/decorator";
-import { z } from "zod";
-import { JsAsyncContext } from "../medium/js/async_context";
-import { TaskComplete } from "../../entity/errors";
-import { Depends } from "../gate/depends";
-import type { BrowserContext } from "../medium/browser/context";
-import { formatRlmMetadata } from "../medium/js";
+import { JsAsyncContext } from "./js/async_context";
+import type { BrowserContext } from "./browser/context";
+import type { Medium } from "../medium";
+import { js, getJsMediumSandbox } from "./js";
+import type { JsMediumOptions } from "./js";
 
-/** JSON.stringify that tolerates circular references. */
-export function safeStringify(value: unknown, indent?: number): string {
-  try {
-    return JSON.stringify(value, null, indent);
-  } catch {
-    return "[unserializable]";
-  }
-}
+export type JsBrowserMediumOptions = JsMediumOptions & {
+  /** Browser context — provides Taiko functions for browser automation. */
+  browserContext: BrowserContext;
+};
 
-export type RlmProgressEvent =
-  | { type: "sub_entity_start"; depth: number; query: string }
-  | { type: "sub_entity_end"; depth: number }
-  | { type: "batch_start"; depth: number; count: number }
-  | {
-      type: "batch_item";
-      depth: number;
-      index: number;
-      total: number;
-      query: string;
-    }
-  | { type: "batch_end"; depth: number };
+/**
+ * Creates a JS+Browser medium — a QuickJS sandbox with browser automation capabilities.
+ *
+ * Like `js()`, gates are projected into the sandbox as host functions.
+ * Additionally, Taiko browser functions (click, goto, text, etc.) are registered
+ * during init, and the HandleTable is owned by the medium.
+ *
+ * The crystal sees the same single `js` tool with tool_choice: "required".
+ */
+export function jsBrowser(opts: JsBrowserMediumOptions): Medium {
+  const { browserContext, ...jsOpts } = opts;
+  const inner = js(jsOpts);
 
-export type RlmProgressCallback = (event: RlmProgressEvent) => void;
+  const medium: Medium = {
+    async init(gates, dependency_overrides) {
+      // Initialize the JS sandbox first (creates sandbox, projects gates)
+      await inner.init(gates, dependency_overrides);
 
-/** Default progress callback: logs to stderr in the tree format used by the REPL. */
-export function defaultProgress(depth: number): RlmProgressCallback {
-  const indent = "  ".repeat(depth);
-  return (event) => {
-    switch (event.type) {
-      case "sub_entity_start": {
-        const preview =
-          event.query.slice(0, 50) + (event.query.length > 50 ? "..." : "");
-        console.error(`${indent}├─ [depth:${event.depth}] "${preview}"`);
-        break;
+      // Then register browser functions into the now-existing sandbox
+      const sandbox = getJsMediumSandbox(inner);
+      if (!sandbox) {
+        throw new Error("jsBrowser: JS medium init did not create a sandbox");
       }
-      case "sub_entity_end":
-        console.error(`${indent}└─ [depth:${event.depth}] done`);
-        break;
-      case "batch_start":
-        console.error(
-          `${indent}├─ [depth:${event.depth}] llm_batch(${event.count} tasks)`,
+      await registerBrowserFunctions(sandbox, browserContext);
+    },
+
+    crystalView() {
+      return inner.crystalView();
+    },
+
+    async execute(utterance, options) {
+      return inner.execute(utterance, options);
+    },
+
+    async dispose() {
+      return inner.dispose();
+    },
+
+    capabilityDocs(): string {
+      const jsDocs = inner.capabilityDocs?.() ?? "";
+      const allowedFns = new Set(browserContext.getAllowedFunctions());
+      const browserDocs = buildBrowserDocs(allowedFns);
+
+      const sections = [jsDocs];
+      if (browserDocs) {
+        sections.push(
+          "### BROWSER AUTOMATION\nTaiko browser functions are available directly in the sandbox. All functions are blocking (no await needed).\n\n" +
+            browserDocs,
         );
-        break;
-      case "batch_item": {
-        const preview =
-          event.query.slice(0, 30) + (event.query.length > 30 ? "..." : "");
-        console.error(
-          `${indent}│  ├─ [${event.index + 1}/${event.total}] "${preview}"`,
-        );
-        break;
       }
-      case "batch_end":
-        console.error(`${indent}└─ [depth:${event.depth}] batch complete`);
-        break;
-    }
+
+      return sections.filter(Boolean).join("\n\n");
+    },
   };
+
+  // Expose sandbox from inner medium for advanced use cases
+  Object.defineProperty(medium, "sandbox", {
+    get() {
+      return (inner as any).sandbox;
+    },
+    enumerable: false,
+  });
+
+  return medium;
 }
-
-// formatRlmMetadata is now defined in the JS medium (where it's used).
-// Re-export for backward compatibility.
-export { formatRlmMetadata } from "../medium/js";
-
-/**
- * Dependency key for injecting the RLM sandbox into the tool execution context.
- */
-export const getRlmSandbox = new Depends<JsAsyncContext>(
-  function getRlmSandbox() {
-    throw new Error("RlmSandbox not provided");
-  },
-);
-
-/**
- * The core 'js' tool for Recursive Language Models.
- * Executes JavaScript in the sandbox and returns only metadata to the LLM.
- */
-export const js_rlm = gate(
-  "Execute JavaScript in the persistent sandbox. Results are returned as metadata. You MUST use submit_answer() to return your final result.",
-  async ({ code, timeout_ms }: { code: string; timeout_ms?: number }, deps) => {
-    const sandbox = deps.sandbox as JsAsyncContext;
-
-    try {
-      const result = await sandbox.evalCode(code, {
-        executionTimeoutMs: timeout_ms,
-      });
-
-      if (!result.ok) {
-        // Handle the internal bridge signal for termination
-        if (result.error.startsWith("SIGNAL_FINAL:")) {
-          throw new TaskComplete(result.error.replace("SIGNAL_FINAL:", ""));
-        }
-
-        let error = result.error;
-        // Provide clear guidance on sandbox physics (Asyncify limitations)
-        if (error.includes("Lifetime not alive")) {
-          error +=
-            " (Note: All sandbox functions are blocking. Do NOT use async/await, async functions, or Promises.)";
-        }
-        return `Error: ${error}`;
-      }
-
-      return formatRlmMetadata(result.output);
-    } catch (e: any) {
-      if (e instanceof TaskComplete) throw e;
-
-      let msg = String(e?.message ?? e);
-      if (msg.includes("Lifetime not alive")) {
-        msg +=
-          " (Note: All sandbox functions are blocking. Do NOT use async/await, async functions, or Promises.)";
-      }
-      return `Error: ${msg}`;
-    }
-  },
-  {
-    name: "js",
-    zodSchema: z.object({
-      code: z.string().describe("JavaScript code to execute."),
-      timeout_ms: z.number().int().positive().optional(),
-    }),
-    dependencies: { sandbox: getRlmSandbox },
-  },
-);
-
-/**
- * Bridges the JS Sandbox to the Host by registering RLM primitives.
- */
-export async function registerRlmFunctions(options: {
-  sandbox: JsAsyncContext;
-  context: unknown;
-  onLlmQuery: (query: string, subContext?: unknown) => Promise<string>;
-  /** Current recursion depth (0 = top-level agent) */
-  depth?: number;
-  /** Progress callback for sub-agent activity. Defaults to console.error logging. */
-  onProgress?: RlmProgressCallback;
-  browserContext?: BrowserContext;
-  /** Skip llm_query registration — the medium already presents the call_entity gate as llm_query. */
-  skipLlmQuery?: boolean;
-}) {
-  const { sandbox, context, onLlmQuery, depth = 0, browserContext, skipLlmQuery = false } = options;
-  const progress = options.onProgress ?? defaultProgress(depth);
-
-  // 1. Inject the data context as a global variable.
-  sandbox.setGlobal("context", context);
-
-  // 2. submit_answer is now a proper done gate (done_for_medium) — registered by the medium.
-
-  // 3. llm_query: Recursive delegation to a sub-agent.
-  // When skipLlmQuery is true, the medium already presents the call_entity gate as llm_query.
-  if (!skipLlmQuery) {
-    sandbox.registerAsyncFunction("llm_query", async (query, subContext) => {
-      let q = query;
-      let c = subContext;
-
-      // Robustness: handle case where LLM passes an object { query, context } or { input }
-      if (typeof query === "object" && query !== null) {
-        q = (query as any).query ?? (query as any).input ?? (query as any).task;
-        c = c ?? (query as any).context ?? (query as any).subContext;
-      }
-
-      if (typeof q !== "string") {
-        throw new Error("llm_query(query, context) requires a string query.");
-      }
-
-      const childDepth = depth + 1;
-      progress({ type: "sub_entity_start", depth: childDepth, query: q });
-
-      const result = await onLlmQuery(q, c);
-
-      progress({ type: "sub_entity_end", depth: childDepth });
-      return result;
-    });
-  }
-
-  // 4. llm_batch is now a proper gate (call_entity_batch) — registered by the medium.
-
-  // 5. Browser automation via opaque handle pattern (optional).
-  if (browserContext) {
-    await registerBrowserFunctions(sandbox, browserContext);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Browser Handle Pattern
-// ---------------------------------------------------------------------------
 
 /**
  * A host-side table mapping opaque integer IDs to real Taiko objects
@@ -289,7 +174,7 @@ const NAV_FNS = ["goto", "reload", "goBack", "goForward"] as const;
  * methods (.text(), .exists(), etc.) that close over handle IDs and dispatch
  * to `__resolve`. This gives the LLM a near-native Taiko API surface.
  */
-async function registerBrowserFunctions(
+export async function registerBrowserFunctions(
   sandbox: JsAsyncContext,
   browserContext: BrowserContext,
 ): Promise<void> {
@@ -499,13 +384,6 @@ async function registerBrowserFunctions(
   );
 
   // --- evaluate: run JS in the browser page ---
-  // Taiko's evaluate() expects a function, but functions can't cross the
-  // QuickJS serialization boundary. We accept a string expression from the
-  // sandbox and wrap it in a function on the host side.
-  //
-  // We use eval() inside the function body — V8's eval auto-returns the last
-  // expression value, so "var x = 1; x + 2" returns 3 without needing "return".
-  // This avoids hand-parsing JS to insert return statements.
   if (allowed.has("evaluate") && scope.evaluate) {
     sandbox.registerAsyncFunction("evaluate", async (expr: unknown) => {
       if (typeof expr !== "string") {
@@ -678,14 +556,6 @@ async function registerBrowserFunctions(
   // Sandbox-side JS: transparent wrappers injected via evalCode
   // -----------------------------------------------------------------------
 
-  // wrapHandle: takes a raw {__h, kind, desc} and returns an object with methods
-  // that dispatch to __resolve. The __h property is preserved so actions can
-  // still resolve it.
-  //
-  // Selector wrappers call __impl_* (host fn) then wrap the result.
-  // Proximity wrappers do the same.
-  // into() is identity — just passes through.
-
   const wrapperCode = `
     function __wrapHandle(raw) {
       if (!raw || typeof raw !== "object" || raw.__h === undefined) return raw;
@@ -733,6 +603,114 @@ async function registerBrowserFunctions(
   `;
 
   await sandbox.evalCode(wrapperCode);
+}
+
+/**
+ * Build browser automation docs filtered by what's actually registered.
+ * If allowedFns is undefined, documents everything (full profile).
+ */
+export function buildBrowserDocs(allowedFns?: Set<string>): string {
+  const has = (name: string) => !allowedFns || allowedFns.has(name);
+
+  const sections: string[] = [];
+
+  // Selectors
+  const selectorFns = [
+    "button", "link", "text", "textBox", "dropDown",
+    "checkBox", "radioButton", "image", "$", "listItem", "fileField",
+  ];
+  const availableSelectors = selectorFns.filter(has);
+  if (availableSelectors.length > 0) {
+    sections.push(`**Selectors** — return element handles with methods:
+- \`${availableSelectors.map((s) => s + "(text)").join("\\`, \\`")}\`
+- Methods: \`.text()\` → string, \`.exists()\` → boolean, \`.value()\` → string, \`.isVisible()\` → boolean, \`.attribute(name)\` → string`);
+  }
+
+  // Proximity
+  const proximityFns = ["near", "above", "below", "toLeftOf", "toRightOf", "within"];
+  const availableProximity = proximityFns.filter(has);
+  if (availableProximity.length > 0) {
+    sections.push(`**Proximity** — refine selectors (accept handles or strings, return handles):
+- \`${availableProximity.map((s) => s + "(selector)").join("\\`, \\`")}\``);
+  }
+
+  // Actions
+  const actionLines: string[] = [];
+  const clickFns = ["click", "doubleClick", "rightClick"].filter(has);
+  if (clickFns.length > 0)
+    actionLines.push(`- \`${clickFns.map((s) => s + "(selector)").join("\\`, \\`")}\``);
+  const writeFns = ["write", "clear", "press"].filter(has);
+  if (writeFns.length > 0)
+    actionLines.push(
+      `- \`${writeFns.map((s) => (s === "write" ? "write(text, into(selector)?)" : s === "press" ? "press(key)" : s + "(selector)")).join("\\`, \\`")}\``,
+    );
+  const interactFns = ["hover", "focus", "scrollTo", "tap"].filter(has);
+  if (interactFns.length > 0)
+    actionLines.push(`- \`${interactFns.map((s) => s + "(selector)").join("\\`, \\`")}\``);
+  const scrollFns = ["scrollDown", "scrollUp"].filter(has);
+  const dragFns = ["dragAndDrop"].filter(has);
+  if (scrollFns.length > 0 || dragFns.length > 0) {
+    const parts = [
+      ...scrollFns.map((s) => s + "(pixels?)"),
+      ...dragFns.map(() => "dragAndDrop(source, target)"),
+    ];
+    actionLines.push(`- \`${parts.join("\\`, \\`")}\``);
+  }
+  if (actionLines.length > 0) {
+    sections.push(
+      `**Actions** — interact with elements (accept handles or strings):\n${actionLines.join("\n")}`,
+    );
+  }
+
+  // Navigation
+  const navFns = ["goto", "reload", "goBack", "goForward"].filter(has);
+  const infoFns = ["currentURL", "title"].filter(has);
+  if (navFns.length > 0 || infoFns.length > 0) {
+    const navParts = navFns.map((s) => s === "goto" ? "goto(url) → {url, status}" : s + "()");
+    const infoParts = infoFns.map((s) => s + "() → string");
+    sections.push(`**Navigation** — return primitives:
+- \`${[...navParts, ...infoParts].join("\\`, \\`")}\``);
+  }
+
+  // Tabs
+  const tabFns = ["openTab", "closeTab", "switchTo"].filter(has);
+  if (tabFns.length > 0) {
+    sections.push(
+      `**Tabs**: \`${tabFns.map((s) => (s === "openTab" ? "openTab(url)" : s === "closeTab" ? "closeTab(url?)" : "switchTo(urlOrTitle)")).join("\\`, \\`")}\``,
+    );
+  }
+
+  // Cookies
+  const cookieFns = ["setCookie", "getCookies", "deleteCookies"].filter(has);
+  if (cookieFns.length > 0) {
+    sections.push(
+      `**Cookies**: \`${cookieFns.map((s) => (s === "setCookie" ? "setCookie(name, value, options?)" : s === "getCookies" ? "getCookies(url?)" : "deleteCookies(name?)")).join("\\`, \\`")}\``,
+    );
+  }
+
+  // Emulation
+  const emuFns = ["emulateDevice", "emulateNetwork", "emulateTimezone", "setViewPort", "setLocation"].filter(has);
+  if (emuFns.length > 0) {
+    sections.push(`**Emulation**: \`${emuFns.map((s) => s + "(...)").join("\\`, \\`")}\``);
+  }
+
+  // Other
+  const otherParts: string[] = [];
+  if (has("evaluate"))
+    otherParts.push(
+      'evaluate("js") — run JS in the browser page (pass a string; objects auto-stringified to JSON; the last expression is auto-returned)',
+    );
+  if (has("waitFor")) otherParts.push("waitFor(selectorOrMs)");
+  if (has("screenshot")) otherParts.push("screenshot()");
+  if (has("accept")) otherParts.push("accept(text?)");
+  if (has("dismiss")) otherParts.push("dismiss()");
+  otherParts.push("into(selector)", "to(selector)");
+  if (has("highlight")) otherParts.push("highlight(selector)");
+  if (has("clearHighlights")) otherParts.push("clearHighlights()");
+  if (has("attach")) otherParts.push("attach(filePath, to(selector))");
+  sections.push(`**Other**: \`${otherParts.join("\\`, \\`")}\``);
+
+  return sections.join("\n\n");
 }
 
 /** Format an argument for the handle description string. */

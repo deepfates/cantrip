@@ -2,11 +2,8 @@ import { describe, test, expect } from "bun:test";
 import { call_entity } from "../src/circle/gate/builtin/call_entity_gate";
 
 describe("call_entity gate factory", () => {
-  // Use a mock crystal — we're testing the gate factory, not LLM integration
-  const mockCrystal = {} as any;
-
   test("returns a BoundGate at depth < max_depth", () => {
-    const gate = call_entity({ crystal: mockCrystal, max_depth: 2, depth: 0 });
+    const gate = call_entity({ max_depth: 2, depth: 0 });
     expect(gate).not.toBeNull();
     expect(gate!.name).toBe("call_entity");
     expect(gate!.definition.name).toBe("call_entity");
@@ -14,26 +11,26 @@ describe("call_entity gate factory", () => {
   });
 
   test("returns null at depth >= max_depth (COMP-6)", () => {
-    const gate = call_entity({ crystal: mockCrystal, max_depth: 2, depth: 2 });
+    const gate = call_entity({ max_depth: 2, depth: 2 });
     expect(gate).toBeNull();
   });
 
   test("returns null at depth > max_depth (COMP-6)", () => {
-    const gate = call_entity({ crystal: mockCrystal, max_depth: 1, depth: 3 });
+    const gate = call_entity({ max_depth: 1, depth: 3 });
     expect(gate).toBeNull();
   });
 
   test("defaults max_depth to 2", () => {
-    const gate0 = call_entity({ crystal: mockCrystal, depth: 0 });
-    const gate1 = call_entity({ crystal: mockCrystal, depth: 1 });
-    const gate2 = call_entity({ crystal: mockCrystal, depth: 2 });
+    const gate0 = call_entity({ depth: 0 });
+    const gate1 = call_entity({ depth: 1 });
+    const gate2 = call_entity({ depth: 2 });
     expect(gate0).not.toBeNull();
     expect(gate1).not.toBeNull();
     expect(gate2).toBeNull();
   });
 
   test("has correct gate docs", () => {
-    const gate = call_entity({ crystal: mockCrystal });
+    const gate = call_entity();
     expect(gate!.docs).toBeDefined();
     expect(gate!.docs!.sandbox_name).toBe("llm_query");
     expect(gate!.docs!.signature).toContain("llm_query");
@@ -41,7 +38,7 @@ describe("call_entity gate factory", () => {
   });
 
   test("gate definition has correct structure", () => {
-    const gate = call_entity({ crystal: mockCrystal, depth: 0 });
+    const gate = call_entity({ depth: 0 });
     expect(gate).not.toBeNull();
     const def = gate!.definition;
     expect(def.name).toBe("call_entity");
@@ -52,7 +49,7 @@ describe("call_entity gate factory", () => {
   });
 
   test("ephemeral is false", () => {
-    const gate = call_entity({ crystal: mockCrystal, depth: 0 });
+    const gate = call_entity({ depth: 0 });
     expect(gate!.ephemeral).toBe(false);
   });
 });

@@ -50,7 +50,7 @@ export type CallInput = {
 
 export type CantripInput = {
   crystal: BaseChatModel;
-  call: CallInput;
+  call: string | CallInput;
   circle: Circle;
   /** Optional dependency overrides for gate DI (e.g., sandbox contexts). */
   dependency_overrides?: DependencyOverrides | null;
@@ -94,7 +94,11 @@ export function cantrip(input: CantripInput): Cantrip {
     throw new Error("cantrip: circle is required");
   }
 
-  const { crystal, call: callInput, circle, dependency_overrides } = input;
+  // Normalize string shorthand: "prompt" → { system_prompt: "prompt" }
+  const callInput: CallInput = typeof input.call === "string"
+    ? { system_prompt: input.call }
+    : input.call;
+  const { crystal, circle, dependency_overrides } = input;
 
   // CANTRIP-3: circle must have at least one ward
   if (!circle.wards || circle.wards.length === 0) {

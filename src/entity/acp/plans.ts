@@ -1,5 +1,5 @@
 import type { AgentSideConnection } from "@agentclientprotocol/sdk";
-import type { RlmProgressEvent, RlmProgressCallback } from "../../circle/recipe/rlm_tools";
+import type { ProgressEvent, ProgressCallback } from "../progress";
 
 type PlanEntry = {
   content: string;
@@ -8,7 +8,7 @@ type PlanEntry = {
 };
 
 /**
- * Creates an RlmProgressCallback that emits ACP plan updates.
+ * Creates a ProgressCallback that emits ACP plan updates.
  *
  * Each sub-agent query or batch task becomes a plan entry that progresses
  * from in_progress → completed as the sub-agent finishes.
@@ -16,7 +16,7 @@ type PlanEntry = {
 export function createAcpProgressCallback(
   sessionId: string,
   connection: AgentSideConnection,
-): RlmProgressCallback {
+): ProgressCallback {
   const entries: PlanEntry[] = [];
 
   function sendPlan() {
@@ -29,7 +29,7 @@ export function createAcpProgressCallback(
     });
   }
 
-  return (event: RlmProgressEvent) => {
+  return (event: ProgressEvent) => {
     switch (event.type) {
       case "sub_entity_start": {
         const preview =

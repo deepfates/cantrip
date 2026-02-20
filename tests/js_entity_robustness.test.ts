@@ -1,24 +1,85 @@
 /**
- * RLM robustness tests:
+ * Robustness tests:
  * 1. safeStringify — handles cyclic/non-serializable data
  * 2. llm_batch — validates task queries before calling .slice()
- * 3. Browser profile filtering in system prompts
- *
- * cantrip-migration: safeStringify and prompt tests are pure functions (no Agent).
- * llm_batch tests use createRlmAgent (RLM-internal factory) to exercise WASM
- * sandbox input validation — genuinely below the cantrip API level.
+ * 3. Browser capability docs filtering
  */
 import { describe, expect, test, afterEach } from "bun:test";
-import { safeStringify } from "../src/circle/recipe/rlm_tools";
-import {
-  getRlmSystemPrompt,
-  getRlmMemorySystemPrompt,
-} from "../src/circle/recipe/rlm_prompt";
-import { createRlmAgent } from "../src/circle/recipe/rlm";
 import { JsAsyncContext } from "../src/circle/medium/js/async_context";
 import type { BaseChatModel } from "../src/crystal/crystal";
 import type { AnyMessage } from "../src/crystal/messages";
 import type { ChatInvokeCompletion } from "../src/crystal/views";
+import { cantrip } from "../src/cantrip/cantrip";
+import { Circle } from "../src/circle/circle";
+import { js, getJsMediumSandbox } from "../src/circle/medium/js";
+import { max_turns, require_done } from "../src/circle/ward";
+import { call_entity, call_entity_batch, spawnBinding, type SpawnFn } from "../src/circle/gate/builtin/call_entity_gate";
+import { done_for_medium } from "../src/circle/gate/builtin/done";
+import { buildBrowserDocs } from "../src/circle/medium/js_browser";
+import type { Entity } from "../src/cantrip/entity";
+
+// Inline safeStringify for tests
+function safeStringify(value: unknown, indent?: number): string | undefined {
+  try {
+    return JSON.stringify(value, null, indent);
+  } catch {
+    return "[unserializable]";
+  }
+}
+
+/**
+ * Local helper for sandbox tests.
+ * Provides a rich spawn that gives children their own sandboxes.
+ */
+async function createTestAgent(opts: {
+  llm: BaseChatModel;
+  context: unknown;
+  maxDepth?: number;
+  depth?: number;
+}): Promise<{ entity: Entity; sandbox: JsAsyncContext }> {
+  const depth = opts.depth ?? 0;
+  const maxDepth = opts.maxDepth ?? 2;
+
+  const medium = js({ state: { context: opts.context } });
+  const gates = [done_for_medium()];
+  const entityGate = call_entity({ max_depth: maxDepth, depth, parent_context: opts.context });
+  if (entityGate) gates.push(entityGate);
+  const batchGate = call_entity_batch({ max_depth: maxDepth, depth, parent_context: opts.context });
+  if (batchGate) gates.push(batchGate);
+
+  const circle = Circle({ medium, gates, wards: [max_turns(20), require_done()] });
+
+  // Rich spawn: children get their own circles with sandboxes
+  const childDepth = depth + 1;
+  const richSpawn: SpawnFn = async (query: string, context: unknown): Promise<string> => {
+    if (childDepth >= maxDepth) {
+      const res = await opts.llm.query([{ role: "user", content: query }]);
+      return res.content ?? "";
+    }
+    const child = await createTestAgent({ llm: opts.llm, context, maxDepth, depth: childDepth });
+    try {
+      return await child.entity.cast(query);
+    } finally {
+      child.sandbox.dispose();
+    }
+  };
+
+  const overrides = new Map<any, any>();
+  overrides.set(spawnBinding, (): SpawnFn => richSpawn);
+
+  const spell = cantrip({
+    crystal: opts.llm,
+    call: "Explore the context using code. Use submit_answer() to provide your final answer.",
+    circle,
+    dependency_overrides: overrides,
+  });
+  const entity = spell.invoke();
+
+  await medium.init(gates, entity.dependency_overrides);
+  const sandbox = getJsMediumSandbox(medium)!;
+
+  return { entity, sandbox };
+}
 
 // ---------------------------------------------------------------------------
 // 1. safeStringify
@@ -56,32 +117,21 @@ describe("safeStringify", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. Browser profile filtering in system prompts
+// 2. Browser capability docs filtering
 // ---------------------------------------------------------------------------
-describe("browser profile filtering in system prompts", () => {
-  const baseOpts = {
-    contextType: "String",
-    contextLength: 100,
-    contextPreview: "hello world",
-  };
-
+describe("browser capability docs filtering", () => {
   test("full profile includes all browser sections", () => {
-    const prompt = getRlmSystemPrompt({
-      ...baseOpts,
-      hasBrowser: true,
-      // no browserAllowedFunctions → full profile (all functions documented)
-    });
+    const docs = buildBrowserDocs();
 
-    expect(prompt).toContain("BROWSER AUTOMATION");
-    expect(prompt).toContain("openTab(url)");
-    expect(prompt).toContain("setCookie");
-    expect(prompt).toContain("emulateDevice");
-    expect(prompt).toContain("dragAndDrop");
-    expect(prompt).toContain("Multi-tab example");
+    expect(docs).toContain("**Selectors**");
+    expect(docs).toContain("openTab(url)");
+    expect(docs).toContain("setCookie");
+    expect(docs).toContain("emulateDevice");
+    expect(docs).toContain("dragAndDrop");
+    expect(docs).toContain("**Tabs**");
   });
 
   test("readonly profile omits write actions and tabs", () => {
-    // A restricted set: only selectors, navigation, and read-only functions
     const readonlyFns = new Set([
       "button",
       "link",
@@ -99,38 +149,38 @@ describe("browser profile filtering in system prompts", () => {
       "screenshot",
     ]);
 
-    const prompt = getRlmSystemPrompt({
-      ...baseOpts,
-      hasBrowser: true,
-      browserAllowedFunctions: readonlyFns,
-    });
+    const docs = buildBrowserDocs(readonlyFns);
 
-    expect(prompt).toContain("BROWSER AUTOMATION");
-    // Should have the allowed functions
-    expect(prompt).toContain("button(text)");
-    expect(prompt).toContain("goto(url)");
-    expect(prompt).toContain("evaluate");
+    expect(docs).toContain("**Selectors**");
+    expect(docs).toContain("button(text)");
+    expect(docs).toContain("goto(url)");
+    expect(docs).toContain("evaluate");
 
-    // Should NOT have the disallowed functions
-    expect(prompt).not.toContain("openTab(url)");
-    expect(prompt).not.toContain("setCookie");
-    expect(prompt).not.toContain("emulateDevice");
-    expect(prompt).not.toContain("dragAndDrop");
-    // Multi-tab example needs openTab+switchTo+closeTab — should be absent
-    expect(prompt).not.toContain("Multi-tab example");
+    expect(docs).not.toContain("openTab(url)");
+    expect(docs).not.toContain("setCookie");
+    expect(docs).not.toContain("emulateDevice");
+    expect(docs).not.toContain("dragAndDrop");
+    expect(docs).not.toContain("**Tabs**");
   });
 
-  test("no browser flag omits entire browser section", () => {
-    const prompt = getRlmSystemPrompt({
-      ...baseOpts,
-      hasBrowser: false,
-    });
+  test("empty allowed set produces no selector/action sections", () => {
+    // Equivalent to old "no browser flag omits entire browser section" —
+    // when no functions are allowed, the docs should have no meaningful content
+    const docs = buildBrowserDocs(new Set());
 
-    expect(prompt).not.toContain("BROWSER AUTOMATION");
-    expect(prompt).not.toContain("openTab");
+    expect(docs).not.toContain("**Selectors**");
+    expect(docs).not.toContain("**Actions**");
+    expect(docs).not.toContain("**Navigation**");
+    expect(docs).not.toContain("**Tabs**");
+    expect(docs).not.toContain("openTab");
+    expect(docs).not.toContain("button(text)");
+    expect(docs).not.toContain("click(selector");
   });
 
-  test("memory prompt respects browser profile filtering", () => {
+  test("buildBrowserDocs with readonly set matches jsBrowser capabilityDocs filtering", () => {
+    // Equivalent to old "memory prompt respects browser profile filtering" —
+    // tests that buildBrowserDocs (used by jsBrowser.capabilityDocs) correctly
+    // filters to only the allowed functions, same as old memory prompt path did.
     const readonlyFns = new Set([
       "button",
       "link",
@@ -141,37 +191,18 @@ describe("browser profile filtering in system prompts", () => {
       "evaluate",
     ]);
 
-    const prompt = getRlmMemorySystemPrompt({
-      hasData: false,
-      windowSize: 5,
-      hasBrowser: true,
-      browserAllowedFunctions: readonlyFns,
-    });
+    const docs = buildBrowserDocs(readonlyFns);
 
-    expect(prompt).toContain("BROWSER AUTOMATION");
-    expect(prompt).toContain("button(text)");
-    expect(prompt).toContain("goto(url)");
+    expect(docs).toContain("**Selectors**");
+    expect(docs).toContain("button(text)");
+    expect(docs).toContain("goto(url)");
     // Should not document functions outside the allowed set
-    expect(prompt).not.toContain("openTab(url)");
-    expect(prompt).not.toContain("setCookie");
-    expect(prompt).not.toContain("Multi-tab example");
-  });
-
-  test("memory prompt with no browser omits section", () => {
-    const prompt = getRlmMemorySystemPrompt({
-      hasData: true,
-      dataType: "String",
-      dataLength: 50,
-      dataPreview: "test data",
-      windowSize: 5,
-      hasBrowser: false,
-    });
-
-    expect(prompt).not.toContain("BROWSER AUTOMATION");
+    expect(docs).not.toContain("openTab(url)");
+    expect(docs).not.toContain("setCookie");
+    expect(docs).not.toContain("**Tabs**");
   });
 
   test("interactive profile includes actions but not emulation", () => {
-    // Interactive profile: selectors, actions, navigation, but no emulation/cookies
     const interactiveFns = new Set([
       "button",
       "link",
@@ -206,25 +237,55 @@ describe("browser profile filtering in system prompts", () => {
       "dismiss",
     ]);
 
-    const prompt = getRlmSystemPrompt({
-      ...baseOpts,
-      hasBrowser: true,
-      browserAllowedFunctions: interactiveFns,
-    });
+    const docs = buildBrowserDocs(interactiveFns);
 
-    // Should have actions
-    expect(prompt).toContain("click(selector");
-    expect(prompt).toContain("write(text");
+    expect(docs).toContain("click(selector");
+    expect(docs).toContain("write(text");
 
-    // Should NOT have emulation or cookies
-    expect(prompt).not.toContain("emulateDevice");
-    expect(prompt).not.toContain("setCookie");
-    expect(prompt).not.toContain("openTab(url)");
+    expect(docs).not.toContain("emulateDevice");
+    expect(docs).not.toContain("setCookie");
+    expect(docs).not.toContain("openTab(url)");
   });
 });
 
 // ---------------------------------------------------------------------------
-// 2. llm_batch — validates task queries before calling .slice()
+// 2b. Medium-level capabilityDocs — jsBrowser vs plain JS
+// ---------------------------------------------------------------------------
+describe("medium capabilityDocs", () => {
+  test("jsBrowser medium capabilityDocs includes browser function docs", () => {
+    // Create a mock browser context with a subset of functions
+    const mockBrowserContext = {
+      getAllowedFunctions: () => ["goto", "click", "text", "evaluate", "button"],
+      buildTaikoScope: () => ({}),
+      dispose: async () => {},
+    } as any;
+
+    const { jsBrowser } = require("../src/circle/medium/js_browser");
+    const medium = jsBrowser({ browserContext: mockBrowserContext });
+    const docs = medium.capabilityDocs!();
+
+    // Should include JS sandbox docs
+    expect(docs).toContain("SANDBOX PHYSICS");
+    // Should include browser automation section
+    expect(docs).toContain("BROWSER AUTOMATION");
+    expect(docs).toContain("goto(url)");
+    expect(docs).toContain("click(selector)");
+  });
+
+  test("plain JS medium capabilityDocs does NOT include browser docs", () => {
+    const { js } = require("../src/circle/medium/js");
+    const medium = js();
+    const docs = medium.capabilityDocs!();
+
+    expect(docs).toContain("SANDBOX PHYSICS");
+    expect(docs).not.toContain("BROWSER AUTOMATION");
+    expect(docs).not.toContain("goto(url)");
+    expect(docs).not.toContain("click(selector)");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3. llm_batch — validates task queries before calling .slice()
 // ---------------------------------------------------------------------------
 
 class MockLlm implements BaseChatModel {
@@ -287,7 +348,7 @@ describe("llm_batch input validation", () => {
       }),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       maxDepth: 1,
@@ -322,7 +383,7 @@ describe("llm_batch input validation", () => {
       }),
     ]);
 
-    const { entity, sandbox } = await createRlmAgent({
+    const { entity, sandbox } = await createTestAgent({
       llm: mockLlm,
       context: "test",
       maxDepth: 1,

@@ -393,8 +393,8 @@ describe("Loom tree: child entities record into parent loom", () => {
   });
 
   test("backward compat: child without parent loom creates its own", async () => {
-    // This verifies existing behavior: when no loom is passed to createRlmAgent,
-    // it creates its own ephemeral loom.
+    // This verifies existing behavior: when no loom is passed,
+    // the entity creates its own ephemeral loom.
     const crystal = makeLlm([
       () => ({
         content: null,
