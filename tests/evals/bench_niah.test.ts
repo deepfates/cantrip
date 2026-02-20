@@ -3,7 +3,7 @@
  *
  * Uses real LLMs to find a SECRET_CODE hidden in text of increasing size.
  * Three approaches compared:
- * - RLM: context in sandbox, metadata-only output
+ * - JS-sandbox: context in sandbox, metadata-only output
  * - Entity+JS: context in sandbox, full output to LLM
  * - Entity+JS-meta: context in sandbox, metadata-only output (fair control)
  *
@@ -13,7 +13,7 @@ import { describe, test, expect } from "bun:test";
 import { ChatOpenAI } from "../../src/crystal/providers/openai/chat";
 import { generateHaystack } from "./generators";
 import {
-  runRlmEval,
+  runJsSandboxEval,
   runEntityWithJsEval,
   runEntityMetaJsEval,
   runInContextEval,
@@ -42,9 +42,9 @@ describe("NIAH Benchmark (real LLM)", () => {
     const query =
       "Find the SECRET_CODE hidden in the text. Return only the code value.";
 
-    it(`RLM @ ${(size / 1000).toFixed(0)}K`, async () => {
+    it(`JS-sandbox @ ${(size / 1000).toFixed(0)}K`, async () => {
       const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
-      const result = await runRlmEval({
+      const result = await runJsSandboxEval({
         llm,
         task: `niah-${size}`,
         query,
@@ -54,7 +54,7 @@ describe("NIAH Benchmark (real LLM)", () => {
       });
       allResults.push(result);
       console.log(
-        `  RLM @ ${size}: acc=${result.accuracy} total=${result.metrics.total_tokens} prompt=${result.metrics.total_prompt_tokens}`,
+        `  JS-sandbox @ ${size}: acc=${result.accuracy} total=${result.metrics.total_tokens} prompt=${result.metrics.total_prompt_tokens}`,
       );
       // Accuracy recorded in results table; no hard assert
     }, 180_000);
@@ -111,10 +111,10 @@ describe("NIAH Benchmark (real LLM)", () => {
     if (allResults.length === 0) return;
     printComparisonTable(allResults);
 
-    // Sanity: RLM should find the needle at most scales
-    const rlmResults = allResults.filter((r) => r.approach === "rlm");
-    const rlmAccuracy =
-      rlmResults.reduce((s, r) => s + r.accuracy, 0) / rlmResults.length;
-    expect(rlmAccuracy).toBeGreaterThanOrEqual(0.5);
+    // Sanity: JS-sandbox should find the needle at most scales
+    const sandboxResults = allResults.filter((r) => r.approach === "js-sandbox");
+    const sandboxAccuracy =
+      sandboxResults.reduce((s, r) => s + r.accuracy, 0) / sandboxResults.length;
+    expect(sandboxAccuracy).toBeGreaterThanOrEqual(0.5);
   });
 });

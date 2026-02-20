@@ -1,25 +1,73 @@
 /**
  * Evaluation harness for real LLM benchmarks.
  *
- * Runs the same task against RLM and Entity+JS baselines with real LLMs,
+ * Runs the same task against JS-sandbox and Entity+JS baselines with real LLMs,
  * collecting actual token usage from the API.
  *
  * Addresses fairness concerns from code review:
- * - Three baselines: RLM, Entity+JS (full output), Entity+JS (metadata-only)
- * - Prompt parity: Entity baselines get equivalent prompt quality to RLM
+ * - Three baselines: JS-sandbox, Entity+JS (full output), Entity+JS (metadata-only)
+ * - Prompt parity: Entity baselines get equivalent prompt quality to JS-sandbox
  * - Both use require_done_tool: true for symmetric termination
  * - Context preview provided to all approaches
  * - Cached tokens tracked separately
  */
 import { Entity } from "../../src/cantrip/entity";
+import { cantrip } from "../../src/cantrip/cantrip";
 import { Circle } from "../../src/circle/circle";
-import { analyzeContext, createRlmAgent } from "../../src/circle/recipe/rlm";
+import { js as jsMedium, getJsMediumSandbox } from "../../src/circle/medium/js";
 import { JsContext, getJsContext } from "../../src/circle/medium/js/context";
-import { done } from "../../src/circle/gate/builtin/done";
+import { max_turns, require_done } from "../../src/circle/ward";
+import { call_entity, call_entity_batch } from "../../src/circle/gate/builtin/call_entity_gate";
+import { done, done_for_medium } from "../../src/circle/gate/builtin/done";
 import { gate } from "../../src/circle/gate/decorator";
 import { z } from "zod";
 import { UsageTracker } from "../../src/crystal/tokens/usage";
 import type { BaseChatModel } from "../../src/crystal/crystal";
+
+// --- Inline helpers ---
+
+function safeStringify(value: unknown, indent?: number): string {
+  try {
+    return JSON.stringify(value, null, indent) ?? "[undefined]";
+  } catch {
+    return "[unserializable]";
+  }
+}
+
+function analyzeContext(context: unknown): {
+  type: string;
+  length: number;
+  preview: string;
+} {
+  if (typeof context === "string") {
+    return {
+      type: "String (Explore via context.match(), context.includes(), context.slice())",
+      length: context.length,
+      preview: context.slice(0, 200),
+    };
+  }
+  if (Array.isArray(context)) {
+    return {
+      type: `Array [${context.length} items] (Explore via context.filter(), context.find(), context[0])`,
+      length: safeStringify(context).length,
+      preview: safeStringify(context.slice(0, 3)),
+    };
+  }
+  if (typeof context === "object" && context !== null) {
+    const keys = Object.keys(context);
+    const serialized = safeStringify(context);
+    return {
+      type: `Object {${keys.length} keys} (Explore via Object.keys(context), context.property)`,
+      length: serialized.length,
+      preview: serialized.slice(0, 200),
+    };
+  }
+  return {
+    type: typeof context,
+    length: String(context).length,
+    preview: String(context).slice(0, 200),
+  };
+}
 
 // --- Local JS gate for eval baselines (full output) ---
 
@@ -140,7 +188,7 @@ function formatMetadata(output: string): string {
 }
 
 /**
- * JS tool that returns metadata-only output, identical to RLM's js_rlm tool
+ * JS tool that returns metadata-only output, identical to the JS sandbox approach
  * but using the standard sync JsContext (not async). This isolates the
  * metadata-vs-full-output variable from the sandbox implementation.
  */
@@ -168,7 +216,7 @@ const js_meta = gate(
   },
 );
 
-// --- Entity System Prompt (parity with RLM prompt) ---
+// --- Entity System Prompt (parity with JS-sandbox prompt) ---
 
 function getEntitySystemPrompt(
   meta: { type: string; length: number; preview: string },
@@ -252,10 +300,10 @@ Think step by step carefully, plan, and execute this plan immediately — do not
 // --- Eval Runners ---
 
 /**
- * Run a task using the RLM approach.
+ * Run a task using the JS-sandbox approach.
  * Context lives in the async sandbox; LLM only sees metadata.
  */
-export async function runRlmEval(options: {
+export async function runJsSandboxEval(options: {
   llm: BaseChatModel;
   task: string;
   query: string;
@@ -271,19 +319,31 @@ export async function runRlmEval(options: {
     expected,
     context,
     maxDepth = 1,
-    approach = "rlm",
+    approach = "js-sandbox",
   } = options;
   const usage = new UsageTracker();
   const contextStr =
     typeof context === "string" ? context : JSON.stringify(context);
 
   const start = Date.now();
-  const { entity, sandbox } = await createRlmAgent({
-    llm,
-    context,
-    usage,
-    maxDepth,
+  const medium = jsMedium({ state: { context } });
+  const gates = [done_for_medium()];
+  const entityGate = call_entity({ max_depth: maxDepth, depth: 0, parent_context: context });
+  if (entityGate) gates.push(entityGate);
+  const batchGate = call_entity_batch({ max_depth: maxDepth, depth: 0, parent_context: context });
+  if (batchGate) gates.push(batchGate);
+
+  const circle = Circle({ medium, gates, wards: [max_turns(20), require_done()] });
+  const spell = cantrip({
+    crystal: llm,
+    call: "Explore the context using code. Use submit_answer() to provide your final answer.",
+    circle,
+    usage_tracker: usage,
   });
+  const entity = spell.invoke();
+
+  await medium.init(gates, entity.dependency_overrides);
+  const sandbox = getJsMediumSandbox(medium)!;
 
   let answer: string;
   const EVAL_TIMEOUT_MS = 240_000; // 4 minutes hard wall-clock limit
@@ -292,7 +352,7 @@ export async function runRlmEval(options: {
       entity.cast(query),
       new Promise<string>((_, reject) =>
         setTimeout(
-          () => reject(new Error("RLM eval timeout")),
+          () => reject(new Error("JS-sandbox eval timeout")),
           EVAL_TIMEOUT_MS,
         ),
       ),
@@ -322,7 +382,7 @@ export async function runRlmEval(options: {
 /**
  * Run a task using an Entity with the JS tool (full output).
  * Context is pre-loaded into a JsContext sandbox.
- * Uses prompt parity with RLM and require_done_tool for symmetric termination.
+ * Uses prompt parity with JS-sandbox and require_done_tool for symmetric termination.
  */
 export async function runEntityWithJsEval(options: {
   llm: BaseChatModel;
@@ -387,8 +447,8 @@ export async function runEntityWithJsEval(options: {
 
 /**
  * Run a task using an Entity with metadata-only JS tool output.
- * This is the fairest comparison to RLM: same metadata policy, same prompt,
- * but using the standard Entity loop (not RLM's sandbox/submit_answer).
+ * This is the fairest comparison to JS-sandbox: same metadata policy, same prompt,
+ * but using the standard Entity loop (not the sandbox's submit_answer).
  */
 export async function runEntityMetaJsEval(options: {
   llm: BaseChatModel;
