@@ -30,27 +30,32 @@ function createTestCircle(context: unknown) {
   return Circle({ medium, gates, wards: [max_turns(20), require_done()] });
 }
 
-function createLlm() {
+function createLlm(reasoning_effort: "low" | "medium" | "high" = "medium") {
   // gpt-5-mini is a reasoning model — needs adequate reasoning_effort for tool-use tasks.
   // Default "low" causes it to skip data inspection and hallucinate field names.
-  return new ChatOpenAI({ model: modelName, reasoning_effort: "medium" });
+  return new ChatOpenAI({ model: modelName, reasoning_effort });
 }
 
 describe("JS entity: real integration", () => {
   it("solves a context-isolated needle search", async () => {
     const llm = createLlm();
 
-    // Construct a large context (~50k chars) that should remain isolated in the sandbox
-    const needle = ' SECRET_CODE: "X-99" ';
+    // Construct a large context (~50k chars) that should remain isolated in the sandbox.
+    // The needle must be an opaque token so the model can't partially extract it.
+    const needle = "The passphrase is ZYGOMORPHIC.";
     const context =
-      "Filler text. ".repeat(2000) + needle + "More filler. ".repeat(2000);
+      "Filler text. ".repeat(2000) + needle + " More filler. ".repeat(2000);
 
     const circle = createTestCircle(context);
     const spell = cantrip({ crystal: llm, call: CALL_STRATEGY, circle });
 
     try {
-      const result = await spell.cast("What is the SECRET_CODE?");
-      expect(result).toContain("X-99");
+      const result = await spell.cast(
+        "The variable `context` contains a large string. " +
+        "Somewhere in that string is a sentence with a passphrase. " +
+        "Find and return the exact passphrase."
+      );
+      expect(result).toContain("ZYGOMORPHIC");
     } finally {
       await circle.dispose?.();
     }
