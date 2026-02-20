@@ -151,6 +151,141 @@ describe("ENTITY-2: each entity has unique ID", () => {
   });
 });
 
+// ── ENTITY-3: state grows monotonically within a thread ─────────────
+
+describe("ENTITY-3: state grows monotonically within a thread", () => {
+  test("ENTITY-3: messages array only grows across turns", async () => {
+    let callCount = 0;
+
+    const crystal = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async query() {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            content: null,
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: {
+                  name: "echo",
+                  arguments: JSON.stringify({ text: "step1" }),
+                },
+              },
+            ],
+          };
+        }
+        if (callCount === 2) {
+          return {
+            content: null,
+            tool_calls: [
+              {
+                id: "call_2",
+                type: "function",
+                function: {
+                  name: "echo",
+                  arguments: JSON.stringify({ text: "step2" }),
+                },
+              },
+            ],
+          };
+        }
+        return {
+          content: null,
+          tool_calls: [
+            {
+              id: "call_3",
+              type: "function",
+              function: {
+                name: "done",
+                arguments: JSON.stringify({ message: "finished" }),
+              },
+            },
+          ],
+        };
+      },
+    };
+
+    const echoGate = gate("Echo text back", async ({ text }: { text: string }) => text, {
+      name: "echo",
+      schema: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        required: ["text"],
+        additionalProperties: false,
+      },
+    });
+
+    const spell = cantrip({
+      crystal: crystal as any,
+      call: { system_prompt: "test" },
+      circle: makeCircle([doneGate, echoGate]),
+    });
+
+    const entity = spell.invoke();
+    await entity.cast("grow test");
+
+    const history = entity.history;
+    // History must contain: system, user, assistant+tool (turn1), assistant+tool (turn2), assistant+tool (turn3 done)
+    // Each turn adds messages — the array never shrinks
+    expect(history.length).toBeGreaterThanOrEqual(5);
+
+    // Verify monotonic growth: check that roles appear in a valid growing sequence
+    // (system, user, then alternating assistant/tool messages)
+    expect(history[0].role).toBe("system");
+    expect(history[1].role).toBe("user");
+    // Remaining messages should alternate between assistant and tool roles
+    for (let i = 2; i < history.length; i++) {
+      expect(["assistant", "tool"]).toContain(history[i].role);
+    }
+  });
+
+  test("ENTITY-3: second cast() preserves prior state and grows further", async () => {
+    let callCount = 0;
+
+    const crystal = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async query() {
+        callCount++;
+        return {
+          content: null,
+          tool_calls: [
+            {
+              id: `call_${callCount}`,
+              type: "function",
+              function: {
+                name: "done",
+                arguments: JSON.stringify({ message: `result${callCount}` }),
+              },
+            },
+          ],
+        };
+      },
+    };
+
+    const spell = cantrip({
+      crystal: crystal as any,
+      call: { system_prompt: "test" },
+      circle: makeCircle(),
+    });
+
+    const entity = spell.invoke();
+    await entity.cast("first intent");
+    const historyAfterFirst = entity.history.length;
+
+    await entity.cast("second intent");
+    const historyAfterSecond = entity.history.length;
+
+    // History must grow monotonically — second cast adds to existing state
+    expect(historyAfterSecond).toBeGreaterThan(historyAfterFirst);
+  });
+});
+
 // ── ENTITY-4: entity thread persists after termination ─────────────
 
 describe("ENTITY-4: entity thread persists after termination", () => {

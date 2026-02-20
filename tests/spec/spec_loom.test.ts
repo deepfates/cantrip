@@ -7,7 +7,11 @@ import {
   MemoryStorage,
   generateTurnId,
   deriveThread,
+  fold,
+  partitionForFolding,
+  DEFAULT_FOLDING_CONFIG,
   type Turn,
+  type Thread,
 } from "../../src/loom";
 import { cantrip } from "../../src/cantrip/cantrip";
 import type { Circle } from "../../src/circle/circle";
@@ -367,5 +371,181 @@ describe("LOOM-10: thread extraction produces trajectory", () => {
     expect(thread.state).toBe("terminated");
     expect(thread.leafId).toBe("t3");
     expect(thread.turns).toHaveLength(3);
+  });
+});
+
+// ── LOOM-6: folding preserves call/gate definitions ─────────────────
+
+describe("LOOM-6: folding must not compress call or gate definitions", () => {
+  test("LOOM-6: fold() output does not include system prompt — caller must prepend it", async () => {
+    // Build a thread with enough turns to trigger folding
+    const turns: Turn[] = [];
+    for (let i = 1; i <= 10; i++) {
+      turns.push(makeTurn({
+        id: `t${i}`,
+        parent_id: i > 1 ? `t${i - 1}` : null,
+        sequence: i,
+        utterance: `Step ${i} thinking`,
+        observation: `Step ${i} result`,
+      }));
+    }
+
+    const toFold = turns.slice(0, 7);
+    const toKeep = turns.slice(7);
+
+    // Mock LLM for summary generation
+    const mockLlm = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async query() {
+        return { content: "Summary of older turns" };
+      },
+    };
+
+    const result = await fold(toFold, toKeep, mockLlm as any);
+
+    expect(result.folded).toBe(true);
+    // The folded messages should NOT contain a system message —
+    // LOOM-6 says the call (system prompt + gate defs) is preserved
+    // separately by the caller, not mixed into the fold output
+    const systemMessages = result.messages.filter((m: any) => m.role === "system");
+    expect(systemMessages).toHaveLength(0);
+
+    // The first message should be the fold summary (user role)
+    expect((result.messages[0] as any).role).toBe("user");
+    expect((result.messages[0] as any).content).toContain("[Folded:");
+  });
+
+  test("LOOM-6: partitionForFolding keeps recent turns verbatim", () => {
+    const loom = new Loom(new MemoryStorage());
+
+    // Build a thread manually for partition testing
+    const turns: Turn[] = [];
+    for (let i = 1; i <= 10; i++) {
+      turns.push(makeTurn({
+        id: `t${i}`,
+        parent_id: i > 1 ? `t${i - 1}` : null,
+        sequence: i,
+        utterance: `turn ${i}`,
+      }));
+    }
+
+    const thread: Thread = {
+      turns,
+      leafId: "t10",
+      state: "active",
+    };
+
+    const config = { ...DEFAULT_FOLDING_CONFIG, recent_turns_to_keep: 3 };
+    const { toFold, toKeep } = partitionForFolding(thread, config);
+
+    expect(toFold).toHaveLength(7);  // older turns folded
+    expect(toKeep).toHaveLength(3);  // recent turns kept verbatim
+    expect(toKeep[0].id).toBe("t8");
+    expect(toKeep[2].id).toBe("t10");
+  });
+});
+
+// ── LOOM-12: child entity turns appear in parent's loom tree ────────
+
+describe("LOOM-12: loom is a single unified tree", () => {
+  test("LOOM-12: parent and child entity turns coexist in same loom", async () => {
+    const loom = new Loom(new MemoryStorage());
+
+    // Parent entity turns
+    await loom.append(makeTurn({
+      id: "p1",
+      entity_id: "parent-entity",
+      cantrip_id: "parent-cantrip",
+      sequence: 1,
+      utterance: "Parent starts",
+    }));
+
+    // Child entity spawned from p1 — branches into the same loom
+    await loom.append(makeTurn({
+      id: "c1",
+      parent_id: "p1",
+      entity_id: "child-entity",
+      cantrip_id: "child-cantrip",
+      sequence: 1,
+      utterance: "Child working",
+    }));
+    await loom.append(makeTurn({
+      id: "c2",
+      parent_id: "c1",
+      entity_id: "child-entity",
+      cantrip_id: "child-cantrip",
+      sequence: 2,
+      utterance: "Child done",
+      terminated: true,
+    }));
+
+    // Parent continues after child
+    await loom.append(makeTurn({
+      id: "p2",
+      parent_id: "p1",
+      entity_id: "parent-entity",
+      cantrip_id: "parent-cantrip",
+      sequence: 2,
+      utterance: "Parent continues",
+      terminated: true,
+    }));
+
+    // All four turns are in the same loom
+    expect(loom.size).toBe(4);
+
+    // Child thread traces back through the parent
+    const childThread = loom.getThread("c2");
+    expect(childThread).toHaveLength(3); // p1 → c1 → c2
+    expect(childThread[0].entity_id).toBe("parent-entity");
+    expect(childThread[1].entity_id).toBe("child-entity");
+    expect(childThread[2].entity_id).toBe("child-entity");
+
+    // Parent thread is independent
+    const parentThread = loom.getThread("p2");
+    expect(parentThread).toHaveLength(2); // p1 → p2
+    expect(parentThread[0].entity_id).toBe("parent-entity");
+    expect(parentThread[1].entity_id).toBe("parent-entity");
+
+    // Both threads share the root turn p1
+    expect(childThread[0].id).toBe(parentThread[0].id);
+  });
+
+  test("LOOM-12: deriveThread works across entity boundaries", async () => {
+    const loom = new Loom(new MemoryStorage());
+
+    await loom.append(makeTurn({
+      id: "root",
+      entity_id: "parent",
+      sequence: 0,
+      role: "call",
+      utterance: "system prompt",
+      observation: "gate definitions",
+    }));
+
+    await loom.append(makeTurn({
+      id: "child-call",
+      parent_id: "root",
+      entity_id: "child",
+      sequence: 0,
+      role: "call",
+      utterance: "child system",
+    }));
+
+    await loom.append(makeTurn({
+      id: "child-t1",
+      parent_id: "child-call",
+      entity_id: "child",
+      sequence: 1,
+      terminated: true,
+    }));
+
+    const thread = deriveThread(loom, "child-t1");
+    expect(thread.turns).toHaveLength(3);
+    expect(thread.state).toBe("terminated");
+    // Thread spans across entity boundaries
+    expect(thread.turns[0].entity_id).toBe("parent");
+    expect(thread.turns[1].entity_id).toBe("child");
   });
 });

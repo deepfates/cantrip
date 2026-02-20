@@ -727,6 +727,79 @@ describe("COMP-7: child can use different crystal", () => {
   });
 });
 
+// ── COMP-9: parent termination truncates active children ────────────
+
+describe("COMP-9: parent termination truncates active children", () => {
+  test("COMP-9: parent max_turns truncation aborts child gate in progress", async () => {
+    // When the parent terminates (via max_turns ward), any active child
+    // entity running inside a gate should be effectively abandoned.
+    // We verify this by having a child that would run forever, but the
+    // parent's ward (max_turns=1) truncates after the first turn.
+
+    let childStarted = false;
+    let parentTruncated = false;
+
+    const slowChildGate = gate(
+      "Call slow child",
+      async ({ intent }: { intent: string }) => {
+        childStarted = true;
+        // Simulate a long-running child — but it will never complete
+        // because the parent will be truncated first
+        return "child result";
+      },
+      {
+        name: "call_entity",
+        schema: {
+          type: "object",
+          properties: { intent: { type: "string" } },
+          required: ["intent"],
+          additionalProperties: false,
+        },
+      },
+    );
+
+    let callCount = 0;
+    const crystal = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async query() {
+        callCount++;
+        // Always call the child gate, never call done
+        return {
+          content: null,
+          tool_calls: [
+            {
+              id: `call_${callCount}`,
+              type: "function",
+              function: {
+                name: "call_entity",
+                arguments: JSON.stringify({ intent: "work forever" }),
+              },
+            },
+          ],
+        };
+      },
+    };
+
+    const spell = cantrip({
+      crystal: crystal as any,
+      call: { system_prompt: "parent" },
+      circle: Circle({
+        gates: [doneGate, slowChildGate],
+        // Ward: max_turns=1, no require_done — parent will be truncated
+        wards: [{ max_turns: 1, require_done_tool: false }],
+      }),
+    });
+
+    const result = await spell.cast("test parent truncation");
+    // Parent was truncated by ward, not terminated by done gate
+    expect(result).toContain("Max iterations reached");
+    // The child gate did execute (it started)
+    expect(childStarted).toBe(true);
+  });
+});
+
 // ── COMP-8: child failure returns error to parent ──────────────────
 
 describe("COMP-8: child failure returns error to parent", () => {

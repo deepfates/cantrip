@@ -600,3 +600,82 @@ describe("Ward composition via resolveWards", () => {
     expect(resolved.max_depth).toBe(3);
   });
 });
+
+// ── WARD-1: nested wards compose with min() for numeric, OR for boolean ─
+
+describe("WARD-1: nested ward composition rules", () => {
+  test("WARD-1: numeric wards compose with min()", () => {
+    // Two different sources of max_turns and max_depth — min() wins
+    const resolved = resolveWards([
+      { max_turns: 100, max_depth: 5 },
+      { max_turns: 50, max_depth: 10 },
+    ]);
+    expect(resolved.max_turns).toBe(50);  // min(100, 50)
+    expect(resolved.max_depth).toBe(5);   // min(5, 10)
+  });
+
+  test("WARD-1: boolean wards compose with OR", () => {
+    // Only one ward sets require_done_tool — OR means it's true
+    const resolved = resolveWards([
+      { require_done_tool: false },
+      { require_done_tool: true },
+    ]);
+    expect(resolved.require_done_tool).toBe(true);
+  });
+
+  test("WARD-1: three nested ward layers compose correctly", () => {
+    // Simulates parent → child → grandchild ward nesting
+    const parentWard = { max_turns: 200, max_depth: 10 };
+    const childWard = { max_turns: 50, require_done_tool: true };
+    const grandchildWard = { max_turns: 100, max_depth: 3 };
+
+    const resolved = resolveWards([parentWard, childWard, grandchildWard]);
+    expect(resolved.max_turns).toBe(50);          // min(200, 50, 100)
+    expect(resolved.max_depth).toBe(3);            // min(10, 3)
+    expect(resolved.require_done_tool).toBe(true); // OR(false, true, false)
+  });
+});
+
+// ── CIRCLE-11: capability presentation ──────────────────────────────
+
+describe("CIRCLE-11: circle generates capability presentation", () => {
+  test("CIRCLE-11: capabilityDocs() returns non-empty docs for gates with docs metadata", () => {
+    // BoundGate with docs metadata (docs is set on the BoundGate, not via gate() decorator)
+    const documentedGate: BoundGate = {
+      name: "read_file",
+      definition: {
+        name: "read_file",
+        description: "Read a file",
+        parameters: {
+          type: "object",
+          properties: { path: { type: "string" } },
+          required: ["path"],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+      ephemeral: false,
+      async execute() { return "content"; },
+      docs: {
+        section: "File System",
+        sandbox_name: "readFile",
+        signature: "readFile(path: string): string",
+        description: "Read the contents of a file at the given path",
+      },
+    };
+
+    const circle = makeCircle([doneGate, documentedGate]);
+    const docs = circle.capabilityDocs();
+
+    expect(docs.length).toBeGreaterThan(0);
+    expect(docs).toContain("File System");
+    expect(docs).toContain("readFile");
+  });
+
+  test("CIRCLE-11: capabilityDocs() returns empty string when no gates have docs", () => {
+    // doneGate has no docs metadata
+    const circle = makeCircle([doneGate]);
+    const docs = circle.capabilityDocs();
+    expect(docs).toBe("");
+  });
+});
