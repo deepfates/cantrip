@@ -1,6 +1,7 @@
 import type { BaseChatModel } from "../crystal/crystal";
 import type { AnyMessage } from "../crystal/messages";
 import type { Call } from "./call";
+import { renderGateDefinitions } from "./call";
 import { Circle } from "../circle/circle";
 import type { DependencyOverrides } from "../circle/gate/depends";
 import type { BoundGate } from "../circle/gate";
@@ -16,8 +17,9 @@ import {
   runLoop,
 } from "../entity/runtime";
 import { recordCallRoot, recordTurn, checkAndFold } from "../entity/recording";
-import type { Loom } from "../loom";
+import { Loom, MemoryStorage } from "../loom";
 import type { FoldingConfig } from "../loom/folding";
+import { done } from "../circle/gate/builtin/done";
 import { DEFAULT_FOLDING_CONFIG } from "../loom/folding";
 import {
   currentTurnIdBinding,
@@ -160,7 +162,9 @@ export class Entity {
       if (!bindingMap.has(currentTurnIdBinding)) {
         bindingMap.set(currentTurnIdBinding, () => () => this.last_turn_id);
       }
-      // spawnBinding: provide a default spawn that creates a minimal child entity.
+      // spawnBinding: provide a default spawn that creates a real child cantrip.
+      // The child gets its own circle (with done + parent's non-delegation gates),
+      // shares the parent's loom (for tree-linked turns), and tracks usage.
       // Callers can override via dependency_overrides for richer child configs.
       if (!bindingMap.has(spawnBinding)) {
         bindingMap.set(spawnBinding, (): SpawnFn => {
@@ -171,14 +175,51 @@ export class Entity {
             const truncated = contextStr.length > 10000
               ? contextStr.slice(0, 10000) + "\n... [truncated]"
               : contextStr;
-            // Minimal child: direct LLM query (no circle, no recursion)
-            const res = await this.crystal.query([
-              { role: "user", content: `Task: ${query}\n\nContext:\n${truncated}` },
-            ]);
-            if (res.usage) {
-              this.usage_tracker.add(this.crystal.model, res.usage);
+
+            // Build child gates: parent's gates minus call_entity/call_entity_batch
+            // (child doesn't get further delegation by default — prevents runaway recursion).
+            // Ensure done gate is present.
+            const childGates: BoundGate[] = this.circle.gates.filter(
+              (g) => g.name !== "call_entity" && g.name !== "call_entity_batch",
+            );
+            if (!childGates.some((g) => g.name === "done")) {
+              childGates.push(done);
             }
-            return res.content ?? "";
+
+            // Build child circle with simple wards.
+            // Don't inherit require_done — the child should terminate on text response.
+            // Use parent's max_turns (capped at 10) as a safety bound.
+            const parentResolved = resolveWards(this.circle.wards);
+            const childMaxTurns = Math.min(parentResolved.max_turns, 10);
+            const childCircle = Circle({
+              gates: childGates,
+              wards: [{ max_turns: childMaxTurns, require_done_tool: false }],
+            });
+
+            // Build child call
+            const childCall: Call = {
+              system_prompt: `You are a child entity. Complete the task and call done with the result.\n\nContext:\n${truncated}`,
+              hyperparameters: { tool_choice: "auto" },
+              gate_definitions: renderGateDefinitions(childCircle.gates),
+            };
+
+            // Share parent's loom (child turns appear as subtree) or create ephemeral one
+            const childLoom = this.loom ?? new Loom(new MemoryStorage());
+
+            const childEntity = new Entity({
+              crystal: this.crystal,
+              call: childCall,
+              circle: childCircle,
+              dependency_overrides: null,
+              usage_tracker: this.usage_tracker,
+              loom: childLoom,
+              parent_turn_id: this.last_turn_id,
+              folding: this.folding,
+              folding_enabled: this.folding_enabled,
+              retry: this.retry,
+            });
+
+            return childEntity.cast(query);
           };
         });
       }
