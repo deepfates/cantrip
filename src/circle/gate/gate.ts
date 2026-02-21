@@ -4,9 +4,9 @@ import type { GateContent } from "./decorator";
 
 /** Documentation metadata a gate carries for compositional prompt generation. */
 export type GateDocs = {
-  /** Name to use when presenting this gate in a sandbox (e.g., "llm_query" for call_entity) */
+  /** Name to use when presenting this gate in a sandbox (e.g., "call_entity" for the delegation gate) */
   sandbox_name?: string;
-  /** Function signature for documentation (e.g., "llm_query(query: string): Promise<string>") */
+  /** Function signature for documentation (e.g., "call_entity(intent: string): string") */
   signature?: string;
   /** Human-readable description of what this gate does */
   description?: string;

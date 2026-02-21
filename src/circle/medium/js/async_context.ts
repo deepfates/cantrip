@@ -103,12 +103,12 @@ export class JsAsyncContext {
    *
    * @example
    * ```ts
-   * ctx.registerAsyncFunction("llm_query", async (query, context) => {
-   *   const result = await llm.complete(query, context);
+   * ctx.registerAsyncFunction("call_entity", async (intent, context) => {
+   *   const result = await entity.cast(intent, context);
    *   return result;
    * });
    *
-   * // In sandbox: const answer = llm_query("summarize", chunk);
+   * // In sandbox: var answer = call_entity("summarize", chunk);
    * ```
    */
   registerAsyncFunction(name: string, fn: AsyncHostFunction): void {

@@ -29,7 +29,7 @@ export function defaultProgress(depth: number): ProgressCallback {
         break;
       case "batch_start":
         console.error(
-          `${indent}├─ [depth:${event.depth}] llm_batch(${event.count} tasks)`,
+          `${indent}├─ [depth:${event.depth}] call_entity_batch(${event.count} tasks)`,
         );
         break;
       case "batch_item": {

@@ -77,16 +77,16 @@ describe("Circle.capabilityDocs", () => {
         name: "call_entity",
         docs: {
           section: "HOST FUNCTIONS",
-          sandbox_name: "llm_query",
-          signature: "llm_query(query: string, context?: any): string",
-          description: "Query a sub-LLM.",
+          sandbox_name: "call_entity",
+          signature: "call_entity(intent: string, context?: any): string",
+          description: "Delegate a sub-intent to a child entity.",
         },
       }),
     ]);
     const result = circle.capabilityDocs();
     expect(result).toContain("### HOST FUNCTIONS");
     expect(result).toContain(
-      "- `llm_query(query: string, context?: any): string`: Query a sub-LLM.",
+      "- `call_entity(intent: string, context?: any): string`: Delegate a sub-intent to a child entity.",
     );
   });
 
@@ -111,9 +111,9 @@ describe("Circle.capabilityDocs", () => {
         name: "call_entity",
         docs: {
           section: "HOST FUNCTIONS",
-          sandbox_name: "llm_query",
-          signature: "llm_query(query)",
-          description: "Query LLM.",
+          sandbox_name: "call_entity",
+          signature: "call_entity(intent)",
+          description: "Delegate to child entity.",
         },
       }),
       stubGate({
@@ -131,7 +131,7 @@ describe("Circle.capabilityDocs", () => {
     const headerCount = (result.match(/### HOST FUNCTIONS/g) || []).length;
     expect(headerCount).toBe(1);
     // Both gates present
-    expect(result).toContain("llm_query(query)");
+    expect(result).toContain("call_entity(intent)");
     expect(result).toContain("submit_answer(result)");
   });
 
@@ -141,9 +141,9 @@ describe("Circle.capabilityDocs", () => {
         name: "call_entity",
         docs: {
           section: "HOST FUNCTIONS",
-          sandbox_name: "llm_query",
-          signature: "llm_query(query)",
-          description: "Query LLM.",
+          sandbox_name: "call_entity",
+          signature: "call_entity(intent)",
+          description: "Delegate to child entity.",
         },
       }),
       stubGate({

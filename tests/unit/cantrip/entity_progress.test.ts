@@ -88,7 +88,7 @@ describe("Entity progress events", () => {
     }
   });
 
-  test("llm_query emits sub_entity_start and sub_entity_end", async () => {
+  test("call_entity emits sub_entity_start and sub_entity_end", async () => {
     const events: ProgressEvent[] = [];
 
     const mockLlm = new MockLlm([
@@ -104,7 +104,7 @@ describe("Entity progress events", () => {
                 function: {
                   name: "js",
                   arguments: JSON.stringify({
-                    code: "var r = llm_query('child task'); submit_answer(r);",
+                    code: "var r = call_entity('child task'); submit_answer(r);",
                   }),
                 },
               },
@@ -153,7 +153,7 @@ describe("Entity progress events", () => {
     expect(ends[0].depth).toBe(1);
   });
 
-  test("llm_batch emits batch_start, batch_item, and batch_end", async () => {
+  test("call_entity_batch emits batch_start, batch_item, and batch_end", async () => {
     const events: ProgressEvent[] = [];
 
     const mockLlm = new MockLlm([
@@ -169,7 +169,7 @@ describe("Entity progress events", () => {
                 function: {
                   name: "js",
                   arguments: JSON.stringify({
-                    code: "var r = llm_batch([{query:'q1'}, {query:'q2'}]); submit_answer(r.join(','));",
+                    code: "var r = call_entity_batch([{intent:'q1'}, {intent:'q2'}]); submit_answer(r.join(','));",
                   }),
                 },
               },
@@ -221,7 +221,7 @@ describe("Entity progress events", () => {
     expect(batchEnds).toHaveLength(1);
   });
 
-  test("llm_query works without onProgress callback (defaults to null)", async () => {
+  test("call_entity works without onProgress callback (defaults to null)", async () => {
     const mockLlm = new MockLlm([
       (msgs) => {
         const last = msgs[msgs.length - 1];
@@ -235,7 +235,7 @@ describe("Entity progress events", () => {
                 function: {
                   name: "js",
                   arguments: JSON.stringify({
-                    code: "var r = llm_query('sub'); submit_answer(r);",
+                    code: "var r = call_entity('sub'); submit_answer(r);",
                   }),
                 },
               },

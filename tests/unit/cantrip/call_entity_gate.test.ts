@@ -7,7 +7,7 @@ describe("call_entity gate factory", () => {
     expect(gate).not.toBeNull();
     expect(gate!.name).toBe("call_entity");
     expect(gate!.definition.name).toBe("call_entity");
-    expect(gate!.docs?.sandbox_name).toBe("llm_query");
+    expect(gate!.docs?.sandbox_name).toBe("call_entity");
   });
 
   test("returns null at depth >= max_depth (COMP-6)", () => {
@@ -32,8 +32,8 @@ describe("call_entity gate factory", () => {
   test("has correct gate docs", () => {
     const gate = call_entity();
     expect(gate!.docs).toBeDefined();
-    expect(gate!.docs!.sandbox_name).toBe("llm_query");
-    expect(gate!.docs!.signature).toContain("llm_query");
+    expect(gate!.docs!.sandbox_name).toBe("call_entity");
+    expect(gate!.docs!.signature).toContain("call_entity");
     expect(gate!.docs!.examples!.length).toBeGreaterThan(0);
   });
 
@@ -44,8 +44,8 @@ describe("call_entity gate factory", () => {
     expect(def.name).toBe("call_entity");
     expect(def.description).toBeTruthy();
     expect(def.parameters).toBeDefined();
-    expect((def.parameters as any).properties.query).toBeDefined();
-    expect((def.parameters as any).required).toContain("query");
+    expect((def.parameters as any).properties.intent).toBeDefined();
+    expect((def.parameters as any).required).toContain("intent");
   });
 
   test("ephemeral is false", () => {

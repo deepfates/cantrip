@@ -728,7 +728,7 @@ describe("JS browser handle pattern", () => {
     expect(capturedSystemPrompt).not.toContain("into(");
   });
 
-  test("llm_query delegates to child via default spawn (plain LLM call)", async () => {
+  test("call_entity delegates to child via default spawn (plain LLM call)", async () => {
     const browserCtx = mockBrowserContext();
 
     const mockLlm = new MockLlm([
@@ -744,7 +744,7 @@ describe("JS browser handle pattern", () => {
                 function: {
                   name: "js",
                   arguments: JSON.stringify({
-                    code: 'var r = llm_query("Summarize the data"); submit_answer(r);',
+                    code: 'var r = call_entity("Summarize the data"); submit_answer(r);',
                   }),
                 },
               },

@@ -324,8 +324,8 @@ export function patchStderrForEntities(): void {
         return;
       }
 
-      // llm_batch(N tasks)
-      const batchMatch = rest.match(/^llm_batch\((\d+)\s*tasks\)$/);
+      // call_entity_batch(N tasks)
+      const batchMatch = rest.match(/^call_entity_batch\((\d+)\s*tasks\)$/);
       if (batchMatch) {
         original(
           `${indent}${c.dim}${branch}${c.reset} ${dc}[${depth}]${c.reset} ${c.brightYellow}batch${c.reset}(${c.bold}${batchMatch[1]}${c.reset} tasks)`,
