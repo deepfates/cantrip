@@ -207,7 +207,7 @@ export class Entity {
 
             // Build child call
             const childCall: Call = {
-              system_prompt: `You are a child entity. Complete the task and call done with the result.\n\nContext:\n${truncated}`,
+              system_prompt: `You are a child entity. Pursue the intent and call done with the result.\n\nContext:\n${truncated}`,
               hyperparameters: { tool_choice: "auto" },
               gate_definitions: renderGateDefinitions(childCircle.gates),
             };

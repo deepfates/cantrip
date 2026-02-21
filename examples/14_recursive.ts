@@ -44,7 +44,7 @@ export async function main() {
   // The entity auto-prepends capability docs from the circle.
   const spell = cantrip({
     crystal,
-    call: "Explore the context variable using code. Use llm_query to delegate subtasks to child entities. Use submit_answer() when done.",
+    call: "Explore the context variable using code. Use call_entity to delegate sub-intents to child entities. Use submit_answer() when done.",
     circle,
     loom,
   });
@@ -53,7 +53,7 @@ export async function main() {
     console.log('Asking: "Analyze each category and summarize the overall trend."');
     const answer = await spell.cast(
       "Analyze each category (revenue, costs, headcount) and summarize the overall trend. " +
-      "Use llm_query to delegate analysis of each category to a child entity.",
+      "Use call_entity to delegate analysis of each category to a child entity.",
     );
     console.log(`\nAnswer: ${answer}`);
 

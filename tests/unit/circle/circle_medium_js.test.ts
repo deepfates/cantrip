@@ -31,10 +31,10 @@ function mockGate(overrides: Partial<BoundGate> & { name: string }): BoundGate {
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "The query" },
+          intent: { type: "string", description: "The intent" },
           context: { type: "string", description: "Optional context" },
         },
-        required: ["query"],
+        required: ["intent"],
         additionalProperties: false,
       },
     },
@@ -58,7 +58,7 @@ describe("JS medium gate presentation", () => {
     const gate = mockGate({
       name: "call_entity",
       docs: {
-        sandbox_name: "llm_query",
+        sandbox_name: "call_entity",
         description: "Delegate to child entity",
       },
     });
@@ -71,15 +71,15 @@ describe("JS medium gate presentation", () => {
 
     // Execute code that calls the sandbox_name
     const result = await circle.execute(
-      makeJsToolCall('llm_query("hello")'),
+      makeJsToolCall('call_entity("hello")'),
       {},
     );
 
     expect(result.done).toBeUndefined();
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0].is_error).toBeFalsy();
-    // The gate should have received { query: "hello" }
-    expect(result.messages[0].content).toContain("query");
+    // The gate should have received { intent: "hello" }
+    expect(result.messages[0].content).toContain("intent");
     expect(result.messages[0].content).toContain("hello");
   });
 
@@ -109,7 +109,7 @@ describe("JS medium gate presentation", () => {
 
     const gate = mockGate({
       name: "call_entity",
-      docs: { sandbox_name: "llm_query" },
+      docs: { sandbox_name: "call_entity" },
       execute: async (args) => {
         capturedArgs = args;
         return JSON.stringify(args);
@@ -122,15 +122,15 @@ describe("JS medium gate presentation", () => {
       wards: [max_turns(10)],
     });
 
-    // Call with two positional args — should map to "query" and "context"
+    // Call with two positional args — should map to "intent" and "context"
     const result = await circle.execute(
-      makeJsToolCall('llm_query("summarize this", "some context data")'),
+      makeJsToolCall('call_entity("summarize this", "some context data")'),
       {},
     );
 
     expect(result.messages[0].is_error).toBeFalsy();
     expect(capturedArgs).not.toBeNull();
-    expect(capturedArgs!.query).toBe("summarize this");
+    expect(capturedArgs!.intent).toBe("summarize this");
     expect(capturedArgs!.context).toBe("some context data");
   });
 
@@ -139,7 +139,7 @@ describe("JS medium gate presentation", () => {
 
     const gate = mockGate({
       name: "call_entity",
-      docs: { sandbox_name: "llm_query" },
+      docs: { sandbox_name: "call_entity" },
       execute: async (args) => {
         capturedArgs = args;
         return JSON.stringify(args);
@@ -154,13 +154,13 @@ describe("JS medium gate presentation", () => {
 
     // Call with a single object arg — should pass through directly
     const result = await circle.execute(
-      makeJsToolCall('llm_query({ query: "hello", context: "world" })'),
+      makeJsToolCall('call_entity({ intent: "hello", context: "world" })'),
       {},
     );
 
     expect(result.messages[0].is_error).toBeFalsy();
     expect(capturedArgs).not.toBeNull();
-    expect(capturedArgs!.query).toBe("hello");
+    expect(capturedArgs!.intent).toBe("hello");
     expect(capturedArgs!.context).toBe("world");
   });
 });

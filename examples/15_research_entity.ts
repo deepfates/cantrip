@@ -88,7 +88,7 @@ export async function main() {
       crystal,
       call:
         "Research entity with browser automation and recursive delegation. " +
-        "Use code to explore data, browse the web, and delegate subtasks via llm_query. " +
+        "Use code to explore data, browse the web, and delegate sub-intents via call_entity. " +
         "Use submit_answer() when done.",
       circle,
       loom,

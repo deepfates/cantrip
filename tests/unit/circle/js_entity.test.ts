@@ -1,4 +1,4 @@
-// Tests JS medium context isolation, recursive delegation (llm_query/llm_batch),
+// Tests JS medium context isolation, recursive delegation (call_entity/call_entity_batch),
 // metadata loop, and token aggregation using cantrip() composition.
 import { describe, expect, test, afterEach } from "bun:test";
 import { JsAsyncContext } from "../../../src/circle/medium/js/async_context";
@@ -182,7 +182,7 @@ describe("JS Entity Integration", () => {
     expect(result).toBe("History is clean");
   });
 
-  test("Recursion: llm_query spawns a child agent and returns result", async () => {
+  test("Recursion: call_entity spawns a child agent and returns result", async () => {
     const mockLlm = new MockEntityLlm([
       (msgs) => {
         const lastMsg = msgs[msgs.length - 1];
@@ -196,7 +196,7 @@ describe("JS Entity Integration", () => {
                 function: {
                   name: "js",
                   arguments: JSON.stringify({
-                    code: "var res = llm_query('Get Secret'); submit_answer(res);",
+                    code: "var res = call_entity('Get Secret'); submit_answer(res);",
                   }),
                 },
               },
@@ -241,10 +241,10 @@ describe("JS Entity Integration", () => {
     expect(usage.total_prompt_tokens).toBeGreaterThanOrEqual(20);
   });
 
-  test("Recursion Depth Limit: llm_query falls back to plain LLM call at max depth", async () => {
-    // maxDepth=1: depth 0 has sandbox + llm_query. depth 1 child also has sandbox + llm_query.
-    // But depth 1's llm_query spawns at depth 2 which >= maxDepth, so it falls back to a plain LLM call.
-    // Chain: L0 sandbox → calls llm_query('L1') → L1 child gets sandbox → calls llm_query('L2')
+  test("Recursion Depth Limit: call_entity falls back to plain LLM call at max depth", async () => {
+    // maxDepth=1: depth 0 has sandbox + call_entity. depth 1 child also has sandbox + call_entity.
+    // But depth 1's call_entity spawns at depth 2 which >= maxDepth, so it falls back to a plain LLM call.
+    // Chain: L0 sandbox → calls call_entity('L1') → L1 child gets sandbox → calls call_entity('L2')
     //        → L2 at max depth → plain LLM call → returns content directly
     const mockLlm = new MockEntityLlm([
       () => ({
@@ -256,13 +256,13 @@ describe("JS Entity Integration", () => {
             function: {
               name: "js",
               arguments: JSON.stringify({
-                code: "var res = llm_query('L1'); submit_answer(res);",
+                code: "var res = call_entity('L1'); submit_answer(res);",
               }),
             },
           },
         ],
       }),
-      // L1 child gets its own sandbox at depth=1, calls llm_query('L2')
+      // L1 child gets its own sandbox at depth=1, calls call_entity('L2')
       () => ({
         content: "Level 1",
         tool_calls: [
@@ -272,7 +272,7 @@ describe("JS Entity Integration", () => {
             function: {
               name: "js",
               arguments: JSON.stringify({
-                code: "var res = llm_query('L2'); submit_answer(res);",
+                code: "var res = call_entity('L2'); submit_answer(res);",
               }),
             },
           },
@@ -341,7 +341,7 @@ describe("JS Entity Integration", () => {
                 function: {
                   name: "js",
                   arguments: JSON.stringify({
-                    code: "llm_query('Change'); submit_answer(context.data);",
+                    code: "call_entity('Change'); submit_answer(context.data);",
                   }),
                 },
               },
@@ -382,7 +382,7 @@ describe("JS Entity Integration", () => {
     expect(result).toBe("original");
   });
 
-  test("Batching: llm_batch executes multiple sub-queries in parallel", async () => {
+  test("Batching: call_entity_batch executes multiple sub-intents in parallel", async () => {
     const mockLlm = new MockEntityLlm([
       (msgs) => {
         const lastMsg = msgs[msgs.length - 1];
@@ -396,7 +396,7 @@ describe("JS Entity Integration", () => {
                 function: {
                   name: "js",
                   arguments: JSON.stringify({
-                    code: "var results = llm_batch([{query:'t', context:'a'}, {query:'t', context:'b'}]); submit_answer(results.join(', '));",
+                    code: "var results = call_entity_batch([{intent:'t', context:'a'}, {intent:'t', context:'b'}]); submit_answer(results.join(', '));",
                   }),
                 },
               },

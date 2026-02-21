@@ -66,13 +66,13 @@ export function call_entity(opts: CallEntityGateOptions = {}): BoundGate | null 
   }
 
   const docs: GateDocs = {
-    sandbox_name: "llm_query",
-    signature: "llm_query(query: string, subContext?: any): Promise<string>",
+    sandbox_name: "call_entity",
+    signature: "call_entity(intent: string, subContext?: any): string",
     description:
-      "Delegate a subtask to a child language model. The child gets independent context and returns a string result. Use for breaking large tasks into smaller pieces or for recursive analysis.",
+      "Delegate a sub-intent to a child entity. The child gets independent context and returns a string result. Use for breaking large intents into smaller pieces or for recursive analysis.",
     examples: [
-      'const answer = await llm_query("Summarize this section", data.slice(0, 1000))',
-      'const result = await llm_query("What patterns do you see?", filtered_items)',
+      'var answer = call_entity("Summarize this section", data.slice(0, 1000))',
+      'var result = call_entity("What patterns do you see?", filtered_items)',
     ],
     section: "HOST FUNCTIONS",
   };
@@ -87,9 +87,9 @@ export function call_entity(opts: CallEntityGateOptions = {}): BoundGate | null 
       parameters: {
         type: "object",
         properties: {
-          query: {
+          intent: {
             type: "string",
-            description: "The task/query for the child entity",
+            description: "The sub-intent for the child entity",
           },
           context: {
             type: "string",
@@ -97,12 +97,12 @@ export function call_entity(opts: CallEntityGateOptions = {}): BoundGate | null 
               "Optional context data to pass to the child (JSON string)",
           },
         },
-        required: ["query"],
+        required: ["intent"],
         additionalProperties: false,
       },
     },
     async (args: Record<string, any>, deps: Record<string, any>) => {
-      const query = args.query as string;
+      const query = (args.intent ?? args.query) as string;
       const rawContext = args.context;
       let childContext: unknown = undefined;
 
@@ -177,12 +177,12 @@ export function call_entity_batch(opts: CallEntityGateOptions = {}): BoundGate |
   }
 
   const docs: GateDocs = {
-    sandbox_name: "llm_batch",
-    signature: "llm_batch(tasks)",
+    sandbox_name: "call_entity_batch",
+    signature: "call_entity_batch(tasks)",
     description:
-      "Parallel delegation. Takes an array of `{query, context}` objects (max 50). Returns an array of strings.",
+      "Parallel delegation. Takes an array of `{intent, context}` objects (max 50). Returns an array of strings.",
     examples: [
-      'var tasks = items.map(function(item) { return { query: "Classify this.", context: item }; });\nvar results = llm_batch(tasks);',
+      'var tasks = items.map(function(item) { return { intent: "Classify this.", context: item }; });\nvar results = call_entity_batch(tasks);',
     ],
     section: "HOST FUNCTIONS",
   };
@@ -205,12 +205,12 @@ export function call_entity_batch(opts: CallEntityGateOptions = {}): BoundGate |
             items: {
               type: "object",
               properties: {
-                query: { type: "string" },
+                intent: { type: "string" },
                 context: { type: "string" },
               },
-              required: ["query"],
+              required: ["intent"],
             },
-            description: "Array of {query, context?} objects (max 50)",
+            description: "Array of {intent, context?} objects (max 50)",
           },
         },
         required: ["tasks"],
@@ -227,12 +227,12 @@ export function call_entity_batch(opts: CallEntityGateOptions = {}): BoundGate |
       const tasks = args.tasks;
 
       if (!Array.isArray(tasks)) {
-        throw new Error("llm_batch(tasks) requires an array of task objects.");
+        throw new Error("call_entity_batch(tasks) requires an array of task objects.");
       }
 
       if (tasks.length > MAX_BATCH_SIZE) {
         throw new Error(
-          `llm_batch: array too large (${tasks.length} > ${MAX_BATCH_SIZE}). Split into smaller batches.`,
+          `call_entity_batch: array too large (${tasks.length} > ${MAX_BATCH_SIZE}). Split into smaller batches.`,
         );
       }
 
@@ -251,11 +251,11 @@ export function call_entity_batch(opts: CallEntityGateOptions = {}): BoundGate |
               typeof task === "string"
                 ? task
                 : task != null
-                  ? (task.query ?? task.input)
+                  ? (task.intent ?? task.query ?? task.input)
                   : undefined;
             if (typeof q !== "string") {
               throw new Error(
-                `llm_batch: task[${idx}].query must be a string, got ${typeof q}`,
+                `call_entity_batch: task[${idx}].intent must be a string, got ${typeof q}`,
               );
             }
             const taskContext =

@@ -1,7 +1,7 @@
 /**
  * Robustness tests:
  * 1. safeStringify — handles cyclic/non-serializable data
- * 2. llm_batch — validates task queries before calling .slice()
+ * 2. call_entity_batch — validates task intents before calling .slice()
  * 3. Browser capability docs filtering
  */
 import { describe, expect, test, afterEach } from "bun:test";
@@ -316,7 +316,7 @@ describe("medium capabilityDocs", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. llm_batch — validates task queries before calling .slice()
+// 3. call_entity_batch — validates task intents before calling .slice()
 // ---------------------------------------------------------------------------
 
 class MockLlm implements BaseChatModel {
@@ -344,7 +344,7 @@ class MockLlm implements BaseChatModel {
   }
 }
 
-describe("llm_batch input validation", () => {
+describe("call_entity_batch input validation", () => {
   let activeSandbox: JsAsyncContext | null = null;
 
   afterEach(() => {
@@ -367,7 +367,7 @@ describe("llm_batch input validation", () => {
               name: "js",
               arguments: JSON.stringify({
                 code: `try {
-  llm_batch([{context: "no query here"}]);
+  call_entity_batch([{context: "no query here"}]);
   submit_answer("should not reach");
 } catch(e) {
   submit_answer("caught: " + e.message);
@@ -387,7 +387,7 @@ describe("llm_batch input validation", () => {
     activeSandbox = sandbox;
 
     const result = await entity.cast("Start");
-    expect(result).toContain("llm_batch: task[0].query must be a string");
+    expect(result).toContain("call_entity_batch: task[0].intent must be a string");
   });
 
   test("rejects null batch task", async () => {
@@ -402,7 +402,7 @@ describe("llm_batch input validation", () => {
               name: "js",
               arguments: JSON.stringify({
                 code: `try {
-  llm_batch([null]);
+  call_entity_batch([null]);
   submit_answer("should not reach");
 } catch(e) {
   submit_answer("caught: " + e.message);
@@ -422,6 +422,6 @@ describe("llm_batch input validation", () => {
     activeSandbox = sandbox;
 
     const result = await entity.cast("Start");
-    expect(result).toContain("llm_batch: task[0].query must be a string");
+    expect(result).toContain("call_entity_batch: task[0].intent must be a string");
   });
 });
