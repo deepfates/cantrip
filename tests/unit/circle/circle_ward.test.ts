@@ -5,7 +5,7 @@ import { Entity } from "../../../src/cantrip/entity";
 import { Circle } from "../../../src/circle/circle";
 import { gate } from "../../../src/circle/gate/decorator";
 import { renderGateDefinitions } from "../../../src/cantrip/call";
-import { DEFAULT_WARD, resolveWards } from "../../../src/circle/ward";
+import { DEFAULT_WARD, resolveWards, exclude_gate } from "../../../src/circle/ward";
 import type { Ward } from "../../../src/circle/ward";
 import type { Call } from "../../../src/cantrip/call";
 
@@ -150,5 +150,73 @@ describe("Entity with Circle", () => {
     });
     const result = await entity.cast("hello");
     expect(result).toBe("ok");
+  });
+});
+
+// ── exclude_gates ward ────────────────────────────────────────────
+
+describe("exclude_gates ward", () => {
+  test("exclude_gate helper creates correct ward", () => {
+    const ward = exclude_gate("echo");
+    expect(ward).toEqual({ exclude_gates: ["echo"] });
+  });
+
+  test("single exclusion removes gate from resolveWards", () => {
+    const resolved = resolveWards([{ exclude_gates: ["echo"] }]);
+    expect(resolved.exclude_gates).toEqual(["echo"]);
+  });
+
+  test("multiple wards compose exclusions via union", () => {
+    const resolved = resolveWards([
+      { exclude_gates: ["echo"] },
+      { exclude_gates: ["read_file", "echo"] },
+    ]);
+    expect(resolved.exclude_gates.sort()).toEqual(["echo", "read_file"]);
+  });
+
+  test("excluding a nonexistent gate is a no-op (resolves fine)", () => {
+    const resolved = resolveWards([{ exclude_gates: ["nonexistent"] }]);
+    expect(resolved.exclude_gates).toEqual(["nonexistent"]);
+  });
+
+  test("excluding 'done' is silently ignored", () => {
+    const resolved = resolveWards([{ exclude_gates: ["done", "echo"] }]);
+    expect(resolved.exclude_gates).toEqual(["echo"]);
+    expect(resolved.exclude_gates).not.toContain("done");
+  });
+
+  test("empty exclude_gates array is a no-op", () => {
+    const resolved = resolveWards([{ exclude_gates: [] }]);
+    expect(resolved.exclude_gates).toEqual([]);
+  });
+
+  test("DEFAULT_WARD has empty exclude_gates", () => {
+    expect(DEFAULT_WARD.exclude_gates).toEqual([]);
+  });
+
+  test("Circle with excluded gate omits it from gates and crystalView", () => {
+    const circle = Circle({
+      gates: [add, done],
+      wards: [{ max_turns: 10 }, exclude_gate("add")],
+    });
+
+    // The "add" gate should be filtered out
+    expect(circle.gates).toHaveLength(1);
+    expect(circle.gates[0].name).toBe("done");
+
+    // crystalView should only have the done gate definition
+    const view = circle.crystalView();
+    expect(view.tool_definitions).toHaveLength(1);
+    expect(view.tool_definitions[0].name).toBe("done");
+  });
+
+  test("Circle cannot exclude the done gate", () => {
+    const circle = Circle({
+      gates: [add, done],
+      wards: [{ max_turns: 10 }, exclude_gate("done")],
+    });
+
+    // "done" should still be present
+    expect(circle.gates.some((g) => g.name === "done")).toBe(true);
   });
 });

@@ -146,8 +146,14 @@ export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward
     const medium = opts.medium;
     let initPromise: Promise<void> | null = null;
 
+    // Apply gate exclusions from wards for the medium path too
+    const excludedSet = new Set(resolved.exclude_gates);
+    const filteredGates = excludedSet.size > 0
+      ? gates.filter((g) => !excludedSet.has(g.name))
+      : gates;
+
     return {
-      gates,
+      gates: filteredGates,
       wards: opts.wards,
       hasMedium: true,
 
@@ -156,7 +162,7 @@ export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward
         if (medium.capabilityDocs) {
           parts.push(medium.capabilityDocs());
         }
-        const gateDocs = buildCapabilityDocs(gates);
+        const gateDocs = buildCapabilityDocs(filteredGates);
         if (gateDocs) {
           parts.push(gateDocs);
         }
@@ -170,7 +176,7 @@ export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward
       async execute(utterance, options) {
         // Lazy init on first execute
         if (!initPromise) {
-          initPromise = medium.init(gates, options.dependency_overrides);
+          initPromise = medium.init(filteredGates, options.dependency_overrides);
         }
         await initPromise;
 
@@ -191,23 +197,29 @@ export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward
 
   // No medium: tool-calling circle (original behavior)
 
+  // Apply gate exclusions from wards
+  const excludedSet = new Set(resolved.exclude_gates);
+  const filteredGates = excludedSet.size > 0
+    ? gates.filter((g) => !excludedSet.has(g.name))
+    : gates;
+
   // Build tool_map once
   const tool_map = new Map<string, BoundGate>();
-  for (const gate of gates) {
+  for (const gate of filteredGates) {
     tool_map.set(gate.name, gate);
   }
 
   // Build tool_definitions once
-  const tool_definitions: GateDefinition[] = gates.map(
+  const tool_definitions: GateDefinition[] = filteredGates.map(
     (g) => g.definition,
   );
 
   return {
-    gates,
+    gates: filteredGates,
     wards: opts.wards,
 
     capabilityDocs() {
-      return buildCapabilityDocs(gates);
+      return buildCapabilityDocs(filteredGates);
     },
 
     crystalView(toolChoice?: ToolChoice) {

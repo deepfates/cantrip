@@ -6,10 +6,11 @@ import type { BoundGate } from "./gate/gate";
 function stubGate(overrides: Partial<BoundGate> & { name: string }): BoundGate {
   return {
     definition: {
-      type: "function",
-      function: { name: overrides.name, parameters: {} },
+      name: overrides.name,
+      description: "",
+      parameters: {},
     },
-    execute: async () => ({ type: "text", text: "ok" }),
+    execute: async () => "ok",
     ephemeral: false,
     ...overrides,
   };
@@ -26,11 +27,9 @@ function makeCircle(gates: BoundGate[]): ReturnType<typeof Circle> {
         stubGate({
           name: "done",
           definition: {
-            type: "function",
-            function: {
-              name: "done",
-              parameters: { type: "object", properties: { result: { type: "string" } } },
-            },
+            name: "done",
+            description: "Submit final result",
+            parameters: { type: "object", properties: { result: { type: "string" } } },
           },
         }),
       ];

@@ -29,7 +29,7 @@ export type { BrowserMediumOptions } from "./circle/medium/browser";
 export { bash as bashMedium } from "./circle/medium/bash";
 export type { BashMediumOptions } from "./circle/medium/bash";
 export type { Ward, ResolvedWard } from "./circle/ward";
-export { DEFAULT_WARD, max_turns, require_done, max_depth, resolveWards } from "./circle/ward";
+export { DEFAULT_WARD, max_turns, require_done, max_depth, exclude_gate, resolveWards } from "./circle/ward";
 
 // ── Circle / Gate (tool framework) ──────────────────────────────────
 export { Gate, gate, serializeBoundGate } from "./circle/gate/decorator";
