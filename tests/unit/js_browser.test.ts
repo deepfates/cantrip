@@ -751,13 +751,23 @@ describe("JS browser handle pattern", () => {
             ],
           };
         }
-        // Default spawn sends "Task: Summarize the data\n\nContext:\n..."
-        // Child is a plain LLM call — no sandbox, no browser.
+        // Default spawn creates a real child cantrip with done gate.
+        // Child has require_done_tool (inherited from parent wards via OR semantics),
+        // so it needs a done tool call to terminate properly.
         const content = typeof last.content === "string" ? last.content : "";
         if (content.includes("Summarize the data")) {
           return {
             content: "Summary: test data",
-            tool_calls: [],
+            tool_calls: [
+              {
+                id: "done1",
+                type: "function" as const,
+                function: {
+                  name: "done",
+                  arguments: JSON.stringify({ message: "Summary: test data" }),
+                },
+              },
+            ],
           };
         }
         return { content: "?", tool_calls: [] };

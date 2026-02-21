@@ -8,7 +8,7 @@ import type { BoundGate } from "../circle/gate";
 import type { Intent } from "./intent";
 import type { TurnEvent } from "../entity/events";
 import { HiddenUserMessageEvent } from "../entity/events";
-import { resolveWards } from "../circle/ward";
+import { resolveWards, type Ward } from "../circle/ward";
 import { UsageTracker } from "../crystal/tokens";
 import {
   destroyEphemeralMessages,
@@ -178,22 +178,31 @@ export class Entity {
 
             // Build child gates: parent's gates minus call_entity/call_entity_batch
             // (child doesn't get further delegation by default — prevents runaway recursion).
-            // Ensure done gate is present.
-            const childGates: BoundGate[] = this.circle.gates.filter(
-              (g) => g.name !== "call_entity" && g.name !== "call_entity_batch",
-            );
-            if (!childGates.some((g) => g.name === "done")) {
-              childGates.push(done);
-            }
+            // Replace any medium-specific done gate with the plain done gate,
+            // since the child has no medium to handle SIGNAL_FINAL.
+            const childGates: BoundGate[] = this.circle.gates
+              .filter((g) => g.name !== "call_entity" && g.name !== "call_entity_batch" && g.name !== "done")
+              .concat([done]);
 
-            // Build child circle with simple wards.
-            // Don't inherit require_done — the child should terminate on text response.
-            // Use parent's max_turns (capped at 10) as a safety bound.
+            // Inherit parent wards and compose with child safety bounds.
+            // resolveWards() handles composition: min() for numeric, OR for boolean,
+            // union for exclude_gates. The child safety ward caps max_turns and
+            // disables require_done so the child terminates on text response.
             const parentResolved = resolveWards(this.circle.wards);
             const childMaxTurns = Math.min(parentResolved.max_turns, 10);
+
+            // Decrement max_depth for the child (counts down through recursion).
+            const childDepthWard: Ward = parentResolved.max_depth < Infinity
+              ? { max_depth: parentResolved.max_depth - 1 }
+              : {};
+
             const childCircle = Circle({
               gates: childGates,
-              wards: [{ max_turns: childMaxTurns, require_done_tool: false }],
+              wards: [
+                ...this.circle.wards,                                    // inherit parent wards (exclude_gates, etc.)
+                { max_turns: childMaxTurns, require_done_tool: false },  // child safety cap
+                childDepthWard,                                          // decremented depth
+              ],
             });
 
             // Build child call

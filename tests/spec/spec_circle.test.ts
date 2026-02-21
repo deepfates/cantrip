@@ -5,7 +5,7 @@ import { TaskComplete } from "../../src/entity/errors";
 import { gate } from "../../src/circle/gate/decorator";
 import { Circle } from "../../src/circle/circle";
 import type { BoundGate } from "../../src/circle/gate/gate";
-import { max_turns, require_done, max_depth, resolveWards } from "../../src/circle/ward";
+import { max_turns, require_done, max_depth, exclude_gate, resolveWards, type Ward } from "../../src/circle/ward";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 
@@ -33,7 +33,7 @@ const echoGate = gate("Echo text back", async ({ text }: { text: string }) => te
   },
 });
 
-function makeCircle(gates: BoundGate[] = [doneGate], wards = [{ max_turns: 10, require_done_tool: true }]) {
+function makeCircle(gates: BoundGate[] = [doneGate], wards: Ward[] = [{ max_turns: 10, require_done_tool: true }]) {
   return Circle({ gates, wards });
 }
 
@@ -599,6 +599,54 @@ describe("Ward composition via resolveWards", () => {
     expect(resolved.require_done_tool).toBe(true);
     expect(resolved.max_depth).toBe(3);
   });
+
+  test("exclude_gate composes with other ward types", () => {
+    const resolved = resolveWards([max_turns(10), require_done(), exclude_gate("echo")]);
+    expect(resolved.max_turns).toBe(10);
+    expect(resolved.require_done_tool).toBe(true);
+    expect(resolved.exclude_gates).toEqual(["echo"]);
+  });
+
+  test("multiple exclude_gate wards compose via union", () => {
+    const resolved = resolveWards([exclude_gate("echo"), exclude_gate("read_file")]);
+    expect(resolved.exclude_gates.sort()).toEqual(["echo", "read_file"]);
+  });
+});
+
+// ── Ward-based gate removal in Circle ─────────────────────────────
+
+describe("Ward-based gate removal in Circle", () => {
+  test("excluded gate is removed from Circle gates and crystalView", () => {
+    const circle = makeCircle(
+      [doneGate, echoGate],
+      [{ max_turns: 10, require_done_tool: true }, exclude_gate("echo")],
+    );
+
+    expect(circle.gates).toHaveLength(1);
+    expect(circle.gates[0].name).toBe("done");
+
+    const view = circle.crystalView();
+    expect(view.tool_definitions).toHaveLength(1);
+    expect(view.tool_definitions[0].name).toBe("done");
+  });
+
+  test("excluding nonexistent gate is a no-op", () => {
+    const circle = makeCircle(
+      [doneGate, echoGate],
+      [{ max_turns: 10 }, exclude_gate("nonexistent")],
+    );
+
+    expect(circle.gates).toHaveLength(2);
+  });
+
+  test("done gate cannot be excluded", () => {
+    const circle = makeCircle(
+      [doneGate, echoGate],
+      [{ max_turns: 10 }, exclude_gate("done")],
+    );
+
+    expect(circle.gates.some((g) => g.name === "done")).toBe(true);
+  });
 });
 
 // ── WARD-1: nested wards compose with min() for numeric, OR for boolean ─
@@ -633,6 +681,33 @@ describe("WARD-1: nested ward composition rules", () => {
     expect(resolved.max_turns).toBe(50);          // min(200, 50, 100)
     expect(resolved.max_depth).toBe(3);            // min(10, 3)
     expect(resolved.require_done_tool).toBe(true); // OR(false, true, false)
+  });
+
+  test("WARD-1: nested ward composition with exclude_gates uses union", () => {
+    // When multiple ward layers each exclude different gates,
+    // the union of all exclusions applies
+    const parentWard = { max_turns: 200, exclude_gates: ["echo"] };
+    const childWard = { max_turns: 50, exclude_gates: ["read_file"] };
+    const grandchildWard = { exclude_gates: ["echo", "write_file"] };
+
+    const resolved = resolveWards([parentWard, childWard, grandchildWard]);
+    expect(resolved.max_turns).toBe(50);
+    // Union of all exclude_gates across layers
+    expect(resolved.exclude_gates.sort()).toEqual(["echo", "read_file", "write_file"]);
+  });
+
+  test("WARD-1: nested wards compose all field types together", () => {
+    // Full composition: numeric (min), boolean (OR), exclude_gates (union)
+    const resolved = resolveWards([
+      { max_turns: 100, max_depth: 5, require_done_tool: false, exclude_gates: ["echo"] },
+      { max_turns: 50, require_done_tool: true, exclude_gates: ["read_file"] },
+      { max_depth: 3, exclude_gates: ["echo"] },
+    ]);
+    expect(resolved.max_turns).toBe(50);          // min(100, 50)
+    expect(resolved.max_depth).toBe(3);            // min(5, 3)
+    expect(resolved.require_done_tool).toBe(true); // OR(false, true, false)
+    // Union with dedup: ["echo", "read_file"]
+    expect(resolved.exclude_gates.sort()).toEqual(["echo", "read_file"]);
   });
 });
 

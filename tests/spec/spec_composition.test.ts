@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { cantrip } from "../../src/cantrip/cantrip";
+import { Entity } from "../../src/cantrip/entity";
 import { TaskComplete } from "../../src/entity/errors";
 import { gate } from "../../src/circle/gate/decorator";
 import { Circle } from "../../src/circle/circle";
+import { call_entity } from "../../src/circle/gate/builtin/call_entity_gate";
+import { Loom, MemoryStorage } from "../../src/loom";
+import { renderGateDefinitions } from "../../src/cantrip/call";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 //
@@ -800,6 +804,122 @@ describe("COMP-9: parent termination truncates active children", () => {
   });
 });
 
+// ── Ward Inheritance: child inherits parent wards via default SpawnFn ──
+
+describe("Ward inheritance: child inherits parent exclude_gates", () => {
+  test("child circle does not include gate excluded by parent ward", async () => {
+    // The default SpawnFn (entity.ts) now inherits parent wards.
+    // Parent has exclude_gates: ["secret_gate"]. The child should NOT see it.
+    // We verify by intercepting tool_definitions passed to crystal.query().
+
+    const secretGate = gate("Secret gate", async () => "secret", {
+      name: "secret_gate",
+      schema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    });
+
+    const callEntityGate = call_entity()!;
+
+    const parentCircle = Circle({
+      gates: [doneGate, secretGate, callEntityGate],
+      wards: [
+        { max_turns: 10, require_done_tool: true },
+        { exclude_gates: ["secret_gate"] },
+      ],
+    });
+
+    // Parent circle itself already excludes secret_gate
+    expect(parentCircle.gates.map((g: any) => g.name)).not.toContain(
+      "secret_gate",
+    );
+
+    // Track tool_definitions per crystal.query() call.
+    // Call 1 = parent (triggers call_entity), Call 2 = child (calls done),
+    // Call 3 = parent (calls done).
+    let callCount = 0;
+    const toolDefsPerCall: (string[] | null)[] = [];
+
+    const crystal = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async query(
+        _messages: any[],
+        tool_definitions: any[] | null,
+        _tool_choice: any,
+      ) {
+        callCount++;
+        toolDefsPerCall.push(
+          tool_definitions?.map((td: any) => td.name) ?? null,
+        );
+
+        if (callCount === 1) {
+          return {
+            content: null,
+            tool_calls: [
+              {
+                id: "p1",
+                type: "function",
+                function: {
+                  name: "call_entity",
+                  arguments: JSON.stringify({ query: "sub task" }),
+                },
+              },
+            ],
+          };
+        }
+        if (callCount === 2) {
+          return {
+            content: null,
+            tool_calls: [
+              {
+                id: "child_done",
+                type: "function",
+                function: {
+                  name: "done",
+                  arguments: JSON.stringify({ message: "child result" }),
+                },
+              },
+            ],
+          };
+        }
+        return {
+          content: null,
+          tool_calls: [
+            {
+              id: "p2",
+              type: "function",
+              function: {
+                name: "done",
+                arguments: JSON.stringify({ message: "parent done" }),
+              },
+            },
+          ],
+        };
+      },
+    };
+
+    const spell = cantrip({
+      crystal: crystal as any,
+      call: { system_prompt: "parent" },
+      circle: parentCircle,
+    });
+
+    const result = await spell.cast("test ward inheritance");
+    expect(result).toBe("parent done");
+
+    // Call 2 was the child — its tools should NOT include secret_gate
+    expect(toolDefsPerCall.length).toBeGreaterThanOrEqual(3);
+    const childToolNames = toolDefsPerCall[1];
+    expect(childToolNames).not.toBeNull();
+    expect(childToolNames).not.toContain("secret_gate");
+    expect(childToolNames).toContain("done");
+  });
+});
+
 // ── COMP-8: child failure returns error to parent ──────────────────
 
 describe("COMP-8: child failure returns error to parent", () => {
@@ -889,5 +1009,315 @@ describe("COMP-8: child failure returns error to parent", () => {
     // Parent should have recovered
     expect(result).toBe("caught error");
     expect(parentCallCount).toBe(2);
+  });
+});
+
+// ── COMP-2: child blocks parent until complete (real child cantrip) ──
+
+describe("COMP-2: child blocks parent until complete (real child cantrip)", () => {
+  test("COMP-2: default SpawnFn creates real child that blocks parent", async () => {
+    // Uses the built-in call_entity gate which triggers the default SpawnFn
+    // in Entity. The SpawnFn creates a real child Entity with its own circle.
+    const executionOrder: string[] = [];
+
+    const callEntityGate = call_entity({ max_depth: 2, depth: 0 });
+
+    // The crystal is shared by parent and child (default SpawnFn reuses parent crystal).
+    // Track call order: parent call_entity → child runs → parent continues.
+    let callCount = 0;
+    const crystal = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async query() {
+        callCount++;
+        if (callCount === 1) {
+          executionOrder.push("parent_calls_child");
+          return {
+            content: null,
+            tool_calls: [
+              {
+                id: "p1",
+                type: "function",
+                function: {
+                  name: "call_entity",
+                  arguments: JSON.stringify({ query: "child task" }),
+                },
+              },
+            ],
+          };
+        }
+        if (callCount === 2) {
+          // This is the child entity's turn (default SpawnFn creates it)
+          executionOrder.push("child_running");
+          return {
+            content: null,
+            tool_calls: [
+              {
+                id: "c1",
+                type: "function",
+                function: {
+                  name: "done",
+                  arguments: JSON.stringify({ message: "child result" }),
+                },
+              },
+            ],
+          };
+        }
+        // Parent's second turn — after child completed
+        executionOrder.push("parent_after_child");
+        return {
+          content: null,
+          tool_calls: [
+            {
+              id: "p2",
+              type: "function",
+              function: {
+                name: "done",
+                arguments: JSON.stringify({ message: "final" }),
+              },
+            },
+          ],
+        };
+      },
+    };
+
+    const spell = cantrip({
+      crystal: crystal as any,
+      call: { system_prompt: "parent" },
+      circle: Circle({
+        gates: [doneGate, callEntityGate!],
+        wards: [{ max_turns: 10, require_done_tool: true }],
+      }),
+    });
+
+    const result = await spell.cast("test real child blocking");
+    expect(result).toBe("final");
+
+    // Verify blocking order: parent invokes child, child runs, then parent continues
+    expect(executionOrder).toEqual([
+      "parent_calls_child",
+      "child_running",
+      "parent_after_child",
+    ]);
+  });
+});
+
+// ── COMP-3: child gets own circle ───────────────────────────────────
+
+describe("COMP-3: child entity gets own circle with gates and wards", () => {
+  test("COMP-3: child Entity created by default SpawnFn has its own circle", async () => {
+    // Use Entity directly with a shared loom so we can inspect child behavior.
+    // The default SpawnFn builds a child circle with:
+    //   - parent's gates minus call_entity/call_entity_batch
+    //   - done gate always present
+    //   - max_turns capped at min(parent_max_turns, 10)
+    const callEntityGate = call_entity({ max_depth: 2, depth: 0 });
+
+    const echoGate = gate("Echo", async ({ text }: { text: string }) => text, {
+      name: "echo",
+      schema: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        required: ["text"],
+        additionalProperties: false,
+      },
+    });
+
+    // Track what tools the child sees via crystal.query(messages, tool_definitions, tool_choice)
+    let childToolNames: string[] = [];
+    let callCount = 0;
+
+    const crystal = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async query(_messages: any[], tool_definitions: any[] | null, _tool_choice: any) {
+        callCount++;
+        if (callCount === 1) {
+          // Parent calls call_entity
+          return {
+            content: null,
+            tool_calls: [
+              {
+                id: "p1",
+                type: "function",
+                function: {
+                  name: "call_entity",
+                  arguments: JSON.stringify({ query: "child work" }),
+                },
+              },
+            ],
+          };
+        }
+        if (callCount === 2) {
+          // Child's turn — capture tool definitions
+          if (tool_definitions) {
+            childToolNames = tool_definitions.map((td: any) => td.name);
+          }
+          return {
+            content: null,
+            tool_calls: [
+              {
+                id: "c1",
+                type: "function",
+                function: {
+                  name: "done",
+                  arguments: JSON.stringify({ message: "child done" }),
+                },
+              },
+            ],
+          };
+        }
+        // Parent finishes
+        return {
+          content: null,
+          tool_calls: [
+            {
+              id: "p2",
+              type: "function",
+              function: {
+                name: "done",
+                arguments: JSON.stringify({ message: "parent done" }),
+              },
+            },
+          ],
+        };
+      },
+    };
+
+    const spell = cantrip({
+      crystal: crystal as any,
+      call: { system_prompt: "parent with echo" },
+      circle: Circle({
+        gates: [doneGate, echoGate, callEntityGate!],
+        wards: [{ max_turns: 10, require_done_tool: true }],
+      }),
+    });
+
+    const result = await spell.cast("test child circle");
+    expect(result).toBe("parent done");
+
+    // Child should have "done" gate
+    expect(childToolNames).toContain("done");
+    // Child should have "echo" gate (inherited from parent)
+    expect(childToolNames).toContain("echo");
+    // Child should NOT have "call_entity" (default SpawnFn strips delegation gates)
+    expect(childToolNames).not.toContain("call_entity");
+    expect(childToolNames).not.toContain("call_entity_batch");
+  });
+});
+
+// ── LOOM-12: child turns appear in parent loom linked by parent_turn_id ─
+
+describe("LOOM-12: child turns in parent loom", () => {
+  test("LOOM-12: child turns appear in shared loom linked by parent_turn_id", async () => {
+    // The default SpawnFn shares the parent's loom and sets parent_turn_id.
+    // After running parent + child, the loom should contain turns from both,
+    // and child turns should reference the parent turn that spawned them.
+    const callEntityGate = call_entity({ max_depth: 2, depth: 0 });
+
+    let callCount = 0;
+    const crystal = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async query() {
+        callCount++;
+        if (callCount === 1) {
+          // Parent's first turn: call call_entity
+          return {
+            content: null,
+            tool_calls: [
+              {
+                id: "p1",
+                type: "function",
+                function: {
+                  name: "call_entity",
+                  arguments: JSON.stringify({ query: "child task" }),
+                },
+              },
+            ],
+          };
+        }
+        if (callCount === 2) {
+          // Child's turn: call done
+          return {
+            content: null,
+            tool_calls: [
+              {
+                id: "c1",
+                type: "function",
+                function: {
+                  name: "done",
+                  arguments: JSON.stringify({ message: "child result" }),
+                },
+              },
+            ],
+          };
+        }
+        // Parent's second turn: call done
+        return {
+          content: null,
+          tool_calls: [
+            {
+              id: "p2",
+              type: "function",
+              function: {
+                name: "done",
+                arguments: JSON.stringify({ message: "parent done" }),
+              },
+            },
+          ],
+        };
+      },
+    };
+
+    const sharedLoom = new Loom(new MemoryStorage());
+
+    const spell = cantrip({
+      crystal: crystal as any,
+      call: { system_prompt: "parent" },
+      circle: Circle({
+        gates: [doneGate, callEntityGate!],
+        wards: [{ max_turns: 10, require_done_tool: true }],
+      }),
+      loom: sharedLoom,
+    });
+
+    await spell.cast("test loom linking");
+
+    // The shared loom should have turns from both parent and child.
+    // At minimum: parent call root + parent turn + child call root + child turn = 4+
+    expect(sharedLoom.size).toBeGreaterThanOrEqual(4);
+
+    // The loom should have exactly one true root (parent_id === null): the parent's call root.
+    const roots = sharedLoom.getRoots();
+    expect(roots.length).toBe(1);
+    const parentRoot = roots[0];
+    const parentEntityId = parentRoot.entity_id;
+
+    // The parent root should have children — at least the child's call root and parent's first turn
+    const parentRootChildren = sharedLoom.getChildren(parentRoot.id);
+    expect(parentRootChildren.length).toBeGreaterThan(0);
+
+    // Among the children of the parent root, at least one should have a different entity_id
+    // (the child entity's call root is linked to the parent's last_turn_id at spawn time)
+    const childRootCandidates = parentRootChildren.filter(
+      (t) => t.entity_id !== parentEntityId,
+    );
+    expect(childRootCandidates.length).toBeGreaterThan(0);
+
+    const childRoot = childRootCandidates[0];
+    // The child's root turn has parent_id pointing into the parent's tree
+    expect(childRoot.parent_id).toBe(parentRoot.id);
+    // The child's entity_id is different from the parent's
+    expect(childRoot.entity_id).not.toBe(parentEntityId);
+
+    // The child should also have recorded turns (beyond its call root)
+    const childChildren = sharedLoom.getChildren(childRoot.id);
+    expect(childChildren.length).toBeGreaterThan(0);
+    // Those child turns share the child's entity_id
+    expect(childChildren[0].entity_id).toBe(childRoot.entity_id);
   });
 });

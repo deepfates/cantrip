@@ -7,14 +7,22 @@
 
 import "./env";
 import {
-  cantrip, Circle, Loom, MemoryStorage,
-  max_turns, require_done,
+  cantrip,
+  Circle,
+  Loom,
+  MemoryStorage,
+  max_turns,
+  require_done,
   call_entity_gate,
   call_entity_batch_gate,
-  serveCantripACP, createAcpProgressCallback,
-  BrowserContext, getBrowserContext,
+  serveCantripACP,
+  createAcpProgressCallback,
+  BrowserContext,
+  getBrowserContext,
   progressBinding,
-  ChatAnthropic, ChatOpenAI, ChatGoogle,
+  ChatAnthropic,
+  ChatOpenAI,
+  ChatGoogle,
   jsBrowserMedium,
   type BaseChatModel,
 } from "../src";
@@ -29,8 +37,8 @@ const memoryIdx = args.indexOf("--memory");
 const memoryWindow = memoryIdx >= 0 ? parseInt(args[memoryIdx + 1], 10) : 0;
 
 function pickCrystal(): BaseChatModel {
-  if (useOpenai) return new ChatOpenAI({ model: "gpt-4o" });
-  if (useGemini) return new ChatGoogle({ model: "gemini-2.0-flash" });
+  if (useOpenai) return new ChatOpenAI({ model: "gpt-5-mini" });
+  if (useGemini) return new ChatGoogle({ model: "gemini-3-flash-prevew" });
   return new ChatAnthropic({ model: "claude-sonnet-4-5" });
 }
 
@@ -38,7 +46,9 @@ function pickCrystal(): BaseChatModel {
 
 export async function main() {
   console.log("--- Example 15: Research Entity (ACP) ---");
-  console.log(`Provider: ${useOpenai ? "OpenAI" : useGemini ? "Gemini" : "Anthropic"}`);
+  console.log(
+    `Provider: ${useOpenai ? "OpenAI" : useGemini ? "Gemini" : "Anthropic"}`,
+  );
   console.log(`Browser: ${headed ? "headed" : "headless"}`);
   if (memoryWindow > 0) console.log(`Memory window: ${memoryWindow} messages`);
 
@@ -76,9 +86,10 @@ export async function main() {
     // The entity auto-prepends capability docs from the circle.
     const spell = cantrip({
       crystal,
-      call: "Research entity with browser automation and recursive delegation. " +
-            "Use code to explore data, browse the web, and delegate subtasks via llm_query. " +
-            "Use submit_answer() when done.",
+      call:
+        "Research entity with browser automation and recursive delegation. " +
+        "Use code to explore data, browse the web, and delegate subtasks via llm_query. " +
+        "Use submit_answer() when done.",
       circle,
       loom,
       dependency_overrides: depOverrides,
@@ -87,14 +98,15 @@ export async function main() {
     const entity = spell.invoke();
 
     // Memory management: sliding window on entity history
-    const onTurn = memoryWindow > 0
-      ? () => {
-          const history = entity.history;
-          if (history.length > memoryWindow) {
-            entity.load_history(history.slice(-memoryWindow));
+    const onTurn =
+      memoryWindow > 0
+        ? () => {
+            const history = entity.history;
+            if (history.length > memoryWindow) {
+              entity.load_history(history.slice(-memoryWindow));
+            }
           }
-        }
-      : undefined;
+        : undefined;
 
     return {
       entity,

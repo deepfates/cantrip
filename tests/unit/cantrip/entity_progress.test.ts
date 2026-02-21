@@ -45,7 +45,7 @@ async function createTestAgent(opts: {
   const entity = spell.invoke();
 
   // Merge entity's auto-populated bindings with user-provided overrides
-  const mergedOverrides = new Map(entity.dependency_overrides ?? []);
+  const mergedOverrides = new Map<any, any>(entity.dependency_overrides instanceof Map ? entity.dependency_overrides : []);
   for (const [k, v] of depOverrides) mergedOverrides.set(k, v);
   await medium.init(gates, mergedOverrides);
   const sandbox = getJsMediumSandbox(medium)!;
@@ -242,10 +242,24 @@ describe("Entity progress events", () => {
             ],
           };
         }
-        // Default spawn sends "Task: sub\n\nContext:\n..."
+        // Default spawn creates a real child cantrip with done gate.
+        // Child has require_done_tool (inherited from parent wards via OR semantics),
+        // so it needs a done tool call to terminate properly.
         const content = typeof last.content === "string" ? last.content : "";
         if (content.includes("sub")) {
-          return { content: "child result", tool_calls: [] };
+          return {
+            content: "child result",
+            tool_calls: [
+              {
+                id: "done1",
+                type: "function" as const,
+                function: {
+                  name: "done",
+                  arguments: JSON.stringify({ message: "child result" }),
+                },
+              },
+            ],
+          };
         }
         return { content: "?", tool_calls: [] };
       },
