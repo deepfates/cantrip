@@ -77,6 +77,10 @@ These validate individual ideas without originating them. One line each.
 - **Text as Universal Interface** (Scale AI) — Unix pipe composability as precursor to medium (medium)
 - **Async Coding Agents From Scratch** (Anderson) — child entity isolation via Modal sandboxes (recursion)
 - **Agent-Native Engineering** (Pignanelli) — when agents implement, spec artifacts become the only durable output (ghost)
+- **Claude Opus 4.5** (deepfates) — "AGI is when a computer can use the computer" validates medium concept; compositional emergence (medium, recursion)
+- **Robot Face: Accelerating Succession** (deepfates) — notebooks as symbiotic medium, algorithm gardening over commanding (medium)
+- **Pi is Vim** (Zechner) — minimal foundation with iterative customization mirrors wards-as-subtraction in reverse (circle, medium)
+- **Claude Code Guide** (Anthropic) — context engineering as folding, tool outputs consume context, system reminders as attention (RL)
 
 ## Notable Absences
 
