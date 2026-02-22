@@ -65,7 +65,7 @@ This rule is deliberately permissive. A circle that stuffs every prior turn into
 
 Every loop ends. The question is how, and the answer matters more than you might expect.
 
-**Terminated** means the entity called the `done` gate — a special exit point in the environment that signals "I believe the task is complete." The entity chose to stop. It had the opportunity to finish its work and took it.
+**Terminated** means the entity called the `done` gate — a special exit point in the environment that signals "I believe the task is complete." The entity chose to stop. It had the opportunity to finish its work and took it. In a code circle, the done gate is projected into the medium as `submit_answer` — the entity calls `submit_answer(result)` in code, and the medium translates this into the done gate on the entity's behalf.
 
 **Truncated** means a **ward** cut the entity off. A ward is a restriction on the loop — a maximum number of turns, a timeout, a resource limit. The environment chose to stop. The entity was interrupted, not finished. It might have had more to do.
 
@@ -184,7 +184,7 @@ All the pieces in one place. Here's a cantrip lifecycle, end to end — a file-p
 ```
 const files = list_dir("/data");
 ```
-The circle executes the gate call. Observation: `GateCallRecord { tool_call_id: "tc_1", gate: "list_dir", ok: true, result: ["a.txt", "b.txt", "c.txt"] }`.
+The circle executes the gate call. Observation: `GateCallRecord { gate_name: "list_dir", arguments: '{"path":"/data"}', result: '["a.txt", "b.txt", "c.txt"]', is_error: false }`.
 
 **Turn 2.** The entity sees three files. It reads all of them:
 ```
@@ -192,7 +192,7 @@ const a = read("/data/a.txt");
 const b = read("/data/b.txt");
 const c = read("/data/c.txt");
 ```
-Observation: three `GateCallRecord` objects, each with `ok: true` and the file contents in `result`. The sandbox now holds variables `files`, `a`, `b`, `c`.
+Observation: three `GateCallRecord` objects, each with `is_error: false` and the file contents in `result`. The sandbox now holds variables `files`, `a`, `b`, `c`.
 
 **Turn 3.** The entity counts words and terminates:
 ```
@@ -201,7 +201,7 @@ const total = [a, b, c]
   .reduce((sum, n) => sum + n, 0);
 done(total);
 ```
-Observation: `GateCallRecord { tool_call_id: "tc_7", gate: "done", ok: true, result: 1547 }`. The loop terminates.
+Observation: `GateCallRecord { gate_name: "done", arguments: '{"answer":1547}', result: '1547', is_error: false }`. The loop terminates.
 
 **The loom.** Three turns, one thread. Turn 1: `parent_id: null`, `terminated: false`. Turn 2: `parent_id: turn_1`, `terminated: false`. Turn 3: `parent_id: turn_2`, `terminated: true`. Each turn records token usage, duration, utterance, and observation. The thread is a complete, terminated episode — usable as training data, a debugging trace, or a template for forking.
 
@@ -224,13 +224,14 @@ This statelessness is not a limitation of current technology. It is the contract
 What makes something a crystal? It satisfies this contract:
 
 ```
-crystal.query(messages: Message[], tools?: ToolDefinition[], tool_choice?: ToolChoice) -> Response
+crystal.query(messages: Message[], tools?: ToolDefinition[], tool_choice?: ToolChoice, extra?: Record<string, unknown>) -> Response
 ```
 
 The inputs:
 - `messages` — an ordered list of messages (system, user, assistant, tool). The crystal sees the full conversation as the caller has assembled it.
 - `tools` — an optional list of gate definitions, expressed as JSON Schema. These describe what the crystal can ask the environment to do.
 - `tool_choice` — controls whether the crystal must use gates ("required"), may use them ("auto"), or must not ("none").
+- `extra` — optional provider-specific parameters passed through to the underlying API.
 
 The response contains:
 - `content` — text output (may be null if the crystal only made gate calls)
@@ -240,7 +241,7 @@ The response contains:
 
 Every response must include at least one of the first two fields. A response with neither text nor gate calls is not a response — the crystal produced nothing.
 
-> **CRYSTAL-2**: A crystal MUST accept messages up to its provider's context limit. When input exceeds that limit, the crystal MUST return a structured error (not silently truncate). The caller — circle or harness — is responsible for staying within limits via folding (§6.8).
+> **CRYSTAL-2**: A crystal MUST accept messages up to its provider's context limit. When input exceeds that limit, the crystal SHOULD return a structured error (not silently truncate). In practice, context limit errors may come from the provider API rather than from a pre-check — folding (§6.8) is the primary mechanism for staying within limits.
 
 > **CRYSTAL-3**: A crystal MUST return at least one of `content` or `tool_calls`. A response with neither is invalid.
 
@@ -248,7 +249,7 @@ Every response must include at least one of the first two fields. A response wit
 
 The unique ID matters because gate results must be matched back to the calls that produced them. Without it, the crystal cannot distinguish which observation came from which request.
 
-> **CRYSTAL-5**: If `tool_choice` is "required", the crystal MUST return at least one tool call. If the provider doesn't support forcing tool use, the implementation MUST simulate it (e.g., by re-prompting).
+> **CRYSTAL-5**: If `tool_choice` is "required", the crystal MUST return at least one tool call. If the provider doesn't support forcing tool use, the implementation SHOULD simulate it (e.g., by re-prompting). Implementations MAY rely on provider-native support for forced tool use where available.
 
 ### 2.2 The swap
 
@@ -289,11 +290,11 @@ The call is the union of two things:
 1. **System prompt** — persona, behavioral directives, domain knowledge. The text that tells the crystal who it is and how it should behave.
 2. **Hyperparameters** — temperature, top_p, max_tokens, stop sequences, sampling configuration. The knobs that control how the crystal generates.
 
-That's it. The call is identity. It answers two questions: *who is this entity?* and *how does it think?* Notice what is absent: gate definitions. The crystal needs to know what gates are available — but that knowledge comes from the circle, not the call. The circle owns its gates and is responsible for presenting them to the crystal as tool definitions at query time. This is the circle's job because gates are the circle's components: the circle registers them, the circle executes them, and the circle renders them for the crystal to perceive.
+That's it. The call is identity. It answers two questions: *who is this entity?* and *how does it think?* The crystal needs to know what gates are available — but that knowledge comes from the circle, not the call. The circle owns its gates and is responsible for presenting them to the crystal as tool definitions at query time. This is the circle's job because gates are the circle's components: the circle registers them, the circle executes them, and the circle renders them for the crystal to perceive. The call may carry rendered gate definitions for transport convenience, but the circle produces them.
 
 Why does this matter? Because it keeps the call small and separable. The same call — the same identity — can be placed into different circles with different gate sets. A "research assistant" call works in a circle with `fetch` and `read` gates, and equally in a circle with `search` and `browse` gates. The call does not change. The circle presents its own capabilities.
 
-> **CALL-3**: Gate definitions are the circle's responsibility. The circle MUST present its registered gates to the crystal as tool definitions at query time. The call MUST NOT contain gate definitions.
+> **CALL-3**: Gate definitions are the circle's responsibility. The circle MUST present its registered gates to the crystal as tool definitions at query time. The call carries rendered gate definitions produced by the circle for transport convenience, but the circle remains the authority for what gates exist. The circle — not the call — registers, executes, and presents gates.
 
 This is a clean separation. The call shapes the crystal's identity. The circle shapes its capabilities. Together they form the full context the crystal receives — but they are independently configurable, and that independence is the point.
 
@@ -349,7 +350,11 @@ A tool-calling circle adds gates. The entity invokes JSON functions — `read`, 
 
 A code circle gives the entity a full execution context — a sandbox where it can write and run arbitrary programs, with gates to the outside world and wards that constrain what is allowed. The medium is code. The entity writes it. The sandbox executes it. The result comes back as an observation. Variables persist between turns. Errors are visible. The ground pushes back with truth, not opinion. The action space is the full formula: A = (M + G) minus W. The entity can combine the medium's primitives and gates in ways nobody enumerated in advance — loops that call gates conditionally, variables that store gate results for later turns, data pipelines composed on the fly. This compositionality is what makes code circles the most expressive case.
 
+The code medium is not limited to JavaScript sandboxes. Any REPL-like environment can serve as a medium: a bash shell, a browser session driven through CDP (Chrome DevTools Protocol), a Frida session injecting into a running process. What makes something a medium is that the entity writes instructions in it and the medium executes them — not which language those instructions are written in.
+
 These are points on a spectrum, not categories with hard boundaries. A tool-calling agent that generates JSON is closer to a code circle than a chat window is, but it lacks the compositionality of a real sandbox. A code circle with no gates beyond `done` is more constrained than a tool-calling agent with twenty gates, but its action space is still richer because its medium is a programming language. What varies is the circle's design. What stays the same is the vocabulary: crystal, call, circle, gate, ward, entity, turn, thread, loom. The rest of this chapter focuses on code circles — the most expressive case, where the most interesting design questions arise — but the concepts apply everywhere.
+
+When a circle has a medium, the medium handles termination internally — the entity calls `submit_answer` in code, and the medium translates this into the done gate mechanism. The circle tracks whether a medium is present and adjusts its behavior accordingly: in a medium circle, the done gate requirement is satisfied by the medium's own termination path rather than by a standalone tool-calling gate.
 
 ### 4.2 What the entity can do
 
@@ -408,15 +413,14 @@ Here is the canonical shape of a gate result:
 
 ```
 GateCallRecord {
-  tool_call_id: string   // correlates to the crystal's tool_call
-  gate: string           // gate name
-  ok: boolean            // success or failure
-  result?: any           // return value on success
-  error?: { name: string, message: string }  // on failure
+  gate_name: string    // which gate was invoked
+  arguments: string    // JSON-encoded arguments
+  result: string       // gate output (return value or error message)
+  is_error: boolean    // true if the gate call failed
 }
 ```
 
-The observation per turn is an ordered list of `GateCallRecord` objects — one per gate call in the utterance. This is what the entity sees when it looks at what happened. The `tool_call_id` links each result back to the crystal's original invocation, so the entity (and the crystal on the next turn) can match responses to requests unambiguously. When a gate succeeds, `ok` is true and `result` contains the return value. When a gate fails, `ok` is false and `error` carries a structured description of what went wrong.
+The observation per turn is an ordered list of `GateCallRecord` objects — one per gate call in the utterance. This is what the entity sees when it looks at what happened. When a gate succeeds, `is_error` is false and `result` contains the return value. When a gate fails, `is_error` is true and `result` carries the error message. The arguments are preserved as JSON so the loom records what was requested as well as what was returned.
 
 > **CIRCLE-7**: If multiple gate calls appear in a single utterance, the circle MUST execute them in order and return each result as an entry within that turn's single composite observation. The observation is one object per turn (preserving LOOP-1's strict alternation), with an ordered list of per-gate results inside it. Implementations MAY execute independent gate calls in parallel.
 
@@ -438,7 +442,11 @@ The philosophical orientation here follows the Bitter Lesson: abstractions that 
 
 When circles compose — a parent spawning a child via `call_entity` — their wards compose too. The child inherits the parent's wards, and the composition is conservative: the child can never be *less* restricted than its parent.
 
-> **WARD-1**: When circles compose, numeric wards (max turns, max tokens, max depth) MUST take the `min()` of parent and child values. Boolean wards (allow network, allow filesystem) MUST take logical `OR` of restrictions — if either circle forbids it, it is forbidden. A child circle's wards can only tighten, never loosen, the parent's constraints.
+Two ward fields deserve explicit attention. `exclude_gates` is a list of gate names to remove from the circle's gate set. When circles compose, excluded gates take the union — if either parent or child excludes a gate, it is excluded. The `done` gate is never excludable; implementations MUST silently remove `done` from any `exclude_gates` list. The done gate is what makes termination possible (CIRCLE-1), and no ward may take it away.
+
+`require_done_tool` is a boolean ward that controls text-only termination behavior (see LOOP-6). When composing wards, `require_done_tool` uses logical OR: if any ward in the composition requires it, it is required.
+
+> **WARD-1**: When circles compose, numeric wards (max turns, max tokens, max depth) MUST take the `min()` of parent and child values. Boolean wards (`require_done_tool`) MUST take logical `OR` — if either ward requires it, it is required. Set-valued wards (`exclude_gates`) MUST take the union. A child circle's wards can only tighten, never loosen, the parent's constraints.
 
 ### 4.5 Tool-calling circles
 
@@ -473,6 +481,38 @@ This ordering is not accidental. Identity is fixed at construction. Capabilities
 > **CIRCLE-11**: The circle MUST generate a capability presentation for the crystal — a description of the medium, registered gates, and their contracts. This presentation MUST be included in the crystal's context on every query, between the call and the intent. Gate definitions in the `tools` parameter and capability documentation in the prompt are both valid forms of this presentation.
 
 Notice what this means for CALL-3: gate definitions are the circle's responsibility, not the call's. The call does not know what gates exist. The circle registers them, executes them, and presents them to the crystal. The call stays small and separable — the same identity in different circles with different capabilities.
+
+#### The crystalView() pattern
+
+When a circle has a medium, the medium controls how gates are presented to the crystal. This is the `crystalView()` pattern — the circle transforms the crystal's perception of its capabilities based on the medium.
+
+In a tool-calling circle (no medium), each gate appears as a separate tool definition. The crystal sees `read`, `write`, `done`, etc. as distinct tools it can invoke via JSON tool calls. `tool_choice` defaults to `"auto"` — the crystal may use tools or respond with text.
+
+In a code circle, the crystal sees a single tool — the medium's code execution interface (e.g., `js`). `tool_choice` is set to `"required"` — the crystal must always write code. Gates are not presented as tools. Instead, they are projected INTO the medium as host functions. The crystal writes code that calls these functions; the medium executes the code and calls the gates on the entity's behalf.
+
+```
+// Tool-calling circle (no medium):
+// crystalView() returns:
+//   tool_definitions: [read, write, fetch, done]
+//   tool_choice: "auto"
+
+// Code circle (JS medium):
+// crystalView() returns:
+//   tool_definitions: [js]      // one tool: "execute JavaScript"
+//   tool_choice: "required"     // crystal must always write code
+// Gates appear as: read(), write(), fetch(), submit_answer()
+// ...available as host functions inside the sandbox
+```
+
+This transformation is the key mechanism that makes code circles work. The crystal does not know it is calling gates — it thinks it is writing code that calls functions. The medium bridges between the crystal's perception (one code execution tool) and the circle's reality (multiple gates). This is why the crystal always sees tools (it is the LLM API contract), but what tools it sees depends on the medium.
+
+#### The medium viewport principle
+
+A medium SHOULD present execution results as metadata — size, type, a short preview — rather than raw output. This is the **medium viewport principle**: the medium controls what the entity perceives, and it should constrain perception to force compositional behavior.
+
+When a medium returns the full raw output of every operation, the entity's context fills with data it has already consumed. When the medium returns a summary — `[Result: 4823 chars] "first 150 chars..."` — the entity must compose operations to work with the data: store it in a variable, transform it through code, pass it to a child entity. The viewport forces the entity to think programmatically rather than treating its context window as a scratchpad.
+
+The specific limits are implementation details. The principle is architectural: the medium decides what the entity sees, and showing less forces the entity to do more through code.
 
 ### 4.7 Circle state
 
@@ -517,11 +557,13 @@ Watch how intent spawns sub-intents. The parent entity is pursuing some goal —
 ```
 result = call_entity({
   intent: "Summarize this document",
-  context?: any,         // data injected into child's circle
-  system_prompt?: string, // child's call (defaults to parent's)
-  max_depth?: number      // recursion limit ward
+  context?: string       // additional context injected into child's circle
 })
 ```
+
+The entity-facing signature is intentionally small. Configuration that shapes the child — which crystal to use, the system prompt, the depth limit — is set at gate construction time, not at call time. The entity describes *what* it wants delegated. The gate decides *how* the child is created.
+
+Behind the scenes, child creation is delegated to a **spawn function** (`SpawnFn`) — a dependency-injected factory that handles circle construction, ward composition, depth decrement, and loom sharing for the child entity. The default spawn function inherits the parent's gates (minus `call_entity` and `call_entity_batch`), composes the parent's wards with any child-specific wards, decrements the depth counter, and shares the parent's loom. Custom spawn functions can override any of this behavior.
 
 The child entity gets its own circle, its own context, its own turn sequence. It does not inherit the parent's conversation history — it starts fresh, with only the sub-intent and whatever data the parent passes through the `context` field. This clean separation is what makes delegation composable rather than fragile.
 
@@ -543,7 +585,7 @@ If the child fails — throws an error rather than calling `done` — the error 
 
 > **COMP-8**: If a child entity fails (throws an error, not `done`), the error MUST be returned to the parent as the gate result. The parent MUST NOT be terminated by a child's failure.
 
-> **COMP-9**: When a parent entity is terminated or truncated, all active child entities MUST be truncated with reason `parent_terminated`. Child turns up to the cancellation point are preserved in the loom. The child's truncation is recorded as any other truncation — the loom distinguishes it only by the reason field.
+> **COMP-9**: When a parent entity is terminated or truncated, active child entities SHOULD be truncated with reason `parent_terminated`. Child turns up to the cancellation point are preserved in the loom. The child's truncation is recorded as any other truncation — the loom distinguishes it only by the reason field.
 
 ### 5.2 Batch composition
 
@@ -559,7 +601,7 @@ results = call_entity_batch([
 
 The children execute concurrently. Results are returned as an array in the order they were requested, not in the order the children finish. This gives the parent a predictable interface — `results[0]` always corresponds to the first intent, regardless of which child was fastest.
 
-> **COMP-3**: `call_entity_batch` MUST execute children concurrently. Results MUST be returned in request order, not completion order.
+> **COMP-3**: `call_entity_batch` MUST execute children concurrently. Results MUST be returned in request order, not completion order. Implementations SHOULD enforce concurrency limits (default: 8 concurrent children, 50 maximum batch size) to prevent resource exhaustion.
 
 ### 5.3 Composition as code
 
@@ -631,7 +673,7 @@ Turn {
   parent_id: string?     // null for root turns
   cantrip_id: string     // which cantrip produced this turn
   entity_id: string      // which entity was acting
-  role: string           // "crystal" | "call" | "fold"
+  role: string           // "call" | "turn"
   sequence: number       // position within this entity's run (1, 2, 3...)
 
   utterance: string      // what the entity said/wrote
@@ -659,7 +701,7 @@ Turn {
 
 > **LOOM-9**: Each turn MUST record token usage (prompt, completion, cached) and wall-clock duration.
 
-The `role` field distinguishes what produced the turn. Most turns are `"crystal"` — the entity acted and the circle observed. A `"call"` turn records the initial system context (the call as root). A `"fold"` turn is a synthetic summary injected by folding (§6.8) — it replaces a range of earlier turns in the entity's working context but is itself recorded so the loom traces exactly when and how context was compressed.
+The `role` field distinguishes what produced the turn. Most turns are `"turn"` — the entity acted and the circle observed. A `"call"` turn records the initial system context (the call as root, per CALL-4).
 
 None of this is optional bookkeeping. Token counts are how you track cost. Timing is how you find bottlenecks. The reward slot — empty by default — is how the loom becomes training data. Every field on the turn record exists because something downstream needs it.
 
@@ -875,13 +917,28 @@ The remaining production concerns — protocols, retries, token tracking, stream
 
 > **PROD-1**: Protocol adapters MUST NOT alter the entity's behavior. The same cantrip MUST produce the same behavior regardless of whether it is accessed via CLI, HTTP, or ACP.
 
-> **PROD-2**: Retry logic MUST be transparent to the entity. A retried crystal query MUST appear as a single turn, not multiple turns. Implementations SHOULD retry rate limits (429) and server errors (5xx) with exponential backoff starting at 1 second, up to a maximum of 3 retries. Client errors (4xx except 429) MUST NOT be retried.
+> **PROD-2**: Retry logic MUST be transparent to the entity. A retried crystal query MUST appear as a single turn, not multiple turns. Implementations SHOULD retry rate limits (429) and server errors (5xx) with exponential backoff starting at 1 second, up to a configurable maximum (default: 3 retries). Client errors (4xx except 429) MUST NOT be retried.
 
 > **PROD-3**: Token usage MUST be tracked per-turn and cumulatively per-entity.
 
 Token counts are stored per-turn in the loom (LOOM-9) and accumulated across the entity's lifetime. They are how you track cost, detect context growth, and trigger folding. Every turn has a price. The loom records it.
 
-Implementations SHOULD emit streaming events as they occur — reasoning traces, text content, gate invocations, results, token usage. Streaming is an observation channel, not a control channel. Events report what the loop is doing but do not affect its execution.
+### 7.5 Streaming events
+
+Implementations SHOULD emit streaming events as they occur. Streaming is an observation channel, not a control channel. Events report what the loop is doing but do not affect its execution.
+
+The event hierarchy follows the structure of the loop. A cast produces a stream of `TurnEvent` values, each describing a moment in the entity's lifecycle:
+
+- **TextEvent** — a chunk of text content from the crystal's response
+- **ThinkingEvent** — a chunk of reasoning trace (for models that support extended thinking)
+- **ToolCallEvent** — the crystal has invoked a gate (name, arguments)
+- **ToolResultEvent** — a gate has returned a result
+- **FinalResponseEvent** — the entity has terminated (the done gate's result)
+- **MessageStartEvent** / **MessageCompleteEvent** — boundaries around a single crystal response
+- **StepStartEvent** / **StepCompleteEvent** — boundaries around a single turn
+- **UsageEvent** — token usage for a query
+
+The `cast_stream()` method returns an async iterable of these events, allowing consumers to observe the entity's behavior in real time — rendering text as it arrives, logging gate calls, tracking token expenditure.
 
 ---
 

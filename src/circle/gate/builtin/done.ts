@@ -22,8 +22,9 @@ export const done = gate(
  * Done gate variant for the JS medium.
  *
  * Presented as `submit_answer(result)` in the sandbox via docs.sandbox_name.
- * Throws SIGNAL_FINAL so the error propagates correctly through QuickJS
- * (which stringifies thrown errors — TaskComplete wouldn't survive the boundary).
+ * Throws a string-tagged sentinel error internally because QuickJS stringifies
+ * thrown errors — custom Error subclasses like TaskComplete can't survive the
+ * sandbox boundary. The JS medium catches this sentinel and re-throws TaskComplete.
  */
 export function done_for_medium(): BoundGate {
   return {
@@ -53,7 +54,7 @@ export function done_for_medium(): BoundGate {
       const value = "message" in args ? args.message : args;
       const message =
         typeof value === "string" ? value : JSON.stringify(value, null, 2);
-      // Use SIGNAL_FINAL so it propagates through QuickJS sandbox correctly
+      // String sentinel — the JS medium catches this and re-throws TaskComplete
       throw new Error(`SIGNAL_FINAL:${message}`);
     },
   };

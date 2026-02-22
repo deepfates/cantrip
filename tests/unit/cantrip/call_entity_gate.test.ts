@@ -20,13 +20,11 @@ describe("call_entity gate factory", () => {
     expect(gate).toBeNull();
   });
 
-  test("defaults max_depth to 2", () => {
+  test("defaults max_depth to 1", () => {
     const gate0 = call_entity({ depth: 0 });
     const gate1 = call_entity({ depth: 1 });
-    const gate2 = call_entity({ depth: 2 });
     expect(gate0).not.toBeNull();
-    expect(gate1).not.toBeNull();
-    expect(gate2).toBeNull();
+    expect(gate1).toBeNull();
   });
 
   test("has correct gate docs", () => {

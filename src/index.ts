@@ -109,13 +109,3 @@ export type {
   CantripSessionHandle,
   CantripSessionContext,
 } from "./entity/acp";
-
-// ── Observability ───────────────────────────────────────────────────
-export {
-  Laminar,
-  observe,
-  observe_debug,
-  setObserver,
-  getObserver,
-  clearObserver,
-} from "./entity/observability";
