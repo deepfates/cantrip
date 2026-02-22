@@ -58,7 +58,7 @@ export class ChatGoogle implements BaseChatModel {
     this.max_output_tokens = options.max_output_tokens ?? 8096;
     this.config = options.config ?? null;
     this.include_system_in_user = options.include_system_in_user ?? false;
-    this.max_retries = options.max_retries ?? 5;
+    this.max_retries = options.max_retries ?? 3;
     this.retryable_status_codes = options.retryable_status_codes ?? [429, 500, 502, 503, 504];
     this.retry_base_delay = options.retry_base_delay ?? 1.0;
     this.retry_max_delay = options.retry_max_delay ?? 60.0;

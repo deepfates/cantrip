@@ -179,7 +179,7 @@ export class Entity {
             // Build child gates: parent's gates minus call_entity/call_entity_batch
             // (child doesn't get further delegation by default — prevents runaway recursion).
             // Replace any medium-specific done gate with the plain done gate,
-            // since the child has no medium to handle SIGNAL_FINAL.
+            // since the child has no medium.
             const childGates: BoundGate[] = this.circle.gates
               .filter((g) => g.name !== "call_entity" && g.name !== "call_entity_batch" && g.name !== "done")
               .concat([done]);
@@ -382,7 +382,7 @@ export class Entity {
           tool_definitions,
           tool_choice: viewToolChoice,
           usage_tracker: this.usage_tracker,
-          llm_max_retries: this.retry?.max_retries ?? 5,
+          llm_max_retries: this.retry?.max_retries ?? 3,
           llm_retry_base_delay: this.retry?.base_delay ?? 1.0,
           llm_retry_max_delay: this.retry?.max_delay ?? 60.0,
           llm_retryable_status_codes: this.retry?.retryable_status_codes ?? new Set([429, 500, 502, 503, 504]),

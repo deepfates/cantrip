@@ -71,7 +71,7 @@ function describeStateEntry(val: unknown): string {
  *
  * Gates are projected into the sandbox as host functions.
  * The crystal sees a single `js` tool with tool_choice: "required".
- * Termination is via `submit_answer()` which throws SIGNAL_FINAL.
+ * Termination is via `submit_answer()` which throws TaskComplete.
  */
 export function js(opts?: JsMediumOptions): Medium {
   let sandbox: JsAsyncContext | null = null;
@@ -178,30 +178,13 @@ export function js(opts?: JsMediumOptions): Medium {
           });
 
           if (!result.ok) {
-            // Handle the SIGNAL_FINAL termination
+            // The medium's done gate throws a string-tagged error inside
+            // QuickJS (custom Error subclasses can't cross the sandbox).
+            // Catch the sentinel here and re-throw TaskComplete so the
+            // rest of the system sees ONE termination mechanism.
             if (result.error.startsWith("SIGNAL_FINAL:")) {
               const answer = result.error.replace("SIGNAL_FINAL:", "");
-
-              const completionMsg: ToolMessage = {
-                role: "tool",
-                tool_call_id: toolCall.id,
-                tool_name: "js",
-                content: `Task completed: ${answer}`,
-                is_error: false,
-              } as ToolMessage;
-              messages.push(completionMsg);
-
-              emit(new ToolResultEvent("js", `Task completed: ${answer}`, toolCall.id, false));
-              emit(new FinalResponseEvent(answer));
-
-              gate_calls.push({
-                gate_name: "js",
-                arguments: toolCall.function.arguments ?? "{}",
-                result: `Task completed: ${answer}`,
-                is_error: false,
-              });
-
-              return { messages, gate_calls, done: answer };
+              throw new TaskComplete(answer);
             }
 
             // Non-fatal error — return as error observation

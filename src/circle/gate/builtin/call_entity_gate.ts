@@ -54,7 +54,7 @@ export type CallEntityGateOptions = {
  */
 export function call_entity(opts: CallEntityGateOptions = {}): BoundGate | null {
   const {
-    max_depth = 2,
+    max_depth = 1,
     depth = 0,
     parent_context,
     onProgress,
@@ -165,7 +165,7 @@ const MAX_BATCH_SIZE = 50;
  */
 export function call_entity_batch(opts: CallEntityGateOptions = {}): BoundGate | null {
   const {
-    max_depth = 2,
+    max_depth = 1,
     depth = 0,
     parent_context,
     onProgress,
