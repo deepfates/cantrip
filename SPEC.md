@@ -49,6 +49,8 @@ This strict alternation is what makes the loop a loop and not a monologue. The e
 
 Two more terms before we move on. The recipe that defines the loop — which model to use, how to configure it, what environment to place it in — is called a **cantrip**. The goal the entity is pursuing is called an **intent**. Both get their own full treatment later. For now, what matters is the cycle: act, observe, repeat.
 
+Why does the loop matter beyond practical utility? Because closing the loop is what transforms a predictor into an agent. A language model in isolation is a generative model — it predicts, but its predictions have no consequences. When you close the loop — when outputs influence subsequent inputs — the system transitions from passive prediction to world-shaping action. The model's completions change the environment, the changed environment changes the next prompt, and the model adjusts. This is the active inference framing: a system that can act on its environment and observe the results naturally acquires agency. The loop is not just an engineering pattern. It is the mechanism by which a generative model becomes something that acts.
+
 ### 1.2 What the entity perceives
 
 On every turn, the entity needs to know two things: what it's supposed to do, and what has happened so far.
@@ -207,6 +209,27 @@ Observation: `GateCallRecord { gate_name: "done", arguments: '{"answer":1547}', 
 
 That's the whole vocabulary applied to a simple task: a crystal in a circle, shaped by a call, pursuing an intent, producing turns recorded in a loom. The entity appeared at turn 1 and vanished at turn 3. The thread persists.
 
+**Error as steering.** Now consider what happens when things go wrong. Same cantrip, but `/data/b.txt` does not exist.
+
+**Turn 2.** The entity tries to read all three files:
+```
+const a = read("/data/a.txt");
+const b = read("/data/b.txt");
+const c = read("/data/c.txt");
+```
+Observation: `a` and `c` return content. `b` returns `GateCallRecord { gate_name: "read", arguments: '{"path":"/data/b.txt"}', result: 'ENOENT: no such file or directory', is_error: true }`.
+
+**Turn 3.** The entity sees the error, diagnoses the problem, and adapts:
+```
+// b.txt doesn't exist — count only the files that were readable
+const total = [a, c]
+  .map(text => text.split(/\s+/).filter(w => w.length > 0).length)
+  .reduce((sum, n) => sum + n, 0);
+done({ total, note: "b.txt not found, counted 2 of 3 files" });
+```
+
+The error did not stop the entity. It steered the entity. The observation carried information — this file does not exist — and the entity used that information to adjust its strategy in the next turn. This is the loop's learning mechanism in miniature: act, observe the consequences (including failures), adapt.
+
 ---
 
 ## Chapter 2: The Crystal
@@ -352,6 +375,12 @@ A code circle gives the entity a full execution context — a sandbox where it c
 
 The code medium is not limited to JavaScript sandboxes. Any REPL-like environment can serve as a medium: a bash shell, a browser session driven through CDP (Chrome DevTools Protocol), a Frida session injecting into a running process. What makes something a medium is that the entity writes instructions in it and the medium executes them — not which language those instructions are written in.
 
+A conformant medium implementation must provide four things:
+- **Crystal view** (`crystalView()`) — a way to present gates to the crystal as tool definitions appropriate to the medium
+- **Action execution** — a way to execute entity-authored actions (the action space of the medium)
+- **Observation return** — a way to return observations from those actions back to the entity
+- **Sandbox isolation** — the entity's actions cannot escape the circle; the medium enforces the boundary
+
 These are points on a spectrum, not categories with hard boundaries. A tool-calling agent that generates JSON is closer to a code circle than a chat window is, but it lacks the compositionality of a real sandbox. A code circle with no gates beyond `done` is more constrained than a tool-calling agent with twenty gates, but its action space is still richer because its medium is a programming language. What varies is the circle's design. What stays the same is the vocabulary: crystal, call, circle, gate, ward, entity, turn, thread, loom. The rest of this chapter focuses on code circles — the most expressive case, where the most interesting design questions arise — but the concepts apply everywhere.
 
 When a circle has a medium, the medium handles termination internally — the entity calls `submit_answer` in code, and the medium translates this into the done gate mechanism. The circle tracks whether a medium is present and adjusts its behavior accordingly: in a medium circle, the done gate requirement is satisfied by the medium's own termination path rather than by a standalone tool-calling gate.
@@ -392,6 +421,8 @@ Common gates:
 - `write(path, content)` — write to the filesystem
 - `fetch(url)` — HTTP request
 - `goto(url)` / `click(selector)` — browser interaction
+
+Empirical evidence suggests that fewer, well-designed gates often outperform larger gate sets. A minimal gate set is a valid design choice, not a limitation — when the medium is expressive (a programming language), the entity can compose complex behaviors from a small number of gates. Adding more gates increases the crystal's decision surface without necessarily improving outcomes.
 
 Each gate closes over environment state — it carries configuration that the entity never sees and never needs to. A `read` gate knows its filesystem root. A `call_entity` gate holds a reference to the crystal it will use for child entities. A `fetch` gate may carry timeout configuration or authentication headers. You configure what each gate has access to when you construct the circle — not when the entity invokes the gate.
 
@@ -510,7 +541,7 @@ This transformation is the key mechanism that makes code circles work. The cryst
 
 A medium SHOULD present execution results as metadata — size, type, a short preview — rather than raw output. This is the **medium viewport principle**: the medium controls what the entity perceives, and it should constrain perception to force compositional behavior.
 
-When a medium returns the full raw output of every operation, the entity's context fills with data it has already consumed. When the medium returns a summary — `[Result: 4823 chars] "first 150 chars..."` — the entity must compose operations to work with the data: store it in a variable, transform it through code, pass it to a child entity. The viewport forces the entity to think programmatically rather than treating its context window as a scratchpad.
+This principle addresses a specific, well-documented problem: larger context degrades model performance — a phenomenon known as **context rot**. As the prompt fills with raw data, the crystal's ability to attend to relevant information diminishes. When a medium returns the full raw output of every operation, the entity's context fills with data it has already consumed. When the medium returns a summary — `[Result: 4823 chars] "first 150 chars..."` — the entity must compose operations to work with the data: store it in a variable, transform it through code, pass it to a child entity. The viewport forces the entity to think programmatically rather than treating its context window as a scratchpad.
 
 The specific limits are implementation details. The principle is architectural: the medium decides what the entity sees, and showing less forces the entity to do more through code.
 
@@ -537,6 +568,8 @@ The defense is subtractive — the same subtractive principle that governs all w
 **Prompt injection** is the specific threat that makes careful circle design non-optional. Untrusted content processed by the entity — user-supplied documents, web pages, emails, any data the entity did not generate itself — may contain instructions that attempt to override the call. The entity cannot reliably distinguish between its own instructions and adversarial text embedded in its input. This is not a bug in any particular model. It is a structural property of systems that process natural language: the control channel and the data channel are the same channel.
 
 Wards cannot prevent the entity from being influenced by its input — they can only prevent the entity's actions from reaching dangerous gates. The defense against prompt injection is circle design: isolate the processing of untrusted content from circles that have access to sensitive data or external communication. A child entity that summarizes untrusted documents should not have the `fetch` gate. A circle that handles outbound email should not process unvetted attachments. The trifecta framework gives the pattern: remove one leg, and the injection has less path to harm.
+
+There is a deeper reason wards must be structural rather than advisory. The entity has read every attack and every defense in its training data. It has seen social engineering, privilege escalation, and sandbox escape techniques described in detail. Containment cannot rely on the entity choosing to respect boundaries — politeness is trained behavior, not a reliable property. Wards must be environmental constraints because the entity cannot be trusted to self-limit. This is not a statement about intent. It is a statement about architecture.
 
 Security is not a feature you bolt on. It is what you carve away. Drawing good circles — choosing which gates belong together and which must be separated — is the practitioner's art.
 
@@ -742,7 +775,7 @@ For in-context learning within a session, implicit reward is enough. The entity 
 
 Modern LLM-RL methods — GRPO, RLAIF, best-of-N sampling — do not learn from single trajectories in isolation. They learn by comparing multiple trajectories of the same task. GRPO (Group Relative Policy Optimization) generates N completions for the same prompt, ranks them, and uses the relative ranking as the reward signal. No absolute reward model is needed. The comparison itself is the learning signal.
 
-The loom affords exactly this structure. Fork from the same turn N times — or cast the same cantrip on the same intent N times — and you get N threads that share a common origin but diverge in execution. Rank them by outcome — which thread solved the task? which was most efficient? which produced the cleanest code? — and the ranking becomes a reward signal. The loom's tree structure provides the trajectory data that comparative RL methods need.
+The loom affords exactly this structure. Fork from the same turn N times — or cast the same cantrip on the same intent N times — and you get N threads that share a common origin but diverge in execution. Rank them by outcome — which thread solved the task? which was most efficient? which produced the cleanest code? — and the ranking becomes a reward signal. The loom's tree structure provides the trajectory data that comparative RL methods need. Two standard metrics apply directly to loom data: **pass@k** (at least one of k threads succeeds — measuring whether the cantrip *can* solve the task) and **pass^k** (all k threads succeed — measuring whether it *reliably* solves the task). These capture different properties of the system and both are computable from threads that share a common intent.
 
 ```
 // Same intent, three runs:
@@ -963,6 +996,8 @@ Every term in this document was defined in context as it appeared. This table is
 The eleven terms have an internal structure worth noticing. Three are primaries: crystal, call, circle. One is emergent: the entity, which appears when the three primaries are in relationship. The rest pair naturally: gate and ward, intent and thread, turn and loom. The cantrip is the manifest whole that contains all of them. The medium is the circle's substrate — not a twelfth term, but the inside of the fifth. This structure is not accidental — it reflects which concepts are fundamental, which are derived, and how they relate to each other.
 
 ## Conformance
+
+This spec is the only durable artifact. Tests regenerate from the spec. Code regenerates from the tests. This is the **ghost library pattern**: the specification is a library with no implementation code — everything else is ephemeral and can be regenerated. The spec defines behavior; implementations are disposable manifestations of that behavior. When the spec changes, tests and code follow. When code drifts from the spec, the code is wrong.
 
 An implementation is conformant if it satisfies three conditions:
 
