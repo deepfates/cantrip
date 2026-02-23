@@ -8,3 +8,4 @@ tmp/
 repomix-output.xml
 tests/evals/results/
 .cantrip/
+prototypes/
