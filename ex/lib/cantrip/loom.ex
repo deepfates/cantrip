@@ -1,5 +1,13 @@
 defmodule Cantrip.Loom do
-  @moduledoc false
+  @moduledoc """
+  Minimal append-only loom implementation.
+
+  The loom stores immutable turn records and supports:
+
+  - appending turns,
+  - post-hoc reward annotation,
+  - thread extraction for trajectory consumers.
+  """
 
   defstruct call: nil, turns: []
 

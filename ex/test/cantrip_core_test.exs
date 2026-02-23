@@ -1,6 +1,7 @@
 defmodule CantripCoreTest do
   use ExUnit.Case, async: true
 
+  # Rule IDs in test names map directly to SPEC.md/tests.yaml for traceability.
   alias Cantrip.FakeCrystal
 
   test "CANTRIP-1 requires crystal" do

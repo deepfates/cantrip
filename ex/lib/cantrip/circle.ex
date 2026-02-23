@@ -1,6 +1,12 @@
 defmodule Cantrip.Circle do
   @moduledoc """
   Circle gate and ward handling.
+
+  This module owns:
+
+  - Gate normalization and tool definition projection.
+  - Ward checks (for example removing a gate from availability).
+  - Gate execution semantics used by the runtime loop.
   """
 
   defstruct gates: %{}, wards: []

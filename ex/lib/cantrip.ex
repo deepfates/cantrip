@@ -1,4 +1,21 @@
 defmodule Cantrip do
+  @moduledoc """
+  Core API for constructing and casting a cantrip.
+
+  This module intentionally keeps the public API small:
+
+  - `new/1` validates and constructs an immutable cantrip recipe.
+  - `cast/2` runs one intent through the entity loop (act/observe turns).
+  - `annotate_reward/4`, `extract_thread/2`, and `delete_turn/3` expose loom operations.
+
+  The implementation follows the spec's API-down model:
+
+  1. Validate construction constraints (`CANTRIP-*`, `CIRCLE-*`, `LOOP-2`).
+  2. Build initial context from call + intent (`INTENT-2`, `CALL-2`).
+  3. Iterate turns until `done` or truncation (`LOOP-1`, `LOOP-3`, `LOOP-4`, `LOOP-6`).
+  4. Persist every turn to the loom (`LOOM-*`).
+  """
+
   alias Cantrip.{Call, Circle, Loom}
 
   defstruct crystal_module: nil, crystal_state: nil, call: nil, circle: nil
@@ -22,7 +39,10 @@ defmodule Cantrip do
     entity_id = "ent_" <> Integer.to_string(System.unique_integer([:positive]))
     messages = initial_messages(cantrip.call, intent)
     loom = Loom.new(cantrip.call)
-    run_loop(cantrip, entity_id, messages, loom, 0)
+
+    # Usage is accumulated across turns and returned in cast metadata.
+    usage = %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0}
+    run_loop(cantrip, entity_id, messages, loom, 0, usage)
   end
 
   def mutate_call(_cantrip, _attrs), do: {:error, "call is immutable"}
@@ -63,13 +83,14 @@ defmodule Cantrip do
     [%{role: :system, content: prompt}, %{role: :user, content: intent}]
   end
 
-  defp run_loop(cantrip, entity_id, messages, loom, turns) do
+  defp run_loop(cantrip, entity_id, messages, loom, turns, usage_acc) do
     if turns >= Circle.max_turns(cantrip.circle) do
+      # Truncation is encoded as a terminal turn so the loom records why execution stopped.
       last_turn = %{terminated: false, truncated: true, utterance: nil, observation: []}
       loom = Loom.append_turn(loom, last_turn)
 
       {:ok, nil, %{cantrip | crystal_state: cantrip.crystal_state}, loom,
-       %{entity_id: entity_id, turns: turns, truncated: true}}
+       %{entity_id: entity_id, turns: turns, truncated: true, cumulative_usage: usage_acc}}
     else
       tools = Circle.tool_definitions(cantrip.circle)
 
@@ -83,12 +104,31 @@ defmodule Cantrip do
         {:ok, response, next_state} ->
           cantrip = %{cantrip | crystal_state: next_state}
           duration = max(System.monotonic_time(:millisecond) - started_at, 1)
-          continue_with_response(cantrip, entity_id, messages, loom, turns, response, duration)
+
+          continue_with_response(
+            cantrip,
+            entity_id,
+            messages,
+            loom,
+            turns,
+            response,
+            duration,
+            usage_acc
+          )
       end
     end
   end
 
-  defp continue_with_response(cantrip, entity_id, messages, loom, turns, response, duration) do
+  defp continue_with_response(
+         cantrip,
+         entity_id,
+         messages,
+         loom,
+         turns,
+         response,
+         duration,
+         usage_acc
+       ) do
     content = Map.get(response, :content)
     tool_calls = Map.get(response, :tool_calls)
 
@@ -97,7 +137,7 @@ defmodule Cantrip do
     else
       case validate_tool_call_ids(tool_calls || []) do
         :ok ->
-          execute_turn(cantrip, entity_id, messages, loom, turns, response, duration)
+          execute_turn(cantrip, entity_id, messages, loom, turns, response, duration, usage_acc)
 
         {:error, reason} ->
           {:error, reason, cantrip, loom}
@@ -105,14 +145,16 @@ defmodule Cantrip do
     end
   end
 
-  defp execute_turn(cantrip, entity_id, messages, loom, turns, response, duration) do
+  defp execute_turn(cantrip, entity_id, messages, loom, turns, response, duration, usage_acc) do
     usage = Map.get(response, :usage, %{})
     content = Map.get(response, :content)
     tool_calls = Map.get(response, :tool_calls) || []
+    usage_acc = accumulate_usage(usage_acc, usage)
 
     utterance = %{content: content, tool_calls: tool_calls}
     assistant_message = %{role: :assistant, content: content, tool_calls: tool_calls}
 
+    # Gate calls are executed synchronously from the entity's perspective.
     {observation, result, terminated} = execute_tool_calls(cantrip.circle, tool_calls)
 
     terminated =
@@ -142,12 +184,15 @@ defmodule Cantrip do
 
     cond do
       terminated and is_nil(result) and is_binary(content) ->
-        {:ok, content, cantrip, loom, %{entity_id: entity_id, turns: turns + 1, terminated: true}}
+        {:ok, content, cantrip, loom,
+         %{entity_id: entity_id, turns: turns + 1, terminated: true, cumulative_usage: usage_acc}}
 
       terminated ->
-        {:ok, result, cantrip, loom, %{entity_id: entity_id, turns: turns + 1, terminated: true}}
+        {:ok, result, cantrip, loom,
+         %{entity_id: entity_id, turns: turns + 1, terminated: true, cumulative_usage: usage_acc}}
 
       true ->
+        # Observation is projected back into model-visible tool messages.
         tool_messages =
           Enum.map(observation, fn item ->
             %{
@@ -159,13 +204,14 @@ defmodule Cantrip do
           end)
 
         next_messages = messages ++ [assistant_message] ++ tool_messages
-        run_loop(cantrip, entity_id, next_messages, loom, turns + 1)
+        run_loop(cantrip, entity_id, next_messages, loom, turns + 1, usage_acc)
     end
   end
 
   defp execute_tool_calls(_circle, []), do: {[], nil, false}
 
   defp execute_tool_calls(circle, tool_calls) do
+    # Execution halts as soon as `done` is observed, skipping remaining calls.
     Enum.reduce_while(tool_calls, {[], nil, false}, fn call, {acc, _result, _terminated} ->
       gate = call[:gate] || call["gate"]
       args = call[:args] || call["args"] || %{}
@@ -191,5 +237,16 @@ defmodule Cantrip do
     else
       {:error, "duplicate tool call ID"}
     end
+  end
+
+  defp accumulate_usage(acc, usage) do
+    prompt = Map.get(usage, :prompt_tokens, 0)
+    completion = Map.get(usage, :completion_tokens, 0)
+
+    %{
+      prompt_tokens: acc.prompt_tokens + prompt,
+      completion_tokens: acc.completion_tokens + completion,
+      total_tokens: acc.total_tokens + prompt + completion
+    }
   end
 end

@@ -1,4 +1,10 @@
 defmodule Cantrip.Call do
+  @moduledoc """
+  Immutable call configuration.
+
+  A call is the stable identity/configuration passed to the crystal on every turn.
+  """
+
   @enforce_keys []
   defstruct system_prompt: nil,
             temperature: nil,

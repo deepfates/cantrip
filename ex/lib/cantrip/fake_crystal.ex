@@ -1,7 +1,12 @@
 defmodule Cantrip.FakeCrystal do
   @behaviour Cantrip.Crystal
 
-  @moduledoc false
+  @moduledoc """
+  Deterministic test crystal.
+
+  `FakeCrystal` replays scripted responses in sequence and can capture inbound
+  requests for assertions about context/tooling behavior.
+  """
 
   def new(responses, opts \\ []) when is_list(responses) do
     %{
