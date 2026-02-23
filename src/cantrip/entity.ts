@@ -254,6 +254,11 @@ export class Entity {
     this.messages = [...messages];
   }
 
+  /** Dispose entity resources (mediums, etc.). */
+  async dispose(): Promise<void> {
+    await this.circle.dispose?.();
+  }
+
   /** Get accumulated usage stats. */
   async get_usage() {
     return this.usage_tracker.getUsageSummary();

@@ -157,7 +157,11 @@ export function cantrip(input: CantripInput): Cantrip {
         retry: input.retry,
       });
 
-      return entity.cast(intent);
+      try {
+        return await entity.cast(intent);
+      } finally {
+        await entity.dispose();
+      }
     },
 
     /**
