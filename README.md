@@ -35,9 +35,9 @@ const done = tool(
 
 When the LLM calls `done`, the tool throws `TaskComplete`, which breaks out of the loop and returns the result. This gives you clean completion semantics instead of trying to guess when the model is finished.
 
-## What are tools?
+## What are gates?
 
-Tools are functions the agent can call. Each tool has a name, a description (so the LLM knows when to use it), and a schema for its parameters.
+Gates are functions the agent can call — crossing points between the agent and the outside world. Each gate has a name, a description (so the LLM knows when to use it), and a schema for its parameters.
 
 ```ts
 const add = tool(
@@ -47,7 +47,7 @@ const add = tool(
 );
 ```
 
-The tools you give an agent define what it can do. An agent with `bash`, `read`, and `write` tools can interact with your filesystem. An agent with a `browser` tool can surf the web. An agent with just `add` and `done` can do arithmetic. The tools are the agent's capabilities.
+The gates you give an agent define what it can do. An agent with `bash`, `read`, and `write` gates can interact with your filesystem. An agent with a `browser` gate can surf the web. An agent with just `add` and `done` gates can do arithmetic. The gates are the agent's capabilities.
 
 ## Get started
 
@@ -74,17 +74,17 @@ The examples build on each other. Work through them in order.
 
 **[`04_dependency_injection.ts`](examples/04_dependency_injection.ts)** — How to give tools access to databases, API clients, or test mocks.
 
-### Builtin tool modules
+### Builtin gate modules
 
-**[`05_fs_agent.ts`](examples/05_fs_agent.ts)** — A coding agent with sandboxed filesystem tools (`read`, `write`, `edit`, `glob`, `bash`).
+**[`05_fs_agent.ts`](examples/05_fs_agent.ts)** — A coding agent with sandboxed filesystem gates (`read`, `write`, `edit`, `glob`, `bash`).
 
-**[`06_js_agent.ts`](examples/06_js_agent.ts)** — A computational agent with two JavaScript tools: `js` (persistent REPL, no I/O) and `js_run` (fresh sandbox with fetch and virtual fs).
+**[`06_js_agent.ts`](examples/06_js_agent.ts)** — A computational agent with two JavaScript gates: `js` (persistent REPL, no I/O) and `js_run` (fresh sandbox with fetch and virtual fs).
 
 **[`07_browser_agent.ts`](examples/07_browser_agent.ts)** — A web browsing agent with a persistent headless browser (via Taiko).
 
 ### Putting it together
 
-**[`08_full_agent.ts`](examples/08_full_agent.ts)** — Combines filesystem, JavaScript, and browser tools into one agent. Use this as a starting point for your own agent.
+**[`08_full_agent.ts`](examples/08_full_agent.ts)** — Combines filesystem, JavaScript, and browser gates into one agent. Use this as a starting point for your own agent.
 
 ### Advanced patterns
 
@@ -102,17 +102,31 @@ The examples build on each other. Work through them in order.
 
 **[`15_acp_rlm_browser.ts`](examples/15_acp_rlm_browser.ts)** — RLM browser agent over ACP. The most powerful setup: browser automation, sub-agent delegation, optional memory management, all accessible from your editor. Use `--headed` for visible browser, `--memory N` for sliding window.
 
-## Included Tools Library
+## Builtin Gates
 
-While you can write your own tools, Cantrip comes with a few "batteries-included" modules:
+While you can write your own gates, Cantrip comes with a few "batteries-included" modules:
 
-**FileSystem (`src/tools/builtin/fs`)** — Lightly sandboxed access to the filesystem. Includes `read` (with pagination), `write` (with size limits), `edit`, `glob`, and `bash`.
+**FileSystem (`src/circle/gate/builtin/fs`)** — Lightly sandboxed access to the filesystem. Includes `read` (with pagination), `write` (with size limits), `edit`, `glob`, and `bash`.
 
-**Browser (`src/tools/builtin/browser`)** — Headless browser automation built on Taiko. Persists session state across tool calls.
+**Browser (`src/circle/gate/builtin/browser`)** — Headless browser automation built on Taiko. Persists session state across gate calls.
 
-**JavaScript Sandbox (`src/tools/builtin/js`)** — Secure WASM-based JavaScript runtime (QuickJS). Perfect for agents that need to perform calculations or data processing without risking the host machine.
+**JavaScript Sandbox (`src/circle/gate/builtin/js`)** — Secure WASM-based JavaScript runtime (QuickJS). Perfect for agents that need to perform calculations or data processing without risking the host machine.
 
-**RLM (`src/rlm`)** — Recursive Language Model pattern. Offload massive contexts to a JavaScript sandbox and let the LLM explore them programmatically. Supports recursive sub-agents for divide-and-conquer on huge datasets. Based on [Zhang et al. 2026](https://arxiv.org/abs/2512.24601).
+**RLM / call_agent (`src/circle/gate/builtin/call_agent`)** — Recursive Language Model pattern. Offload massive contexts to a JavaScript sandbox and let the LLM explore them programmatically. Supports recursive sub-agents for divide-and-conquer on huge datasets. Based on [Zhang et al. 2026](https://arxiv.org/abs/2512.24601).
+
+## Directory structure
+
+```
+src/
+├── crystal/          # The model — stateless invoke() interface + providers + tokens
+├── circle/           # The environment — gates (tools) + wards (limits)
+│   ├── circle.ts     # Circle = {gates, wards}
+│   ├── ward.ts       # WardConfig (max_turns, max_tokens, max_depth)
+│   └── gate/         # Gate definitions + builtins (fs, js, browser, call_agent)
+├── cantrip/          # The recipe — Cantrip, Call, and Intent types
+├── loom/             # The execution record — append-only turn tree, threads, folding
+└── entity/           # The running instance — Agent, CoreAgent, REPL, ACP adapter
+```
 
 ## Optional features
 
@@ -120,9 +134,9 @@ The `Agent` class includes some features you can turn on or off:
 
 **Retries** — Automatically retry when the LLM returns rate limit errors or transient failures. On by default.
 
-**Ephemerals** — Some tools produce large outputs (like screenshots) that eat up context. Mark a tool as `ephemeral: 3` to keep only its last 3 results in the conversation history.
+**Ephemerals** — Some gates produce large outputs (like screenshots) that eat up context. Mark a gate as `ephemeral: 3` to keep only its last 3 results in the conversation history.
 
-**Compaction** — When the conversation gets too long, summarize it to free up context space. Configure with `compaction: { threshold_ratio: 0.8 }`.
+**Folding** — When the conversation gets too long, compress older turns non-destructively using the `fold()` API. Configure with `folding: { threshold_ratio: 0.8 }`. The original turns are preserved in the loom; only the active thread is compressed.
 
 If you don't need these, use `CoreAgent` instead, or disable them in `Agent`.
 
@@ -135,7 +149,7 @@ import {
   ChatGoogle,
   ChatLMStudio,
   ChatOpenRouter,
-} from "cantrip/llm";
+} from "cantrip/crystal";
 ```
 
 - **ChatLMStudio** — points at the LM Studio local OpenAI-compatible server (`http://localhost:1234/v1` by default) and doesn’t require an API key unless you provide one via `LM_STUDIO_API_KEY`.

@@ -1,25 +1,111 @@
 /**
  * Evaluation harness for real LLM benchmarks.
  *
- * Runs the same task against RLM and Agent+JS baselines with real LLMs,
+ * Runs the same task against JS-sandbox and Entity+JS baselines with real LLMs,
  * collecting actual token usage from the API.
  *
  * Addresses fairness concerns from code review:
- * - Three baselines: RLM, Agent+JS (full output), Agent+JS (metadata-only)
- * - Prompt parity: Agent baselines get equivalent prompt quality to RLM
+ * - Three baselines: JS-sandbox, Entity+JS (full output), Entity+JS (metadata-only)
+ * - Prompt parity: Entity baselines get equivalent prompt quality to JS-sandbox
  * - Both use require_done_tool: true for symmetric termination
  * - Context preview provided to all approaches
  * - Cached tokens tracked separately
  */
-import { Agent } from "../../src/agent/service";
-import { analyzeContext, createRlmAgent } from "../../src/rlm/service";
-import { JsContext, getJsContext } from "../../src/tools/builtin/js_context";
-import { js } from "../../src/tools/builtin/js";
-import { done } from "../../src/tools/builtin/default";
-import { tool } from "../../src/tools/decorator";
+import { Entity } from "../../src/cantrip/entity";
+import { cantrip } from "../../src/cantrip/cantrip";
+import { Circle } from "../../src/circle/circle";
+import { js as jsMedium, getJsMediumSandbox } from "../../src/circle/medium/js";
+import { JsContext, getJsContext } from "../../src/circle/medium/js/context";
+import { max_turns, require_done } from "../../src/circle/ward";
+import { call_entity, call_entity_batch } from "../../src/circle/gate/builtin/call_entity_gate";
+import { done, done_for_medium } from "../../src/circle/gate/builtin/done";
+import { gate } from "../../src/circle/gate/decorator";
 import { z } from "zod";
-import { UsageTracker } from "../../src/tokens/usage";
-import type { BaseChatModel } from "../../src/llm/base";
+import { UsageTracker } from "../../src/crystal/tokens/usage";
+import type { BaseChatModel } from "../../src/crystal/crystal";
+
+// --- Inline helpers ---
+
+function safeStringify(value: unknown, indent?: number): string {
+  try {
+    return JSON.stringify(value, null, indent) ?? "[undefined]";
+  } catch {
+    return "[unserializable]";
+  }
+}
+
+function analyzeContext(context: unknown): {
+  type: string;
+  length: number;
+  preview: string;
+} {
+  if (typeof context === "string") {
+    return {
+      type: "String (Explore via context.match(), context.includes(), context.slice())",
+      length: context.length,
+      preview: context.slice(0, 200),
+    };
+  }
+  if (Array.isArray(context)) {
+    return {
+      type: `Array [${context.length} items] (Explore via context.filter(), context.find(), context[0])`,
+      length: safeStringify(context).length,
+      preview: safeStringify(context.slice(0, 3)),
+    };
+  }
+  if (typeof context === "object" && context !== null) {
+    const keys = Object.keys(context);
+    const serialized = safeStringify(context);
+    return {
+      type: `Object {${keys.length} keys} (Explore via Object.keys(context), context.property)`,
+      length: serialized.length,
+      preview: serialized.slice(0, 200),
+    };
+  }
+  return {
+    type: typeof context,
+    length: String(context).length,
+    preview: String(context).slice(0, 200),
+  };
+}
+
+// --- Local JS gate for eval baselines (full output) ---
+
+const DEFAULT_MAX_OUTPUT_CHARS = 9500;
+
+function truncateOutput(output: string, maxChars: number): string {
+  if (output.length <= maxChars) return output;
+  const lastNewline = output.lastIndexOf("\n", maxChars);
+  const cutoff = lastNewline > maxChars / 2 ? lastNewline : maxChars;
+  return output.substring(0, cutoff) + `\n\n... [output truncated at ${maxChars} chars]`;
+}
+
+const js = gate(
+  "Execute JavaScript in a persistent, isolated sandbox. State persists across calls.",
+  async (
+    { code, timeout_ms, max_output_chars }: { code: string; timeout_ms?: number; max_output_chars?: number },
+    deps,
+  ) => {
+    const ctx = deps.ctx as JsContext;
+    const maxChars = max_output_chars ?? DEFAULT_MAX_OUTPUT_CHARS;
+    try {
+      const result = await ctx.evalCode(code, { executionTimeoutMs: timeout_ms });
+      if (!result.ok) return truncateOutput(`Error: ${result.error}`, maxChars);
+      return truncateOutput(result.output, maxChars);
+    } catch (e: any) {
+      return truncateOutput(`Error: ${String(e?.message ?? e)}`, maxChars);
+    }
+  },
+  {
+    name: "js",
+    zodSchema: z.object({
+      code: z.string().describe("The Javascript code to execute in the sandbox."),
+      timeout_ms: z.number().int().positive().optional(),
+      max_output_chars: z.number().int().positive().optional(),
+    }),
+    dependencies: { ctx: getJsContext },
+  },
+);
 
 // --- Result Types ---
 
@@ -102,11 +188,11 @@ function formatMetadata(output: string): string {
 }
 
 /**
- * JS tool that returns metadata-only output, identical to RLM's js_rlm tool
+ * JS tool that returns metadata-only output, identical to the JS sandbox approach
  * but using the standard sync JsContext (not async). This isolates the
  * metadata-vs-full-output variable from the sandbox implementation.
  */
-const js_meta = tool(
+const js_meta = gate(
   "Execute JavaScript in the persistent sandbox. Results are returned as metadata summaries, not full output. Use console.log() to inspect values.",
   async ({ code, timeout_ms }: { code: string; timeout_ms?: number }, deps) => {
     const ctx = deps.ctx as JsContext;
@@ -130,9 +216,9 @@ const js_meta = tool(
   },
 );
 
-// --- Agent System Prompt (parity with RLM prompt) ---
+// --- Entity System Prompt (parity with JS-sandbox prompt) ---
 
-function getAgentSystemPrompt(
+function getEntitySystemPrompt(
   meta: { type: string; length: number; preview: string },
   metadataOnly: boolean,
 ): string {
@@ -214,10 +300,10 @@ Think step by step carefully, plan, and execute this plan immediately — do not
 // --- Eval Runners ---
 
 /**
- * Run a task using the RLM approach.
+ * Run a task using the JS-sandbox approach.
  * Context lives in the async sandbox; LLM only sees metadata.
  */
-export async function runRlmEval(options: {
+export async function runJsSandboxEval(options: {
   llm: BaseChatModel;
   task: string;
   query: string;
@@ -233,28 +319,40 @@ export async function runRlmEval(options: {
     expected,
     context,
     maxDepth = 1,
-    approach = "rlm",
+    approach = "js-sandbox",
   } = options;
   const usage = new UsageTracker();
   const contextStr =
     typeof context === "string" ? context : JSON.stringify(context);
 
   const start = Date.now();
-  const { agent, sandbox } = await createRlmAgent({
-    llm,
-    context,
-    usage,
-    maxDepth,
+  const medium = jsMedium({ state: { context } });
+  const gates = [done_for_medium()];
+  const entityGate = call_entity({ max_depth: maxDepth, depth: 0, parent_context: context });
+  if (entityGate) gates.push(entityGate);
+  const batchGate = call_entity_batch({ max_depth: maxDepth, depth: 0, parent_context: context });
+  if (batchGate) gates.push(batchGate);
+
+  const circle = Circle({ medium, gates, wards: [max_turns(20), require_done()] });
+  const spell = cantrip({
+    crystal: llm,
+    call: "Explore the context using code. Use submit_answer() to provide your final answer.",
+    circle,
+    usage_tracker: usage,
   });
+  const entity = spell.invoke();
+
+  await medium.init(gates, entity.dependency_overrides);
+  const sandbox = getJsMediumSandbox(medium)!;
 
   let answer: string;
   const EVAL_TIMEOUT_MS = 240_000; // 4 minutes hard wall-clock limit
   try {
     answer = await Promise.race([
-      agent.query(query),
+      entity.cast(query),
       new Promise<string>((_, reject) =>
         setTimeout(
-          () => reject(new Error("RLM eval timeout")),
+          () => reject(new Error("JS-sandbox eval timeout")),
           EVAL_TIMEOUT_MS,
         ),
       ),
@@ -282,11 +380,11 @@ export async function runRlmEval(options: {
 }
 
 /**
- * Run a task using a standard Agent with the JS tool (full output).
+ * Run a task using an Entity with the JS tool (full output).
  * Context is pre-loaded into a JsContext sandbox.
- * Uses prompt parity with RLM and require_done_tool for symmetric termination.
+ * Uses prompt parity with JS-sandbox and require_done_tool for symmetric termination.
  */
-export async function runAgentWithJsEval(options: {
+export async function runEntityWithJsEval(options: {
   llm: BaseChatModel;
   task: string;
   query: string;
@@ -305,22 +403,28 @@ export async function runAgentWithJsEval(options: {
   overrides.set(getJsContext, () => jsCtx);
 
   const meta = analyzeContext(context);
-  const systemPrompt = getAgentSystemPrompt(meta, false);
+  const systemPrompt = getEntitySystemPrompt(meta, false);
 
   const start = Date.now();
-  const agent = new Agent({
-    llm,
-    tools: [js, done],
-    system_prompt: systemPrompt,
+  const circle = Circle({
+    gates: [js, done],
+    wards: [{ max_turns: 20, require_done_tool: true }],
+  });
+  const entity = new Entity({
+    crystal: llm,
+    call: {
+      system_prompt: systemPrompt,
+      hyperparameters: { tool_choice: "auto" },
+      gate_definitions: [],
+    },
+    circle,
     dependency_overrides: overrides,
     usage_tracker: usage,
-    max_iterations: 20,
-    require_done_tool: true,
   });
 
   let answer: string;
   try {
-    answer = await agent.query(query);
+    answer = await entity.cast(query);
   } finally {
     jsCtx.dispose();
   }
@@ -330,7 +434,7 @@ export async function runAgentWithJsEval(options: {
   const accuracy = checkAnswer(answer, expected);
 
   return {
-    approach: "agent+js",
+    approach: "entity+js",
     task,
     context_size: contextStr.length,
     accuracy,
@@ -342,11 +446,11 @@ export async function runAgentWithJsEval(options: {
 }
 
 /**
- * Run a task using a standard Agent with metadata-only JS tool output.
- * This is the fairest comparison to RLM: same metadata policy, same prompt,
- * but using the standard Agent loop (not RLM's sandbox/submit_answer).
+ * Run a task using an Entity with metadata-only JS tool output.
+ * This is the fairest comparison to JS-sandbox: same metadata policy, same prompt,
+ * but using the standard Entity loop (not the sandbox's submit_answer).
  */
-export async function runAgentMetaJsEval(options: {
+export async function runEntityMetaJsEval(options: {
   llm: BaseChatModel;
   task: string;
   query: string;
@@ -365,22 +469,28 @@ export async function runAgentMetaJsEval(options: {
   overrides.set(getJsContext, () => jsCtx);
 
   const meta = analyzeContext(context);
-  const systemPrompt = getAgentSystemPrompt(meta, true);
+  const systemPrompt = getEntitySystemPrompt(meta, true);
 
   const start = Date.now();
-  const agent = new Agent({
-    llm,
-    tools: [js_meta, done],
-    system_prompt: systemPrompt,
+  const circle = Circle({
+    gates: [js_meta, done],
+    wards: [{ max_turns: 20, require_done_tool: true }],
+  });
+  const entity = new Entity({
+    crystal: llm,
+    call: {
+      system_prompt: systemPrompt,
+      hyperparameters: { tool_choice: "auto" },
+      gate_definitions: [],
+    },
+    circle,
     dependency_overrides: overrides,
     usage_tracker: usage,
-    max_iterations: 20,
-    require_done_tool: true,
   });
 
   let answer: string;
   try {
-    answer = await agent.query(query);
+    answer = await entity.cast(query);
   } finally {
     jsCtx.dispose();
   }
@@ -390,7 +500,7 @@ export async function runAgentMetaJsEval(options: {
   const accuracy = checkAnswer(answer, expected);
 
   return {
-    approach: "agent+js-meta",
+    approach: "entity+js-meta",
     task,
     context_size: contextStr.length,
     accuracy,
@@ -403,7 +513,7 @@ export async function runAgentMetaJsEval(options: {
 
 /**
  * Run a task by stuffing the full context into the LLM prompt. No tools, no sandbox.
- * Single ainvoke() call — the simplest possible baseline.
+ * Single query() call — the simplest possible baseline.
  */
 export async function runInContextEval(options: {
   llm: BaseChatModel;
@@ -420,7 +530,7 @@ export async function runInContextEval(options: {
   const start = Date.now();
   let answer: string;
   try {
-    const res = await llm.ainvoke([
+    const res = await llm.query([
       {
         role: "user",
         content: `${query}\n\nHere is the full data:\n\n${contextStr}`,
