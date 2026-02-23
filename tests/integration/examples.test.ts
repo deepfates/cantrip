@@ -49,29 +49,28 @@ describe("examples", () => {
   test.skipIf(!hasAnthropicKey)("01_crystal: raw model call returns content", async () => {
     const { main } = await import("../../examples/01_crystal");
     const result = await main();
-    expect(result).not.toBeNull();
     expect(typeof result).toBe("string");
-    expect(result!.length).toBeGreaterThan(0);
+    expect(result).toContain("4");
   }, 30_000);
 
   test.skipIf(!hasAnthropicKey)("04_cantrip: casts and returns results", async () => {
     const { main } = await import("../../examples/04_cantrip");
     const result = await main();
-    expect(result.result).toBeTruthy();
-    expect(result.result2).toBeTruthy();
+    expect(result.result).toContain("5");
+    expect(result.result2).toContain("30");
   }, 60_000);
 
   test.skipIf(!hasAnthropicKey)("06_providers: provider-swappable cantrip returns result", async () => {
     const { main } = await import("../../examples/06_providers");
     const result = await main();
-    expect(result).toBeTruthy();
+    expect(result).toContain("15");
   }, 30_000);
 
-  test.skipIf(!hasAnthropicKey)("08_js_medium: JS sandbox returns answer", async () => {
+  test.skipIf(!hasAnthropicKey)("08_js_medium: JS sandbox returns correct answer", async () => {
     const { main } = await import("../../examples/08_js_medium");
     const result = await main();
-    expect(typeof result).toBe("string");
-    expect(result.length).toBeGreaterThan(0);
+    // Data: alpha=10, beta=25, gamma=7. Beta has the highest value.
+    expect(result.toLowerCase()).toContain("beta");
   }, 60_000);
 
   // ── Interactive/server examples ─────────────────────────────────
@@ -98,12 +97,24 @@ describe("examples", () => {
     expect(typeof mod.main).toBe("function");
   });
 
+  test("16_familiar: exports callable main", async () => {
+    const mod = await import("../../examples/16_familiar");
+    expect(typeof mod.main).toBe("function");
+  });
+
+  test.skipIf(!hasAnthropicKey)("16_familiar: coordinator delegates via child cantrips", async () => {
+    const { main } = await import("../../examples/16_familiar");
+    const result = await main("What are the 3 most recent commits in this repo? Summarize each in one sentence.");
+    expect(typeof result).toBe("string");
+    expect(result!.length).toBeGreaterThan(0);
+  }, 120_000);
+
   // ── LLM examples (OpenAI): skip without API key ────────────────
 
-  test.skipIf(!hasOpenAIKey)("10_composition: finds data in JS sandbox", async () => {
+  test.skipIf(!hasOpenAIKey)("10_composition: parent delegates to children via call_entity_batch", async () => {
     const { main } = await import("../../examples/10_composition");
     const result = await main();
     expect(typeof result).toBe("string");
     expect(result.length).toBeGreaterThan(0);
-  }, 60_000);
+  }, 120_000);
 });

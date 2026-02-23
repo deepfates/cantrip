@@ -191,6 +191,16 @@ export class JsAsyncContext {
         const errorHandle = result.error;
         const errorValue = this.ctx.dump(errorHandle);
         errorHandle.dispose();
+        // Sentinels (e.g. SIGNAL_FINAL) are control flow between gate and
+        // medium — pass the raw message so the medium can detect them
+        // before error formatting corrupts the signal.
+        const rawMsg =
+          errorValue && typeof errorValue === "object"
+            ? (errorValue as any).message
+            : undefined;
+        if (typeof rawMsg === "string" && rawMsg.startsWith("SIGNAL_FINAL:")) {
+          return { ok: false, error: rawMsg };
+        }
         return { ok: false, error: formatErrorMessage(errorValue) };
       }
 
@@ -334,10 +344,36 @@ function safeStringify(value: unknown): string | null {
   }
 }
 
+const MAX_STACK_FRAMES = 5;
+const MAX_ERROR_CHARS = 512;
+
 function formatErrorMessage(errorValue: unknown): string {
   if (errorValue && typeof errorValue === "object") {
-    const message = (errorValue as { message?: unknown }).message;
-    if (message !== undefined) return String(message);
+    const err = errorValue as {
+      name?: unknown;
+      message?: unknown;
+      stack?: unknown;
+    };
+    if (err.message !== undefined) {
+      const name = err.name ? String(err.name) : "Error";
+      const msg = String(err.message);
+      const header = `${name}: ${msg}`;
+      if (err.stack) {
+        const frames = String(err.stack)
+          .split("\n")
+          .filter((l) => l.trimStart().startsWith("at "))
+          .slice(0, MAX_STACK_FRAMES);
+        if (frames.length) {
+          const full = `${header}\n${frames.join("\n")}`;
+          return full.length > MAX_ERROR_CHARS
+            ? full.slice(0, MAX_ERROR_CHARS) + "..."
+            : full;
+        }
+      }
+      return header.length > MAX_ERROR_CHARS
+        ? header.slice(0, MAX_ERROR_CHARS) + "..."
+        : header;
+    }
   }
   const text = formatDumpedValue(errorValue);
   return text === "" ? "Unknown error" : text;

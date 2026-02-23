@@ -85,7 +85,7 @@ export function js(opts?: JsMediumOptions): Medium {
       type: "object",
       properties: {
         code: { type: "string", description: "JavaScript code to execute." },
-        timeout_ms: { type: "integer", description: "Optional execution timeout in milliseconds." },
+        timeout_ms: { type: "integer", description: "Execution timeout in milliseconds. Use 0 for no timeout." },
       },
       required: ["code", "timeout_ms"],
       additionalProperties: false,
@@ -174,7 +174,7 @@ export function js(opts?: JsMediumOptions): Medium {
 
         try {
           const result = await sandbox.evalCode(code, {
-            executionTimeoutMs: args.timeout_ms,
+            executionTimeoutMs: args.timeout_ms || undefined,
           });
 
           if (!result.ok) {
@@ -193,7 +193,9 @@ export function js(opts?: JsMediumOptions): Medium {
               error +=
                 " (Note: All sandbox functions are blocking. Do NOT use async/await, async functions, or Promises.)";
             }
-            const errorResult = `Error: ${error}`;
+            const errorResult = error.match(/^[A-Z][A-Za-z]*Error\b/)
+              ? error
+              : `Error: ${error}`;
 
             const errorMsg: ToolMessage = {
               role: "tool",
@@ -267,7 +269,9 @@ export function js(opts?: JsMediumOptions): Medium {
             msg +=
               " (Note: All sandbox functions are blocking. Do NOT use async/await, async functions, or Promises.)";
           }
-          const errorResult = `Error: ${msg}`;
+          const errorResult = msg.match(/^[A-Z][A-Za-z]*Error\b/)
+            ? msg
+            : `Error: ${msg}`;
 
           const errorMsg: ToolMessage = {
             role: "tool",

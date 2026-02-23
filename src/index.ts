@@ -22,6 +22,8 @@ export type { Medium } from "./circle/medium";
 export { js as jsMedium } from "./circle/medium/js";
 export { getJsMediumSandbox } from "./circle/medium/js";
 export type { JsMediumOptions } from "./circle/medium/js";
+export type { CantripMediumConfig } from "./circle/gate/builtin/cantrip";
+export { cantripGates } from "./circle/gate/builtin/cantrip";
 export { jsBrowser as jsBrowserMedium } from "./circle/medium/js_browser";
 export type { JsBrowserMediumOptions } from "./circle/medium/js_browser";
 export { browser as browserMedium } from "./circle/medium/browser";
@@ -45,6 +47,7 @@ export type { GateSchemaFieldOptions } from "./circle/gate/schema";
 // ── Circle / Gate / Builtins ────────────────────────────────────────
 export { done, defaultGates } from "./circle/gate/builtin/done";
 export { safeFsGates, SandboxContext, getSandboxContext } from "./circle/gate/builtin/fs";
+export { repoGates, RepoContext, getRepoContext, getRepoContextDepends } from "./circle/gate/builtin/repo";
 export { JsContext, getJsContext } from "./circle/medium/js/context";
 export { BrowserContext, getBrowserContext } from "./circle/medium/browser/context";
 export { call_entity as call_entity_gate, call_entity_batch as call_entity_batch_gate, currentTurnIdBinding, spawnBinding, progressBinding, depthBinding } from "./circle/gate/builtin/call_entity_gate";

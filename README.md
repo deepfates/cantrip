@@ -1,4 +1,4 @@
-# 📜 cantrip
+# cantrip
 
 A template for building your own agents. Clone it, learn from it, make it yours.
 
@@ -8,7 +8,7 @@ An agent is a loop. You give an LLM a set of tools, ask it a question, and it re
 
 ```ts
 while (true) {
-  const response = await llm.invoke(messages, tools);
+  const response = await crystal.query(messages, tools);
   messages.push(response);
   if (!response.tool_calls) break;
   for (const call of response.tool_calls) {
@@ -17,128 +17,127 @@ while (true) {
 }
 ```
 
-That's the core of it. The LLM decides what to do, the tools let it act, and the loop keeps going until there's nothing left to do.
+That's the core of it. The crystal (LLM) decides what to do, the gates (tools) let it act, and the loop keeps going until there's nothing left to do.
+
+## The vocabulary
+
+Cantrip uses a specific vocabulary. The names come from the spec (SPEC.md).
+
+- **Crystal** — a stateless LLM interface. You give it messages, it returns a response.
+- **Gate** — a typed function the entity can call. Gates cross the boundary between the entity and the outside world.
+- **Circle** — the entity's capability envelope: medium + gates + wards.
+- **Medium** — the substrate the entity works in. A JS sandbox, a browser, or conversation (the default).
+- **Ward** — a constraint on the circle: max turns, require done, max depth.
+- **Cantrip** — the recipe: crystal + call + circle. Cast it on an intent to create an entity.
+- **Call** — the system prompt and configuration. Immutable once constructed.
+- **Intent** — the user's request. Appears as the first user message.
+- **Entity** — the running instance. Created by casting a cantrip.
+- **Loom** — the append-only execution record. A tree of turns.
 
 ## How does it know when to stop?
 
-The loop above stops when the LLM responds without asking for any tools. But sometimes you want the agent to explicitly signal "I'm done, here's the answer." That's what the `done` tool is for:
+The `done` gate signals "I'm done, here's the answer." When the entity calls it, `TaskComplete` is thrown, which breaks the loop and returns the result.
 
 ```ts
-const done = tool(
+const done = gate(
   "Signal that you've finished the task",
-  async ({ result }: { result: string }) => {
-    throw new TaskComplete(result);
+  async ({ message }: { message: string }) => {
+    throw new TaskComplete(message);
   },
-  { name: "done", params: { result: "string" } }
+  { name: "done", params: { message: "string" } }
 );
 ```
 
-When the LLM calls `done`, the tool throws `TaskComplete`, which breaks out of the loop and returns the result. This gives you clean completion semantics instead of trying to guess when the model is finished.
-
-## What are gates?
-
-Gates are functions the agent can call — crossing points between the agent and the outside world. Each gate has a name, a description (so the LLM knows when to use it), and a schema for its parameters.
-
-```ts
-const add = tool(
-  "Add two numbers together",
-  async ({ a, b }: { a: number; b: number }) => a + b,
-  { name: "add", params: { a: "number", b: "number" } }
-);
-```
-
-The gates you give an agent define what it can do. An agent with `bash`, `read`, and `write` gates can interact with your filesystem. An agent with a `browser` gate can surf the web. An agent with just `add` and `done` gates can do arithmetic. The gates are the agent's capabilities.
+In a JS medium, this becomes `submit_answer(result)` — same mechanism, projected into the sandbox.
 
 ## Get started
-
-This is a GitHub template. Clone it to start your own project:
 
 ```bash
 gh repo create my-agent --template deepfates/cantrip
 cd my-agent
 bun install
-bun run examples/02_quick_start.ts
+bun run examples/04_cantrip.ts
 ```
 
 ## Learn by example
 
 The examples build on each other. Work through them in order.
 
-### The basics
+### The ingredients
 
-**[`01_core_loop.ts`](examples/01_core_loop.ts)** — The loop with a fake LLM that returns hardcoded responses. No API keys needed. Start here to see how the pieces fit together.
+**[`01_crystal.ts`](examples/01_crystal.ts)** — A crystal wraps an LLM. Messages in, response out. The simplest building block.
 
-**[`02_quick_start.ts`](examples/02_quick_start.ts)** — A real agent using Claude. Has an `add` tool and a `done` tool. Your first working agent.
+**[`02_gate.ts`](examples/02_gate.ts)** — A gate is a typed function the entity can call. Gates cross into the outside world.
 
-**[`03_providers.ts`](examples/03_providers.ts)** — Shows how to swap between Anthropic, OpenAI, Google, OpenRouter, and local models.
+**[`03_circle.ts`](examples/03_circle.ts)** — A circle = medium + gates + wards. Must have a done gate (CIRCLE-1) and at least one ward (CIRCLE-2).
 
-**[`04_dependency_injection.ts`](examples/04_dependency_injection.ts)** — How to give tools access to databases, API clients, or test mocks.
+**[`04_cantrip.ts`](examples/04_cantrip.ts)** — Crystal + call + circle = cantrip. Cast it on an intent, an entity arises. The full recipe.
 
-### Builtin gate modules
+**[`05_ward.ts`](examples/05_ward.ts)** — Wards constrain the circle. Multiple wards compose: most restrictive wins.
 
-**[`05_fs_agent.ts`](examples/05_fs_agent.ts)** — A coding agent with sandboxed filesystem gates (`read`, `write`, `edit`, `glob`, `bash`).
+**[`06_providers.ts`](examples/06_providers.ts)** — Same cantrip, different crystal. Swap the crystal to use any LLM provider.
 
-**[`06_js_agent.ts`](examples/06_js_agent.ts)** — A computational agent with two JavaScript gates: `js` (persistent REPL, no I/O) and `js_run` (fresh sandbox with fetch and virtual fs).
+### Mediums
 
-**[`07_browser_agent.ts`](examples/07_browser_agent.ts)** — A web browsing agent with a persistent headless browser (via Taiko).
+**[`07_conversation.ts`](examples/07_conversation.ts)** — No medium specified = conversation (tool-calling baseline). The crystal sees gates as tool calls.
 
-### Putting it together
+**[`08_js_medium.ts`](examples/08_js_medium.ts)** — The entity works inside a QuickJS sandbox. Gates are projected as host functions. ONE medium per circle.
 
-**[`08_full_agent.ts`](examples/08_full_agent.ts)** — Combines filesystem, JavaScript, and browser gates into one agent. Use this as a starting point for your own agent.
+**[`09_browser_medium.ts`](examples/09_browser_medium.ts)** — The entity works inside a Taiko browser session. It writes Taiko code.
 
-### Advanced patterns
+### Composition and memory
 
-**[`09_rlm.ts`](examples/09_rlm.ts)** — Recursive Language Model. Handle massive contexts (10M+ tokens) by keeping data in a sandbox instead of the prompt. The LLM writes code to explore it and can spawn sub-agents to analyze chunks.
+**[`10_composition.ts`](examples/10_composition.ts)** — Nested entities. The JS medium puts data outside the prompt; the entity explores via code.
 
-**[`10_rlm_chat.ts`](examples/10_rlm_chat.ts)** — Interactive RLM REPL. Load a file as context and query it conversationally.
+**[`11_folding.ts`](examples/11_folding.ts)** — Compress older turns to keep the context window small. Original turns preserved in the loom.
 
-**[`11_rlm_memory.ts`](examples/11_rlm_memory.ts)** — RLM with auto-managed conversation history. Older turns slide into searchable context while keeping the active prompt window small.
+### Full agents
 
-**[`12_acp_agent.ts`](examples/12_acp_agent.ts)** — Basic agent served over [Agent Client Protocol](https://github.com/agentclientprotocol/spec). Connect from any ACP-compatible editor (VS Code, Claude Desktop, etc.).
+**[`12_full_agent.ts`](examples/12_full_agent.ts)** — JS medium + filesystem gates. The code sandbox with host functions crossing into it.
 
-**[`13_acp_rlm_memory.ts`](examples/13_acp_rlm_memory.ts)** — RLM memory agent over ACP. Combines sliding window memory management with editor integration.
+**[`13_acp.ts`](examples/13_acp.ts)** — Agent Control Protocol adapter for editor integration (VS Code, Claude Desktop).
 
-**[`14_rlm_browser.ts`](examples/14_rlm_browser.ts)** — RLM with browser automation. Interactive REPL where the agent can browse the web and delegate to sub-agents.
+**[`14_recursive.ts`](examples/14_recursive.ts)** — Depth-limited self-spawning. Parent delegates subtasks to child entities via call_entity.
 
-**[`15_acp_rlm_browser.ts`](examples/15_acp_rlm_browser.ts)** — RLM browser agent over ACP. The most powerful setup: browser automation, sub-agent delegation, optional memory management, all accessible from your editor. Use `--headed` for visible browser, `--memory N` for sliding window.
+**[`15_research_entity.ts`](examples/15_research_entity.ts)** — The full-package capstone. ACP + jsBrowser medium + recursive children + memory management.
 
-## Builtin Gates
-
-While you can write your own gates, Cantrip comes with a few "batteries-included" modules:
-
-**FileSystem (`src/circle/gate/builtin/fs`)** — Lightly sandboxed access to the filesystem. Includes `read` (with pagination), `write` (with size limits), `edit`, `glob`, and `bash`.
-
-**Browser (`src/circle/gate/builtin/browser`)** — Headless browser automation built on Taiko. Persists session state across gate calls.
-
-**JavaScript Sandbox (`src/circle/gate/builtin/js`)** — Secure WASM-based JavaScript runtime (QuickJS). Perfect for agents that need to perform calculations or data processing without risking the host machine.
-
-**RLM / call_agent (`src/circle/gate/builtin/call_agent`)** — Recursive Language Model pattern. Offload massive contexts to a JavaScript sandbox and let the LLM explore them programmatically. Supports recursive sub-agents for divide-and-conquer on huge datasets. Based on [Zhang et al. 2026](https://arxiv.org/abs/2512.24601).
+**[`16_familiar.ts`](examples/16_familiar.ts)** — The Familiar. A coordinator entity that constructs and casts child cantrips from code. Repo observation + delegation via cantrip construction.
 
 ## Directory structure
 
 ```
 src/
-├── crystal/          # The model — stateless invoke() interface + providers + tokens
-├── circle/           # The environment — gates (tools) + wards (limits)
-│   ├── circle.ts     # Circle = {gates, wards}
-│   ├── ward.ts       # WardConfig (max_turns, max_tokens, max_depth)
-│   └── gate/         # Gate definitions + builtins (fs, js, browser, call_agent)
-├── cantrip/          # The recipe — Cantrip, Call, and Intent types
+├── crystal/          # The model — stateless query() interface + providers + tokens
+├── circle/           # The environment — gates + wards + mediums
+│   ├── circle.ts     # Circle = {medium, gates, wards}
+│   ├── ward.ts       # Ward (max_turns, require_done, max_depth)
+│   ├── medium.ts     # Medium interface
+│   ├── medium/       # Medium implementations (js, browser, bash)
+│   └── gate/         # Gate definitions + builtins (done, fs, repo, call_entity)
+├── cantrip/          # The recipe — cantrip() and Entity
 ├── loom/             # The execution record — append-only turn tree, threads, folding
-└── entity/           # The running instance — Agent, CoreAgent, REPL, ACP adapter
+└── entity/           # Runtime support — events, errors, REPL, ACP adapter
 ```
 
-## Optional features
+## Builtin gates
 
-The `Agent` class includes some features you can turn on or off:
+**done** — Signals task completion. Required in every circle (CIRCLE-1). In a JS medium, projected as `submit_answer()`.
 
-**Retries** — Automatically retry when the LLM returns rate limit errors or transient failures. On by default.
+**Filesystem (`src/circle/gate/builtin/fs`)** — Sandboxed access: `read`, `write`, `edit`, `glob`, `bash`.
 
-**Ephemerals** — Some gates produce large outputs (like screenshots) that eat up context. Mark a gate as `ephemeral: 3` to keep only its last 3 results in the conversation history.
+**Repo (`src/circle/gate/builtin/repo`)** — Read-only repository introspection: `repo_files`, `repo_read`, `repo_git_log`, `repo_git_status`, `repo_git_diff`. Path-jailed to repo root.
 
-**Folding** — When the conversation gets too long, compress older turns non-destructively using the `fold()` API. Configure with `folding: { threshold_ratio: 0.8 }`. The original turns are preserved in the loom; only the active thread is compressed.
+**call_entity / call_entity_batch** — Delegate to child entities. Depth-limited recursive spawning.
 
-If you don't need these, use `CoreAgent` instead, or disable them in `Agent`.
+## Mediums
+
+**JS (`src/circle/medium/js.ts`)** — QuickJS WASM sandbox. Gates projected as host functions. The entity writes JavaScript. Supports cantrip construction when configured with `cantrip: { crystals, mediums, gates }`.
+
+**Browser (`src/circle/medium/browser.ts`)** — Headless browser via Taiko. The entity writes Taiko code.
+
+**Bash (`src/circle/medium/bash.ts`)** — Shell execution medium.
+
+**Conversation (default)** — No medium. The crystal sees gates as tool calls in natural language.
 
 ## Providers
 
@@ -152,57 +151,32 @@ import {
 } from "cantrip/crystal";
 ```
 
-- **ChatLMStudio** — points at the LM Studio local OpenAI-compatible server (`http://localhost:1234/v1` by default) and doesn’t require an API key unless you provide one via `LM_STUDIO_API_KEY`.
-- **ChatOpenRouter** — speaks to `https://openrouter.ai/api/v1`, automatically adding the attribution headers OpenRouter expects (`HTTP-Referer`, `X-Title`) from env vars (`OPENROUTER_HTTP_REFERER`, `OPENROUTER_TITLE`). Set `OPENROUTER_API_KEY` or pass `api_key`; you can disable the attribution headers with `attribution_headers: false` if you manage them yourself.
-- **ChatOpenAI** (and friends) merge any custom `headers` you pass; `require_api_key` controls whether missing keys throw (default `true`). Passing `api_key: null` still falls back to the relevant env var for compatibility.
+- **ChatLMStudio** — Local OpenAI-compatible server (`http://localhost:1234/v1` by default).
+- **ChatOpenRouter** — OpenRouter API with attribution headers.
+- All providers implement the `BaseChatModel` interface: `query(messages, tools?, tool_choice?)`.
 
 ## Agent Client Protocol (ACP)
 
-Cantrip can serve agents over [Agent Client Protocol](https://github.com/agentclientprotocol/spec), making them accessible from any ACP-compatible editor (VS Code with the ACP extension, Claude Desktop, etc.).
-
-### Quick setup
-
-1. Create an ACP agent script (see examples 12, 13, or 15)
-2. Configure your editor to launch it
-
-**For VS Code with ACP extension**, add to `.vscode/settings.json`:
+Cantrip can serve agents over [Agent Client Protocol](https://github.com/agentclientprotocol/spec) for editor integration.
 
 ```json
 {
   "acp.agents": [
     {
-      "name": "cantrip-browser",
+      "name": "cantrip",
       "command": "bun",
-      "args": ["run", "examples/15_acp_rlm_browser.ts", "--headed"],
+      "args": ["run", "examples/13_acp.ts"],
       "cwd": "${workspaceFolder}"
     }
   ]
 }
 ```
 
-**For Claude Desktop**, add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "agentProtocol": {
-    "agents": [
-      {
-        "name": "cantrip-browser",
-        "command": "bun",
-        "args": ["run", "/path/to/cantrip/examples/15_acp_rlm_browser.ts"]
-      }
-    ]
-  }
-}
-```
-
-The agent will start when you send it a message and will have access to your working directory. For browser agents, add `--headed` to see the browser window. For memory-managed agents, add `--memory 5` to keep only the last 5 turns in the active prompt.
-
 ## The philosophy
 
 Most agent frameworks add layers between you and the model: planning systems, verification steps, output parsers, state machines. The idea behind cantrip is that you probably don't need most of that. LLMs already know how to reason and use tools. Your job is to give them good tools and get out of the way.
 
-Start simple. Add complexity when you feel the pain, not before. If you want the full argument, read [The Bitter Lesson of Agent Frameworks](https://browser-use.com/posts/bitter-lesson-agent-frameworks).
+Start simple. Add complexity when you feel the pain, not before.
 
 ## Make it yours
 

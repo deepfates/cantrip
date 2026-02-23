@@ -355,6 +355,69 @@ describe("cantrip", () => {
     expect(entity2UserMessages[0].content).toBe("entity2 message");
   });
 
+  test("cast() awaits async circle dispose (medium cleanup)", async () => {
+    // The bug: entity.dispose() was sync, so async circle.dispose() (from mediums)
+    // returned a Promise that was never awaited. This test verifies that by the time
+    // cast() returns, the medium's async dispose has fully completed.
+    let disposeFinished = false;
+
+    const mockMedium = {
+      async init() {},
+      crystalView() {
+        return {
+          tool_definitions: [{
+            name: "js",
+            description: "run code",
+            parameters: { type: "object", properties: { code: { type: "string" } }, required: ["code"] },
+          }],
+          tool_choice: { type: "tool" as const, name: "js" },
+        };
+      },
+      async execute() {
+        return {
+          messages: [{
+            role: "tool" as const,
+            tool_call_id: "call_1",
+            tool_name: "js",
+            content: "Task completed: done",
+            is_error: false,
+          }],
+          gate_calls: [],
+          done: "done",
+        };
+      },
+      async dispose() {
+        await new Promise(resolve => setTimeout(resolve, 10));
+        disposeFinished = true;
+      },
+    };
+
+    const crystal = makeLlm([
+      () => ({
+        content: null,
+        tool_calls: [{
+          id: "call_1",
+          type: "function",
+          function: { name: "js", arguments: JSON.stringify({ code: "submit_answer('done')" }) },
+        }],
+      }),
+    ]);
+
+    const circle = Circle({
+      medium: mockMedium as any,
+      wards: [ward],
+    });
+
+    const spell = cantrip({
+      crystal: crystal as any,
+      call: { system_prompt: "test" },
+      circle,
+    });
+
+    await spell.cast("test intent");
+    expect(disposeFinished).toBe(true);
+  });
+
   test("entity exposes spec parts (crystal, call, circle)", () => {
     const crystal = makeLlm([]);
     const spell = cantrip({
