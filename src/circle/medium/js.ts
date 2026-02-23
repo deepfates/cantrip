@@ -193,7 +193,9 @@ export function js(opts?: JsMediumOptions): Medium {
               error +=
                 " (Note: All sandbox functions are blocking. Do NOT use async/await, async functions, or Promises.)";
             }
-            const errorResult = `Error: ${error}`;
+            const errorResult = error.match(/^[A-Z][A-Za-z]*Error\b/)
+              ? error
+              : `Error: ${error}`;
 
             const errorMsg: ToolMessage = {
               role: "tool",
@@ -267,7 +269,9 @@ export function js(opts?: JsMediumOptions): Medium {
             msg +=
               " (Note: All sandbox functions are blocking. Do NOT use async/await, async functions, or Promises.)";
           }
-          const errorResult = `Error: ${msg}`;
+          const errorResult = msg.match(/^[A-Z][A-Za-z]*Error\b/)
+            ? msg
+            : `Error: ${msg}`;
 
           const errorMsg: ToolMessage = {
             role: "tool",

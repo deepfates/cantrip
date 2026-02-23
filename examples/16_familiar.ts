@@ -49,7 +49,10 @@ const memoryWindow = memoryIdx >= 0 ? parseInt(args[memoryIdx + 1], 10) : 0;
 // Positional arg = single-shot intent (skip flags and their values)
 let positionalArg: string | undefined;
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === "--memory") { i++; continue; }
+  if (args[i] === "--memory") {
+    i++;
+    continue;
+  }
   if (args[i].startsWith("--")) continue;
   positionalArg = args[i];
   break;
@@ -57,7 +60,10 @@ for (let i = 0; i < args.length; i++) {
 
 // ── Persistent loom ──────────────────────────────────────────────────
 
-function createLoom(repoRoot: string, ephemeral = false): { loom: Loom; loomPath: string | null } {
+function createLoom(
+  repoRoot: string,
+  ephemeral = false,
+): { loom: Loom; loomPath: string | null } {
   if (ephemeral) {
     return { loom: new Loom(new MemoryStorage()), loomPath: null };
   }
@@ -130,26 +136,14 @@ interact with the world:
 The crystal field takes any OpenRouter model ID. Pick the right model for the task.
 Some options:
 
-  anthropic/claude-sonnet-4.6
-  anthropic/claude-sonnet-4.5
-  anthropic/claude-opus-4.5
-  openai/gpt-5
-  openai/gpt-5.2
-  google/gemini-3.1-pro-preview
-  google/gemini-3-pro-preview
-  x-ai/grok-4
+  anthropic/claude-haiku-4.5
+  openai/gpt-5-mini
+  google/gemini-3-flash-preview
   x-ai/grok-4.1-fast
   deepseek/deepseek-v3.2
-  meta-llama/llama-3.1-405b
   moonshotai/kimi-k2.5
-  moonshotai/kimi-k2-thinking
   minimax/minimax-m2.5
-  minimax/minimax-m2.1
   z-ai/glm-5
-  z-ai/glm-4.7
-  qwen/qwen3.5-plus-02-15
-  allenai/olmo-3.1-32b-instruct
-  arcee-ai/trinity-large-preview:free
 
 Available mediums: "bash" (shell commands), "js" (another JS runtime), "browser" (headless Chrome).
 Available gate sets: "done" (lets the child signal completion).
@@ -170,20 +164,26 @@ data pipelines — that's the whole point of working in a code medium.
 
 Children return truncated strings (max 10k chars). If you need detail, ask for it
 specifically in your intent. This is by design — you coordinate, they execute.
-${loomPath ? `
+${
+  loomPath
+    ? `
 ## Memory
 
 Your conversation history is persisted at ${loomPath} (JSONL, one turn per line).
 You can read it via repo_read() to review what happened in past sessions. This is
 your long-term memory — use it to maintain continuity across conversations.
-` : ""}
+`
+    : ""
+}
 Use submit_answer() when you have a complete answer for the user.`;
 
 // ── Main ─────────────────────────────────────────────────────────────
 
 export async function main(intent?: string) {
   console.log("=== Example 16: The Familiar ===");
-  console.log("A long-running coordinator that delegates to child cantrips via code.\n");
+  console.log(
+    "A long-running coordinator that delegates to child cantrips via code.\n",
+  );
 
   // Resolve intent: explicit param > positional CLI arg > null (REPL)
   const task = intent ?? positionalArg;
@@ -191,7 +191,8 @@ export async function main(intent?: string) {
   // ── ACP mode ─────────────────────────────────────────────────────
   if (useAcp) {
     console.log("Mode: ACP server (editors connect over stdio)");
-    if (memoryWindow > 0) console.log(`Memory window: ${memoryWindow} messages`);
+    if (memoryWindow > 0)
+      console.log(`Memory window: ${memoryWindow} messages`);
 
     serveCantripACP(async ({ params, sessionId, connection }) => {
       const repoRoot = params.cwd ?? process.cwd();
@@ -201,8 +202,10 @@ export async function main(intent?: string) {
 
       const cantripConfig: CantripMediumConfig = {
         mediums: {
-          bash: (opts?: { cwd?: string }) => bash({ cwd: opts?.cwd ?? repoRoot }),
-          js: (opts?: { state?: Record<string, unknown> }) => js({ state: opts?.state }),
+          bash: (opts?: { cwd?: string }) =>
+            bash({ cwd: opts?.cwd ?? repoRoot }),
+          js: (opts?: { state?: Record<string, unknown> }) =>
+            js({ state: opts?.state }),
           browser: () => browser({ headless: true, profile: "full" }),
         },
         gates: { done: [done] },
@@ -210,7 +213,8 @@ export async function main(intent?: string) {
         loom,
       };
 
-      const { gates: cGates, overrides: cOverrides } = cantripGates(cantripConfig);
+      const { gates: cGates, overrides: cOverrides } =
+        cantripGates(cantripConfig);
       const repoCtx = new RepoContext(repoRoot);
 
       // Progress → ACP plan updates (child cantrip casts appear as plan entries)
@@ -277,7 +281,8 @@ export async function main(intent?: string) {
   const cantripConfig: CantripMediumConfig = {
     mediums: {
       bash: (opts?: { cwd?: string }) => bash({ cwd: opts?.cwd ?? repoRoot }),
-      js: (opts?: { state?: Record<string, unknown> }) => js({ state: opts?.state }),
+      js: (opts?: { state?: Record<string, unknown> }) =>
+        js({ state: opts?.state }),
       browser: () => browser({ headless: true, profile: "full" }),
     },
     gates: { done: [done] },
@@ -325,7 +330,8 @@ export async function main(intent?: string) {
   const entity = spell.invoke();
   await runRepl({
     entity,
-    greeting: "Familiar ready. Observes the repo, delegates via child cantrips.\nType your intents. /quit to exit.",
+    greeting:
+      "Familiar ready. Observes the repo, delegates via child cantrips.\nType your intents. /quit to exit.",
     onTurn:
       memoryWindow > 0
         ? () => {
