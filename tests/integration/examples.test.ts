@@ -98,12 +98,24 @@ describe("examples", () => {
     expect(typeof mod.main).toBe("function");
   });
 
+  test("16_familiar: exports callable main", async () => {
+    const mod = await import("../../examples/16_familiar");
+    expect(typeof mod.main).toBe("function");
+  });
+
+  test.skipIf(!hasAnthropicKey)("16_familiar: coordinator delegates via child cantrips", async () => {
+    const { main } = await import("../../examples/16_familiar");
+    const result = await main("What are the 3 most recent commits in this repo? Summarize each in one sentence.");
+    expect(typeof result).toBe("string");
+    expect(result!.length).toBeGreaterThan(0);
+  }, 120_000);
+
   // ── LLM examples (OpenAI): skip without API key ────────────────
 
-  test.skipIf(!hasOpenAIKey)("10_composition: finds data in JS sandbox", async () => {
+  test.skipIf(!hasOpenAIKey)("10_composition: parent delegates to children via call_entity_batch", async () => {
     const { main } = await import("../../examples/10_composition");
     const result = await main();
     expect(typeof result).toBe("string");
     expect(result.length).toBeGreaterThan(0);
-  }, 60_000);
+  }, 120_000);
 });

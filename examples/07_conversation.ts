@@ -24,10 +24,7 @@ export async function main() {
     "Gates cross INTO the circle from outside — filesystem access here.\n",
   );
 
-  const crystal = new ChatAnthropic({
-    model: "claude-3-opus-20240229",
-    max_tokens: 2000,
-  });
+  const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
   const ctx = await SandboxContext.create();
 
   const circle = Circle({

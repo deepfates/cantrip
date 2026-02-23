@@ -313,6 +313,55 @@ describe("medium capabilityDocs", () => {
     expect(docs).not.toContain("goto(url)");
     expect(docs).not.toContain("click(selector)");
   });
+
+  test("cantripGates produce CANTRIP CONSTRUCTION docs via buildCapabilityDocs", () => {
+    const { cantripGates } = require("../../../src/circle/gate/builtin/cantrip");
+    const { buildCapabilityDocs } = require("../../../src/circle/circle");
+    const { done } = require("../../../src/circle/gate/builtin/done");
+
+    const config = {
+      crystals: { sonnet: { model: "mock", provider: "mock", name: "mock", query: async () => ({}) } },
+      mediums: { bash: () => ({}) },
+      gates: { done: [done] },
+      default_wards: [{ max_turns: 5 }],
+    };
+    const { gates } = cantripGates(config);
+    const docs = buildCapabilityDocs(gates);
+
+    expect(docs).toContain("CANTRIP CONSTRUCTION");
+    expect(docs).toContain("cantrip");
+    expect(docs).toContain("cast");
+    expect(docs).toContain("dispose");
+  });
+
+  test("plain JS medium capabilityDocs does NOT include cantrip section", () => {
+    const { js } = require("../../../src/circle/medium/js");
+    const medium = js({ state: { data: [1, 2, 3] } });
+    const docs = medium.capabilityDocs!();
+
+    expect(docs).toContain("SANDBOX PHYSICS");
+    expect(docs).not.toContain("CANTRIP CONSTRUCTION");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2c. JS medium schema — OpenAI strict compatibility
+// ---------------------------------------------------------------------------
+describe("JS medium schema", () => {
+  test("all properties are in required (OpenAI strict schema compliance)", () => {
+    const { js } = require("../../../src/circle/medium/js");
+    const medium = js();
+    const { tool_definitions } = medium.crystalView();
+    const jsTool = tool_definitions.find((t: any) => t.name === "js");
+    expect(jsTool).toBeDefined();
+    expect(jsTool!.parameters.required).toContain("code");
+    expect(jsTool!.parameters.required).toContain("timeout_ms");
+    // Every property key must be in required when additionalProperties: false
+    const propKeys = Object.keys(jsTool!.parameters.properties);
+    for (const key of propKeys) {
+      expect(jsTool!.parameters.required).toContain(key);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
