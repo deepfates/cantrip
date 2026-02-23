@@ -1,4 +1,5 @@
 import { ChatOpenAILike, type ChatOpenAILikeOptions } from "../openai/like";
+import type { GateDefinition, ToolChoice } from "../../crystal";
 
 export type ChatOpenRouterOptions = ChatOpenAILikeOptions & {
   /**
@@ -16,7 +17,13 @@ export type ChatOpenRouterOptions = ChatOpenAILikeOptions & {
 };
 
 /**
- * OpenRouter exposes an OpenAI-compatible API with a few header conventions.
+ * OpenRouter exposes an OpenAI-compatible API that routes to many providers.
+ *
+ * Unlike direct OpenAI, we must avoid provider-specific fields that break
+ * when OpenRouter routes to non-OpenAI backends (Anthropic, Google, etc.):
+ * - No `parallel_tool_calls` (OpenAI-only; Anthropic rejects it)
+ * - No `strict` on tool functions (OpenAI-only)
+ * - tool_choice uses OpenAI format (OpenRouter translates for us)
  */
 export class ChatOpenRouter extends ChatOpenAILike {
   constructor(options: ChatOpenRouterOptions) {
@@ -43,5 +50,29 @@ export class ChatOpenRouter extends ChatOpenAILike {
       headers: { ...(options.headers ?? {}), ...extraHeaders },
       require_api_key: options.require_api_key ?? true,
     });
+  }
+
+  /** Strip `strict` from tool functions — not all providers support it. */
+  protected override serializeTools(
+    tools: GateDefinition[],
+  ): Array<Record<string, unknown>> {
+    return tools.map((tool) => ({
+      type: "function",
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      },
+    }));
+  }
+
+  /** Don't send `parallel_tool_calls` — it's OpenAI-specific and breaks Anthropic routing. */
+  protected override applyToolParams(
+    modelParams: Record<string, unknown>,
+    tool_choice: ToolChoice,
+    tools: GateDefinition[],
+  ): void {
+    const mappedChoice = this.getToolChoice(tool_choice, tools);
+    if (mappedChoice !== null) modelParams.tool_choice = mappedChoice;
   }
 }

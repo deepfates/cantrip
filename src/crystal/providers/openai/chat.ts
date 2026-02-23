@@ -155,7 +155,7 @@ export class ChatOpenAI implements BaseChatModel {
     return copy;
   }
 
-  private serializeTools(
+  protected serializeTools(
     tools: GateDefinition[],
   ): Array<Record<string, unknown>> {
     return tools.map((tool) => {
@@ -174,7 +174,17 @@ export class ChatOpenAI implements BaseChatModel {
     });
   }
 
-  private getToolChoice(
+  protected applyToolParams(
+    modelParams: Record<string, unknown>,
+    tool_choice: ToolChoice,
+    tools: GateDefinition[],
+  ): void {
+    modelParams.parallel_tool_calls = this.parallel_tool_calls;
+    const mappedChoice = this.getToolChoice(tool_choice, tools);
+    if (mappedChoice !== null) modelParams.tool_choice = mappedChoice;
+  }
+
+  protected getToolChoice(
     tool_choice: ToolChoice | null | undefined,
     tools: GateDefinition[] | null | undefined,
   ): unknown {
@@ -265,9 +275,7 @@ export class ChatOpenAI implements BaseChatModel {
 
     if (tools && tools.length) {
       modelParams.tools = this.serializeTools(tools);
-      modelParams.parallel_tool_calls = this.parallel_tool_calls;
-      const mappedChoice = this.getToolChoice(tool_choice ?? "auto", tools);
-      if (mappedChoice !== null) modelParams.tool_choice = mappedChoice;
+      this.applyToolParams(modelParams, tool_choice ?? "auto", tools);
     }
 
     const body = {
