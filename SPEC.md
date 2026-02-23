@@ -67,7 +67,11 @@ This rule is deliberately permissive. A circle that stuffs every prior turn into
 
 Every loop ends. The question is how, and the answer matters more than you might expect.
 
+<<<<<<< HEAD
 **Terminated** means the entity called the `done` gate — a special exit point in the environment that signals "I believe the task is complete." The entity chose to stop. It had the opportunity to finish its work and took it. In a code circle, the done gate is projected into the medium as `submit_answer` — the entity calls `submit_answer(result)` in code, and the medium translates this into the done gate on the entity's behalf.
+=======
+**Terminated** means the entity called the `done` gate — a special exit point in the environment that signals "I believe the task is complete." The entity chose to stop. It had the opportunity to finish its work and took it.
+>>>>>>> ea346797138abe62c763d039ec2d5f726440e18a
 
 **Truncated** means a **ward** cut the entity off. A ward is a restriction on the loop — a maximum number of turns, a timeout, a resource limit. The environment chose to stop. The entity was interrupted, not finished. It might have had more to do.
 
@@ -127,6 +131,7 @@ Unless you recorded it. But that's a later chapter.
 
 > **ENTITY-4**: When an entity terminates or is truncated, its thread persists in the loom. The entity ceases but its record endures.
 
+<<<<<<< HEAD
 Invoking a cantrip produces a persistent entity. The initial intent starts the loop. When the loop completes — done or truncated — the entity persists. You can provide another intent as a new cast, and the loop resumes with accumulated state. The entity remembers what it did. A chat session is an invoked entity. A REPL session is an invoked entity.
 
 Casting is a convenience: invoke, run one intent, return the result, discard the entity. Most of the examples in this document describe casting, because most tasks are one-shot. But the underlying mechanism is always invocation — casting is just invocation with automatic cleanup.
@@ -152,6 +157,11 @@ Four verbs describe what happens in this system, and they operate at four distin
 These nest cleanly: an invocation contains one or more casts, a cast contains one or more turns, a turn contains one or more queries. The nesting is strict — a query never spans turns, a turn never spans casts. The vocabulary in this document uses all four consistently.
 
 ### 1.6 The RL correspondence
+=======
+The crystal, the call, and the circle each have their own chapters. The entity does not, because the entity is not a component you configure. It is what emerges from the components you did configure, once the loop begins.
+
+### 1.5 The RL correspondence
+>>>>>>> ea346797138abe62c763d039ec2d5f726440e18a
 
 If you know reinforcement learning, this table shows how the vocabulary maps. If you don't, skip ahead — the spec teaches everything you need without it.
 
@@ -168,12 +178,17 @@ The mapping is structural, not formal. Cantrip's terms parallel RL concepts in t
 | Terminated | `done` gate called | Entity chose to stop |
 | Truncated | Ward triggered | Environment chose to stop |
 | Trajectory | Thread | One root-to-leaf path through the loom |
+<<<<<<< HEAD
 | Episode | Cast | One cast: intent in, result out. An invoked entity may span multiple casts (episodes). |
+=======
+| Episode | Entity lifetime | First turn to termination/truncation |
+>>>>>>> ea346797138abe62c763d039ec2d5f726440e18a
 | Replay buffer | Loom | Richer: the tree structure provides the trajectory data comparative RL methods need |
 | Environment reset | New entity, clean circle | Forking is NOT a reset — it continues from prior state |
 
 The loom's relationship to modern RL methods is developed fully in Chapter 6.
 
+<<<<<<< HEAD
 ### 1.7 A complete example
 
 All the pieces in one place. Here's a cantrip lifecycle, end to end — a file-processing task: count the words in every `.txt` file in a directory and report the total.
@@ -187,6 +202,21 @@ All the pieces in one place. Here's a cantrip lifecycle, end to end — a file-p
 const files = list_dir("/data");
 ```
 The circle executes the gate call. Observation: `GateCallRecord { gate_name: "list_dir", arguments: '{"path":"/data"}', result: '["a.txt", "b.txt", "c.txt"]', is_error: false }`.
+=======
+### 1.6 A complete example
+
+All the pieces in one place. Here's a cantrip lifecycle, end to end — a file-processing task: count the words in every `.txt` file in a directory and report the total.
+
+**The cantrip.** Crystal: any model that supports tool calling. Call: a system prompt ("You are a file-processing assistant. Use code to solve tasks efficiently."), default hyperparameters, and three gate definitions: `read(path) -> string`, `list_dir(path) -> string[]`, and `done(answer)`. Circle: a code sandbox with those three gates, a ward of max 10 turns, and `require_done: true`. The circle's filesystem root is `/data`.
+
+**The intent.** "Count the total number of words across all .txt files in /data and return the count."
+
+**Turn 1.** The entity is cast. It receives the call and intent. It produces an utterance:
+```
+const files = list_dir("/data");
+```
+The circle executes the gate call. Observation: `GateResult { tool_call_id: "tc_1", gate: "list_dir", ok: true, result: ["a.txt", "b.txt", "c.txt"] }`.
+>>>>>>> ea346797138abe62c763d039ec2d5f726440e18a
 
 **Turn 2.** The entity sees three files. It reads all of them:
 ```
@@ -209,6 +239,7 @@ Observation: `GateCallRecord { gate_name: "done", arguments: '{"answer":1547}', 
 
 That's the whole vocabulary applied to a simple task: a crystal in a circle, shaped by a call, pursuing an intent, producing turns recorded in a loom. The entity appeared at turn 1 and vanished at turn 3. The thread persists.
 
+<<<<<<< HEAD
 **Error as steering.** Now consider what happens when things go wrong. Same cantrip, but `/data/b.txt` does not exist.
 
 **Turn 2.** The entity tries to read all three files:
@@ -230,6 +261,8 @@ done({ total, note: "b.txt not found, counted 2 of 3 files" });
 
 The error did not stop the entity. It steered the entity. The observation carried information — this file does not exist — and the entity used that information to adjust its strategy in the next turn. This is the loop's learning mechanism in miniature: act, observe the consequences (including failures), adapt.
 
+=======
+>>>>>>> ea346797138abe62c763d039ec2d5f726440e18a
 ---
 
 ## Chapter 2: The Crystal
@@ -497,6 +530,7 @@ In a code circle, there is a more interesting option. The entity can access prio
 
 Both designs are valid. A circle that presents full message history is conformant. A circle that stores state as program variables the entity accesses through code is also conformant. The spec does not mandate one approach over the other. What matters is that the call and intent are always present, and that the entity can perceive the consequences of its prior actions — however the circle chooses to make those consequences available.
 
+<<<<<<< HEAD
 #### The three message layers
 
 Every query the circle assembles for the crystal has three layers, in this order:
@@ -545,6 +579,8 @@ This principle addresses a specific, well-documented problem: larger context deg
 
 The specific limits are implementation details. The principle is architectural: the medium decides what the entity sees, and showing less forces the entity to do more through code.
 
+=======
+>>>>>>> ea346797138abe62c763d039ec2d5f726440e18a
 ### 4.7 Circle state
 
 The circle maintains state between turns. This is what makes the loop a loop rather than a series of disconnected invocations. The state comes in two forms.
@@ -618,6 +654,7 @@ If the child fails — throws an error rather than calling `done` — the error 
 
 > **COMP-8**: If a child entity fails (throws an error, not `done`), the error MUST be returned to the parent as the gate result. The parent MUST NOT be terminated by a child's failure.
 
+<<<<<<< HEAD
 > **COMP-9**: When a parent entity is terminated or truncated, active child entities SHOULD be truncated with reason `parent_terminated`. Child turns up to the cancellation point are preserved in the loom. The child's truncation is recorded as any other truncation — the loom distinguishes it only by the reason field.
 
 ### 5.2 Batch composition
@@ -626,6 +663,16 @@ Sometimes one child is not enough. `call_entity_batch` spawns multiple children 
 
 ```
 results = call_entity_batch([
+=======
+> **COMP-9**: When a parent entity is terminated or truncated, all active child entities MUST be truncated with reason `parent_terminated`. Child turns up to the cancellation point are preserved in the loom. The child's truncation is recorded as any other truncation — the loom distinguishes it only by the reason field.
+
+### 5.2 Batch composition
+
+Sometimes one child is not enough. `call_agent_batch` spawns multiple children in parallel:
+
+```
+results = call_agent_batch([
+>>>>>>> ea346797138abe62c763d039ec2d5f726440e18a
   { intent: "Summarize chunk 1", context: chunk1 },
   { intent: "Summarize chunk 2", context: chunk2 },
   { intent: "Summarize chunk 3", context: chunk3 },
@@ -643,7 +690,11 @@ Here is where the code circle earns its keep. The power of composition in a code
 ```
 // Inside the entity's code (in the sandbox):
 const chunks = splitIntoChunks(context.documents, 100);
+<<<<<<< HEAD
 const summaries = call_entity_batch(
+=======
+const summaries = call_agent_batch(
+>>>>>>> ea346797138abe62c763d039ec2d5f726440e18a
   chunks.map(chunk => ({
     intent: "Extract key findings",
     context: { documents: chunk }
@@ -993,17 +1044,28 @@ Every term in this document was defined in context as it appeared. This table is
 | 10 | **Thread** | trajectory, trace | One root-to-leaf path through the loom. A trajectory. |
 | 11 | **Loom** | execution tree, replay buffer | The tree of all turns across all runs. Append-only. |
 
+<<<<<<< HEAD
 The eleven terms have an internal structure worth noticing. Three are primaries: crystal, call, circle. One is emergent: the entity, which appears when the three primaries are in relationship. The rest pair naturally: gate and ward, intent and thread, turn and loom. The cantrip is the manifest whole that contains all of them. The medium is the circle's substrate — not a twelfth term, but the inside of the fifth. This structure is not accidental — it reflects which concepts are fundamental, which are derived, and how they relate to each other.
 
 ## Conformance
 
 This spec is the only durable artifact. Tests regenerate from the spec. Code regenerates from the tests. This is the **ghost library pattern**: the specification is a library with no implementation code — everything else is ephemeral and can be regenerated. The spec defines behavior; implementations are disposable manifestations of that behavior. When the spec changes, tests and code follow. When code drifts from the spec, the code is wrong.
 
+=======
+The eleven terms have an internal structure worth noticing. Three are primaries: crystal, call, circle. One is emergent: the entity, which appears when the three primaries are in relationship. The rest pair naturally: gate and ward, intent and thread, turn and loom. The cantrip is the manifest whole that contains all of them. This structure is not accidental — it reflects which concepts are fundamental, which are derived, and how they relate to each other.
+
+## Conformance
+
+>>>>>>> ea346797138abe62c763d039ec2d5f726440e18a
 An implementation is conformant if it satisfies three conditions:
 
 1. It implements all eleven terms as described
 2. It passes the test suite (`tests.yaml`)
+<<<<<<< HEAD
 3. Every behavioral rule (LOOP-*, CANTRIP-*, INTENT-*, ENTITY-*, CRYSTAL-*, CALL-*, CIRCLE-*, WARD-*, COMP-*, LOOM-*, PROD-*) is satisfied
+=======
+3. Every behavioral rule (LOOP-*, CANTRIP-*, INTENT-*, ENTITY-*, CRYSTAL-*, CALL-*, CIRCLE-*, COMP-*, LOOM-*, PROD-*) is satisfied
+>>>>>>> ea346797138abe62c763d039ec2d5f726440e18a
 
 Implementations MAY extend the spec with additional features as long as the core behavioral rules are preserved. The vocabulary is fixed. What you build on top of it is yours.
 
