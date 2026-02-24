@@ -1,8 +1,8 @@
 (ns cantrip.runtime
   (:refer-clojure :exclude [cast])
-  (:require [cantrip.circle :as circle]
-            [cantrip.crystal :as crystal]
-            [cantrip.domain :as domain]))
+  (:require [cantrip.crystal :as crystal]
+            [cantrip.domain :as domain]
+            [cantrip.medium :as medium]))
 
 (defn- max-turns [cantrip]
   (or (some :max-turns (get-in cantrip [:circle :wards]))
@@ -42,9 +42,10 @@
                                        {:tool-choice selected-tool-choice
                                         :previous-tool-call-ids previous-tool-call-ids})
               tool-calls (vec (:tool-calls utterance))
-              {:keys [observation terminated? result]} (circle/execute-tool-calls
+              {:keys [observation terminated? result]} (medium/execute-utterance
                                                        (:circle cantrip)
-                                                       tool-calls)
+                                                       utterance
+                                                       (get-in cantrip [:circle :dependencies]))
               text-only? (and (empty? tool-calls)
                               (string? (:content utterance)))
               done-by-text? (and text-only? (not done-required?))
