@@ -4,33 +4,34 @@ Spec-first implementation of the Cantrip loop in idiomatic Elixir, developed in 
 
 ## Current Scope
 
-Implemented slice (green):
+Implemented and green:
 
-- Cantrip construction and validation (`CANTRIP-1`, `CIRCLE-1`, `LOOP-2` subset)
-- Intent handling (`INTENT-1`, `INTENT-2`)
-- Core turn loop (`LOOP-3`, `LOOP-4`, `LOOP-6`)
-- Crystal response validation (`CRYSTAL-3`, `CRYSTAL-4`)
-- Basic circle gate/ward execution (`CIRCLE-6` subset)
-- Loom append-only + reward annotation (`LOOM-3` subset)
-- Cumulative usage tracking (`PROD-3` subset)
-
-Pending major areas:
-
-- Composition (`call_agent`, batch, depth recursion)
-- Forking/folding semantics
-- Code-circle execution medium
-- Production retry semantics
+- Cantrip config invariants and cast/fork lifecycle
+- OTP runtime loop (`GenServer` + `DynamicSupervisor`)
+- Conversation and code circles (Elixir code medium on BEAM)
+- Composition gates: `call_agent`, `call_agent_batch`
+- Depth warding, gate subset inheritance, per-call child crystal override
+- Loom append-only thread recording with child subtree linkage
+- Production semantics:
+  - retry as single-turn (`PROD-2`)
+  - cumulative usage tracking (`PROD-3`)
+  - auto-folding context compaction (`PROD-4`)
+  - ephemeral observation redaction (`PROD-5`)
+- Guarded hot-reload gate: `compile_and_load` with module/path wards
 
 ## Architecture
 
 Core modules:
 
-- `Cantrip`: public API and loop runtime
+- `Cantrip`: public API (`new`, `cast`, `fork`) and runtime wiring
 - `Cantrip.Call`: immutable call configuration
 - `Cantrip.Circle`: gate and ward model + execution semantics
+- `Cantrip.EntityServer`: cast execution owner process
+- `Cantrip.EntitySupervisor`: dynamic cast supervision
 - `Cantrip.Loom`: append-only turn storage
 - `Cantrip.Crystal`: crystal adapter behavior
 - `Cantrip.FakeCrystal`: deterministic scripted crystal for tests
+- `Cantrip.CodeMedium`: BEAM-evaluated code medium with persistent bindings
 
 Loop shape:
 
@@ -45,7 +46,7 @@ Loop shape:
 
 ## Red-Green Workflow
 
-Tests are intentionally spec-rule labeled in [`test/cantrip_core_test.exs`](/Users/deepfates/Hacking/github/deepfates/cantrip-ex/test/cantrip_core_test.exs), so onboarding engineers can trace behavior directly to the spec.
+Tests are intentionally split by milestone/rule families in `test/m*_*.exs`, so onboarding engineers can map behavior back to `tests.yaml` and `SPEC.md`.
 
 Recommended extension loop:
 
@@ -63,6 +64,7 @@ mix test
 
 ## Notes for Onboarding
 
-- The runtime currently threads crystal state through the cantrip value for deterministic testing.
-- The loom is append-only by API, with mutation limited to reward annotation.
+- The runtime threads crystal state through the cantrip value for deterministic fake-crystal tests.
+- Code-circle snippets are Elixir (`done.(...)`, `call_agent.(...)`, `compile_and_load.(...)`).
 - `FakeCrystal` supports `record_inputs: true` to assert context/tool contracts in tests.
+- Current test count: 47 green tests (`mix test`).
