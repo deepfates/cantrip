@@ -10,9 +10,25 @@ from cantrip.acp_stdio import serve_stdio
 from cantrip.builders import build_cantrip_from_env
 
 
+def _find_git_root(start: Path) -> Path | None:
+    cur = start.resolve()
+    for candidate in [cur, *cur.parents]:
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
+def _resolve_repo_root(repo_root_arg: str | None) -> Path:
+    if repo_root_arg:
+        return Path(repo_root_arg).resolve()
+    cwd = Path.cwd().resolve()
+    git_root = _find_git_root(cwd)
+    return git_root or cwd
+
+
 def cmd_repl(args: argparse.Namespace) -> int:
     cantrip = build_cantrip_from_env(
-        repo_root=Path(args.repo_root).resolve(),
+        repo_root=_resolve_repo_root(args.repo_root),
         dotenv=args.dotenv,
         fake=args.fake,
         code_runner=args.code_runner,
@@ -46,7 +62,7 @@ def cmd_repl(args: argparse.Namespace) -> int:
 
 def cmd_pipe(args: argparse.Namespace) -> int:
     cantrip = build_cantrip_from_env(
-        repo_root=Path(args.repo_root).resolve(),
+        repo_root=_resolve_repo_root(args.repo_root),
         dotenv=args.dotenv,
         fake=args.fake,
         code_runner=args.code_runner,
@@ -77,7 +93,7 @@ def cmd_pipe(args: argparse.Namespace) -> int:
 
 def cmd_acp_stdio(args: argparse.Namespace) -> int:
     cantrip = build_cantrip_from_env(
-        repo_root=Path(args.repo_root).resolve(),
+        repo_root=_resolve_repo_root(args.repo_root),
         dotenv=args.dotenv,
         fake=args.fake,
         code_runner=args.code_runner,
@@ -106,7 +122,14 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument("--repo-root", default=".", help="Repo root for repo_* gates.")
+    parser.add_argument(
+        "--repo-root",
+        default=None,
+        help=(
+            "Repo root for repo_* gates. Defaults to git top-level when available, "
+            "otherwise current directory."
+        ),
+    )
     parser.add_argument("--dotenv", default=".env", help="Dotenv file to load.")
     parser.add_argument(
         "--fake", action="store_true", help="Use FakeCrystal (offline mode)."
