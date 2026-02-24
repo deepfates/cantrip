@@ -213,4 +213,38 @@ defmodule CantripM5CompositionExtendedTest do
     elapsed = System.monotonic_time(:millisecond) - started
     assert elapsed < 300
   end
+
+  test "COMP-6 depth decrements through recursion levels" do
+    l2 = {FakeCrystal, FakeCrystal.new([%{code: "done.(\"deepest\")"}])}
+
+    l1 =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{
+           code:
+             "result = call_agent.(%{intent: \"level 2\", crystal: #{inspect(l2)}})\ndone.(result)"
+         }
+       ])}
+
+    parent =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{
+           code:
+             "result = call_agent.(%{intent: \"level 1\", crystal: #{inspect(l1)}})\ndone.(result)"
+         }
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: parent,
+        circle: %{
+          type: :code,
+          gates: [:done, :call_agent],
+          wards: [%{max_turns: 10}, %{max_depth: 2}]
+        }
+      )
+
+    assert {:ok, "deepest", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "depth decrement")
+  end
 end
