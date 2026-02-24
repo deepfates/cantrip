@@ -242,6 +242,49 @@
                            :retryable_status_codes [429]}}
                   "retry run")))
 
+(defn example-15-minecraft-research-entity
+  "Pattern 15 (adapted): minecraft-aware entity using REPL medium + world bindings."
+  []
+  (runtime/cast {:crystal {:provider :fake
+                           :responses [{:content "(submit-answer (str (player) \"|\" (xyz)))"}]}
+                 :call {:system-prompt "example-15"
+                        :require-done-tool true}
+                 :circle {:medium :minecraft
+                          :gates [:done]
+                          :dependencies {:player-fn (fn [] "Alex")
+                                         :xyz-fn (fn [] [10 64 -3])}
+                          :wards [{:max-turns 3}]}}
+                "inspect world"))
+
+(defn example-16-familiar-coordinator
+  "Pattern 16 (adapted): long-lived coordinator spawning minecraft-aware child entities."
+  []
+  (let [parent (runtime/invoke
+                {:crystal {:provider :fake
+                           :responses [{:tool-calls [{:id "p1"
+                                                      :gate :done
+                                                      :args {:answer "parent"}}]}]}
+                 :call {:system-prompt "example-16"}
+                 :circle {:medium :minecraft
+                          :gates [:done]
+                          :dependencies {:player-fn (fn [] "Alex")
+                                         :xyz-fn (fn [] [0 64 0])}
+                          :wards [{:max-turns 3} {:max-depth 2}]}})
+        mk-child (fn [answer]
+                   {:crystal {:provider :fake
+                              :responses [{:content "(submit-answer \"child-ok\")"}]}
+                    :call {:system-prompt answer
+                           :require-done-tool true}
+                    :circle {:medium :minecraft
+                             :gates [:done]
+                             :dependencies {:player-fn (fn [] "Alex")
+                                            :xyz-fn (fn [] [0 64 0])}
+                             :wards [{:max-turns 2}]}})
+        results (runtime/call-agent-batch parent [{:cantrip (mk-child "a") :intent "child-a"}
+                                                  {:cantrip (mk-child "b") :intent "child-b"}])]
+    {:results results
+     :state (runtime/entity-state parent)}))
+
 (def pattern-notes
   {"01" {:fn #'example-01-crystal-gate-primitives :rules ["CANTRIP-1" "LOOP-3"]}
    "02" {:fn #'example-02-gate-primitives :rules ["CIRCLE-7" "LOOP-3"]}
@@ -256,4 +299,6 @@
    "11" {:fn #'example-11-folding :rules ["CALL-5" "PROD-4"]}
    "12" {:fn #'example-12-code-agent :rules ["CIRCLE-9" "LOOP-3"]}
    "13" {:fn #'example-13-acp-session :rules ["PROD-6" "PROD-7"]}
-   "14" {:fn #'example-14-recursive-delegation :rules ["COMP-4" "WARD-1"]}})
+   "14" {:fn #'example-14-recursive-delegation :rules ["COMP-4" "WARD-1"]}
+   "15" {:fn #'example-15-minecraft-research-entity :rules ["CIRCLE-9" "COMP-7"]}
+   "16" {:fn #'example-16-familiar-coordinator :rules ["COMP-3" "LOOM-8"]}})

@@ -1,4 +1,4 @@
-# Examples 01-14 (Runnable)
+# Examples 01-16 (Runnable)
 
 These examples are implemented in `src/cantrip/examples.clj` and mapped to pattern/rule anchors via `pattern-notes`.
 
@@ -18,3 +18,5 @@ These examples are implemented in `src/cantrip/examples.clj` and mapped to patte
 12. `12` code-agent loop (`CIRCLE-9`, `LOOP-3`)
 13. `13` ACP session flow (`PROD-6`, `PROD-7`)
 14. `14` recursive delegation with depth ward (`COMP-4`, `WARD-1`)
+15. `15` Minecraft-aware research entity (adapted) (`CIRCLE-9`, `COMP-7`)
+16. `16` familiar-style Minecraft coordinator (adapted) (`COMP-3`, `LOOM-8`)

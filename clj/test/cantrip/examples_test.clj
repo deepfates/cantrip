@@ -49,6 +49,16 @@
 (deftest example-14-runs
   (is (= :terminated (:status (examples/example-14-recursive-delegation)))))
 
+(deftest example-15-runs
+  (let [res (examples/example-15-minecraft-research-entity)]
+    (is (= :terminated (:status res)))
+    (is (= "Alex|[10 64 -3]" (:result res)))))
+
+(deftest example-16-runs
+  (let [{:keys [results state]} (examples/example-16-familiar-coordinator)]
+    (is (= ["child-ok" "child-ok"] (mapv :result results)))
+    (is (map? state))))
+
 (deftest example-prod-2-runs
   (let [res (examples/example-prod-2-retry)]
     (is (= :terminated (:status res)))
@@ -56,6 +66,6 @@
     (is (= 1 (count (:turns res))))))
 
 (deftest pattern-notes-cover-01-14
-  (is (= (set (map #(format "%02d" %) (range 1 15)))
+  (is (= (set (map #(format "%02d" %) (range 1 17)))
          (set (keys examples/pattern-notes)))))
 (ns cantrip.examples-test)
