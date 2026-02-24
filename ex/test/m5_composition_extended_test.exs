@@ -266,6 +266,32 @@ defmodule CantripM5CompositionExtendedTest do
     assert elapsed < 300
   end
 
+  test "call_agent_batch respects max_concurrent_children ward" do
+    parent =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{
+           code:
+             "c1={Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: \"Process.sleep(120)\\ndone.(\\\"A\\\")\"}])}\nc2={Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: \"Process.sleep(120)\\ndone.(\\\"B\\\")\"}])}\nc3={Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: \"Process.sleep(120)\\ndone.(\\\"C\\\")\"}])}\nresults=call_agent_batch.([%{intent: \"a\", crystal: c1}, %{intent: \"b\", crystal: c2}, %{intent: \"c\", crystal: c3}])\ndone.(Enum.join(results, \",\"))"
+         }
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: parent,
+        circle: %{
+          type: :code,
+          gates: [:done, :call_agent, :call_agent_batch],
+          wards: [%{max_turns: 10}, %{max_depth: 1}, %{max_concurrent_children: 1}]
+        }
+      )
+
+    started = System.monotonic_time(:millisecond)
+    assert {:ok, "A,B,C", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "serialized")
+    elapsed = System.monotonic_time(:millisecond) - started
+    assert elapsed >= 300
+  end
+
   test "COMP-6 depth decrements through recursion levels" do
     l2 = {FakeCrystal, FakeCrystal.new([%{code: "done.(\"deepest\")"}])}
 
