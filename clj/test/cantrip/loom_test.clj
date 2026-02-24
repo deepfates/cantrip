@@ -1,5 +1,6 @@
 (ns cantrip.loom-test
   (:require [clojure.test :refer [deftest is]]
+            [clojure.string :as str]
             [cantrip.loom :as loom]))
 
 (deftest appends-turns-with-ids-and-parents
@@ -26,3 +27,18 @@
         [l3 _] (loom/append-turn l2 {:id "c" :utterance {} :observation []})
         thread (loom/extract-thread l3 "c")]
     (is (= ["a" "b" "c"] (mapv :id thread)))))
+
+(deftest export-jsonl-redacts-by-default
+  (let [l0 (loom/new-loom {})
+        [l1 _] (loom/append-turn l0 {:utterance {:content "token sk-proj-secret"}
+                                     :observation []})
+        out (loom/export-jsonl l1)]
+    (is (not (str/includes? out "sk-proj-secret")))
+    (is (str/includes? out "[REDACTED]"))))
+
+(deftest export-jsonl-allows-opt-out
+  (let [l0 (loom/new-loom {})
+        [l1 _] (loom/append-turn l0 {:utterance {:content "token sk-proj-secret"}
+                                     :observation []})
+        out (loom/export-jsonl l1 {:redaction :none})]
+    (is (str/includes? out "sk-proj-secret"))))

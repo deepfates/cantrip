@@ -1,4 +1,6 @@
-(ns cantrip.loom)
+(ns cantrip.loom
+  (:require [cantrip.redaction :as redaction]
+            [clojure.string :as str]))
 
 (defn new-loom
   [call]
@@ -43,3 +45,14 @@
       (vec (reverse acc))
       (recur (turn-by-id loom (:parent-id cursor))
              (conj acc cursor)))))
+
+(defn export-jsonl
+  "Exports loom turns as line-delimited EDN records.
+   Redaction defaults to :default; pass {:redaction :none} to opt out."
+  [loom & [{:keys [redaction] :or {redaction :default}}]]
+  (->> (:turns loom)
+       (map (fn [turn]
+              (pr-str (if (= redaction :none)
+                        turn
+                        (redaction/redact-value turn)))))
+       (str/join "\n")))

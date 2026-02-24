@@ -41,7 +41,7 @@ Status legend: `TODO` | `IN_PROGRESS` | `BLOCKED` | `DONE`
 | P3-2 | Cumulative token accounting (`PROD-3`) | DONE | Entity/cast exposes cumulative usage with tests |
 | P3-3 | Folding trigger + non-destructive compaction (`PROD-4`) | TODO | Folding policy implemented and tested without data loss |
 | P3-4 | Ephemeral observation references (`PROD-5`) | TODO | Working context compacts while loom retains full records |
-| P3-5 | Loom export redaction defaults (`PROD-8`) | TODO | Export path redacts secrets by default |
+| P3-5 | Loom export redaction defaults (`PROD-8`) | DONE | Export path redacts secrets by default |
 | P3-6 | Stdio lifecycle + debug mode docs (`PROD-9`) | TODO | Documented idle/debug behavior and smoke-tested path |
 
 ## Phase 4: Composition
