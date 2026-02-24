@@ -164,6 +164,27 @@ defmodule CantripM5CompositionExtendedTest do
     assert {:ok, "from alternate", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "override")
   end
 
+  test "D-002 call_entity alias maps to call_agent semantics" do
+    parent =
+      {FakeCrystal,
+       FakeCrystal.new([%{code: "result = call_entity.(%{intent: \"sub\"})\ndone.(result)"}])}
+
+    child = {FakeCrystal, FakeCrystal.new([%{code: "done.(\"alias ok\")"}])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: parent,
+        child_crystal: child,
+        circle: %{
+          type: :code,
+          gates: [:done, :call_entity],
+          wards: [%{max_turns: 10}, %{max_depth: 1}]
+        }
+      )
+
+    assert {:ok, "alias ok", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "alias")
+  end
+
   test "call_agent_batch enforces max_batch_size ward" do
     parent =
       {FakeCrystal,

@@ -74,6 +74,8 @@ defmodule Cantrip.Circle do
           is_error: boolean()
         }
   def execute_gate(circle, gate_name, args) do
+    gate_name = canonical_gate_name(gate_name)
+
     if removed_by_ward?(circle, gate_name) do
       %{gate: gate_name, result: "gate not available: #{gate_name}", is_error: true}
     else
@@ -105,6 +107,7 @@ defmodule Cantrip.Circle do
       %{name: name} = gate when is_atom(name) -> %{gate | name: Atom.to_string(name)}
       gate -> gate
     end)
+    |> Enum.map(fn gate -> %{gate | name: canonical_gate_name(gate.name)} end)
     |> Map.new(fn gate -> {gate.name, gate} end)
   end
 
@@ -263,4 +266,8 @@ defmodule Cantrip.Circle do
       _ -> false
     end)
   end
+
+  defp canonical_gate_name("call_entity"), do: "call_agent"
+  defp canonical_gate_name("call_entity_batch"), do: "call_agent_batch"
+  defp canonical_gate_name(name), do: name
 end

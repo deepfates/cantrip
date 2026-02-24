@@ -9,7 +9,14 @@ defmodule Cantrip.CodeMedium do
 
   alias Cantrip.Circle
 
-  @reserved_bindings [:done, :call_agent, :call_agent_batch, :compile_and_load]
+  @reserved_bindings [
+    :done,
+    :call_agent,
+    :call_entity,
+    :call_agent_batch,
+    :call_entity_batch,
+    :compile_and_load
+  ]
 
   @type runtime :: %{
           required(:circle) => Circle.t(),
@@ -91,6 +98,7 @@ defmodule Cantrip.CodeMedium do
       user_binding
       |> Keyword.put(:done, done_fun)
       |> Keyword.put(:call_agent, call_agent_fun)
+      |> Keyword.put(:call_entity, call_agent_fun)
 
     binding =
       case Map.get(runtime, :call_agent_batch) do
@@ -104,7 +112,9 @@ defmodule Cantrip.CodeMedium do
             payload.value
           end
 
-          Keyword.put(binding, :call_agent_batch, call_agent_batch_fun)
+          binding
+          |> Keyword.put(:call_agent_batch, call_agent_batch_fun)
+          |> Keyword.put(:call_entity_batch, call_agent_batch_fun)
       end
 
     case Map.get(runtime, :compile_and_load) do
