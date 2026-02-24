@@ -1,6 +1,8 @@
 (ns cantrip.medium
   (:require [cantrip.circle :as circle]
-            [cantrip.gates :as gates]))
+            [cantrip.gates :as gates]
+            [clojure.edn :as edn]
+            [clojure.string :as str]))
 
 (defmulti capability-view
   "Returns medium capability description for crystal context assembly."
@@ -65,8 +67,21 @@
 
 (defmethod execute-utterance :code
   [circle utterance _]
-  ;; Placeholder: code-medium specific execution will be implemented in M7.
-  (circle/execute-tool-calls circle (vec (:tool-calls utterance))))
+  (let [tool-calls (vec (:tool-calls utterance))
+        code (:content utterance)
+        parsed-call (when (and (empty? tool-calls)
+                               (string? code)
+                               (or (str/starts-with? (str/trim code) "(submit_answer")
+                                   (str/starts-with? (str/trim code) "(submit-answer")))
+                      (try
+                        (let [form (edn/read-string code)
+                              answer (second form)]
+                          [{:id "code_done_1"
+                            :gate :done
+                            :args {:answer (str answer)}}])
+                        (catch Exception _
+                          nil)))]
+    (circle/execute-tool-calls circle (or parsed-call tool-calls))))
 
 (defmethod execute-utterance :minecraft
   [circle utterance _]

@@ -30,3 +30,10 @@
   (let [circle {:medium :conversation :gates [:done]}]
     (is (= {} (medium/snapshot-state circle {})))
     (is (= {:x 1} (medium/restore-state circle {:x 1} {})))))
+
+(deftest code-medium-bridges-submit-answer-form
+  (let [circle {:medium :code :gates [:done] :wards [{:max-turns 2}]}
+        utterance {:content "(submit_answer \"done\")"}
+        result (medium/execute-utterance circle utterance {})]
+    (is (true? (:terminated? result)))
+    (is (= "done" (:result result)))))
