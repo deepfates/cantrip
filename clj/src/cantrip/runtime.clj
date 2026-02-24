@@ -2,6 +2,7 @@
   (:refer-clojure :exclude [cast])
   (:require [cantrip.crystal :as crystal]
             [cantrip.domain :as domain]
+            [cantrip.gates :as gates]
             [cantrip.loom :as loom]
             [cantrip.medium :as medium]))
 
@@ -16,29 +17,8 @@
   (or (get-in cantrip [:call :tool-choice])
       :auto))
 
-(defn- normalize-gate-name [gate]
-  (cond
-    (keyword? gate) (name gate)
-    (string? gate) gate
-    :else (str gate)))
-
-(defn- gate->tool [gate]
-  (cond
-    (keyword? gate) {:name (name gate)}
-    (string? gate) {:name gate}
-    (map? gate) {:name (normalize-gate-name (:name gate))
-                 :parameters (or (:parameters gate) {})}
-    :else {:name (normalize-gate-name gate)}))
-
 (defn- circle-tools [circle]
-  (let [gates (:gates circle)]
-    (cond
-      (map? gates) (mapv (fn [[k v]]
-                           (merge {:name (normalize-gate-name k)}
-                                  (when (map? v) {:parameters (or (:parameters v) {})})))
-                         gates)
-      (sequential? gates) (mapv gate->tool gates)
-      :else [])))
+  (gates/gate-tools (:gates circle)))
 
 (defn- turn->messages [turn]
   (let [utterance (:utterance turn)

@@ -1,18 +1,9 @@
 (ns cantrip.domain
-  (:require [clojure.string :as str]))
+  (:require [cantrip.gates :as gates]
+            [clojure.string :as str]))
 
 (defn- has-done-gate? [circle]
-  (let [gates (:gates circle)]
-    (cond
-      (map? gates) (contains? gates :done)
-      (sequential? gates) (boolean (some (fn [gate]
-                                           (cond
-                                             (keyword? gate) (= :done gate)
-                                             (string? gate) (= "done" gate)
-                                             (map? gate) (#{:done "done"} (:name gate))
-                                             :else false))
-                                         gates))
-      :else false)))
+  (gates/gate-available? (:gates circle) :done))
 
 (defn- has-truncation-ward? [circle]
   (boolean

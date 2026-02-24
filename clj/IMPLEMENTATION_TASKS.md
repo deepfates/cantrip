@@ -29,8 +29,8 @@ Status legend: `TODO` | `IN_PROGRESS` | `BLOCKED` | `DONE`
 
 | ID | Task | Status | Done Criteria |
 |---|---|---|---|
-| P2-1 | Create canonical gate normalization path shared by domain/runtime/medium/circle | TODO | No duplicated gate-shape parsing logic remains |
-| P2-2 | Normalize capability-view output contract across mediums | TODO | `capability-view` outputs stable, tested shape for map/seq gate defs |
+| P2-1 | Create canonical gate normalization path shared by domain/runtime/medium/circle | DONE | No duplicated gate-shape parsing logic remains |
+| P2-2 | Normalize capability-view output contract across mediums | DONE | `capability-view` outputs stable, tested shape for map/seq gate defs |
 | P2-3 | Add explicit medium protocol ops (`snapshot`, `restore`) | TODO | Medium API supports persistent medium state hooks |
 
 ## Phase 3: Production Rules Gaps

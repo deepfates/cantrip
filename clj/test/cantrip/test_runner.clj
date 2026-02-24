@@ -4,6 +4,7 @@
             [cantrip.circle-test]
             [cantrip.crystal-test]
             [cantrip.domain-test]
+            [cantrip.gates-test]
             [cantrip.loom-test]
             [cantrip.medium-test]
             [cantrip.redaction-test]
@@ -14,6 +15,7 @@
                                           'cantrip.circle-test
                                           'cantrip.crystal-test
                                           'cantrip.domain-test
+                                          'cantrip.gates-test
                                           'cantrip.loom-test
                                           'cantrip.medium-test
                                           'cantrip.redaction-test

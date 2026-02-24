@@ -1,24 +1,5 @@
-(ns cantrip.circle)
-
-(defn- normalize-gate [gate]
-  (cond
-    (keyword? gate) gate
-    (string? gate) (keyword gate)
-    :else gate))
-
-(defn- gate-available? [circle gate]
-  (let [gates (:gates circle)
-        gate-key (keyword gate)]
-    (cond
-      (map? gates) (contains? gates gate-key)
-      (sequential? gates) (boolean (some (fn [candidate]
-                                           (cond
-                                             (keyword? candidate) (= gate-key candidate)
-                                             (string? candidate) (= gate-key (keyword candidate))
-                                             (map? candidate) (= gate-key (keyword (:name candidate)))
-                                             :else false))
-                                         gates))
-      :else false)))
+(ns cantrip.circle
+  (:require [cantrip.gates :as gates]))
 
 (defn- done-observation [args]
   (if (contains? args :answer)
@@ -44,11 +25,11 @@
        :terminated? terminated?
        :result result}
       (let [call (first calls)
-            gate (normalize-gate (:gate call))
+            gate (gates/gate-keyword (:gate call))
             args (:args call)
             gate-name (name gate)]
         (cond
-          (not (gate-available? circle gate))
+          (not (gates/gate-available? (:gates circle) gate))
           (recur (rest calls)
                  (conj observation
                        {:gate gate-name

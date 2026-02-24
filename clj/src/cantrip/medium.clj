@@ -1,18 +1,6 @@
 (ns cantrip.medium
-  (:require [cantrip.circle :as circle]))
-
-(defn- gate-names [circle]
-  (let [gates (:gates circle)]
-    (cond
-      (map? gates) (mapv name (keys gates))
-      (sequential? gates) (mapv (fn [gate]
-                                  (cond
-                                    (keyword? gate) (name gate)
-                                    (string? gate) gate
-                                    (map? gate) (name (:name gate))
-                                    :else (str gate)))
-                                gates)
-      :else [])))
+  (:require [cantrip.circle :as circle]
+            [cantrip.gates :as gates]))
 
 (defmulti capability-view
   "Returns medium capability description for crystal context assembly."
@@ -25,18 +13,18 @@
 (defmethod capability-view :conversation
   [circle _]
   {:medium :conversation
-   :gates (gate-names circle)})
+   :gates (gates/gate-names (:gates circle))})
 
 (defmethod capability-view :code
   [circle _]
   {:medium :code
-   :gates (gate-names circle)
+   :gates (gates/gate-names (:gates circle))
    :notes ["host-projected gates available in medium context"]})
 
 (defmethod capability-view :minecraft
   [circle _]
   {:medium :minecraft
-   :gates (gate-names circle)
+   :gates (gates/gate-names (:gates circle))
    :notes ["world-facing medium via dependency context"]})
 
 (defmethod execute-utterance :conversation
