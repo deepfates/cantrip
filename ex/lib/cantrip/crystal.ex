@@ -51,14 +51,34 @@ defmodule Cantrip.Crystal do
   end
 
   @spec normalize(map()) :: map()
-  def normalize(%{raw_response: raw}) do
-    choice = raw[:choices] |> List.first() |> Map.get(:message, %{})
+  def normalize(%{tool_calls: tool_calls} = response) when is_list(tool_calls), do: response
 
-    %{
-      content: choice[:content],
-      tool_calls: choice[:tool_calls] || [],
-      usage: raw[:usage] || %{}
-    }
+  def normalize(%{raw_response: raw} = response) when is_map(raw) do
+    atom_choices = Map.get(raw, :choices)
+    string_choices = Map.get(raw, "choices")
+
+    cond do
+      is_list(atom_choices) and atom_choices != [] ->
+        choice = atom_choices |> List.first() |> Map.get(:message, %{})
+
+        %{
+          content: Map.get(choice, :content),
+          tool_calls: Map.get(choice, :tool_calls, []) || [],
+          usage: Map.get(raw, :usage, %{}) || %{}
+        }
+
+      is_list(string_choices) and string_choices != [] ->
+        choice = string_choices |> List.first() |> Map.get("message", %{})
+
+        %{
+          content: Map.get(choice, "content"),
+          tool_calls: Map.get(choice, "tool_calls", []) || [],
+          usage: Map.get(raw, "usage", %{}) || %{}
+        }
+
+      true ->
+        response
+    end
   end
 
   def normalize(response), do: response

@@ -13,10 +13,12 @@ defmodule CantripM9RealCrystalIntegrationTest do
           circle: %{gates: [:done], wards: [%{max_turns: 3}]}
         )
 
-      assert {:ok, "ok", _cantrip, _loom, meta} =
+      assert {:ok, _result, _cantrip, loom, meta} =
                Cantrip.cast(cantrip, "Return ok through done.")
 
       assert meta.terminated
+      [turn] = loom.turns
+      assert Enum.any?(turn.observation, fn obs -> obs.gate == "done" and not obs.is_error end)
     end
   end
 end
