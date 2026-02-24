@@ -87,6 +87,22 @@ Zed custom agent example:
 
 Protocol implemented: `initialize`, `session/new`, `session/prompt` over JSON-RPC stdio.
 
+## Pattern Agents (01..16)
+
+List available pattern agents:
+
+```bash
+mix cantrip.example list
+```
+
+Run a pattern by id:
+
+```bash
+mix cantrip.example 08
+```
+
+Pattern `06` uses env-backed real crystal configuration; others default to deterministic fake crystals unless overridden in code/tests.
+
 ## Real Crystals (.env)
 
 You can run with real providers (or local OpenAI-compatible servers) via env vars.
