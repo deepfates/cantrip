@@ -1,6 +1,7 @@
 (ns cantrip.runtime
   (:refer-clojure :exclude [cast])
-  (:require [cantrip.crystal :as crystal]
+  (:require [cantrip.circle :as circle]
+            [cantrip.crystal :as crystal]
             [cantrip.domain :as domain]))
 
 (defn- max-turns [cantrip]
@@ -13,46 +14,6 @@
 (defn- tool-choice [cantrip]
   (or (get-in cantrip [:call :tool-choice])
       :auto))
-
-(defn- normalize-gate [gate]
-  (cond
-    (keyword? gate) gate
-    (string? gate) (keyword gate)
-    :else gate))
-
-(defn- done-observation [args]
-  (if (contains? args :answer)
-    {:gate "done"
-     :arguments (pr-str args)
-     :result (:answer args)
-     :is-error false}
-    {:gate "done"
-     :arguments (pr-str args)
-     :result "missing required answer"
-     :is-error true}))
-
-(defn- process-tool-calls [tool-calls]
-  (loop [calls tool-calls
-         obs []
-         terminated? false
-         result nil]
-    (if (or (empty? calls) terminated?)
-      {:observation obs
-       :terminated? terminated?
-       :result result}
-      (let [call (first calls)
-            gate (normalize-gate (:gate call))
-            args (:args call)]
-        (case gate
-          :done (let [rec (done-observation args)]
-                  (if (:is-error rec)
-                    (recur (rest calls) (conj obs rec) false nil)
-                    (recur (rest calls) (conj obs rec) true (:result rec))))
-          (let [rec {:gate (name gate)
-                     :arguments (pr-str args)
-                     :result "gate not implemented"
-                     :is-error true}]
-            (recur (rest calls) (conj obs rec) false nil)))))))
 
 (defn new-cantrip
   "Constructs and validates a cantrip value."
@@ -81,7 +42,9 @@
                                        {:tool-choice selected-tool-choice
                                         :previous-tool-call-ids previous-tool-call-ids})
               tool-calls (vec (:tool-calls utterance))
-              {:keys [observation terminated? result]} (process-tool-calls tool-calls)
+              {:keys [observation terminated? result]} (circle/execute-tool-calls
+                                                       (:circle cantrip)
+                                                       tool-calls)
               text-only? (and (empty? tool-calls)
                               (string? (:content utterance)))
               done-by-text? (and text-only? (not done-required?))
