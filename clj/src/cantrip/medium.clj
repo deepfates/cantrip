@@ -3,6 +3,57 @@
             [cantrip.gates :as gates]
             [sci.core :as sci]))
 
+(defn- eval-script->tool-calls
+  [code bindings]
+  (let [emitted (atom [])
+        next-id (fn [] (str "code_call_" (inc (count @emitted))))
+        emit! (fn [gate args]
+                (swap! emitted conj {:id (next-id)
+                                     :gate gate
+                                     :args (or args {})}))
+        submit! (fn [answer]
+                  (emit! :done {:answer (str answer)}))
+        call-gate! (fn
+                     ([gate] (emit! gate {}))
+                     ([gate args] (emit! gate args)))
+        base-bindings {'submit-answer submit!
+                       'submit_answer submit!
+                       'call-gate call-gate!
+                       'call_gate call-gate!}]
+    (sci/eval-string code {:bindings (merge base-bindings bindings)})
+    @emitted))
+
+(defn- maybe-resolve
+  [sym]
+  (try
+    (require 'lambdaisland.witchcraft)
+    (ns-resolve 'lambdaisland.witchcraft sym)
+    (catch Throwable _
+      nil)))
+
+(defn- minecraft-bindings
+  [deps]
+  (let [player-fn (or (:player-fn deps) (maybe-resolve 'player))
+        xyz-fn (or (:xyz-fn deps) (maybe-resolve 'xyz))
+        block-fn (or (:block-fn deps) (maybe-resolve 'block))
+        set-block-fn (or (:set-block-fn deps) (maybe-resolve 'set-block))
+        allow-mutation? (true? (:allow-mutation? deps))]
+    (merge
+     (when player-fn
+       {'player (fn [] (player-fn))})
+     (when xyz-fn
+       {'xyz (fn [] (xyz-fn))})
+     (when block-fn
+       {'block (fn
+                 ([loc] (block-fn loc))
+                 ([] (block-fn)))})
+     (when set-block-fn
+       {'set-block (fn [loc b]
+                     (if allow-mutation?
+                       (set-block-fn loc b)
+                       (throw (ex-info "minecraft mutation not allowed"
+                                       {:mutation :set-block}))))}))))
+
 (defmulti capability-view
   "Returns medium capability description for crystal context assembly."
   (fn [circle _dependencies] (:medium circle)))
@@ -69,34 +120,31 @@
   (let [tool-calls (vec (:tool-calls utterance))
         code (:content utterance)]
     (if (and (empty? tool-calls) (string? code))
-      (let [emitted (atom [])
-            next-id (fn [] (str "code_call_" (inc (count @emitted))))
-            emit! (fn [gate args]
-                    (swap! emitted conj {:id (next-id)
-                                         :gate gate
-                                         :args (or args {})}))
-            submit! (fn [answer]
-                      (emit! :done {:answer (str answer)}))
-            call-gate! (fn
-                         ([gate] (emit! gate {}))
-                         ([gate args] (emit! gate args)))]
-        (try
-          (sci/eval-string code
-                           {:bindings {'submit-answer submit!
-                                       'submit_answer submit!
-                                       'call-gate call-gate!
-                                       'call_gate call-gate!}})
-          (circle/execute-tool-calls circle @emitted)
-          (catch Exception e
-            {:observation [{:gate "code"
-                            :arguments "{}"
-                            :result (str "code execution error: " (.getMessage e))
-                            :is-error true}]
-             :terminated? false
-             :result nil})))
+      (try
+        (circle/execute-tool-calls circle (eval-script->tool-calls code {}))
+        (catch Exception e
+          {:observation [{:gate "code"
+                          :arguments "{}"
+                          :result (str "code execution error: " (.getMessage e))
+                          :is-error true}]
+           :terminated? false
+           :result nil}))
       (circle/execute-tool-calls circle tool-calls))))
 
 (defmethod execute-utterance :minecraft
-  [circle utterance _]
-  ;; Placeholder: minecraft-medium specific execution will be implemented in M9.
-  (circle/execute-tool-calls circle (vec (:tool-calls utterance))))
+  [circle utterance dependencies]
+  (let [tool-calls (vec (:tool-calls utterance))
+        code (:content utterance)]
+    (if (and (empty? tool-calls) (string? code))
+      (try
+        (circle/execute-tool-calls circle
+                                   (eval-script->tool-calls code
+                                                            (minecraft-bindings dependencies)))
+        (catch Exception e
+          {:observation [{:gate "minecraft"
+                          :arguments "{}"
+                          :result (str "minecraft execution error: " (.getMessage e))
+                          :is-error true}]
+           :terminated? false
+           :result nil}))
+      (circle/execute-tool-calls circle tool-calls))))

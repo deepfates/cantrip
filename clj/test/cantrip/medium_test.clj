@@ -51,3 +51,21 @@
         result (medium/execute-utterance circle utterance {})]
     (is (false? (:terminated? result)))
     (is (true? (-> result :observation first :is-error)))))
+
+(deftest minecraft-medium-readonly-bindings
+  (let [circle {:medium :minecraft :gates [:done] :wards [{:max-turns 2}]}
+        utterance {:content "(submit-answer (str (player) \"@\" (xyz)))"}
+        deps {:player-fn (fn [] "Alex")
+              :xyz-fn (fn [] [1 2 3])}
+        result (medium/execute-utterance circle utterance deps)]
+    (is (true? (:terminated? result)))
+    (is (= "Alex@[1 2 3]" (:result result)))))
+
+(deftest minecraft-medium-mutation-guard
+  (let [circle {:medium :minecraft :gates [:done] :wards [{:max-turns 2}]}
+        utterance {:content "(do (set-block [0 64 0] :stone) (submit-answer \"ok\"))"}
+        deps {:set-block-fn (fn [_ _] :ok)
+              :allow-mutation? false}
+        result (medium/execute-utterance circle utterance deps)]
+    (is (false? (:terminated? result)))
+    (is (true? (-> result :observation first :is-error)))))
