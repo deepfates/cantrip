@@ -123,4 +123,33 @@ defmodule CantripM4CircleRuntimeTest do
 
     assert {:ok, 42, _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "code state")
   end
+
+  test "CIRCLE-10 code medium exposes non-reserved gates as host functions" do
+    root =
+      Path.join(
+        System.tmp_dir!(),
+        "cantrip_code_read_" <> Integer.to_string(System.unique_integer([:positive]))
+      )
+
+    File.mkdir_p!(root)
+    File.write!(Path.join(root, "snippet.txt"), "beam")
+
+    crystal =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{code: "text = read.(%{path: \"snippet.txt\"})\ndone.(\"read:\" <> text)"}
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: crystal,
+        circle: %{
+          type: :code,
+          gates: [%{name: :done}, %{name: :read, dependencies: %{root: root}}],
+          wards: [%{max_turns: 10}]
+        }
+      )
+
+    assert {:ok, "read:beam", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "code gate")
+  end
 end

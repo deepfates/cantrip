@@ -31,6 +31,66 @@ defmodule CantripM12ExamplesTest do
     assert meta.terminated
   end
 
+  test "default fake scripts for all patterns produce concrete outcomes" do
+    expected = %{
+      "01" => "pattern-01:minimal-done",
+      "02" => "pattern-02:gate-loop",
+      "03" => "pattern-03:require-done",
+      "04" => nil,
+      "05" => "pattern-05:stop-at-done",
+      "06" => "pattern-06:provider-portable",
+      "07" => "pattern-07:conversation",
+      "08" => "pattern-08:code",
+      "09" => "pattern-09:stateful",
+      "10" => "pattern-10:parallel+delegation",
+      "11" => "pattern-11:folded",
+      "12" => "pattern-12:compiled",
+      "13" => "pattern-13:acp-ready",
+      "14" => "pattern-14:mid:leaf",
+      "15" => "pattern-15:research",
+      "16" => "pattern-16:familiar,loom"
+    }
+
+    Enum.each(Examples.ids(), fn id ->
+      assert {:ok, result, _cantrip, _loom, _meta} = Examples.run(id)
+      assert result == Map.fetch!(expected, id)
+    end)
+  end
+
+  test "pattern 04 truncates under max_turns ward" do
+    assert {:ok, nil, _cantrip, _loom, meta} = Examples.run("04")
+    assert meta.truncated
+    assert meta.truncation_reason == "max_turns"
+  end
+
+  test "pattern 05 stops executing tool calls after done in same turn" do
+    assert {:ok, "pattern-05:stop-at-done", _cantrip, loom, _meta} = Examples.run("05")
+    [turn] = loom.turns
+    assert Enum.map(turn.observation, & &1.gate) == ["echo", "done"]
+  end
+
+  test "pattern 11 triggers folding before completion" do
+    assert {:ok, "pattern-11:folded", cantrip, _loom, _meta} = Examples.run("11")
+    [_first, _second, third | _] = FakeCrystal.invocations(cantrip.crystal_state)
+
+    assert Enum.any?(
+             third.messages,
+             &(&1[:content] == "folded prior turns; see loom for full history")
+           )
+  end
+
+  test "pattern 12 performs compile_and_load in code medium" do
+    assert {:ok, "pattern-12:compiled", _cantrip, loom, _meta} = Examples.run("12")
+    [turn] = loom.turns
+    assert Enum.any?(turn.observation, &(&1.gate == "compile_and_load" and not &1.is_error))
+  end
+
+  test "pattern 15 uses read gate with dependency injection" do
+    assert {:ok, "pattern-15:research", _cantrip, loom, _meta} = Examples.run("15")
+    [turn1 | _] = loom.turns
+    assert Enum.any?(turn1.observation, &(&1.gate == "read" and &1.result =~ "pattern-15-source"))
+  end
+
   test "pattern 10 supports parallel delegation shape" do
     parent =
       {FakeCrystal,

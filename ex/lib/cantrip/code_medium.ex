@@ -20,6 +20,7 @@ defmodule Cantrip.CodeMedium do
 
   @type runtime :: %{
           required(:circle) => Circle.t(),
+          optional(:execute_gate) => (String.t(), map() -> map()),
           required(:call_agent) => (map() -> map()),
           optional(:call_agent_batch) => (list(map()) -> map()),
           optional(:compile_and_load) => (map() -> map())
@@ -89,6 +90,7 @@ defmodule Cantrip.CodeMedium do
       |> Keyword.put(:done, done_fun)
       |> Keyword.put(:call_agent, call_agent_fun)
       |> Keyword.put(:call_entity, call_agent_fun)
+      |> put_circle_gate_bindings(runtime)
 
     binding =
       case Map.get(runtime, :call_agent_batch) do
@@ -131,6 +133,32 @@ defmodule Cantrip.CodeMedium do
   defp push_observation(observation) do
     observations = Process.get(:cantrip_code_observations, [])
     Process.put(:cantrip_code_observations, observations ++ [observation])
+  end
+
+  defp put_circle_gate_bindings(binding, runtime) do
+    case Map.get(runtime, :execute_gate) do
+      nil ->
+        binding
+
+      execute_gate ->
+        runtime.circle
+        |> Circle.gate_names()
+        |> Enum.reduce(binding, fn gate_name, acc ->
+          binding_name = String.to_atom(gate_name)
+
+          if binding_name in @reserved_bindings do
+            acc
+          else
+            gate_fun = fn opts ->
+              observation = execute_gate.(gate_name, normalize_opts(opts))
+              push_observation(observation)
+              observation.result
+            end
+
+            Keyword.put(acc, binding_name, gate_fun)
+          end
+        end)
+    end
   end
 
   defp normalize_opts(opts) when is_map(opts), do: opts

@@ -40,61 +40,285 @@ defmodule Cantrip.Examples do
     end
   end
 
-  defp build("01", opts), do: build_basic("pattern 01", %{gates: [:done]}, opts)
-  defp build("02", opts), do: build_basic("pattern 02", %{gates: [:done, :echo]}, opts)
-
-  defp build("03", opts) do
-    build_basic("pattern 03", %{gates: [:done], call: %{require_done_tool: true}}, opts)
+  defp build("01", opts) do
+    build_basic(
+      "Pattern 01: use done to finish with pattern-01:minimal-done",
+      %{gates: [:done], default_crystal: done_crystal("pattern-01:minimal-done")},
+      opts
+    )
   end
 
-  defp build("04", opts),
-    do: build_basic("pattern 04", %{gates: [:done, :echo], max_turns: 2}, opts)
+  defp build("02", opts) do
+    build_basic(
+      "Pattern 02: execute echo then done",
+      %{
+        gates: [:done, :echo],
+        default_crystal:
+          fake_crystal([
+            %{
+              tool_calls: [
+                %{gate: "echo", args: %{text: "loop"}},
+                %{gate: "done", args: %{answer: "pattern-02:gate-loop"}}
+              ]
+            }
+          ])
+      },
+      opts
+    )
+  end
 
-  defp build("05", opts), do: build_basic("pattern 05", %{gates: [:done, :echo]}, opts)
-  defp build("06", opts), do: build_from_env("pattern 06", opts)
+  defp build("03", opts) do
+    build_basic(
+      "Pattern 03: require done tool before termination",
+      %{
+        gates: [:done],
+        call: %{require_done_tool: true},
+        default_crystal:
+          fake_crystal([
+            %{content: "not done yet"},
+            %{tool_calls: [%{gate: "done", args: %{answer: "pattern-03:require-done"}}]}
+          ])
+      },
+      opts
+    )
+  end
 
-  defp build("07", opts),
-    do: build_basic("pattern 07", %{gates: [:done, :echo], type: :conversation}, opts)
+  defp build("04", opts) do
+    build_basic(
+      "Pattern 04: exceed max_turns and truncate",
+      %{
+        gates: [:done, :echo],
+        max_turns: 2,
+        default_crystal:
+          fake_crystal([
+            %{tool_calls: [%{gate: "echo", args: %{text: "turn-1"}}]},
+            %{tool_calls: [%{gate: "echo", args: %{text: "turn-2"}}]}
+          ])
+      },
+      opts
+    )
+  end
 
-  defp build("08", opts), do: build_basic("pattern 08", %{gates: [:done], type: :code}, opts)
+  defp build("05", opts) do
+    build_basic(
+      "Pattern 05: stop processing tool calls after done",
+      %{
+        gates: [:done, :echo],
+        default_crystal:
+          fake_crystal([
+            %{
+              tool_calls: [
+                %{gate: "echo", args: %{text: "before"}},
+                %{gate: "done", args: %{answer: "pattern-05:stop-at-done"}},
+                %{gate: "echo", args: %{text: "after"}}
+              ]
+            }
+          ])
+      },
+      opts
+    )
+  end
 
-  defp build("09", opts),
-    do: build_basic("pattern 09", %{gates: [:done, :echo], type: :code}, opts)
+  defp build("06", opts) do
+    build_basic(
+      "Pattern 06: provider portability exercise",
+      %{gates: [:done], default_crystal: done_crystal("pattern-06:provider-portable")},
+      opts
+    )
+  end
+
+  defp build("07", opts) do
+    build_basic(
+      "Pattern 07: conversation medium terminates on assistant content",
+      %{
+        gates: [:done, :echo],
+        default_crystal: fake_crystal([%{content: "pattern-07:conversation"}])
+      },
+      opts
+    )
+  end
+
+  defp build("08", opts) do
+    build_basic(
+      "Pattern 08: code medium returns via done",
+      %{
+        gates: [:done],
+        type: :code,
+        default_crystal: fake_crystal([%{code: "done.(\"pattern-08:code\")"}])
+      },
+      opts
+    )
+  end
+
+  defp build("09", opts) do
+    build_basic(
+      "Pattern 09: stateful code medium across turns",
+      %{
+        gates: [:done],
+        type: :code,
+        default_crystal:
+          fake_crystal([
+            %{code: "prefix = \"pattern-09\""},
+            %{code: "done.(prefix <> \":stateful\")"}
+          ])
+      },
+      opts
+    )
+  end
 
   defp build("10", opts) do
     build_basic(
-      "pattern 10",
-      %{gates: [:done, :call_agent, :call_agent_batch], type: :code, max_depth: 1},
+      "Pattern 10: delegate in parallel with call_agent_batch",
+      %{
+        gates: [:done, :call_agent, :call_agent_batch],
+        type: :code,
+        max_depth: 1,
+        default_crystal:
+          fake_crystal([
+            %{
+              code:
+                "results = call_agent_batch.([%{intent: \"left\"}, %{intent: \"right\"}])\ndone.(\"pattern-10:\" <> Enum.join(results, \"+\"))"
+            }
+          ]),
+        default_child_crystal:
+          fake_crystal([%{code: "done.(\"parallel\")"}, %{code: "done.(\"delegation\")"}])
+      },
       opts
     )
   end
 
   defp build("11", opts) do
-    build_basic("pattern 11", %{gates: [:done, :echo], folding: %{trigger_after_turns: 2}}, opts)
+    build_basic(
+      "Pattern 11: folding after configured turn threshold",
+      %{
+        gates: [:done, :echo],
+        folding: %{trigger_after_turns: 2},
+        default_crystal:
+          fake_crystal(
+            [
+              %{tool_calls: [%{gate: "echo", args: %{text: "one"}}]},
+              %{tool_calls: [%{gate: "echo", args: %{text: "two"}}]},
+              %{tool_calls: [%{gate: "done", args: %{answer: "pattern-11:folded"}}]}
+            ],
+            record_inputs: true
+          )
+      },
+      opts
+    )
   end
 
-  defp build("12", opts),
-    do: build_basic("pattern 12", %{gates: [:done, :read], type: :code}, opts)
+  defp build("12", opts) do
+    suffix = Integer.to_string(System.unique_integer([:positive]))
+    bare_module_name = "CantripExampleM12_#{suffix}"
+    module_name = "Elixir.#{bare_module_name}"
 
-  defp build("13", opts), do: build_basic("pattern 13", %{gates: [:done, :echo]}, opts)
+    source = """
+    defmodule #{bare_module_name} do
+      def label, do: "pattern-12:compiled"
+    end
+    """
 
-  defp build("14", opts),
-    do: build_basic("pattern 14", %{gates: [:done, :call_agent], type: :code, max_depth: 2}, opts)
+    code = """
+    compile_and_load.(%{module: "#{module_name}", source: #{inspect(source)}})
+    done.(apply(String.to_existing_atom("#{module_name}"), :label, []))
+    """
 
-  defp build("15", opts),
-    do: build_basic("pattern 15", %{gates: [:done, :read], type: :code}, opts)
+    build_basic(
+      "Pattern 12: full code agent with compile_and_load",
+      %{
+        gates: [:done, :compile_and_load],
+        type: :code,
+        default_crystal: fake_crystal([%{code: code}]),
+        wards: [%{allow_compile_modules: [module_name]}]
+      },
+      opts
+    )
+  end
+
+  defp build("13", opts) do
+    build_basic(
+      "Pattern 13: ACP-ready loop contract (done-required)",
+      %{
+        gates: [:done, :echo],
+        call: %{require_done_tool: true, tool_choice: "required"},
+        default_crystal: done_crystal("pattern-13:acp-ready")
+      },
+      opts
+    )
+  end
+
+  defp build("14", opts) do
+    build_basic(
+      "Pattern 14: recursive delegation bounded by max_depth",
+      %{
+        gates: [:done, :call_agent],
+        type: :code,
+        max_depth: 2,
+        default_crystal:
+          fake_crystal([
+            %{code: "mid = call_agent.(%{intent: \"mid\"})\ndone.(\"pattern-14:\" <> mid)"}
+          ]),
+        default_child_crystal:
+          fake_crystal([
+            %{
+              code:
+                "leaf_crystal = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: \"done.(\\\"leaf\\\")\"}])}\nleaf = call_agent.(%{intent: \"leaf\", crystal: leaf_crystal})\ndone.(\"mid:\" <> leaf)"
+            }
+          ])
+      },
+      opts
+    )
+  end
+
+  defp build("15", opts) do
+    root = temp_root("cantrip_pattern15")
+    File.write!(Path.join(root, "source.txt"), "pattern-15-source")
+
+    build_basic(
+      "Pattern 15: research-style read gate",
+      %{
+        gates: [%{name: :done}, %{name: :read, dependencies: %{root: root}}],
+        type: :code,
+        default_crystal:
+          fake_crystal([
+            %{
+              code:
+                "text = read.(%{path: \"source.txt\"})\ndone.(if String.contains?(text, \"pattern-15-source\"), do: \"pattern-15:research\", else: \"pattern-15:missing\")"
+            }
+          ])
+      },
+      opts
+    )
+  end
 
   defp build("16", opts) do
     storage =
       Map.get(
         opts,
         :loom_storage,
-        {:jsonl, Path.join(System.tmp_dir!(), "cantrip_familiar.jsonl")}
+        {:jsonl,
+         Path.join(
+           System.tmp_dir!(),
+           "cantrip_familiar_#{System.unique_integer([:positive])}.jsonl"
+         )}
       )
 
     build_basic(
-      "pattern 16",
-      %{gates: [:done, :call_agent, :call_agent_batch], type: :code, loom_storage: storage},
+      "Pattern 16: familiar-style coordinator with persistent loom",
+      %{
+        gates: [:done, :call_agent, :call_agent_batch],
+        type: :code,
+        loom_storage: storage,
+        default_crystal:
+          fake_crystal([
+            %{
+              code:
+                "results = call_agent_batch.([%{intent: \"first\"}, %{intent: \"second\"}])\ndone.(\"pattern-16:\" <> Enum.join(results, \",\"))"
+            }
+          ]),
+        default_child_crystal:
+          fake_crystal([%{code: "done.(\"familiar\")"}, %{code: "done.(\"loom\")"}])
+      },
       opts
     )
   end
@@ -102,19 +326,25 @@ defmodule Cantrip.Examples do
   defp build(_, _opts), do: {:error, "unknown pattern id"}
 
   defp build_basic(intent, spec, opts) do
-    with {:ok, crystal, child_crystal} <- resolve_crystals(opts) do
+    with {:ok, crystal, child_crystal} <- resolve_crystals(opts, spec) do
       type = Map.get(spec, :type, :conversation)
       gates = Map.get(spec, :gates, [:done])
       max_turns = Map.get(spec, :max_turns, 12)
 
       wards =
-        [%{max_turns: max_turns}]
+        ([%{max_turns: max_turns}] ++
+           Map.get(spec, :wards, []))
         |> maybe_put_ward(:max_depth, Map.get(spec, :max_depth))
+
+      call =
+        Map.get(spec, :call, %{})
+        |> Map.put_new(:system_prompt, system_prompt())
+        |> maybe_require_done(opts, type)
 
       attrs = %{
         crystal: crystal,
         child_crystal: child_crystal,
-        call: Map.get(spec, :call, %{}),
+        call: call,
         circle: %{type: type, gates: gates, wards: wards},
         folding: Map.get(spec, :folding, %{}),
         loom_storage: Map.get(spec, :loom_storage)
@@ -127,22 +357,17 @@ defmodule Cantrip.Examples do
     end
   end
 
-  defp build_from_env(intent, opts) do
-    attrs = %{
-      circle: %{gates: [:done, :echo], wards: [%{max_turns: 12}]},
-      call: Map.get(opts, :call, %{})
-    }
-
-    case Cantrip.new_from_env(attrs) do
-      {:ok, cantrip} -> {:ok, {intent, cantrip}}
-      {:error, reason} -> {:error, reason}
+  defp maybe_require_done(call, opts, type) do
+    if Map.get(opts, :real, false) and type == :conversation do
+      call
+      |> Map.put_new(:require_done_tool, true)
+      |> Map.put_new(:tool_choice, "required")
+    else
+      call
     end
   end
 
-  defp maybe_put_ward(wards, _key, nil), do: wards
-  defp maybe_put_ward(wards, key, value), do: wards ++ [%{key => value}]
-
-  defp resolve_crystals(opts) do
+  defp resolve_crystals(opts, spec) do
     crystal = Map.get(opts, :crystal)
     child_crystal = Map.get(opts, :child_crystal)
     real? = Map.get(opts, :real, false)
@@ -158,12 +383,26 @@ defmodule Cantrip.Examples do
         end
 
       true ->
-        default = default_crystal()
-        {:ok, default, child_crystal || default}
+        default = Map.get(spec, :default_crystal, done_crystal("ok"))
+        {:ok, default, child_crystal || Map.get(spec, :default_child_crystal, default)}
     end
   end
 
-  defp default_crystal do
-    {FakeCrystal, FakeCrystal.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
+  defp done_crystal(answer),
+    do: fake_crystal([%{tool_calls: [%{gate: "done", args: %{answer: answer}}]}])
+
+  defp fake_crystal(responses, opts \\ []), do: {FakeCrystal, FakeCrystal.new(responses, opts)}
+
+  defp maybe_put_ward(wards, _key, nil), do: wards
+  defp maybe_put_ward(wards, key, value), do: wards ++ [%{key => value}]
+
+  defp temp_root(prefix) do
+    root = Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    root
+  end
+
+  defp system_prompt do
+    "You are executing Cantrip spec patterns. Use only configured gates and finish deterministically."
   end
 end

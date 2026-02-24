@@ -109,6 +109,12 @@ mix cantrip.example 08 --real
 
 Pattern `06` uses env-backed real crystal configuration; others default to deterministic fake crystals unless overridden in code/tests.
 
+Default example runs are now pattern-specific and meaningful (not shared `"ok"` stubs). For example:
+- `04` demonstrates truncation (`nil` result with `max_turns` reason in metadata).
+- `12` demonstrates code-medium hot loading via `compile_and_load`.
+- `15` demonstrates dependency-injected `read` in code medium.
+- `16` demonstrates familiar-style delegation with persistent loom storage.
+
 ## Real Crystals (.env)
 
 You can run with real providers (or local OpenAI-compatible servers) via env vars.
@@ -139,4 +145,4 @@ Then construct with:
 - The runtime threads crystal state through the cantrip value for deterministic fake-crystal tests.
 - Code-circle snippets are Elixir (`done.(...)`, `call_agent.(...)`, `compile_and_load.(...)`).
 - `FakeCrystal` supports `record_inputs: true` to assert context/tool contracts in tests.
-- Current test count: 47 green tests (`mix test`).
+- Current test count: 82 green tests (`mix test`).
