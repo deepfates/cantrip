@@ -48,12 +48,24 @@ defmodule Cantrip.CodeMedium do
   defp eval_statement("", binding), do: {:ok, binding}
 
   defp eval_statement(statement, binding) do
-    try do
-      {_value, next_binding} = Code.eval_string(statement, binding)
-      {:ok, next_binding}
-    catch
-      {:cantrip_done, answer} ->
-        {:done, binding, answer}
+    case Code.string_to_quoted(statement) do
+      {:ok, quoted} ->
+        try do
+          {_value, next_binding} = Code.eval_quoted(quoted, binding)
+          {:ok, next_binding}
+        rescue
+          e ->
+            push_observation(%{gate: "code", result: Exception.message(e), is_error: true})
+            {:ok, binding}
+        catch
+          {:cantrip_done, answer} ->
+            {:done, binding, answer}
+        end
+
+      {:error, {line, error, token}} ->
+        msg = "parse error at line #{line}: #{inspect(error)} #{inspect(token)}"
+        push_observation(%{gate: "code", result: msg, is_error: true})
+        {:ok, binding}
     end
   end
 

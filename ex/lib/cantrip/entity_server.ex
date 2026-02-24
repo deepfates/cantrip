@@ -309,33 +309,27 @@ defmodule Cantrip.EntityServer do
           circle: child_circle
       }
 
-      try do
-        case Cantrip.cast(child_cantrip, child_intent, depth: state.depth + 1) do
-          {:ok, value, next_cantrip, child_loom, _meta} ->
-            remember_child_crystal(next_cantrip)
+      case Cantrip.cast(child_cantrip, child_intent, depth: state.depth + 1) do
+        {:ok, value, next_cantrip, child_loom, _meta} ->
+          remember_child_crystal(next_cantrip)
 
-            %{
-              value: value,
-              observation: %{
-                gate: "call_agent",
-                result: value,
-                is_error: false,
-                child_turns: child_loom.turns
-              }
+          %{
+            value: value,
+            observation: %{
+              gate: "call_agent",
+              result: value,
+              is_error: false,
+              child_turns: child_loom.turns
             }
+          }
 
-          {:error, reason, next_cantrip} ->
-            remember_child_crystal(next_cantrip)
+        {:error, reason, next_cantrip} ->
+          remember_child_crystal(next_cantrip)
 
-            %{
-              value: inspect(reason),
-              observation: %{gate: "call_agent", result: inspect(reason), is_error: true}
-            }
-        end
-      catch
-        :exit, reason ->
-          message = "child error: #{inspect(reason)}"
-          %{value: message, observation: %{gate: "call_agent", result: message, is_error: true}}
+          %{
+            value: inspect(reason),
+            observation: %{gate: "call_agent", result: inspect(reason), is_error: true}
+          }
       end
     end
   end

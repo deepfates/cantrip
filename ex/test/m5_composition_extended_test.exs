@@ -80,6 +80,35 @@ defmodule CantripM5CompositionExtendedTest do
     assert String.contains?(result, "child")
   end
 
+  test "COMP-8 child crash is returned to parent via structured error path" do
+    parent =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{code: "result = call_agent.(%{intent: \"will crash\"})\ndone.(to_string(result))"}
+       ])}
+
+    child = {FakeCrystal, FakeCrystal.new([%{code: "this is invalid elixir"}])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: parent,
+        child_crystal: child,
+        circle: %{
+          type: :code,
+          gates: [:done, :call_agent],
+          wards: [%{max_turns: 10}, %{max_depth: 1}]
+        }
+      )
+
+    assert {:ok, _result, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "child crash")
+
+    assert Enum.any?(loom.turns, fn turn ->
+             Enum.any?(turn.observation || [], fn obs ->
+               obs.gate == "code" and obs.is_error
+             end)
+           end)
+  end
+
   test "COMP-5 child turns are recorded as a subtree in parent loom" do
     parent =
       {FakeCrystal,

@@ -139,9 +139,25 @@ defmodule Cantrip do
     spec = {EntityServer, cantrip: cantrip, intent: intent}
     spec = put_elem(spec, 1, Keyword.merge(elem(spec, 1), extra_opts))
 
-    with {:ok, pid} <- DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec),
-         {:ok, result, next_cantrip, loom, meta} <- EntityServer.run(pid) do
-      {:ok, result, next_cantrip, loom, meta}
+    with {:ok, pid} <- DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec) do
+      case safe_run_entity(pid) do
+        {:ok, result, next_cantrip, loom, meta} ->
+          {:ok, result, next_cantrip, loom, meta}
+
+        {:error, reason} ->
+          {:error, reason, cantrip}
+      end
+    else
+      {:error, reason} ->
+        {:error, reason, cantrip}
+    end
+  end
+
+  defp safe_run_entity(pid) do
+    try do
+      EntityServer.run(pid)
+    catch
+      :exit, reason -> {:error, reason}
     end
   end
 
