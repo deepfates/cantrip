@@ -17,14 +17,14 @@ Completed (green + committed):
 8. Guarded hot-reload gate (`compile_and_load`) with module/path ward checks.
 
 Current codebase state:
-1. `mix test` is green (48 tests).
+1. `mix test` is green (61 tests).
 2. Atomic commits applied per completed slice.
 3. Error model is explicitly codified (expected operational failures as observations, unexpected bugs supervised).
 
 Remaining high-value follow-ups:
-1. Parent-terminated child cancellation semantics (`COMP-9`) with explicit reason propagation.
-2. Optional storage-backed loom adapters (`JsonlStorage`/DB) for long-lived execution.
-3. Tighten compile/load safety model (allowlist + signing/verification strategy) for production hot-reload.
+1. Add DB-backed loom adapter for long-lived distributed execution (JSONL adapter is implemented).
+2. Extend compile/load verification beyond hash allowlists (e.g., signature verification / key management).
+3. Expand `COMP-9` coverage to assert child truncation subtree propagation in fully concurrent delegation traces.
 
 ## 1) Forced Decisions Before Coding
 

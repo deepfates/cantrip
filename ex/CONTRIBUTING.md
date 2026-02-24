@@ -30,8 +30,18 @@ This project follows strict spec-driven development. These rules are mandatory.
 2. Keep commits atomic and scoped to one slice increment.
 3. If a rule is violated, pause and correct before adding new behavior.
 
+### 5) Runtime Safety Requirements
+
+1. Child casts linked via delegation must support parent-linked truncation with reason `parent_terminated` (`COMP-9`).
+2. Loom persistence must remain append-only; storage adapters can extend durability but not mutate turn history.
+3. Hot-reload (`compile_and_load`) must be warded in production:
+   - module allowlist (`allow_compile_modules`)
+   - path allowlist (`allow_compile_paths`) when writing files
+   - optional source integrity allowlist (`allow_compile_sha256`)
+
 ## Quality Gates
 
 1. `mix format`
 2. `mix test`
-3. Conformance behavior must remain aligned with `tests.yaml`.
+3. Real crystal integration is opt-in and should be exercised whenever provider env is configured.
+4. Conformance behavior must remain aligned with `tests.yaml`.
