@@ -70,6 +70,12 @@ Operational guidance:
 - signer key lifecycle: [`SIGNER_KEY_RUNBOOK.md`](/Users/deepfates/Hacking/github/deepfates/cantrip-ex/SIGNER_KEY_RUNBOOK.md)
 - loom storage strategy: [`LOOM_STORAGE_STRATEGY.md`](/Users/deepfates/Hacking/github/deepfates/cantrip-ex/LOOM_STORAGE_STRATEGY.md)
 
+CI enforces:
+1. `mix verify`
+2. `./scripts/check_signer_policy.sh`
+
+Workflow file: `.github/workflows/verify.yml`.
+
 ## ACP (Zed / Custom Clients)
 
 Run the local ACP stdio server:

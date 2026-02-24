@@ -46,3 +46,4 @@ This project follows strict spec-driven development. These rules are mandatory.
 1. `mix verify`
 2. Real crystal integration is opt-in and should be exercised whenever provider env is configured.
 3. Conformance behavior must remain aligned with `tests.yaml`.
+4. Run `./scripts/check_signer_policy.sh` before merge when `compile_and_load` policy or signer config changes.
