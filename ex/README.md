@@ -62,6 +62,31 @@ Recommended extension loop:
 mix test
 ```
 
+## ACP (Zed / Custom Clients)
+
+Run the local ACP stdio server:
+
+```bash
+mix cantrip.acp
+```
+
+Zed custom agent example:
+
+```json
+{
+  "agent_servers": {
+    "cantrip-ex": {
+      "type": "custom",
+      "command": "mix",
+      "args": ["cantrip.acp"],
+      "cwd": "/absolute/path/to/cantrip-ex"
+    }
+  }
+}
+```
+
+Protocol implemented: `initialize`, `session/new`, `session/prompt` over JSON-RPC stdio.
+
 ## Real Crystals (.env)
 
 You can run with real providers (or local OpenAI-compatible servers) via env vars.
