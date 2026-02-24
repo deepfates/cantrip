@@ -185,6 +185,37 @@ defmodule CantripM5CompositionExtendedTest do
     assert {:ok, "alias ok", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "alias")
   end
 
+  test "D-002 call_entity_batch alias maps to call_agent_batch semantics" do
+    parent =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{
+           code:
+             "results = call_entity_batch.([%{intent: \"a\"}, %{intent: \"b\"}])\ndone.(Enum.join(results, \",\"))"
+         }
+       ])}
+
+    child =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{code: "done.(\"A\")"},
+         %{code: "done.(\"B\")"}
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: parent,
+        child_crystal: child,
+        circle: %{
+          type: :code,
+          gates: [:done, :call_entity_batch, :call_entity],
+          wards: [%{max_turns: 10}, %{max_depth: 1}]
+        }
+      )
+
+    assert {:ok, "A,B", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "alias batch")
+  end
+
   test "call_agent_batch enforces max_batch_size ward" do
     parent =
       {FakeCrystal,
