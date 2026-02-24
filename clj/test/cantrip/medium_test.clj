@@ -13,6 +13,12 @@
          (:medium (medium/capability-view {:medium :minecraft :gates {:done {}}}
                                           {})))))
 
+(deftest capability-view-normalizes-sequential-gates
+  (let [view (medium/capability-view {:medium :conversation
+                                      :gates [:done "echo" {:name :read}]}
+                                     {})]
+    (is (= ["done" "echo" "read"] (:gates view)))))
+
 (deftest execute-utterance-dispatch
   (let [circle {:medium :conversation :gates [:done] :wards [{:max-turns 2}]}
         utterance {:tool-calls [{:id "call_1" :gate :done :args {:answer "ok"}}]}
