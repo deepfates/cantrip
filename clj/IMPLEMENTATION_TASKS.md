@@ -48,10 +48,10 @@ Status legend: `TODO` | `IN_PROGRESS` | `BLOCKED` | `DONE`
 
 | ID | Task | Status | Done Criteria |
 |---|---|---|---|
-| P4-1 | Implement `call_agent` | TODO | Parent can spawn child and receive normalized result |
-| P4-2 | Implement `call_agent_batch` with stable result ordering | TODO | Concurrent child execution preserves request order |
-| P4-3 | Enforce child circle subset + depth wards | TODO | Violations fail deterministically with rule-tagged errors |
-| P4-4 | Parent/child loom subtree linkage | TODO | Child root links to spawning parent turn; replay works |
+| P4-1 | Implement `call_agent` | DONE | Parent can spawn child and receive normalized result |
+| P4-2 | Implement `call_agent_batch` with stable result ordering | DONE | Concurrent child execution preserves request order |
+| P4-3 | Enforce child circle subset + depth wards | DONE | Violations fail deterministically with rule-tagged errors |
+| P4-4 | Parent/child loom subtree linkage | DONE | Child root links to spawning parent turn; replay works |
 
 ## Phase 5: Mediums + Patterns
 

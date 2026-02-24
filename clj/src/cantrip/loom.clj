@@ -13,7 +13,7 @@
   (let [sequence (inc (count (:turns loom)))
         id (or (:id turn) (str "turn_" sequence))
         parent-id (if (= sequence 1)
-                    nil
+                    (:parent-id turn)
                     (or (:parent-id turn)
                         (:id (last (:turns loom)))))
         stored (assoc turn

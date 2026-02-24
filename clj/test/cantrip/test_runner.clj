@@ -2,6 +2,7 @@
   (:require [clojure.test :as t]
             [cantrip.acp-test]
             [cantrip.circle-test]
+            [cantrip.composition-test]
             [cantrip.crystal-test]
             [cantrip.domain-test]
             [cantrip.gates-test]
@@ -13,6 +14,7 @@
 (defn -main [& _]
   (let [{:keys [fail error]} (t/run-tests 'cantrip.acp-test
                                           'cantrip.circle-test
+                                          'cantrip.composition-test
                                           'cantrip.crystal-test
                                           'cantrip.domain-test
                                           'cantrip.gates-test

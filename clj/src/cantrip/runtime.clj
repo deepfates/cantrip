@@ -4,7 +4,9 @@
             [cantrip.domain :as domain]
             [cantrip.gates :as gates]
             [cantrip.loom :as loom]
-            [cantrip.medium :as medium]))
+            [cantrip.medium :as medium]
+            [clojure.set :as set]
+            [clojure.string :as str]))
 
 (defn- max-turns [cantrip]
   (or (some :max-turns (get-in cantrip [:circle :wards]))
@@ -42,6 +44,34 @@
             (recur (inc attempt))
             (throw error))
           (:ok result))))))
+
+(defn- ward-value
+  [cantrip k]
+  (some #(or (get % k) (get % (keyword (str/replace (name k) "-" "_"))))
+        (get-in cantrip [:circle :wards])))
+
+(defn- max-turns-ward [cantrip]
+  (or (ward-value cantrip :max-turns)
+      1))
+
+(defn- max-depth-ward [cantrip]
+  (ward-value cantrip :max-depth))
+
+(defn- subset-violation
+  [parent-cantrip child-cantrip]
+  (let [parent-circle (:circle parent-cantrip)
+        child-circle (:circle child-cantrip)
+        parent-medium (:medium parent-circle)
+        child-medium (:medium child-circle)
+        parent-gates (set (gates/gate-names (:gates parent-circle)))
+        child-gates (set (gates/gate-names (:gates child-circle)))
+        parent-max-turns (long (max-turns-ward parent-cantrip))
+        child-max-turns (long (max-turns-ward child-cantrip))]
+    (cond
+      (not= parent-medium child-medium) "child circle medium must match parent medium"
+      (not (set/subset? child-gates parent-gates)) "child gates must be subset of parent gates"
+      (> child-max-turns parent-max-turns) "child max-turns must not exceed parent max-turns"
+      :else nil)))
 
 (defn- circle-tools [circle]
   (gates/gate-tools (:gates circle)))
@@ -110,79 +140,84 @@
                          (long (or (:completion_tokens rhs) 0)))})
 
 (defn- run-cast
-  [entity-id cantrip intent prior-turns initial-loom initial-usage]
-  (let [turn-limit (max-turns cantrip)
-        done-required? (require-done-tool? cantrip)
-        selected-tool-choice (tool-choice cantrip)
-        tools (circle-tools (:circle cantrip))]
-    (loop [turn-index 0
-           turns []
-           loom-state initial-loom
-           cumulative-usage initial-usage
-           previous-tool-call-ids []]
-      (if (>= turn-index turn-limit)
-        {:entity-id entity-id
-         :intent intent
-         :status :truncated
-         :result nil
-         :turns turns
-         :new-turns turns
-         :cumulative-usage cumulative-usage
-         :loom loom-state}
-        (let [messages (build-messages cantrip intent prior-turns turns)
-              query-start (System/nanoTime)
-              utterance (query-with-retry cantrip
-                                          {:turn-index turn-index
-                                           :messages messages
-                                           :tools tools
-                                           :tool-choice selected-tool-choice
-                                           :previous-tool-call-ids previous-tool-call-ids})
-              query-end (System/nanoTime)
-              turn-usage (normalize-usage (:usage utterance))
-              next-cumulative-usage (add-usage cumulative-usage turn-usage)
-              tool-calls (vec (:tool-calls utterance))
-              {:keys [observation terminated? result]} (medium/execute-utterance
-                                                        (:circle cantrip)
-                                                        utterance
-                                                        (get-in cantrip [:circle :dependencies]))
-              text-only? (and (empty? tool-calls)
-                              (string? (:content utterance)))
-              done-by-text? (and text-only? (not done-required?))
-              turn-record {:sequence (inc turn-index)
-                           :utterance utterance
-                           :observation observation
-                           :metadata {:tokens_prompt (:prompt_tokens turn-usage)
-                                      :tokens_completion (:completion_tokens turn-usage)
-                                      :duration_ms (max 0 (long (/ (- query-end query-start) 1000000)))
-                                      :timestamp (System/currentTimeMillis)}
-                           :terminated (or terminated? done-by-text?)
-                           :truncated false}
-              [next-loom _] (loom/append-turn loom-state turn-record)
-              next-turns (conj turns turn-record)]
-          (cond
-            terminated? {:entity-id entity-id
-                         :intent intent
-                         :status :terminated
-                         :result result
-                         :turns next-turns
-                         :new-turns next-turns
-                         :cumulative-usage next-cumulative-usage
-                         :loom next-loom}
+  ([entity-id cantrip intent prior-turns initial-loom initial-usage]
+   (run-cast entity-id cantrip intent prior-turns initial-loom initial-usage {}))
+  ([entity-id cantrip intent prior-turns initial-loom initial-usage {:keys [first-parent-id]}]
+   (let [turn-limit (max-turns cantrip)
+         done-required? (require-done-tool? cantrip)
+         selected-tool-choice (tool-choice cantrip)
+         tools (circle-tools (:circle cantrip))]
+     (loop [turn-index 0
+            turns []
+            loom-state initial-loom
+            cumulative-usage initial-usage
+            previous-tool-call-ids []]
+       (if (>= turn-index turn-limit)
+         {:entity-id entity-id
+          :intent intent
+          :status :truncated
+          :result nil
+          :turns turns
+          :new-turns turns
+          :cumulative-usage cumulative-usage
+          :loom loom-state}
+         (let [messages (build-messages cantrip intent prior-turns turns)
+               query-start (System/nanoTime)
+               utterance (query-with-retry cantrip
+                                           {:turn-index turn-index
+                                            :messages messages
+                                            :tools tools
+                                            :tool-choice selected-tool-choice
+                                            :previous-tool-call-ids previous-tool-call-ids})
+               query-end (System/nanoTime)
+               turn-usage (normalize-usage (:usage utterance))
+               next-cumulative-usage (add-usage cumulative-usage turn-usage)
+               tool-calls (vec (:tool-calls utterance))
+               {:keys [observation terminated? result]} (medium/execute-utterance
+                                                         (:circle cantrip)
+                                                         utterance
+                                                         (get-in cantrip [:circle :dependencies]))
+               text-only? (and (empty? tool-calls)
+                               (string? (:content utterance)))
+               done-by-text? (and text-only? (not done-required?))
+               turn-record {:sequence (inc turn-index)
+                            :parent-id (when (and (zero? turn-index)
+                                                  (some? first-parent-id))
+                                         first-parent-id)
+                            :utterance utterance
+                            :observation observation
+                            :metadata {:tokens_prompt (:prompt_tokens turn-usage)
+                                       :tokens_completion (:completion_tokens turn-usage)
+                                       :duration_ms (max 0 (long (/ (- query-end query-start) 1000000)))
+                                       :timestamp (System/currentTimeMillis)}
+                            :terminated (or terminated? done-by-text?)
+                            :truncated false}
+               [next-loom stored-turn] (loom/append-turn loom-state turn-record)
+               next-turns (conj turns stored-turn)]
+           (cond
+             terminated? {:entity-id entity-id
+                          :intent intent
+                          :status :terminated
+                          :result result
+                          :turns next-turns
+                          :new-turns next-turns
+                          :cumulative-usage next-cumulative-usage
+                          :loom next-loom}
 
-            done-by-text? {:entity-id entity-id
-                           :intent intent
-                           :status :terminated
-                           :result (:content utterance)
-                           :turns next-turns
-                           :new-turns next-turns
-                           :cumulative-usage next-cumulative-usage
-                           :loom next-loom}
+             done-by-text? {:entity-id entity-id
+                            :intent intent
+                            :status :terminated
+                            :result (:content utterance)
+                            :turns next-turns
+                            :new-turns next-turns
+                            :cumulative-usage next-cumulative-usage
+                            :loom next-loom}
 
-            :else (recur (inc turn-index)
-                         next-turns
-                         next-loom
-                         next-cumulative-usage
-                         (mapv :id tool-calls))))))))
+             :else (recur (inc turn-index)
+                          next-turns
+                          next-loom
+                          next-cumulative-usage
+                          (mapv :id tool-calls)))))))))
 
 (defn new-cantrip
   "Constructs and validates a cantrip value."
@@ -214,7 +249,8 @@
      :medium-state (atom medium-state)
      :cumulative-usage (atom {:prompt_tokens 0
                               :completion_tokens 0})
-     :turn-history (atom [])}))
+     :turn-history (atom [])
+     :depth 0}))
 
 (defn cast-intent
   "Runs one intent against an invoked entity, preserving state across casts."
@@ -247,3 +283,47 @@
    :medium-state @(:medium-state entity)
    :cumulative-usage @(:cumulative-usage entity)
    :loom @(:loom entity)})
+
+(defn call-agent
+  "Composes a child cast from a parent entity while preserving parent continuity."
+  [parent-entity {:keys [cantrip intent]}]
+  (let [parent-cantrip (:cantrip parent-entity)
+        parent-depth (long (or (:depth parent-entity) 0))
+        max-depth (max-depth-ward parent-cantrip)
+        child-cantrip (or cantrip parent-cantrip)]
+    (cond
+      (and (some? max-depth) (>= parent-depth (long max-depth)))
+      {:status :error
+       :error "max depth exceeded"}
+
+      :else
+      (if-let [violation (subset-violation parent-cantrip child-cantrip)]
+        {:status :error
+         :error violation}
+        (try
+          (domain/require-intent! intent)
+          (domain/validate-cantrip! child-cantrip)
+          (let [parent-turn-id (:id (last @(:turn-history parent-entity)))
+                initial-loom @(:loom parent-entity)
+                child-id (str (random-uuid))
+                result (run-cast child-id
+                                 child-cantrip
+                                 intent
+                                 []
+                                 initial-loom
+                                 {:prompt_tokens 0 :completion_tokens 0}
+                                 {:first-parent-id parent-turn-id})]
+            (reset! (:loom parent-entity) (:loom result))
+            {:status (:status result)
+             :result (:result result)
+             :child-entity-id child-id
+             :turns (:turns result)})
+          (catch clojure.lang.ExceptionInfo e
+            {:status :error
+             :error (.getMessage e)
+             :data (ex-data e)}))))))
+
+(defn call-agent-batch
+  "Runs child compositions and returns results in input order."
+  [parent-entity requests]
+  (mapv #(call-agent parent-entity %) requests))
