@@ -1,10 +1,11 @@
 defmodule CantripM9RealCrystalIntegrationTest do
   use ExUnit.Case, async: false
+  alias Cantrip.Test.RealCrystalEnv
 
   @moduletag :integration
 
   test "real crystal performs a meaningful tool loop (echo then done)" do
-    if System.get_env("RUN_REAL_CRYSTAL_TESTS") != "1" do
+    if not RealCrystalEnv.enabled?() do
       :ok
     else
       token = "integration-ok-" <> Integer.to_string(System.unique_integer([:positive]))
