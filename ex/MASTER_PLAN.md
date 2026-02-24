@@ -4,6 +4,28 @@ This plan is the reduced output of 21 subagent passes (7 rule slices × 3 lenses
 
 Guardrails for execution are defined in [`CONTRIBUTING.md`](./CONTRIBUTING.md) and are normative for all implementation slices.
 
+## Execution Status (2026-02-24)
+
+Completed (green + committed):
+1. M0 canonical decisions (`SPEC_DECISIONS.md`).
+2. M1 primitives + crystal contract.
+3. M2 loop runtime (`EntityServer` + supervision).
+4. M3 loom primitives + fork extraction.
+5. M4 circle/runtime extensions + BEAM code medium.
+6. M5 composition/delegation (`call_agent`, `call_agent_batch`, depth, subtree loom linkage, alias normalization, child crystal override).
+7. M6 production semantics (`retry`, cumulative usage, folding trigger, ephemeral projection).
+8. Guarded hot-reload gate (`compile_and_load`) with module/path ward checks.
+
+Current codebase state:
+1. `mix test` is green (48 tests).
+2. Atomic commits applied per completed slice.
+3. Error model is explicitly codified (expected operational failures as observations, unexpected bugs supervised).
+
+Remaining high-value follow-ups:
+1. Parent-terminated child cancellation semantics (`COMP-9`) with explicit reason propagation.
+2. Optional storage-backed loom adapters (`JsonlStorage`/DB) for long-lived execution.
+3. Tighten compile/load safety model (allowlist + signing/verification strategy) for production hot-reload.
+
 ## 1) Forced Decisions Before Coding
 
 These are implementation-blocking ambiguities/contradictions found across `SPEC.md` and `tests.yaml`.
