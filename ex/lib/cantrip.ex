@@ -14,6 +14,7 @@ defmodule Cantrip do
             child_crystal: nil,
             call: nil,
             circle: nil,
+            loom_storage: nil,
             retry: %{max_retries: 0, retryable_status_codes: []},
             folding: %{}
 
@@ -23,6 +24,7 @@ defmodule Cantrip do
           child_crystal: {module(), term()} | nil,
           call: Call.t(),
           circle: Circle.t(),
+          loom_storage: term(),
           retry: map(),
           folding: map()
         }
@@ -45,6 +47,7 @@ defmodule Cantrip do
          child_crystal: normalize_child_crystal(Map.get(attrs, :child_crystal), crystal),
          call: call,
          circle: circle,
+         loom_storage: normalize_loom_storage(Map.get(attrs, :loom_storage)),
          retry: normalize_retry(Map.get(attrs, :retry, %{})),
          folding: Map.get(attrs, :folding, %{})
        }}
@@ -156,7 +159,7 @@ defmodule Cantrip do
     prefix_turns = Enum.take(loom.turns, from_turn)
     prefix_messages = messages_from_turns(prefix_turns, cantrip.call)
     fork_messages = prefix_messages ++ [%{role: :user, content: intent}]
-    fork_loom = %Loom{call: loom.call, turns: prefix_turns}
+    fork_loom = %{loom | turns: prefix_turns}
 
     {:ok, forked_cantrip} =
       new(
@@ -167,6 +170,7 @@ defmodule Cantrip do
           wards: cantrip.circle.wards,
           type: cantrip.circle.type
         },
+        loom_storage: cantrip.loom_storage,
         child_crystal: cantrip.child_crystal,
         retry: cantrip.retry,
         folding: cantrip.folding
@@ -253,6 +257,9 @@ defmodule Cantrip do
     do: {module, state}
 
   defp normalize_child_crystal(_, crystal), do: crystal
+
+  defp normalize_loom_storage(nil), do: nil
+  defp normalize_loom_storage(storage), do: storage
 
   defp parse_int(nil, default), do: default
 

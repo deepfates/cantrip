@@ -30,7 +30,7 @@ defmodule Cantrip.EntityServer do
 
     entity_id = "ent_" <> Integer.to_string(System.unique_integer([:positive]))
     messages = Keyword.get(opts, :messages, initial_messages(cantrip.call, intent))
-    loom = Keyword.get(opts, :loom, Loom.new(cantrip.call))
+    loom = Keyword.get(opts, :loom, Loom.new(cantrip.call, storage: cantrip.loom_storage))
     turns = Keyword.get(opts, :turns, 0)
     depth = Keyword.get(opts, :depth, 0)
     cancel_on_parent = Keyword.get(opts, :cancel_on_parent)

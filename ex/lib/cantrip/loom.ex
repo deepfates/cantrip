@@ -3,11 +3,28 @@ defmodule Cantrip.Loom do
   M2 in-memory append-only loom for turn records.
   """
 
-  defstruct call: nil, turns: []
+  alias Cantrip.Loom.Storage.Memory
 
-  def new(call), do: %__MODULE__{call: call, turns: []}
+  defstruct call: nil, turns: [], storage_module: Memory, storage_state: %{}
 
-  def append_turn(%__MODULE__{turns: turns} = loom, attrs) do
+  def new(call, opts \\ []) do
+    {storage_module, storage_opts} = normalize_storage(Keyword.get(opts, :storage))
+
+    case storage_module.init(storage_opts) do
+      {:ok, storage_state} ->
+        %__MODULE__{
+          call: call,
+          turns: [],
+          storage_module: storage_module,
+          storage_state: storage_state
+        }
+
+      {:error, _reason} ->
+        %__MODULE__{call: call, turns: [], storage_module: Memory, storage_state: %{}}
+    end
+  end
+
+  def append_turn(%__MODULE__{turns: turns, storage_module: module} = loom, attrs) do
     id = "turn_" <> Integer.to_string(System.unique_integer([:positive]))
 
     parent_id =
@@ -33,18 +50,31 @@ defmodule Cantrip.Loom do
         Map.new(attrs)
       )
 
-    %{loom | turns: turns ++ [turn]}
+    loom = %{loom | turns: turns ++ [turn]}
+
+    case module.append_turn(loom.storage_state, turn) do
+      {:ok, storage_state} -> %{loom | storage_state: storage_state}
+      {:error, _reason} -> loom
+    end
   end
 
   def delete_turn(_loom, _index), do: {:error, "loom is append-only"}
 
-  def annotate_reward(%__MODULE__{turns: turns} = loom, index, reward) do
+  def annotate_reward(%__MODULE__{turns: turns, storage_module: module} = loom, index, reward) do
     case Enum.fetch(turns, index) do
       :error ->
         {:error, "invalid turn index"}
 
       {:ok, turn} ->
-        {:ok, %{loom | turns: List.replace_at(turns, index, %{turn | reward: reward})}}
+        updated = %{loom | turns: List.replace_at(turns, index, %{turn | reward: reward})}
+
+        updated =
+          case module.annotate_reward(updated.storage_state, index, reward) do
+            {:ok, storage_state} -> %{updated | storage_state: storage_state}
+            {:error, _reason} -> updated
+          end
+
+        {:ok, updated}
     end
   end
 
@@ -58,4 +88,11 @@ defmodule Cantrip.Loom do
       }
     end)
   end
+
+  defp normalize_storage({:jsonl, path}) when is_binary(path),
+    do: {Cantrip.Loom.Storage.Jsonl, path}
+
+  defp normalize_storage({module, opts}) when is_atom(module), do: {module, opts}
+
+  defp normalize_storage(_), do: {Memory, %{}}
 end
