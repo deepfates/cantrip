@@ -41,7 +41,7 @@ const result = await spell.cast("What is 2 + 3?");
 console.log(result); // "5"
 ```
 
-Each `cast` creates a fresh entity — the cantrip is a reusable recipe.
+Each `cast` creates a fresh entity — the cantrip is a reusable script.
 
 ---
 
@@ -425,7 +425,7 @@ The `examples/` directory walks through the concepts in order:
 | 01 | `crystal` | LLM as stateless query |
 | 02 | `gate` | Defining callable functions |
 | 03 | `circle` | Gates + wards + validation |
-| 04 | `cantrip` | Crystal + call + circle = recipe |
+| 04 | `cantrip` | Crystal + call + circle = script |
 | 05 | `ward` | Constraints and safety limits |
 | 06 | `providers` | Multi-provider crystals |
 | 07 | `conversation` | Conversation medium (default) |
@@ -467,7 +467,7 @@ export OPENAI_API_KEY="sk-..."
 
 In tabletop RPGs, a cantrip is the simplest spell — it costs nothing to cast and you can cast it repeatedly. The etymology traces to Gaelic *canntaireachd*, a piper's mnemonic chant. It's a loop of language.
 
-Here, a cantrip is a reusable recipe for creating LLM entities. Configure once, cast many times, compose into larger spells. The loop is the mechanism. The repetition is the point.
+Here, a cantrip is a reusable script for creating LLM entities. Configure once, cast many times, compose into larger spells. The loop is the mechanism. The repetition is the point.
 
 ---
 

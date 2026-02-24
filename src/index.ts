@@ -8,7 +8,11 @@ export { ChatOpenAILike } from "./crystal/providers/openai/like";
 export { ChatGoogle } from "./crystal/providers/google/chat";
 export { ChatLMStudio } from "./crystal/providers/lmstudio/chat";
 export { ChatOpenRouter } from "./crystal/providers/openrouter/chat";
-export type { BaseChatModel, ToolChoice, GateDefinition } from "./crystal/crystal";
+export type {
+  BaseChatModel,
+  ToolChoice,
+  GateDefinition,
+} from "./crystal/crystal";
 export type { ChatInvokeUsage, ChatInvokeCompletion } from "./crystal/views";
 export * from "./crystal/messages";
 
@@ -31,29 +35,69 @@ export type { BrowserMediumOptions } from "./circle/medium/browser";
 export { bash } from "./circle/medium/bash";
 export type { BashMediumOptions } from "./circle/medium/bash";
 export type { Ward, ResolvedWard } from "./circle/ward";
-export { DEFAULT_WARD, max_turns, require_done, max_depth, exclude_gate, resolveWards } from "./circle/ward";
+export {
+  DEFAULT_WARD,
+  max_turns,
+  require_done,
+  max_depth,
+  exclude_gate,
+  resolveWards,
+} from "./circle/ward";
 
 // ── Circle / Gate (tool framework) ──────────────────────────────────
 export { Gate, gate, serializeBoundGate } from "./circle/gate/decorator";
 export { Depends } from "./circle/gate/depends";
 export { rawGate } from "./circle/gate/raw";
 export { GateSchema, GateSchemaBuilder } from "./circle/gate/schema";
-export type { GateContent, GateHandler, GateOptions } from "./circle/gate/decorator";
-export type { DependencyOverrides, DependencyFactory } from "./circle/gate/depends";
-export type { RawGateDefinition, RawGateHandler, RawGateOptions } from "./circle/gate/raw";
+export type {
+  GateContent,
+  GateHandler,
+  GateOptions,
+} from "./circle/gate/decorator";
+export type {
+  DependencyOverrides,
+  DependencyFactory,
+} from "./circle/gate/depends";
+export type {
+  RawGateDefinition,
+  RawGateHandler,
+  RawGateOptions,
+} from "./circle/gate/raw";
 export type { BoundGate } from "./circle/gate/gate";
 export type { GateSchemaFieldOptions } from "./circle/gate/schema";
 
 // ── Circle / Gate / Builtins ────────────────────────────────────────
 export { done, defaultGates } from "./circle/gate/builtin/done";
-export { safeFsGates, SandboxContext, getSandboxContext } from "./circle/gate/builtin/fs";
-export { repoGates, RepoContext, getRepoContext, getRepoContextDepends } from "./circle/gate/builtin/repo";
+export {
+  safeFsGates,
+  SandboxContext,
+  getSandboxContext,
+} from "./circle/gate/builtin/fs";
+export {
+  repoGates,
+  RepoContext,
+  getRepoContext,
+  getRepoContextDepends,
+} from "./circle/gate/builtin/repo";
 export { JsContext, getJsContext } from "./circle/medium/js/context";
-export { BrowserContext, getBrowserContext } from "./circle/medium/browser/context";
-export { call_entity as call_entity_gate, call_entity_batch as call_entity_batch_gate, currentTurnIdBinding, spawnBinding, progressBinding, depthBinding } from "./circle/gate/builtin/call_entity_gate";
-export type { CallEntityGateOptions, SpawnFn } from "./circle/gate/builtin/call_entity_gate";
+export {
+  BrowserContext,
+  getBrowserContext,
+} from "./circle/medium/browser/context";
+export {
+  call_entity as call_entity_gate,
+  call_entity_batch as call_entity_batch_gate,
+  currentTurnIdBinding,
+  spawnBinding,
+  progressBinding,
+  depthBinding,
+} from "./circle/gate/builtin/call_entity_gate";
+export type {
+  CallEntityGateOptions,
+  SpawnFn,
+} from "./circle/gate/builtin/call_entity_gate";
 
-// ── Cantrip (the recipe — primary public API) ──────────────────────
+// ── Cantrip (the script — primary public API) ──────────────────────
 export { cantrip } from "./cantrip/cantrip";
 export { Entity } from "./cantrip/entity";
 export type { EntityOptions } from "./cantrip/entity";
@@ -69,8 +113,18 @@ export {
   JsonlStorage,
   type LoomStorage,
 } from "./loom/loom";
-export { deriveThread, threadToMessages, type Thread, type ThreadState } from "./loom/thread";
-export { type Turn, type GateCallRecord, type TurnMetadata, generateTurnId } from "./loom/turn";
+export {
+  deriveThread,
+  threadToMessages,
+  type Thread,
+  type ThreadState,
+} from "./loom/thread";
+export {
+  type Turn,
+  type GateCallRecord,
+  type TurnMetadata,
+  generateTurnId,
+} from "./loom/turn";
 export {
   fold,
   shouldFold,
@@ -83,7 +137,10 @@ export {
 
 // ── Entity (the running instance) ───────────────────────────────────
 export { TaskComplete } from "./entity/recording";
-export { createConsoleRenderer, patchStderrForEntities } from "./entity/console";
+export {
+  createConsoleRenderer,
+  patchStderrForEntities,
+} from "./entity/console";
 export { exec, runRepl } from "./entity/repl";
 export type { ExecOptions, ReplOptions } from "./entity/repl";
 export type {

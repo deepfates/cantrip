@@ -47,7 +47,7 @@ First, the **entity** — the running instance of the model inside the loop — 
 
 This strict alternation is what makes the loop a loop and not a monologue. The entity acts, the world responds, the entity acts again with the world's response in hand. Each turn is a learning moment — the entity sees what its code actually did, not what it hoped it would do.
 
-Two more terms before we move on. The recipe that defines the loop — which model to use, how to configure it, what environment to place it in — is called a **cantrip**. The goal the entity is pursuing is called an **intent**. Both get their own full treatment later. For now, what matters is the cycle: act, observe, repeat.
+Two more terms before we move on. The script that defines the loop — which model to use, how to configure it, what environment to place it in — is called a **cantrip**. The goal the entity is pursuing is called an **intent**. Both get their own full treatment later. For now, what matters is the cycle: act, observe, repeat.
 
 Why does the loop matter beyond practical utility? Because closing the loop is what transforms a predictor into an agent. A language model in isolation is a generative model — it predicts, but its predictions have no consequences. When you close the loop — when outputs influence subsequent inputs — the system transitions from passive prediction to world-shaping action. The model's completions change the environment, the changed environment changes the next prompt, and the model adjusts. This is the active inference framing: a system that can act on its environment and observe the results naturally acquires agency. The loop is not just an engineering pattern. It is the mechanism by which a generative model becomes something that acts.
 
@@ -89,7 +89,7 @@ Why does the terminated/truncated distinction matter? Because it travels with th
 
 Three terms have been floating through this chapter. Now they get pinned down.
 
-A **cantrip** is the recipe that produces the loop. It binds a crystal to a circle through a call — which model, which configuration, which environment. A cantrip is a value, not a running process. You write it once and cast it many times.
+A **cantrip** is the script that produces the loop. It binds a crystal to a circle through a call — which model, which configuration, which environment. A cantrip is a value, not a running process. You write it once and cast it many times.
 
 > **CANTRIP-1**: A cantrip MUST contain a crystal, a call, and a circle. Missing any of these is invalid.
 
@@ -329,7 +329,7 @@ Same crystal + different call = different entity behavior. Change the system pro
 
 Same crystal + same call + different circle = different capabilities. The entity has the same identity but different gates, a different medium, different wards.
 
-Same crystal + same call + same circle + different intent = different episode. The cantrip is the same recipe. The intent is what varies between runs.
+Same crystal + same call + same circle + different intent = different episode. The cantrip is the same script. The intent is what varies between runs.
 
 > **CALL-2**: If a system prompt is provided, it MUST be the first message in every context sent to the crystal. It MUST be present in every query, unchanged.
 
@@ -988,7 +988,7 @@ Every term in this document was defined in context as it appeared. This table is
 | 4 | **Ward** | constraint, restriction | Subtractive restriction on the action space. |
 | 5 | **Circle** | environment, sandbox | The environment: medium + gates + wards. The medium is the substrate the entity works *in*. |
 | 6 | **Intent** | task, goal | The goal. What the entity is trying to achieve. |
-| 7 | **Cantrip** | agent config | The recipe: crystal + call + circle. A value, not a process. |
+| 7 | **Cantrip** | agent config | The script: crystal + call + circle. A value, not a process. |
 | 8 | **Entity** | agent instance | What emerges when you invoke a cantrip. The living instance. Persists across turns when invoked; discarded after one run when cast. |
 | 9 | **Turn** | step | One cycle: entity acts, circle responds, state accumulates. |
 | 10 | **Thread** | trajectory, trace | One root-to-leaf path through the loom. A trajectory. |
