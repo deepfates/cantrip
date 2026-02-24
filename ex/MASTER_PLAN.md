@@ -2,6 +2,8 @@
 
 This plan is the reduced output of 21 subagent passes (7 rule slices × 3 lenses: spec-audit, OTP architecture, adversarial tests).
 
+Guardrails for execution are defined in [`CONTRIBUTING.md`](./CONTRIBUTING.md) and are normative for all implementation slices.
+
 ## 1) Forced Decisions Before Coding
 
 These are implementation-blocking ambiguities/contradictions found across `SPEC.md` and `tests.yaml`.

@@ -1,51 +1,78 @@
 defmodule Cantrip do
   @moduledoc """
-  Core API for constructing and casting a cantrip.
+  M1 surface: cantrip configuration and crystal contract wiring.
 
-  This module intentionally keeps the public API small:
-
-  - `new/1` validates and constructs an immutable cantrip recipe.
-  - `cast/2` runs one intent through the entity loop (act/observe turns).
-  - `annotate_reward/4`, `extract_thread/2`, and `delete_turn/3` expose loom operations.
-
-  The implementation follows the spec's API-down model:
-
-  1. Validate construction constraints (`CANTRIP-*`, `CIRCLE-*`, `LOOP-2`).
-  2. Build initial context from call + intent (`INTENT-2`, `CALL-2`).
-  3. Iterate turns until `done` or truncation (`LOOP-1`, `LOOP-3`, `LOOP-4`, `LOOP-6`).
-  4. Persist every turn to the loom (`LOOM-*`).
+  The runtime loop is intentionally deferred to M2+. In M1 we only validate:
+  - cantrip construction invariants
+  - crystal response contract invariants
   """
 
-  alias Cantrip.{Call, Circle, Loom}
+  alias Cantrip.{Call, Circle, Crystal, EntityServer, Loom}
 
-  defstruct crystal_module: nil, crystal_state: nil, call: nil, circle: nil
+  defstruct crystal_module: nil,
+            crystal_state: nil,
+            child_crystal: nil,
+            call: nil,
+            circle: nil,
+            retry: %{max_retries: 0, retryable_status_codes: []},
+            folding: %{}
 
-  def new(opts) do
-    opts = Map.new(opts)
-    crystal = Map.get(opts, :crystal)
-    call = Call.new(Map.get(opts, :call, %{}))
-    circle = Circle.new(Map.get(opts, :circle, %{}))
+  @type t :: %__MODULE__{
+          crystal_module: module(),
+          crystal_state: term(),
+          child_crystal: {module(), term()} | nil,
+          call: Call.t(),
+          circle: Circle.t(),
+          retry: map(),
+          folding: map()
+        }
+
+  @spec new(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
+  def new(attrs) do
+    attrs = Map.new(attrs)
+    crystal = Map.get(attrs, :crystal)
+    call = Call.new(Map.get(attrs, :call, %{}))
+    circle = Circle.new(Map.get(attrs, :circle, %{}))
 
     with :ok <- validate_crystal(crystal),
          :ok <- validate_circle(circle, call) do
       {module, state} = crystal
-      {:ok, %__MODULE__{crystal_module: module, crystal_state: state, call: call, circle: circle}}
+
+      {:ok,
+       %__MODULE__{
+         crystal_module: module,
+         crystal_state: state,
+         child_crystal: normalize_child_crystal(Map.get(attrs, :child_crystal), crystal),
+         call: call,
+         circle: circle,
+         retry: normalize_retry(Map.get(attrs, :retry, %{})),
+         folding: Map.get(attrs, :folding, %{})
+       }}
     end
   end
 
-  def cast(cantrip, nil), do: {:error, "intent is required", cantrip}
+  @doc """
+  Invoke the configured crystal once and validate/normalize the response contract.
+  Returns updated cantrip with advanced crystal state.
+  """
+  @spec crystal_query(t(), map()) ::
+          {:ok, map(), t()} | {:error, term(), t()}
+  def crystal_query(%__MODULE__{} = cantrip, request) do
+    case Crystal.invoke(cantrip.crystal_module, cantrip.crystal_state, request) do
+      {:ok, response, next_state} ->
+        {:ok, response, %{cantrip | crystal_state: next_state}}
 
-  def cast(%__MODULE__{} = cantrip, intent) when is_binary(intent) do
-    entity_id = "ent_" <> Integer.to_string(System.unique_integer([:positive]))
-    messages = initial_messages(cantrip.call, intent)
-    loom = Loom.new(cantrip.call)
-
-    # Usage is accumulated across turns and returned in cast metadata.
-    usage = %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0}
-    run_loop(cantrip, entity_id, messages, loom, 0, usage)
+      {:error, reason, next_state} ->
+        {:error, reason, %{cantrip | crystal_state: next_state}}
+    end
   end
 
+  @doc """
+  M1 exposes the immutability contract as an explicit error path.
+  """
   def mutate_call(_cantrip, _attrs), do: {:error, "call is immutable"}
+
+  def delete_turn(_cantrip, loom, turn_index), do: Loom.delete_turn(loom, turn_index)
 
   def annotate_reward(%__MODULE__{} = cantrip, loom, turn_index, reward) do
     case Loom.annotate_reward(loom, turn_index, reward) do
@@ -54,8 +81,82 @@ defmodule Cantrip do
     end
   end
 
-  def delete_turn(_cantrip, loom, turn_index), do: Loom.delete_turn(loom, turn_index)
   def extract_thread(%__MODULE__{}, loom), do: Loom.extract_thread(loom)
+
+  @doc """
+  M2 cast entrypoint: executes one loop episode in an entity process.
+  """
+  @spec cast(t(), String.t() | nil) ::
+          {:ok, term(), t(), Cantrip.Loom.t(), map()} | {:error, String.t(), t()}
+  def cast(cantrip, nil), do: {:error, "intent is required", cantrip}
+
+  def cast(%__MODULE__{} = cantrip, intent) when is_binary(intent) do
+    cast(cantrip, intent, [])
+  end
+
+  @spec cast(t(), String.t() | nil, keyword()) ::
+          {:ok, term(), t(), Cantrip.Loom.t(), map()} | {:error, String.t(), t()}
+  def cast(cantrip, nil, _opts), do: {:error, "intent is required", cantrip}
+
+  def cast(%__MODULE__{} = cantrip, intent, opts) when is_binary(intent) and is_list(opts) do
+    run_cast(cantrip, intent, opts)
+  end
+
+  @spec fork(t(), Loom.t(), non_neg_integer(), map()) ::
+          {:ok, term(), t(), Loom.t(), map()} | {:error, term(), t()}
+  def fork(%__MODULE__{} = cantrip, %Loom{} = loom, from_turn, opts) do
+    opts = Map.new(opts)
+    intent = Map.fetch!(opts, :intent)
+    crystal = Map.get(opts, :crystal, {cantrip.crystal_module, cantrip.crystal_state})
+
+    prefix_turns = Enum.take(loom.turns, from_turn)
+    prefix_messages = messages_from_turns(prefix_turns, cantrip.call)
+    fork_messages = prefix_messages ++ [%{role: :user, content: intent}]
+    fork_loom = %Loom{call: loom.call, turns: prefix_turns}
+
+    {:ok, forked_cantrip} =
+      new(
+        crystal: crystal,
+        call: Map.from_struct(cantrip.call),
+        circle: %{
+          gates: Map.values(cantrip.circle.gates),
+          wards: cantrip.circle.wards,
+          type: cantrip.circle.type
+        },
+        child_crystal: cantrip.child_crystal,
+        retry: cantrip.retry,
+        folding: cantrip.folding
+      )
+
+    run_cast(forked_cantrip, intent,
+      messages: fork_messages,
+      loom: fork_loom,
+      turns: length(prefix_turns)
+    )
+  end
+
+  defp run_cast(%__MODULE__{} = cantrip, intent, extra_opts) do
+    spec = {EntityServer, cantrip: cantrip, intent: intent}
+    spec = put_elem(spec, 1, Keyword.merge(elem(spec, 1), extra_opts))
+
+    with {:ok, pid} <- DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec),
+         {:ok, result, next_cantrip, loom, meta} <- EntityServer.run(pid) do
+      {:ok, result, next_cantrip, loom, meta}
+    end
+  end
+
+  defp messages_from_turns(turns, call) do
+    prefix =
+      if is_nil(call.system_prompt),
+        do: [],
+        else: [%{role: :system, content: call.system_prompt}]
+
+    Enum.reduce(turns, prefix, fn turn, acc ->
+      assistant = %{role: :assistant, content: get_in(turn, [:utterance, :content])}
+      tools = Enum.map(turn.observation || [], &%{role: :tool, content: to_string(&1.result)})
+      acc ++ [assistant] ++ tools
+    end)
+  end
 
   defp validate_crystal(nil), do: {:error, "cantrip requires a crystal"}
   defp validate_crystal({module, _state}) when is_atom(module), do: :ok
@@ -77,176 +178,19 @@ defmodule Cantrip do
     end
   end
 
-  defp initial_messages(%Call{system_prompt: nil}, intent), do: [%{role: :user, content: intent}]
-
-  defp initial_messages(%Call{system_prompt: prompt}, intent) do
-    [%{role: :system, content: prompt}, %{role: :user, content: intent}]
-  end
-
-  defp run_loop(cantrip, entity_id, messages, loom, turns, usage_acc) do
-    if turns >= Circle.max_turns(cantrip.circle) do
-      # Truncation is encoded as a terminal turn so the loom records why execution stopped.
-      last_turn = %{terminated: false, truncated: true, utterance: nil, observation: []}
-      loom = Loom.append_turn(loom, last_turn)
-
-      {:ok, nil, %{cantrip | crystal_state: cantrip.crystal_state}, loom,
-       %{entity_id: entity_id, turns: turns, truncated: true, cumulative_usage: usage_acc}}
-    else
-      tools = Circle.tool_definitions(cantrip.circle)
-
-      request = %{messages: messages, tools: tools, tool_choice: cantrip.call.tool_choice}
-      started_at = System.monotonic_time(:millisecond)
-
-      case cantrip.crystal_module.query(cantrip.crystal_state, request) do
-        {:error, reason, next_state} ->
-          {:error, reason, %{cantrip | crystal_state: next_state}, loom}
-
-        {:ok, response, next_state} ->
-          cantrip = %{cantrip | crystal_state: next_state}
-          duration = max(System.monotonic_time(:millisecond) - started_at, 1)
-
-          continue_with_response(
-            cantrip,
-            entity_id,
-            messages,
-            loom,
-            turns,
-            response,
-            duration,
-            usage_acc
-          )
-      end
-    end
-  end
-
-  defp continue_with_response(
-         cantrip,
-         entity_id,
-         messages,
-         loom,
-         turns,
-         response,
-         duration,
-         usage_acc
-       ) do
-    content = Map.get(response, :content)
-    tool_calls = Map.get(response, :tool_calls)
-
-    if is_nil(content) and is_nil(tool_calls) do
-      {:error, "crystal returned neither content nor tool_calls", cantrip, loom}
-    else
-      case validate_tool_call_ids(tool_calls || []) do
-        :ok ->
-          execute_turn(cantrip, entity_id, messages, loom, turns, response, duration, usage_acc)
-
-        {:error, reason} ->
-          {:error, reason, cantrip, loom}
-      end
-    end
-  end
-
-  defp execute_turn(cantrip, entity_id, messages, loom, turns, response, duration, usage_acc) do
-    usage = Map.get(response, :usage, %{})
-    content = Map.get(response, :content)
-    tool_calls = Map.get(response, :tool_calls) || []
-    usage_acc = accumulate_usage(usage_acc, usage)
-
-    utterance = %{content: content, tool_calls: tool_calls}
-    assistant_message = %{role: :assistant, content: content, tool_calls: tool_calls}
-
-    # Gate calls are executed synchronously from the entity's perspective.
-    {observation, result, terminated} = execute_tool_calls(cantrip.circle, tool_calls)
-
-    terminated =
-      cond do
-        terminated -> true
-        tool_calls == [] and not cantrip.call.require_done_tool and is_binary(content) -> true
-        true -> false
-      end
-
-    turn =
-      %{
-        entity_id: entity_id,
-        utterance: utterance,
-        observation: observation,
-        gate_calls: Enum.map(observation, & &1.gate),
-        terminated: terminated,
-        truncated: false,
-        metadata: %{
-          tokens_prompt: Map.get(usage, :prompt_tokens, 0),
-          tokens_completion: Map.get(usage, :completion_tokens, 0),
-          duration_ms: duration,
-          timestamp: DateTime.utc_now()
-        }
-      }
-
-    loom = Loom.append_turn(loom, turn)
-
-    cond do
-      terminated and is_nil(result) and is_binary(content) ->
-        {:ok, content, cantrip, loom,
-         %{entity_id: entity_id, turns: turns + 1, terminated: true, cumulative_usage: usage_acc}}
-
-      terminated ->
-        {:ok, result, cantrip, loom,
-         %{entity_id: entity_id, turns: turns + 1, terminated: true, cumulative_usage: usage_acc}}
-
-      true ->
-        # Observation is projected back into model-visible tool messages.
-        tool_messages =
-          Enum.map(observation, fn item ->
-            %{
-              role: :tool,
-              content: to_string(item.result),
-              gate: item.gate,
-              is_error: item.is_error
-            }
-          end)
-
-        next_messages = messages ++ [assistant_message] ++ tool_messages
-        run_loop(cantrip, entity_id, next_messages, loom, turns + 1, usage_acc)
-    end
-  end
-
-  defp execute_tool_calls(_circle, []), do: {[], nil, false}
-
-  defp execute_tool_calls(circle, tool_calls) do
-    # Execution halts as soon as `done` is observed, skipping remaining calls.
-    Enum.reduce_while(tool_calls, {[], nil, false}, fn call, {acc, _result, _terminated} ->
-      gate = call[:gate] || call["gate"]
-      args = call[:args] || call["args"] || %{}
-      outcome = Circle.execute_gate(circle, gate, args)
-      acc = acc ++ [outcome]
-
-      if outcome.gate == "done" do
-        {:halt, {acc, outcome.result, true}}
-      else
-        {:cont, {acc, nil, false}}
-      end
-    end)
-  end
-
-  defp validate_tool_call_ids(calls) do
-    ids =
-      calls
-      |> Enum.map(fn call -> call[:id] || call["id"] end)
-      |> Enum.reject(&is_nil/1)
-
-    if length(ids) == length(Enum.uniq(ids)) do
-      :ok
-    else
-      {:error, "duplicate tool call ID"}
-    end
-  end
-
-  defp accumulate_usage(acc, usage) do
-    prompt = Map.get(usage, :prompt_tokens, 0)
-    completion = Map.get(usage, :completion_tokens, 0)
+  defp normalize_retry(retry) do
+    retry = Map.new(retry)
 
     %{
-      prompt_tokens: acc.prompt_tokens + prompt,
-      completion_tokens: acc.completion_tokens + completion,
-      total_tokens: acc.total_tokens + prompt + completion
+      max_retries: Map.get(retry, :max_retries, 0),
+      retryable_status_codes: Map.get(retry, :retryable_status_codes, [])
     }
   end
+
+  defp normalize_child_crystal(nil, crystal), do: crystal
+
+  defp normalize_child_crystal({module, state}, _crystal) when is_atom(module),
+    do: {module, state}
+
+  defp normalize_child_crystal(_, crystal), do: crystal
 end
