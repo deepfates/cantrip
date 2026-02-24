@@ -18,7 +18,8 @@
 (deftest cast-terminates-on-successful-done
   (let [cantrip (assoc valid-cantrip
                        :crystal {:provider :fake
-                                 :responses [{:tool-calls [{:gate :done
+                                 :responses [{:tool-calls [{:id "call_1"
+                                                            :gate :done
                                                             :args {:answer "ok"}}]}]})
         result (runtime/cast cantrip "hello")]
     (is (= :terminated (:status result)))
@@ -28,8 +29,11 @@
 (deftest malformed-done-does-not-terminate
   (let [cantrip (assoc valid-cantrip
                        :crystal {:provider :fake
-                                 :responses [{:tool-calls [{:gate :done :args {}}]}
-                                             {:tool-calls [{:gate :done
+                                 :responses [{:tool-calls [{:id "call_1"
+                                                            :gate :done
+                                                            :args {}}]}
+                                             {:tool-calls [{:id "call_2"
+                                                            :gate :done
                                                             :args {:answer "fixed"}}]}]})
         result (runtime/cast cantrip "hello")
         t1 (first (:turns result))]
@@ -53,7 +57,8 @@
                                   :require-done-tool true})
                     (assoc :crystal {:provider :fake
                                      :responses [{:content "thinking"}
-                                                 {:tool-calls [{:gate :done
+                                                 {:tool-calls [{:id "call_1"
+                                                                :gate :done
                                                                 :args {:answer "42"}}]}]}))
         result (runtime/cast cantrip "hello")]
     (is (= :terminated (:status result)))

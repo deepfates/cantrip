@@ -1,6 +1,7 @@
 (ns cantrip.runtime
   (:refer-clojure :exclude [cast])
-  (:require [cantrip.domain :as domain]))
+  (:require [cantrip.crystal :as crystal]
+            [cantrip.domain :as domain]))
 
 (defn- max-turns [cantrip]
   (or (some :max-turns (get-in cantrip [:circle :wards]))
@@ -9,8 +10,9 @@
 (defn- require-done-tool? [cantrip]
   (true? (get-in cantrip [:call :require-done-tool])))
 
-(defn- next-crystal-response [cantrip turn-index]
-  (get-in cantrip [:crystal :responses turn-index] {}))
+(defn- tool-choice [cantrip]
+  (or (get-in cantrip [:call :tool-choice])
+      :auto))
 
 (defn- normalize-gate [gate]
   (cond
@@ -64,15 +66,20 @@
   (domain/require-intent! intent)
   (let [entity-id (str (random-uuid))
         turn-limit (max-turns cantrip)
-        done-required? (require-done-tool? cantrip)]
+        done-required? (require-done-tool? cantrip)
+        selected-tool-choice (tool-choice cantrip)]
     (loop [turn-index 0
-           turns []]
+           turns []
+           previous-tool-call-ids []]
       (if (>= turn-index turn-limit)
         {:entity-id entity-id
          :status :truncated
          :result nil
          :turns turns}
-        (let [utterance (next-crystal-response cantrip turn-index)
+        (let [utterance (crystal/query (:crystal cantrip)
+                                       turn-index
+                                       {:tool-choice selected-tool-choice
+                                        :previous-tool-call-ids previous-tool-call-ids})
               tool-calls (vec (:tool-calls utterance))
               {:keys [observation terminated? result]} (process-tool-calls tool-calls)
               text-only? (and (empty? tool-calls)
@@ -95,7 +102,9 @@
                            :result (:content utterance)
                            :turns next-turns}
 
-            :else (recur (inc turn-index) next-turns)))))))
+            :else (recur (inc turn-index)
+                         next-turns
+                         (mapv :id tool-calls))))))))
 
 (defn invoke
   "Creates a persistent entity handle for multi-cast sessions.
