@@ -1,6 +1,6 @@
 SHELL := /bin/zsh
 
-.PHONY: conformance conformance-preflight conformance-unit conformance-yaml-scaffold conformance-run
+.PHONY: conformance conformance-preflight conformance-unit conformance-yaml-scaffold conformance-yaml-batch conformance-run
 
 conformance: conformance-preflight conformance-unit conformance-yaml-scaffold
 
@@ -25,6 +25,14 @@ conformance-yaml-scaffold:
 		clojure -M -m cantrip.conformance ; \
 	else \
 		echo "Clojure CLI required for YAML scaffold conformance runner."; \
+		exit 1; \
+	fi
+
+conformance-yaml-batch:
+	@if command -v clojure >/dev/null 2>&1; then \
+		clojure -M -m cantrip.conformance --batch ; \
+	else \
+		echo "Clojure CLI required for YAML batch conformance runner."; \
 		exit 1; \
 	fi
 

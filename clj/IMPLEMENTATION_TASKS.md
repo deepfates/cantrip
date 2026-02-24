@@ -21,7 +21,7 @@ Status legend: `TODO` | `IN_PROGRESS` | `BLOCKED` | `DONE`
 | ID | Task | Status | Done Criteria |
 |---|---|---|---|
 | P1-1 | Build YAML-driven runner scaffold | DONE | Runner loads `tests.yaml` and executes at least one rule end-to-end |
-| P1-2 | Implement setup/action/expect interpreters | TODO | Runner can execute core loop/crystal/circle/loom/prod scenarios |
+| P1-2 | Implement setup/action/expect interpreters | IN_PROGRESS | Runner can execute core loop/crystal/circle/loom/prod scenarios |
 | P1-3 | Mark structural-only rules as explicit non-executable | DONE | `skip: true` rules produce clear report output |
 | P1-4 | Wire runner into `make conformance` | DONE | `make conformance` includes YAML behavioral execution, not just preflight |
 

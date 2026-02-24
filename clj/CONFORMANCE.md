@@ -8,6 +8,10 @@ This repo currently has three layers of conformance checks:
 
 `make conformance` runs all three in that order.
 
+Optional exploratory command:
+
+1. `make conformance-yaml-batch`
+
 ## What Each Command Means
 
 1. `conformance-preflight`
@@ -23,6 +27,11 @@ This repo currently has three layers of conformance checks:
    - Loads `tests.yaml` via `scripts/tests_yaml_to_edn.rb`
    - Executes one end-to-end scaffold rule (`INTENT-1`) through runtime validation
    - Establishes baseline plumbing for full YAML-driven rule execution
+
+4. `conformance-yaml-batch` (optional)
+   - Runs a supported subset of YAML action/expectation shapes
+   - Reports unsupported rule IDs clearly
+   - Intended for iterative expansion toward full YAML execution
 
 ## Current Truth
 
