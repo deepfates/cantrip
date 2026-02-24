@@ -230,7 +230,8 @@ defmodule Cantrip.EntityServer do
             role: :tool,
             content: content,
             gate: item.gate,
-            is_error: item.is_error
+            is_error: item.is_error,
+            tool_call_id: item[:tool_call_id]
           }
         end)
 
@@ -249,9 +250,13 @@ defmodule Cantrip.EntityServer do
 
   defp execute_gate_calls(circle, tool_calls) do
     Enum.reduce_while(tool_calls, {[], nil, false}, fn call, {acc, _result, _terminated} ->
+      tool_call_id = call[:id] || call["id"]
       gate = call[:gate] || call["gate"]
       args = call[:args] || call["args"] || %{}
-      observation = Circle.execute_gate(circle, gate, args)
+
+      observation =
+        Circle.execute_gate(circle, gate, args) |> Map.put(:tool_call_id, tool_call_id)
+
       acc = acc ++ [observation]
 
       if gate == "done" do

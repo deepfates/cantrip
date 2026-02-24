@@ -53,10 +53,19 @@ defmodule Cantrip.Crystals.OpenAICompatible do
 
   defp normalize_messages(messages) do
     Enum.map(messages, fn message ->
-      %{
-        role: message_role(message),
-        content: to_string(Map.get(message, :content, ""))
-      }
+      role = message_role(message)
+      content = Map.get(message, :content)
+      tool_calls = Map.get(message, :tool_calls, [])
+
+      base =
+        %{
+          role: role,
+          content: if(is_nil(content), do: nil, else: to_string(content))
+        }
+
+      base
+      |> maybe_put_assistant_tool_calls(role, tool_calls)
+      |> maybe_put_tool_call_id(role, message)
     end)
   end
 
@@ -86,6 +95,41 @@ defmodule Cantrip.Crystals.OpenAICompatible do
       }
     end)
   end
+
+  defp maybe_put_assistant_tool_calls(message, "assistant", tool_calls)
+       when is_list(tool_calls) do
+    encoded =
+      Enum.map(tool_calls, fn call ->
+        %{
+          id: call[:id] || call["id"],
+          type: "function",
+          function: %{
+            name: call[:gate] || call["gate"],
+            arguments: Jason.encode!(call[:args] || call["args"] || %{})
+          }
+        }
+      end)
+
+    if encoded == [] do
+      message
+    else
+      Map.put(message, :tool_calls, encoded)
+    end
+  end
+
+  defp maybe_put_assistant_tool_calls(message, _role, _tool_calls), do: message
+
+  defp maybe_put_tool_call_id(message, "tool", source_message) do
+    tool_call_id = source_message[:tool_call_id] || source_message["tool_call_id"]
+
+    if is_binary(tool_call_id) do
+      Map.put(message, :tool_call_id, tool_call_id)
+    else
+      message
+    end
+  end
+
+  defp maybe_put_tool_call_id(message, _role, _source_message), do: message
 
   defp headers(%{api_key: nil}), do: [{"content-type", "application/json"}]
 
