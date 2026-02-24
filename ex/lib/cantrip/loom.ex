@@ -92,6 +92,9 @@ defmodule Cantrip.Loom do
   defp normalize_storage({:jsonl, path}) when is_binary(path),
     do: {Cantrip.Loom.Storage.Jsonl, path}
 
+  defp normalize_storage({:dets, path}) when is_binary(path),
+    do: {Cantrip.Loom.Storage.Dets, path}
+
   defp normalize_storage({module, opts}) when is_atom(module), do: {module, opts}
 
   defp normalize_storage(_), do: {Memory, %{}}
