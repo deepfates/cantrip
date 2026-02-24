@@ -221,7 +221,7 @@ defmodule Cantrip.EntityServer do
         Enum.map(observation, fn item ->
           content =
             if item[:ephemeral] do
-              "[ephemeral result redacted]"
+              "[ephemeral:#{item.gate}]"
             else
               to_string(item.result)
             end

@@ -111,6 +111,11 @@ defmodule CantripM6ProductionTest do
     [_first, second] = FakeCrystal.invocations(cantrip.crystal_state)
     refute Enum.any?(second.messages, &String.contains?(to_string(&1.content), payload))
 
+    assert Enum.any?(
+             second.messages,
+             &String.contains?(to_string(&1.content), "[ephemeral:read_ephemeral]")
+           )
+
     [turn1 | _] = loom.turns
     assert hd(turn1.observation).result == payload
   end
