@@ -1,5 +1,6 @@
 (ns cantrip.examples
-  (:require [cantrip.protocol.acp :as acp]
+  (:require [cantrip.medium :as medium]
+            [cantrip.protocol.acp :as acp]
             [cantrip.runtime :as runtime]))
 
 (defn example-01-crystal-gate-primitives
@@ -14,6 +15,81 @@
                           :gates [:done]
                           :wards [{:max-turns 2}]}}
                 "say ok"))
+
+(defn example-02-gate-primitives
+  "Pattern 02: gate call path and observation normalization."
+  []
+  (runtime/cast {:crystal {:provider :fake
+                           :responses [{:tool-calls [{:id "call_1"
+                                                      :gate :echo
+                                                      :args {:text "hello"}}
+                                                     {:id "call_2"
+                                                      :gate :done
+                                                      :args {:answer "ok"}}]}]}
+                 :call {:system-prompt "example-02"}
+                 :circle {:medium :conversation
+                          :gates [:done :echo]
+                          :wards [{:max-turns 3}]}}
+                "run gate primitives"))
+
+(defn example-03-circle-invariants
+  "Pattern 03: valid circle with done + truncation ward."
+  []
+  (runtime/new-cantrip {:crystal {:provider :fake}
+                        :call {:system-prompt "example-03"}
+                        :circle {:medium :conversation
+                                 :gates [:done]
+                                 :wards [{:max-turns 2}]}}))
+
+(defn example-04-loop-termination-semantics
+  "Pattern 04: malformed done fails, later done succeeds."
+  []
+  (runtime/cast {:crystal {:provider :fake
+                           :responses [{:tool-calls [{:id "x1"
+                                                      :gate :done
+                                                      :args {}}]}
+                                       {:tool-calls [{:id "x2"
+                                                      :gate :done
+                                                      :args {:answer "fixed"}}]}]}
+                 :call {:system-prompt "example-04"}
+                 :circle {:medium :conversation
+                          :gates [:done]
+                          :wards [{:max-turns 3}]}}
+                "test malformed done"))
+
+(defn example-05-ward-composition
+  "Pattern 05: stricter ward envelope in child cantrip."
+  []
+  (let [parent (runtime/invoke {:crystal {:provider :fake
+                                          :responses [{:tool-calls [{:id "p1"
+                                                                     :gate :done
+                                                                     :args {:answer "parent"}}]}]}
+                                :call {:system-prompt "example-05"}
+                                :circle {:medium :conversation
+                                         :gates [:done]
+                                         :wards [{:max-turns 4} {:max-depth 2}]}})
+        child {:crystal {:provider :fake
+                         :responses [{:tool-calls [{:id "c1"
+                                                    :gate :done
+                                                    :args {:answer "child"}}]}]}
+               :call {:system-prompt "child"}
+               :circle {:medium :conversation
+                        :gates [:done]
+                        :wards [{:max-turns 2}]}}]
+    (runtime/call-agent parent {:cantrip child :intent "child"})))
+
+(defn example-06-provider-portability
+  "Pattern 06: provider-agnostic fake crystal contract usage."
+  []
+  (runtime/cast {:crystal {:provider :fake
+                           :responses [{:tool-calls [{:id "call_1"
+                                                      :gate :done
+                                                      :args {:answer "portable"}}]}]}
+                 :call {:system-prompt "example-06"}
+                 :circle {:medium :conversation
+                          :gates [:done]
+                          :wards [{:max-turns 2}]}}
+                "portability"))
 
 (defn example-07-conversation-medium
   "Pattern 07: conversation medium baseline."
@@ -39,6 +115,13 @@
                           :gates [:done]
                           :wards [{:max-turns 2}]}}
                 "run code medium"))
+
+(defn example-09-medium-capability-view
+  "Pattern 09: medium capability exposure."
+  []
+  {:conversation (medium/capability-view {:medium :conversation :gates [:done]} {})
+   :code (medium/capability-view {:medium :code :gates [:done :echo]} {})
+   :minecraft (medium/capability-view {:medium :minecraft :gates [:done]} {})})
 
 (defn example-10-composition-batch
   "Pattern 10: parent entity composing child cantrips in batch."
@@ -120,6 +203,27 @@
                                        :params {:sessionId sid :prompt "hello"}})]
     res))
 
+(defn example-14-recursive-delegation
+  "Pattern 14: single-child delegation with depth ward."
+  []
+  (let [parent (runtime/invoke {:crystal {:provider :fake
+                                          :responses [{:tool-calls [{:id "p1"
+                                                                     :gate :done
+                                                                     :args {:answer "parent"}}]}]}
+                                :call {:system-prompt "example-14"}
+                                :circle {:medium :conversation
+                                         :gates [:done]
+                                         :wards [{:max-turns 3} {:max-depth 1}]}})
+        child {:crystal {:provider :fake
+                         :responses [{:tool-calls [{:id "c1"
+                                                    :gate :done
+                                                    :args {:answer "child"}}]}]}
+               :call {:system-prompt "child"}
+               :circle {:medium :conversation
+                        :gates [:done]
+                        :wards [{:max-turns 2}]}}]
+    (runtime/call-agent parent {:cantrip child :intent "recurse-once"})))
+
 (defn example-prod-2-retry
   "Production pattern: retryable provider failure recovered as one turn."
   []
@@ -137,3 +241,19 @@
                    :retry {:max_retries 1
                            :retryable_status_codes [429]}}
                   "retry run")))
+
+(def pattern-notes
+  {"01" {:fn #'example-01-crystal-gate-primitives :rules ["CANTRIP-1" "LOOP-3"]}
+   "02" {:fn #'example-02-gate-primitives :rules ["CIRCLE-7" "LOOP-3"]}
+   "03" {:fn #'example-03-circle-invariants :rules ["CIRCLE-1" "CIRCLE-2"]}
+   "04" {:fn #'example-04-loop-termination-semantics :rules ["LOOP-7"]}
+   "05" {:fn #'example-05-ward-composition :rules ["COMP-2" "WARD-1"]}
+   "06" {:fn #'example-06-provider-portability :rules ["CRYSTAL-1" "CRYSTAL-3"]}
+   "07" {:fn #'example-07-conversation-medium :rules ["CIRCLE-12"]}
+   "08" {:fn #'example-08-code-medium :rules ["CIRCLE-9" "LOOP-3"]}
+   "09" {:fn #'example-09-medium-capability-view :rules ["CIRCLE-12"]}
+   "10" {:fn #'example-10-composition-batch :rules ["COMP-7" "LOOM-8"]}
+   "11" {:fn #'example-11-folding :rules ["CALL-5" "PROD-4"]}
+   "12" {:fn #'example-12-code-agent :rules ["CIRCLE-9" "LOOP-3"]}
+   "13" {:fn #'example-13-acp-session :rules ["PROD-6" "PROD-7"]}
+   "14" {:fn #'example-14-recursive-delegation :rules ["COMP-4" "WARD-1"]}})
