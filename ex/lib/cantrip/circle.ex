@@ -149,9 +149,11 @@ defmodule Cantrip.Circle do
     module_name = Map.get(args, "module", Map.get(args, :module))
     source = Map.get(args, "source", Map.get(args, :source))
     path = Map.get(args, "path", Map.get(args, :path))
+    sha256 = Map.get(args, "sha256", Map.get(args, :sha256))
 
     with :ok <- guard_compile_module(wards, module_name),
          :ok <- guard_compile_path(wards, path),
+         :ok <- guard_compile_hash(wards, source, sha256),
          {:ok, module} <- ensure_module(module_name),
          :ok <- compile_and_load(module, source, path, gate) do
       %{gate: "compile_and_load", result: "ok", is_error: false}
@@ -219,6 +221,56 @@ defmodule Cantrip.Circle do
   end
 
   defp guard_compile_path(_gates, _), do: {:error, "invalid compile path"}
+
+  defp guard_compile_hash(gates, source, provided_hash) do
+    allow =
+      gates
+      |> Enum.flat_map(fn gate ->
+        case gate do
+          %{allow_compile_sha256: hashes} when is_list(hashes) ->
+            Enum.map(hashes, &String.downcase(to_string(&1)))
+
+          _ ->
+            []
+        end
+      end)
+      |> Enum.uniq()
+
+    if allow == [] do
+      :ok
+    else
+      with :ok <- require_binary_source(source),
+           :ok <- require_hash(provided_hash),
+           :ok <- verify_hash_matches_source(source, provided_hash),
+           :ok <- verify_hash_allowed(provided_hash, allow) do
+        :ok
+      end
+    end
+  end
+
+  defp require_binary_source(source) when is_binary(source), do: :ok
+  defp require_binary_source(_), do: {:error, "source is required for sha256 verification"}
+
+  defp require_hash(hash) when is_binary(hash) and hash != "", do: :ok
+  defp require_hash(_), do: {:error, "sha256 is required"}
+
+  defp verify_hash_matches_source(source, provided_hash) do
+    actual_hash = :crypto.hash(:sha256, source) |> Base.encode16(case: :lower)
+
+    if String.downcase(provided_hash) == actual_hash do
+      :ok
+    else
+      {:error, "sha256 mismatch"}
+    end
+  end
+
+  defp verify_hash_allowed(provided_hash, allow) do
+    if String.downcase(provided_hash) in allow do
+      :ok
+    else
+      {:error, "sha256 not allowed"}
+    end
+  end
 
   defp ensure_module(name) when is_binary(name) do
     try do

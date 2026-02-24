@@ -165,6 +165,99 @@ defmodule CantripM7HotReloadTest do
     purge_module(module)
   end
 
+  test "hot-reload gate enforces source sha256 allowlist when configured" do
+    module_name = "Elixir.Cantrip.SignedReload"
+    module = String.to_atom(module_name)
+    purge_module(module)
+
+    source = """
+    defmodule Cantrip.SignedReload do
+      def version, do: 3
+    end
+    """
+
+    sha256 = :crypto.hash(:sha256, source) |> Base.encode16(case: :lower)
+
+    crystal =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{
+           tool_calls: [
+             %{
+               gate: "compile_and_load",
+               args: %{module: module_name, source: source, sha256: sha256}
+             },
+             %{gate: "done", args: %{answer: "ok"}}
+           ]
+         }
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: crystal,
+        circle: %{
+          gates: [:done, :compile_and_load],
+          wards: [
+            %{max_turns: 10},
+            %{allow_compile_modules: [module_name]},
+            %{allow_compile_sha256: [sha256]}
+          ]
+        }
+      )
+
+    assert {:ok, "ok", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "signed reload")
+    assert apply(module, :version, []) == 3
+    purge_module(module)
+  end
+
+  test "hot-reload gate rejects source when sha256 mismatches source" do
+    module_name = "Elixir.Cantrip.SignedMismatch"
+    module = String.to_atom(module_name)
+    purge_module(module)
+
+    source = """
+    defmodule Cantrip.SignedMismatch do
+      def version, do: 4
+    end
+    """
+
+    wrong_sha = :crypto.hash(:sha256, "different source") |> Base.encode16(case: :lower)
+
+    crystal =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{
+           tool_calls: [
+             %{
+               gate: "compile_and_load",
+               args: %{module: module_name, source: source, sha256: wrong_sha}
+             },
+             %{gate: "done", args: %{answer: "blocked"}}
+           ]
+         }
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: crystal,
+        circle: %{
+          gates: [:done, :compile_and_load],
+          wards: [
+            %{max_turns: 10},
+            %{allow_compile_modules: [module_name]},
+            %{allow_compile_sha256: [wrong_sha]}
+          ]
+        }
+      )
+
+    assert {:ok, "blocked", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "reject bad hash")
+    [turn] = loom.turns
+    [obs | _] = turn.observation
+    assert obs.is_error
+    assert obs.result =~ "sha256 mismatch"
+    purge_module(module)
+  end
+
   defp purge_module(module) do
     :code.purge(module)
     :code.delete(module)
