@@ -57,7 +57,7 @@ Status legend: `TODO` | `IN_PROGRESS` | `BLOCKED` | `DONE`
 
 | ID | Task | Status | Done Criteria |
 |---|---|---|---|
-| P5-1 | Implement `:code` medium semantics | IN_PROGRESS | Pattern-equivalent behavior for code medium stories |
+| P5-1 | Implement `:code` medium semantics | DONE | Pattern-equivalent behavior for code medium stories |
 | P5-2 | Add runnable examples `01-14` | TODO | Examples exist and run with notes linking rule IDs |
 | P5-3 | Implement `:minecraft` medium via Witchcraft bridge | TODO | Read-only + mutation profiles pass acceptance checks |
 | P5-4 | Add runnable examples `15-16` adapted to Minecraft composition | TODO | Familiar-style scenario works end-to-end |

@@ -1,8 +1,7 @@
 (ns cantrip.medium
   (:require [cantrip.circle :as circle]
             [cantrip.gates :as gates]
-            [clojure.edn :as edn]
-            [clojure.string :as str]))
+            [sci.core :as sci]))
 
 (defmulti capability-view
   "Returns medium capability description for crystal context assembly."
@@ -68,20 +67,34 @@
 (defmethod execute-utterance :code
   [circle utterance _]
   (let [tool-calls (vec (:tool-calls utterance))
-        code (:content utterance)
-        parsed-call (when (and (empty? tool-calls)
-                               (string? code)
-                               (or (str/starts-with? (str/trim code) "(submit_answer")
-                                   (str/starts-with? (str/trim code) "(submit-answer")))
-                      (try
-                        (let [form (edn/read-string code)
-                              answer (second form)]
-                          [{:id "code_done_1"
-                            :gate :done
-                            :args {:answer (str answer)}}])
-                        (catch Exception _
-                          nil)))]
-    (circle/execute-tool-calls circle (or parsed-call tool-calls))))
+        code (:content utterance)]
+    (if (and (empty? tool-calls) (string? code))
+      (let [emitted (atom [])
+            next-id (fn [] (str "code_call_" (inc (count @emitted))))
+            emit! (fn [gate args]
+                    (swap! emitted conj {:id (next-id)
+                                         :gate gate
+                                         :args (or args {})}))
+            submit! (fn [answer]
+                      (emit! :done {:answer (str answer)}))
+            call-gate! (fn
+                         ([gate] (emit! gate {}))
+                         ([gate args] (emit! gate args)))]
+        (try
+          (sci/eval-string code
+                           {:bindings {'submit-answer submit!
+                                       'submit_answer submit!
+                                       'call-gate call-gate!
+                                       'call_gate call-gate!}})
+          (circle/execute-tool-calls circle @emitted)
+          (catch Exception e
+            {:observation [{:gate "code"
+                            :arguments "{}"
+                            :result (str "code execution error: " (.getMessage e))
+                            :is-error true}]
+             :terminated? false
+             :result nil})))
+      (circle/execute-tool-calls circle tool-calls))))
 
 (defmethod execute-utterance :minecraft
   [circle utterance _]

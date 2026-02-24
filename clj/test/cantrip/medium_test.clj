@@ -33,7 +33,21 @@
 
 (deftest code-medium-bridges-submit-answer-form
   (let [circle {:medium :code :gates [:done] :wards [{:max-turns 2}]}
+        utterance {:content "(submit-answer \"done\")"}
+        result (medium/execute-utterance circle utterance {})]
+    (is (true? (:terminated? result)))
+    (is (= "done" (:result result)))))
+
+(deftest code-medium-bridges-submit-underscore-form
+  (let [circle {:medium :code :gates [:done] :wards [{:max-turns 2}]}
         utterance {:content "(submit_answer \"done\")"}
         result (medium/execute-utterance circle utterance {})]
     (is (true? (:terminated? result)))
     (is (= "done" (:result result)))))
+
+(deftest code-medium-reports-execution-errors
+  (let [circle {:medium :code :gates [:done] :wards [{:max-turns 2}]}
+        utterance {:content "(unknown_fn 1)"}
+        result (medium/execute-utterance circle utterance {})]
+    (is (false? (:terminated? result)))
+    (is (true? (-> result :observation first :is-error)))))
