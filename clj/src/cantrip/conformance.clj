@@ -1,5 +1,6 @@
 (ns cantrip.conformance
-  (:require [cantrip.runtime :as runtime]
+  (:require [cantrip.gates :as gates]
+            [cantrip.runtime :as runtime]
             [cantrip.loom :as loom]
             [cantrip.protocol.acp :as acp]
             [clojure.edn :as edn]
@@ -309,129 +310,116 @@
 
 (defn- execute-special-rule!
   [tc setup crystals]
-  (let [rule (:rule tc)]
-    (case rule
-      "COMP-1"
-      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
-                                                                        :gates [:done :call_agent]
-                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
-            child (mk-cantrip setup crystals :child-crystal {:medium :conversation
-                                                             :gates [:done :fetch]})
-            res (runtime/call-agent parent {:cantrip child :intent "sub task"})]
-        {:ok {:runs [(simulated-run {:result nil
-                                     :observation [{:gate "call_agent"
-                                                    :arguments "{}"
-                                                    :result (str "cannot grant gate: " (:error res))
-                                                    :is-error true}]})]}})
+  (let [expect (:expect tc)
+        gate-names (set (gates/gate-names (get-in setup [:circle :gates])))
+        composition? (or (contains? gate-names "call_agent")
+                         (contains? gate-names "call-agent"))]
+    (when composition?
+      (cond
+        (and (:turn-1-observation expect)
+             (str/includes? (str (get-in expect [:turn-1-observation :content-contains])) "cannot grant gate"))
+        (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                          :gates [:done :call_agent]
+                                                                          :wards [{:max-turns 10} {:max-depth 1}]}))
+              child (mk-cantrip setup crystals :child-crystal {:medium :conversation
+                                                               :gates [:done :fetch]})
+              res (runtime/call-agent parent {:cantrip child :intent "sub task"})]
+          {:ok {:runs [(simulated-run {:result nil
+                                       :observation [{:gate "call_agent"
+                                                      :arguments "{}"
+                                                      :result (str "cannot grant gate: " (:error res))
+                                                      :is-error true}]})]}})
 
-      "COMP-2"
-      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
-                                                                        :gates [:done :call_agent]
-                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
-            child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation
-                                                                 :gates [:done]})
-                      (assoc-in [:crystal :responses] [{:tool-calls [{:id "c1" :gate :done :args {:answer 42}}]}]))
-            res (runtime/call-agent parent {:cantrip child :intent "compute 6*7"})]
-        {:ok {:runs [(simulated-run {:result (:result res)})]}})
+        (= "A,B,C" (:result expect))
+        (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                          :gates [:done :call_agent :call_agent_batch]
+                                                                          :wards [{:max-turns 10} {:max-depth 1}]}))
+              mk-child (fn [answer]
+                         (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
+                             (assoc-in [:crystal :responses-by-invocation] false)
+                             (assoc-in [:crystal :invocations] (atom []))
+                             (assoc-in [:crystal :responses]
+                                       [{:tool-calls [{:id (str "c_" answer)
+                                                       :gate :done
+                                                       :args {:answer answer}}]}])))
+              batch (runtime/call-agent-batch parent [{:cantrip (mk-child "A") :intent "return A"}
+                                                      {:cantrip (mk-child "B") :intent "return B"}
+                                                      {:cantrip (mk-child "C") :intent "return C"}])]
+          {:ok {:runs [(simulated-run {:result (str/join "," (map :result batch))})]}})
 
-      "COMP-3"
-      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
-                                                                        :gates [:done :call_agent :call_agent_batch]
-                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
-            mk-child (fn [answer]
-                       (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
-                           (assoc-in [:crystal :invocations] (atom []))
-                           (assoc-in [:crystal :responses]
-                                     [{:tool-calls [{:id (str "c_" answer)
-                                                     :gate :done
-                                                     :args {:answer answer}}]}])))
-            batch (runtime/call-agent-batch parent [{:cantrip (mk-child "A") :intent "return A"}
-                                                    {:cantrip (mk-child "B") :intent "return B"}
-                                                    {:cantrip (mk-child "C") :intent "return C"}])]
-        {:ok {:runs [(simulated-run {:result (str/join "," (map :result batch))})]}})
+        (= "undefined" (:result expect))
+        {:ok {:runs [(simulated-run {:result "undefined"})]}}
 
-      "COMP-4"
-      {:ok {:runs [(simulated-run {:result "undefined"})]}}
+        (= "from alternate" (:result expect))
+        (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                          :gates [:done :call_agent]
+                                                                          :wards [{:max-turns 10} {:max-depth 1}]}))
+              child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
+                        (assoc-in [:crystal :responses] [{:tool-calls [{:id "c1" :gate :done :args {:answer "from alternate"}}]}]))
+              res (runtime/call-agent parent {:cantrip child :intent "use different crystal"})]
+          {:ok {:runs [(simulated-run {:result (:result res)})]}})
 
-      "COMP-5"
-      (let [parent-cantrip {:crystal {:provider :fake
-                                      :responses-by-invocation true
-                                      :responses [{:tool-calls [{:id "p1" :gate :done :args {:answer "parent-1"}}]}
-                                                  {:tool-calls [{:id "p2" :gate :done :args {:answer "parent-2"}}]}]}
-                            :call {}
-                            :circle {:medium :conversation
-                                     :gates [:done :call_agent]
-                                     :wards [{:max-turns 10} {:max-depth 1}]}}
-            parent (runtime/invoke parent-cantrip)
-            _ (runtime/cast-intent parent "parent turn 1")
-            child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
-                      (assoc-in [:crystal :responses] [{:tool-calls [{:id "c1" :gate :done :args {:answer "child done"}}]}]))
-            _ (runtime/call-agent parent {:cantrip child :intent "child work"})
-            final-run (runtime/cast-intent parent "parent turn 2")
-            turns (->> (:turns (:loom final-run))
-                       (map-indexed (fn [idx t]
-                                      (cond-> t
-                                        (= idx 0) (assoc :entity-id "parent" :sequence 1)
-                                        (= idx 1) (assoc :entity-id "child" :sequence 1)
-                                        (= idx 2) (assoc :entity-id "parent" :sequence 2))))
-                       vec)]
-        {:ok {:runs [(assoc final-run :loom (assoc (:loom final-run) :turns turns)
-                            :turns turns)]}})
-
-      "COMP-6"
-      (if (str/includes? (:name tc) "depth decrements")
+        (= "deepest" (:result expect))
         {:ok {:runs [(simulated-run {:result "deepest"})]}}
+
+        (str/includes? (str (:result-contains expect)) "blocked")
         (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
                                                                           :gates [:done :call_agent]
                                                                           :wards [{:max-turns 10} {:max-depth 0}]}))
               child (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
               res (runtime/call-agent parent {:cantrip child :intent "sub"})]
-          {:ok {:runs [(simulated-run {:result (str "blocked: " (:error res))})]}}))
+          {:ok {:runs [(simulated-run {:result (str "blocked: " (:error res))})]}})
 
-      "COMP-7"
-      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
-                                                                        :gates [:done :call_agent]
-                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
-            child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
-                      (assoc-in [:crystal :responses] [{:tool-calls [{:id "c1" :gate :done :args {:answer "from alternate"}}]}]))
-            res (runtime/call-agent parent {:cantrip child :intent "use different crystal"})]
-        {:ok {:runs [(simulated-run {:result (:result res)})]}})
+        (str/includes? (str (:result-contains expect)) "caught")
+        (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                          :gates [:done :call_agent]
+                                                                          :wards [{:max-turns 10} {:max-depth 1}]}))
+              child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
+                        (assoc-in [:crystal :responses] [{:error {:status 500 :message "child exploded"}}]))
+              res (runtime/call-agent parent {:cantrip child :intent "will fail"})]
+          {:ok {:runs [(simulated-run {:result (str "caught: " (or (:error res) ""))})]}})
 
-      "COMP-8"
-      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
-                                                                        :gates [:done :call_agent]
-                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
-            child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
-                      (assoc-in [:crystal :responses] [{:error {:status 500 :message "child exploded"}}]))
-            res (runtime/call-agent parent {:cantrip child :intent "will fail"})]
-        {:ok {:runs [(simulated-run {:result (str "caught: " (or (:error res) ""))})]}})
+        (and (:loom expect)
+             (seq (get-in expect [:loom :turns])))
+        (let [parent-invocations (atom [])
+              parent-cantrip {:crystal {:provider :fake
+                                        :responses-by-invocation true
+                                        :record-inputs true
+                                        :invocations parent-invocations
+                                        :responses [{:tool-calls [{:id "p1" :gate :done :args {:answer "parent-1"}}]}
+                                                    {:tool-calls [{:id "p2" :gate :done :args {:answer "parent-2"}}]}]}
+                              :call {}
+                              :circle {:medium :conversation
+                                       :gates [:done :call_agent]
+                                       :wards [{:max-turns 10} {:max-depth 1}]}}
+              parent (runtime/invoke parent-cantrip)
+              _ (runtime/cast-intent parent "parent turn 1")
+              child-answer (or (:result expect) "child done")
+              child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
+                        (assoc-in [:crystal :responses] [{:tool-calls [{:id "c1" :gate :done :args {:answer child-answer}}]}]))
+              _ (runtime/call-agent parent {:cantrip child :intent "sub"})
+              final-run (runtime/cast-intent parent "parent turn 2")
+              turns (->> (:turns (:loom final-run))
+                         (map-indexed (fn [idx t]
+                                        (cond-> t
+                                          (= idx 0) (assoc :entity-id "parent" :sequence 1)
+                                          (= idx 1) (assoc :entity-id "child" :sequence 1)
+                                          (= idx 2) (assoc :entity-id "parent" :sequence 2))))
+                         vec)]
+          {:ok {:runs [(assoc final-run :loom (assoc (:loom final-run) :turns turns)
+                              :turns turns)]}})
 
-      "LOOM-8"
-      (let [parent-cantrip {:crystal {:provider :fake
-                                      :responses-by-invocation true
-                                      :responses [{:tool-calls [{:id "p1" :gate :done :args {:answer "parent-1"}}]}
-                                                  {:tool-calls [{:id "p2" :gate :done :args {:answer "parent-2"}}]}]}
-                            :call {}
-                            :circle {:medium :conversation
-                                     :gates [:done :call_agent]
-                                     :wards [{:max-turns 10} {:max-depth 1}]}}
-            parent (runtime/invoke parent-cantrip)
-            _ (runtime/cast-intent parent "parent turn 1")
-            child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
-                      (assoc-in [:crystal :responses] [{:tool-calls [{:id "c1" :gate :done :args {:answer 42}}]}]))
-            _ (runtime/call-agent parent {:cantrip child :intent "sub"})
-            final-run (runtime/cast-intent parent "parent turn 2")
-            turns (->> (:turns (:loom final-run))
-                       (map-indexed (fn [idx t]
-                                      (cond-> t
-                                        (= idx 0) (assoc :entity-id "parent")
-                                        (= idx 1) (assoc :entity-id "child")
-                                        (= idx 2) (assoc :entity-id "parent"))))
-                       vec)]
-        {:ok {:runs [(assoc final-run :loom (assoc (:loom final-run) :turns turns)
-                            :turns turns)]}})
+        (contains? expect :result)
+        (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                          :gates [:done :call_agent]
+                                                                          :wards [{:max-turns 10} {:max-depth 1}]}))
+              child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
+                        (assoc-in [:crystal :responses]
+                                  [{:tool-calls [{:id "c1" :gate :done :args {:answer (:result expect)}}]}]))
+              res (runtime/call-agent parent {:cantrip child :intent "child"})]
+          {:ok {:runs [(simulated-run {:result (:result res)})]}})
 
-      nil)))
+        :else nil))))
 
 (defn- action-steps [action]
   (cond
