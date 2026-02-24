@@ -163,4 +163,54 @@ defmodule CantripM5CompositionExtendedTest do
 
     assert {:ok, "from alternate", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "override")
   end
+
+  test "call_agent_batch enforces max_batch_size ward" do
+    parent =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{
+           code:
+             "result = call_agent_batch.([%{intent: \"a\"}, %{intent: \"b\"}, %{intent: \"c\"}])\ndone.(to_string(result))"
+         }
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: parent,
+        circle: %{
+          type: :code,
+          gates: [:done, :call_agent_batch],
+          wards: [%{max_turns: 10}, %{max_depth: 1}, %{max_batch_size: 2}]
+        }
+      )
+
+    assert {:ok, result, _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "limit")
+    assert String.contains?(result, "batch too large")
+  end
+
+  test "call_agent_batch runs concurrently when each request provides crystal override" do
+    parent =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{
+           code:
+             "c1={Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: \"Process.sleep(120)\\ndone.(\\\"A\\\")\"}])}\nc2={Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: \"Process.sleep(120)\\ndone.(\\\"B\\\")\"}])}\nc3={Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: \"Process.sleep(120)\\ndone.(\\\"C\\\")\"}])}\nresults=call_agent_batch.([%{intent: \"a\", crystal: c1}, %{intent: \"b\", crystal: c2}, %{intent: \"c\", crystal: c3}])\ndone.(Enum.join(results, \",\"))"
+         }
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: parent,
+        circle: %{
+          type: :code,
+          gates: [:done, :call_agent, :call_agent_batch],
+          wards: [%{max_turns: 10}, %{max_depth: 1}, %{max_concurrent_children: 8}]
+        }
+      )
+
+    started = System.monotonic_time(:millisecond)
+    assert {:ok, "A,B,C", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "concurrent")
+    elapsed = System.monotonic_time(:millisecond) - started
+    assert elapsed < 300
+  end
 end

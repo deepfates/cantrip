@@ -359,20 +359,52 @@ defmodule Cantrip.EntityServer do
   end
 
   defp execute_call_agent_batch(state, opts_list) when is_list(opts_list) do
-    payloads = Enum.map(opts_list, &execute_call_agent(state, &1))
-    values = Enum.map(payloads, & &1.value)
-    has_error = Enum.any?(payloads, & &1.observation.is_error)
-    child_turns = Enum.flat_map(payloads, &Map.get(&1.observation, :child_turns, []))
+    max_batch = Circle.max_batch_size(state.cantrip.circle)
+    max_concurrency = Circle.max_concurrent_children(state.cantrip.circle)
 
-    %{
-      value: values,
-      observation: %{
-        gate: "call_agent_batch",
-        result: values,
-        is_error: has_error,
-        child_turns: child_turns
+    if length(opts_list) > max_batch do
+      msg = "batch too large: #{length(opts_list)} > #{max_batch}"
+      %{value: msg, observation: %{gate: "call_agent_batch", result: msg, is_error: true}}
+    else
+      payloads =
+        if Enum.all?(opts_list, &(Map.has_key?(&1, :crystal) or Map.has_key?(&1, "crystal"))) do
+          opts_list
+          |> Task.async_stream(
+            fn opts -> execute_call_agent(state, opts) end,
+            ordered: true,
+            max_concurrency: max_concurrency,
+            timeout: 30_000
+          )
+          |> Enum.map(fn
+            {:ok, payload} ->
+              payload
+
+            {:exit, reason} ->
+              message = "child error: #{inspect(reason)}"
+
+              %{
+                value: message,
+                observation: %{gate: "call_agent", result: message, is_error: true}
+              }
+          end)
+        else
+          Enum.map(opts_list, &execute_call_agent(state, &1))
+        end
+
+      values = Enum.map(payloads, & &1.value)
+      has_error = Enum.any?(payloads, & &1.observation.is_error)
+      child_turns = Enum.flat_map(payloads, &Map.get(&1.observation, :child_turns, []))
+
+      %{
+        value: values,
+        observation: %{
+          gate: "call_agent_batch",
+          result: values,
+          is_error: has_error,
+          child_turns: child_turns
+        }
       }
-    }
+    end
   end
 
   defp execute_call_agent_batch(_state, _opts_list) do

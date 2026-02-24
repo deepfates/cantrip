@@ -40,6 +40,22 @@ defmodule Cantrip.Circle do
     end)
   end
 
+  @spec max_batch_size(t()) :: pos_integer()
+  def max_batch_size(%__MODULE__{wards: wards}) do
+    Enum.find_value(wards, 50, fn
+      %{max_batch_size: n} when is_integer(n) and n > 0 -> n
+      _ -> nil
+    end)
+  end
+
+  @spec max_concurrent_children(t()) :: pos_integer()
+  def max_concurrent_children(%__MODULE__{wards: wards}) do
+    Enum.find_value(wards, 8, fn
+      %{max_concurrent_children: n} when is_integer(n) and n > 0 -> n
+      _ -> nil
+    end)
+  end
+
   @spec tool_definitions(t()) :: list(gate())
   def tool_definitions(%__MODULE__{gates: gates}) do
     gates
