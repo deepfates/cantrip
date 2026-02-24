@@ -117,6 +117,7 @@ defmodule Cantrip.EntityServer do
             runtime = %{
               circle: state.cantrip.circle,
               call_agent: fn opts -> execute_call_agent(state, opts) end,
+              call_agent_batch: fn opts -> execute_call_agent_batch(state, opts) end,
               compile_and_load: fn opts -> execute_compile_and_load(state, opts) end
             }
 
@@ -266,7 +267,7 @@ defmodule Cantrip.EntityServer do
     else
       child_intent = opts[:intent] || opts["intent"] || ""
       child_circle = Circle.subset(state.cantrip.circle, requested_gates)
-      {child_module, child_state} = state.cantrip.child_crystal || default_child_crystal(state)
+      {child_module, child_state} = current_child_crystal(state)
 
       child_cantrip = %{
         state.cantrip
@@ -275,15 +276,24 @@ defmodule Cantrip.EntityServer do
           circle: child_circle
       }
 
-      case Cantrip.cast(child_cantrip, child_intent, depth: state.depth + 1) do
-        {:ok, value, _next_cantrip, _loom, _meta} ->
-          %{value: value, observation: %{gate: "call_agent", result: value, is_error: false}}
+      try do
+        case Cantrip.cast(child_cantrip, child_intent, depth: state.depth + 1) do
+          {:ok, value, next_cantrip, _loom, _meta} ->
+            remember_child_crystal(next_cantrip)
+            %{value: value, observation: %{gate: "call_agent", result: value, is_error: false}}
 
-        {:error, reason, _next_cantrip} ->
-          %{
-            value: inspect(reason),
-            observation: %{gate: "call_agent", result: inspect(reason), is_error: true}
-          }
+          {:error, reason, next_cantrip} ->
+            remember_child_crystal(next_cantrip)
+
+            %{
+              value: inspect(reason),
+              observation: %{gate: "call_agent", result: inspect(reason), is_error: true}
+            }
+        end
+      catch
+        :exit, reason ->
+          message = "child error: #{inspect(reason)}"
+          %{value: message, observation: %{gate: "call_agent", result: message, is_error: true}}
       end
     end
   end
@@ -291,9 +301,33 @@ defmodule Cantrip.EntityServer do
   defp default_child_crystal(state),
     do: {state.cantrip.crystal_module, state.cantrip.crystal_state}
 
+  defp current_child_crystal(state) do
+    Process.get(:cantrip_child_crystal) || state.cantrip.child_crystal ||
+      default_child_crystal(state)
+  end
+
+  defp remember_child_crystal(next_cantrip) do
+    Process.put(:cantrip_child_crystal, {next_cantrip.crystal_module, next_cantrip.crystal_state})
+  end
+
   defp execute_compile_and_load(state, opts) do
     observation = Circle.execute_gate(state.cantrip.circle, "compile_and_load", opts)
     %{value: observation.result, observation: observation}
+  end
+
+  defp execute_call_agent_batch(state, opts_list) when is_list(opts_list) do
+    payloads = Enum.map(opts_list, &execute_call_agent(state, &1))
+    values = Enum.map(payloads, & &1.value)
+    has_error = Enum.any?(payloads, & &1.observation.is_error)
+
+    %{
+      value: values,
+      observation: %{gate: "call_agent_batch", result: values, is_error: has_error}
+    }
+  end
+
+  defp execute_call_agent_batch(_state, _opts_list) do
+    %{value: [], observation: %{gate: "call_agent_batch", result: [], is_error: true}}
   end
 
   defp invoke_with_retry(cantrip, request) do

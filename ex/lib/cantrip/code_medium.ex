@@ -9,11 +9,12 @@ defmodule Cantrip.CodeMedium do
 
   alias Cantrip.Circle
 
-  @reserved_bindings [:done, :call_agent, :compile_and_load]
+  @reserved_bindings [:done, :call_agent, :call_agent_batch, :compile_and_load]
 
   @type runtime :: %{
           required(:circle) => Circle.t(),
           required(:call_agent) => (map() -> map()),
+          optional(:call_agent_batch) => (list(map()) -> map()),
           optional(:compile_and_load) => (map() -> map())
         }
   @type state :: %{optional(:binding) => keyword()}
@@ -79,6 +80,21 @@ defmodule Cantrip.CodeMedium do
       |> Keyword.put(:done, done_fun)
       |> Keyword.put(:call_agent, call_agent_fun)
 
+    binding =
+      case Map.get(runtime, :call_agent_batch) do
+        nil ->
+          binding
+
+        batch_fun ->
+          call_agent_batch_fun = fn opts ->
+            payload = batch_fun.(normalize_batch(opts))
+            push_observation(payload.observation)
+            payload.value
+          end
+
+          Keyword.put(binding, :call_agent_batch, call_agent_batch_fun)
+      end
+
     case Map.get(runtime, :compile_and_load) do
       nil ->
         binding
@@ -108,6 +124,12 @@ defmodule Cantrip.CodeMedium do
   defp normalize_opts(opts) when is_map(opts), do: opts
   defp normalize_opts(opts) when is_list(opts), do: Map.new(opts)
   defp normalize_opts(_), do: %{}
+
+  defp normalize_batch(opts) when is_list(opts) do
+    Enum.map(opts, &normalize_opts/1)
+  end
+
+  defp normalize_batch(_), do: []
 
   defp split_statements(code) do
     code
