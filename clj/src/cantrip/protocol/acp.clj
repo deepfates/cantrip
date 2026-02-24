@@ -1,5 +1,6 @@
 (ns cantrip.protocol.acp
-  (:require [cantrip.runtime :as runtime]
+  (:require [cantrip.redaction :as redaction]
+            [cantrip.runtime :as runtime]
             [clojure.string :as str]))
 
 (defn new-router [cantrip]
@@ -84,8 +85,9 @@
                     next-router (assoc-in router [:sessions sid :history] history)]
                 [next-router
                  (result-response id {:sessionId sid
-                                      :output [{:type "text" :text text}]})
-                 [(session-update sid text)]])))))
+                                      :output [{:type "text"
+                                                :text (redaction/redact-text text)}]})
+                 [(session-update sid (redaction/redact-text text))]])))))
 
       :else
       [router (error-response id -32601 "method not found") []])))

@@ -6,6 +6,7 @@
             [cantrip.domain-test]
             [cantrip.loom-test]
             [cantrip.medium-test]
+            [cantrip.redaction-test]
             [cantrip.runtime-test]))
 
 (defn -main [& _]
@@ -15,5 +16,6 @@
                                           'cantrip.domain-test
                                           'cantrip.loom-test
                                           'cantrip.medium-test
+                                          'cantrip.redaction-test
                                           'cantrip.runtime-test)]
     (System/exit (if (zero? (+ fail error)) 0 1))))

@@ -46,3 +46,21 @@
                                      {:jsonrpc "2.0" :id "4" :method "session/prompt"
                                       :params {:sessionId sid :prompt "second"}})]
     (is (= ["first" "second"] (get-in r4 [:sessions sid :history])))))
+
+(deftest acp-output-redacts-secrets
+  (let [cantrip {:crystal {:provider :fake
+                           :responses [{:content "token sk-proj-secret"}]}
+                 :call {:system-prompt "test"}
+                 :circle {:medium :conversation
+                          :gates [:done]
+                          :wards [{:max-turns 2}]}}
+        [r1 _ _] (acp/handle-request (acp/new-router cantrip)
+                                     {:jsonrpc "2.0" :id "1" :method "initialize" :params {:protocolVersion 1}})
+        [r2 new-res _] (acp/handle-request r1
+                                           {:jsonrpc "2.0" :id "2" :method "session/new" :params {}})
+        sid (get-in new-res [:result :sessionId])
+        [_ prompt-res updates] (acp/handle-request r2
+                                                   {:jsonrpc "2.0" :id "3" :method "session/prompt"
+                                                    :params {:sessionId sid :prompt "hello"}})]
+    (is (= "token [REDACTED]" (get-in prompt-res [:result :output 0 :text])))
+    (is (= "token [REDACTED]" (get-in (first updates) [:params :text])))))
