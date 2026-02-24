@@ -52,25 +52,27 @@ defmodule CantripM12ExamplesTest do
     }
 
     Enum.each(Examples.ids(), fn id ->
-      assert {:ok, result, _cantrip, _loom, _meta} = Examples.run(id)
+      assert {:ok, result, _cantrip, _loom, _meta} = Examples.run(id, mode: :scripted)
       assert result == Map.fetch!(expected, id)
     end)
   end
 
   test "pattern 04 truncates under max_turns ward" do
-    assert {:ok, nil, _cantrip, _loom, meta} = Examples.run("04")
+    assert {:ok, nil, _cantrip, _loom, meta} = Examples.run("04", mode: :scripted)
     assert meta.truncated
     assert meta.truncation_reason == "max_turns"
   end
 
   test "pattern 05 stops executing tool calls after done in same turn" do
-    assert {:ok, "pattern-05:stop-at-done", _cantrip, loom, _meta} = Examples.run("05")
+    assert {:ok, "pattern-05:stop-at-done", _cantrip, loom, _meta} =
+             Examples.run("05", mode: :scripted)
+
     [turn] = loom.turns
     assert Enum.map(turn.observation, & &1.gate) == ["echo", "done"]
   end
 
   test "pattern 11 triggers folding before completion" do
-    assert {:ok, "pattern-11:folded", cantrip, _loom, _meta} = Examples.run("11")
+    assert {:ok, "pattern-11:folded", cantrip, _loom, _meta} = Examples.run("11", mode: :scripted)
     [_first, _second, third | _] = FakeCrystal.invocations(cantrip.crystal_state)
 
     assert Enum.any?(
@@ -80,20 +82,25 @@ defmodule CantripM12ExamplesTest do
   end
 
   test "pattern 12 performs compile_and_load in code medium" do
-    assert {:ok, "pattern-12:compiled:agent-source", _cantrip, loom, _meta} = Examples.run("12")
+    assert {:ok, "pattern-12:compiled:agent-source", _cantrip, loom, _meta} =
+             Examples.run("12", mode: :scripted)
+
     [turn] = loom.turns
     assert Enum.any?(turn.observation, &(&1.gate == "compile_and_load" and not &1.is_error))
     assert Enum.any?(turn.observation, &(&1.gate == "read" and not &1.is_error))
   end
 
   test "pattern 06 demonstrates per-call crystal portability via delegation" do
-    assert {:ok, "pattern-06:openai/gemini", _cantrip, loom, _meta} = Examples.run("06")
+    assert {:ok, "pattern-06:openai/gemini", _cantrip, loom, _meta} =
+             Examples.run("06", mode: :scripted)
+
     [turn | _] = loom.turns
     assert Enum.count(turn.observation, &(&1.gate == "call_agent")) == 2
   end
 
   test "pattern 15 runs batch delegation with read gate workers" do
-    assert {:ok, "pattern-15:research+batch", _cantrip, loom, _meta} = Examples.run("15")
+    assert {:ok, "pattern-15:research+batch", _cantrip, loom, _meta} =
+             Examples.run("15", mode: :scripted)
 
     assert Enum.any?(loom.turns, fn t ->
              Enum.any?(t.observation || [], &(&1.gate == "call_agent_batch"))
@@ -115,7 +122,7 @@ defmodule CantripM12ExamplesTest do
     File.rm(path)
 
     assert {:ok, "pattern-16:bootstrap|familiar-worker", _cantrip, loom, _meta} =
-             Examples.run("16", loom_storage: {:jsonl, path})
+             Examples.run("16", mode: :scripted, loom_storage: {:jsonl, path})
 
     assert length(loom.turns) >= 3
     assert File.exists?(path)
@@ -160,9 +167,9 @@ defmodule CantripM12ExamplesTest do
     assert File.exists?(path)
   end
 
-  test "real example mode fails fast when env crystal config is missing" do
+  test "default example mode is real and fails fast when env crystal config is missing" do
     System.delete_env("CANTRIP_MODEL")
-    assert {:error, "missing CANTRIP_MODEL"} = Examples.run("01", real: true)
+    assert {:error, "missing CANTRIP_MODEL"} = Examples.run("01")
   end
 
   defp restore_env(key, nil), do: System.delete_env(key)

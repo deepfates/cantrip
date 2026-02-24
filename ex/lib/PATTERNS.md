@@ -20,7 +20,8 @@ This note translates the TypeScript examples into the spec's language-neutral co
 
 ## Implemented In This Repo (Elixir)
 
-These are the concrete default runs in `Cantrip.Examples.run/2`, intentionally ordered so capability grows pattern-by-pattern.
+These are the concrete scripted runs in `Cantrip.Examples.run/2` with `mode: :scripted`, intentionally ordered so capability grows pattern-by-pattern.
+CLI default is real crystal mode from env; scripted mode exists for deterministic tests/offline demos.
 
 | Example | What it demonstrates concretely | Default result |
 |---------|----------------------------------|----------------|

@@ -34,7 +34,7 @@ defmodule Cantrip.Examples do
   def run(id, opts \\ %{}) when is_binary(id) do
     opts = Map.new(opts)
 
-    with {:ok, {intent, cantrip}} <- build(id, opts),
+    with {:ok, {intent, cantrip}} <- build(id, Map.put_new(opts, :mode, resolve_mode(opts))),
          {:ok, result, next_cantrip, loom, meta} <- Cantrip.cast(cantrip, intent) do
       {:ok, result, next_cantrip, loom, meta}
     end
@@ -378,7 +378,7 @@ defmodule Cantrip.Examples do
   defp build_basic(intent, spec, opts) do
     with {:ok, crystal, child_crystal} <- resolve_crystals(opts, spec) do
       type = Map.get(spec, :type, :conversation)
-      gates = Map.get(spec, :gates, [:done])
+      gates = Map.get(spec, :gates, [:done]) |> normalize_done_gate_specs()
       max_turns = Map.get(spec, :max_turns, 12)
 
       wards =
@@ -408,7 +408,7 @@ defmodule Cantrip.Examples do
   end
 
   defp maybe_require_done(call, opts, type) do
-    if Map.get(opts, :real, false) and type == :conversation do
+    if Map.get(opts, :mode, :real) == :real and type == :conversation do
       call
       |> Map.put_new(:require_done_tool, true)
       |> Map.put_new(:tool_choice, "required")
@@ -420,21 +420,29 @@ defmodule Cantrip.Examples do
   defp resolve_crystals(opts, spec) do
     crystal = Map.get(opts, :crystal)
     child_crystal = Map.get(opts, :child_crystal)
-    real? = Map.get(opts, :real, false)
+    mode = Map.get(opts, :mode, :real)
 
     cond do
       crystal != nil ->
         {:ok, crystal, child_crystal || crystal}
 
-      real? ->
+      mode == :scripted ->
+        default = Map.get(spec, :default_crystal, done_crystal("ok"))
+        {:ok, default, child_crystal || Map.get(spec, :default_child_crystal, default)}
+
+      true ->
         case Cantrip.crystal_from_env() do
           {:ok, real_crystal} -> {:ok, real_crystal, child_crystal || real_crystal}
           {:error, reason} -> {:error, reason}
         end
+    end
+  end
 
-      true ->
-        default = Map.get(spec, :default_crystal, done_crystal("ok"))
-        {:ok, default, child_crystal || Map.get(spec, :default_child_crystal, default)}
+  defp resolve_mode(opts) do
+    cond do
+      Map.get(opts, :fake, false) -> :scripted
+      Map.get(opts, :real, false) -> :real
+      true -> :real
     end
   end
 
@@ -446,6 +454,35 @@ defmodule Cantrip.Examples do
   defp maybe_put_ward(wards, _key, nil), do: wards
   defp maybe_put_ward(wards, key, value), do: wards ++ [%{key => value}]
 
+  defp normalize_done_gate_specs(gates) when is_list(gates) do
+    Enum.map(gates, fn
+      :done ->
+        %{name: :done, parameters: done_parameters_schema()}
+
+      "done" ->
+        %{name: "done", parameters: done_parameters_schema()}
+
+      %{name: :done} = gate ->
+        Map.put_new(gate, :parameters, done_parameters_schema())
+
+      %{name: "done"} = gate ->
+        Map.put_new(gate, :parameters, done_parameters_schema())
+
+      other ->
+        other
+    end)
+  end
+
+  defp done_parameters_schema do
+    %{
+      type: "object",
+      properties: %{
+        answer: %{type: "string", description: "Final answer for this pattern run"}
+      },
+      required: ["answer"]
+    }
+  end
+
   defp temp_root(prefix) do
     root = Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
@@ -453,6 +490,14 @@ defmodule Cantrip.Examples do
   end
 
   defp system_prompt do
-    "You are executing Cantrip spec patterns. Use only configured gates and finish deterministically."
+    """
+    You are executing Cantrip spec patterns.
+    Rules:
+    - Use only configured gates/functions from the circle.
+    - Complete the requested task in this cast and finish deterministically.
+    - In conversation mode, always call the done gate with the final answer.
+    - Do not ask clarifying questions; choose the direct deterministic interpretation and proceed.
+    """
+    |> String.trim()
   end
 end

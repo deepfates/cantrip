@@ -7,7 +7,7 @@ defmodule Mix.Tasks.Cantrip.Example do
   @impl true
   def run(args) do
     Mix.Task.run("app.start")
-    {opts, rest, _invalid} = OptionParser.parse(args, strict: [real: :boolean])
+    {opts, rest, _invalid} = OptionParser.parse(args, strict: [real: :boolean, fake: :boolean])
 
     case rest do
       ["list"] ->
@@ -16,9 +16,13 @@ defmodule Mix.Tasks.Cantrip.Example do
         end)
 
       [id] ->
-        example_opts = [real: Keyword.get(opts, :real, false)]
+        mode =
+          cond do
+            Keyword.get(opts, :fake, false) -> :scripted
+            true -> :real
+          end
 
-        case Cantrip.Examples.run(id, example_opts) do
+        case Cantrip.Examples.run(id, mode: mode, real: Keyword.get(opts, :real, false)) do
           {:ok, result, _cantrip, _loom, _meta} ->
             Mix.shell().info("pattern #{id} result: #{inspect(result)}")
 
@@ -27,7 +31,7 @@ defmodule Mix.Tasks.Cantrip.Example do
         end
 
       _ ->
-        Mix.shell().info("usage: mix cantrip.example <id|list> [--real]")
+        Mix.shell().info("usage: mix cantrip.example <id|list> [--real|--fake]")
     end
   end
 end

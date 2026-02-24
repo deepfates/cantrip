@@ -101,15 +101,15 @@ Run a pattern by id:
 mix cantrip.example 08
 ```
 
-Run a pattern with real crystal from env:
+By default, examples run against real crystal config from env.
+
+For deterministic offline scripted demos (mainly for test/dev), run:
 
 ```bash
-mix cantrip.example 08 --real
+mix cantrip.example 08 --fake
 ```
 
-Pattern `06` uses env-backed real crystal configuration; others default to deterministic fake crystals unless overridden in code/tests.
-
-Default example runs are now pattern-specific and meaningful (not shared `"ok"` stubs). For example:
+Default scripted runs are pattern-specific and meaningful (not shared `"ok"` stubs). For example:
 - `04` demonstrates truncation (`nil` result with `max_turns` reason in metadata).
 - `12` demonstrates code-medium hot loading via `compile_and_load`.
 - `15` demonstrates dependency-injected `read` in code medium.
