@@ -13,6 +13,7 @@ defmodule Cantrip.EntityServer do
             loom: nil,
             turns: 0,
             depth: 0,
+            cancel_on_parent: nil,
             usage: %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0},
             code_state: %{}
 
@@ -32,6 +33,7 @@ defmodule Cantrip.EntityServer do
     loom = Keyword.get(opts, :loom, Loom.new(cantrip.call))
     turns = Keyword.get(opts, :turns, 0)
     depth = Keyword.get(opts, :depth, 0)
+    cancel_on_parent = Keyword.get(opts, :cancel_on_parent)
 
     {:ok,
      %__MODULE__{
@@ -40,7 +42,8 @@ defmodule Cantrip.EntityServer do
        messages: messages,
        loom: loom,
        turns: turns,
-       depth: depth
+       depth: depth,
+       cancel_on_parent: cancel_on_parent
      }}
   end
 
@@ -52,20 +55,24 @@ defmodule Cantrip.EntityServer do
   end
 
   defp run_loop(state) do
-    if state.turns >= Circle.max_turns(state.cantrip.circle) do
+    reason = truncation_reason(state)
+
+    if reason do
       loom =
         Loom.append_turn(state.loom, %{
           entity_id: state.entity_id,
           utterance: nil,
           observation: [],
           truncated: true,
-          terminated: false
+          terminated: false,
+          metadata: %{truncation_reason: reason}
         })
 
       meta = %{
         entity_id: state.entity_id,
         turns: state.turns,
         truncated: true,
+        truncation_reason: reason,
         cumulative_usage: state.usage
       }
 
@@ -314,7 +321,10 @@ defmodule Cantrip.EntityServer do
           circle: child_circle
       }
 
-      case Cantrip.cast(child_cantrip, child_intent, depth: state.depth + 1) do
+      case Cantrip.cast(child_cantrip, child_intent,
+             depth: state.depth + 1,
+             cancel_on_parent: self()
+           ) do
         {:ok, value, next_cantrip, child_loom, _meta} ->
           remember_child_crystal(next_cantrip)
 
@@ -506,5 +516,18 @@ defmodule Cantrip.EntityServer do
       end)
 
     loom
+  end
+
+  defp truncation_reason(state) do
+    cond do
+      is_pid(state.cancel_on_parent) and not Process.alive?(state.cancel_on_parent) ->
+        "parent_terminated"
+
+      state.turns >= Circle.max_turns(state.cantrip.circle) ->
+        "max_turns"
+
+      true ->
+        nil
+    end
   end
 end
