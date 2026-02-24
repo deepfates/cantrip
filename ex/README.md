@@ -18,6 +18,9 @@ Implemented and green:
   - auto-folding context compaction (`PROD-4`)
   - ephemeral observation redaction (`PROD-5`)
 - Guarded hot-reload gate: `compile_and_load` with module/path wards
+- Signature-gated hot-reload policy via `allow_compile_signers`
+- Optional Mnesia loom storage adapter (`{:mnesia, %{table: ...}}`) when runtime support is present
+- Lightweight auto loom adapter (`{:auto, %{dets_path: ...}}`) with Mnesia->DETS fallback
 
 ## Architecture
 
@@ -59,8 +62,13 @@ Recommended extension loop:
 ## Run
 
 ```bash
-mix test
+mix verify
 ```
+
+Mission completion criteria are tracked in [`MISSION_CHECKLIST.md`](/Users/deepfates/Hacking/github/deepfates/cantrip-ex/MISSION_CHECKLIST.md).
+Operational guidance:
+- signer key lifecycle: [`SIGNER_KEY_RUNBOOK.md`](/Users/deepfates/Hacking/github/deepfates/cantrip-ex/SIGNER_KEY_RUNBOOK.md)
+- loom storage strategy: [`LOOM_STORAGE_STRATEGY.md`](/Users/deepfates/Hacking/github/deepfates/cantrip-ex/LOOM_STORAGE_STRATEGY.md)
 
 ## ACP (Zed / Custom Clients)
 
@@ -70,7 +78,28 @@ Run the local ACP stdio server:
 mix cantrip.acp
 ```
 
+Or install and run the global CLI command:
+
+```bash
+mix escript.install
+cantrip acp
+```
+
 Zed custom agent example:
+
+```json
+{
+  "agent_servers": {
+    "cantrip-ex": {
+      "type": "custom",
+      "command": "cantrip",
+      "args": ["acp"]
+    }
+  }
+}
+```
+
+Project-local alternative:
 
 ```json
 {
@@ -87,18 +116,29 @@ Zed custom agent example:
 
 Protocol implemented: `initialize`, `session/new`, `session/prompt` over JSON-RPC stdio.
 
+ACP compatibility regression fixtures live in:
+- `test/fixtures/acp/prompts` (payload-shape coverage)
+- `test/fixtures/acp/transcripts` (multi-step sequence coverage)
+
+They are enforced by `test/m14_acp_fixtures_test.exs` and `test/m15_acp_transcripts_test.exs` via `mix verify`.
+ACP stdio behavior is also validated in a separate BEAM process by `test/m16_acp_stdio_process_test.exs`.
+
+Entity progression fixture scenarios (recursive delegation, cancellation propagation, subtree invariants) live in `test/fixtures/progression` and are enforced by `test/m17_entity_progression_fixtures_test.exs`.
+
 ## Pattern Agents (01..16)
 
 List available pattern agents:
 
 ```bash
 mix cantrip.example list
+# or: cantrip example list
 ```
 
 Run a pattern by id:
 
 ```bash
 mix cantrip.example 08
+# or: cantrip example 08
 ```
 
 By default, examples run against real crystal config from env.
@@ -107,6 +147,7 @@ For deterministic offline scripted demos (mainly for test/dev), run:
 
 ```bash
 mix cantrip.example 08 --fake
+# or: cantrip example 08 --fake
 ```
 
 Default scripted runs are pattern-specific and meaningful (not shared `"ok"` stubs). For example:
@@ -145,4 +186,4 @@ Then construct with:
 - The runtime threads crystal state through the cantrip value for deterministic fake-crystal tests.
 - Code-circle snippets are Elixir (`done.(...)`, `call_agent.(...)`, `compile_and_load.(...)`).
 - `FakeCrystal` supports `record_inputs: true` to assert context/tool contracts in tests.
-- Current test count: 82 green tests (`mix test`).
+- Current test count: 101 green tests (`mix verify`).

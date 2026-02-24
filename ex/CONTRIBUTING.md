@@ -27,8 +27,9 @@ This project follows strict spec-driven development. These rules are mandatory.
 ### 4) Slice Discipline
 
 1. Implement by slices/milestones defined in `MASTER_PLAN.md`.
-2. Keep commits atomic and scoped to one slice increment.
-3. If a rule is violated, pause and correct before adding new behavior.
+2. Treat [`MISSION_CHECKLIST.md`](/Users/deepfates/Hacking/github/deepfates/cantrip-ex/MISSION_CHECKLIST.md) as the current definition of completion.
+3. Keep commits atomic and scoped to one slice increment.
+4. If a rule is violated, pause and correct before adding new behavior.
 
 ### 5) Runtime Safety Requirements
 
@@ -38,10 +39,10 @@ This project follows strict spec-driven development. These rules are mandatory.
    - module allowlist (`allow_compile_modules`)
    - path allowlist (`allow_compile_paths`) when writing files
    - optional source integrity allowlist (`allow_compile_sha256`)
+   - optional signer allowlist (`allow_compile_signers`)
 
 ## Quality Gates
 
-1. `mix format`
-2. `mix test`
-3. Real crystal integration is opt-in and should be exercised whenever provider env is configured.
-4. Conformance behavior must remain aligned with `tests.yaml`.
+1. `mix verify`
+2. Real crystal integration is opt-in and should be exercised whenever provider env is configured.
+3. Conformance behavior must remain aligned with `tests.yaml`.

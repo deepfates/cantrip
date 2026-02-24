@@ -15,22 +15,34 @@ Completed (green + committed):
 6. M5 composition/delegation (`call_agent`, `call_agent_batch`, depth, subtree loom linkage, alias normalization, child crystal override).
 7. M6 production semantics (`retry`, cumulative usage, folding trigger, ephemeral projection).
 8. Guarded hot-reload gate (`compile_and_load`) with module/path ward checks.
+9. M8 real crystal config + OpenAI-compatible adapter.
+10. M9-M10 real crystal integration/eval slices.
+11. M11 ACP protocol/server slices.
+12. M12 pattern examples catalog/runtime slices.
+13. M13 global CLI/escript entrypoint slices.
+14. M14 ACP prompt-shape fixture compatibility slices.
+15. M15 ACP multi-step transcript fixture compatibility slices.
+16. M16 ACP stdio process integration slice.
+17. M17 entity progression fixture integration slice.
+18. M18 COMP-9 concurrent subtree truncation stress coverage slice.
+19. M19 optional Mnesia-backed loom storage adapter slice.
+20. M20 compile/load signer verification (`allow_compile_signers`) slice.
+21. M21 lightweight auto loom storage fallback slice (`Mnesia -> DETS`).
 
 Current codebase state:
-1. `mix test` is green (61 tests).
+1. `mix verify` is green (101 tests).
 2. Atomic commits applied per completed slice.
 3. Error model is explicitly codified (expected operational failures as observations, unexpected bugs supervised).
 
 Remaining high-value follow-ups:
-1. Add DB-backed loom adapter for long-lived distributed execution (JSONL adapter is implemented).
-2. Extend compile/load verification beyond hash allowlists (e.g., signature verification / key management).
-3. Expand `COMP-9` coverage to assert child truncation subtree propagation in fully concurrent delegation traces.
+1. Add production deployment validation for selected DB-backed loom adapter topology.
+2. Automate signer key rotation checks/policies in CI or release tooling.
 
 ## 1) Forced Decisions Before Coding
 
 These are implementation-blocking ambiguities/contradictions found across `SPEC.md` and `tests.yaml`.
 
-1. Resolve merge conflicts in `SPEC.md` (currently contains conflict markers).
+1. Resolve merge conflicts in `SPEC.md` and align canonical naming in text (`require_done_tool`, `call_agent(_batch)`).
 2. Canonicalize naming:
    - `require_done` vs `require_done_tool`
    - `call_entity(_batch)` vs `call_agent(_batch)`
