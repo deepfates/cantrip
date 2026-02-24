@@ -7,4 +7,8 @@ if [[ -f ".env" ]]; then
   set -a; source .env; set +a
 fi
 
+if command -v uv >/dev/null 2>&1; then
+  exec uv run pytest -q -k 'not integration_openai_compat_live' "$@"
+fi
+
 exec ./.venv/bin/pytest -q -k 'not integration_openai_compat_live' "$@"

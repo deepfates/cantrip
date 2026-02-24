@@ -2,6 +2,8 @@
 
 This is the operational index for running and verifying `cantrip-py`.
 
+Tooling baseline: `uv` (scripts fall back to `./.venv/bin/*` when `uv` is unavailable).
+
 ## Quick Start
 
 - Non-live verification:

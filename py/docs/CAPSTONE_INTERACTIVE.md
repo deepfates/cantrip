@@ -50,7 +50,7 @@ Equivalent CLI flags:
 Canonical entrypoint:
 
 ```bash
-./.venv/bin/python scripts/capstone.py
+uv run python scripts/capstone.py
 ```
 
 Installed entrypoint (preferred after package install):
@@ -65,7 +65,7 @@ Default mode is pipe (stdin intents -> JSONL output).
 
 ```bash
 printf "list files\nread cantrip/runtime.py\n" | \
-  ./.venv/bin/python scripts/capstone.py --repo-root . --with-events
+  uv run python scripts/capstone.py --repo-root . --with-events
 ```
 
 Equivalent subcommand form:
@@ -78,13 +78,13 @@ Offline smoke test (no model/API):
 
 ```bash
 printf "hello\n" | \
-  ./.venv/bin/python scripts/capstone.py --repo-root . --fake
+  uv run python scripts/capstone.py --repo-root . --fake
 ```
 
 ## REPL
 
 ```bash
-./.venv/bin/python scripts/capstone.py --repl --repo-root .
+uv run python scripts/capstone.py --repl --repo-root .
 ```
 
 Type intents directly. Exit with `:q`.
@@ -94,8 +94,8 @@ Type intents directly. Exit with `:q`.
 Install browser runtime once:
 
 ```bash
-./.venv/bin/pip install playwright
-./.venv/bin/playwright install chromium
+uv add --optional browser playwright
+uv run playwright install chromium
 ```
 
 Run with browser medium:
@@ -103,13 +103,13 @@ Run with browser medium:
 ```bash
 CANTRIP_CAPSTONE_MEDIUM=browser \
 CANTRIP_CAPSTONE_BROWSER_DRIVER=playwright \
-./.venv/bin/python scripts/capstone.py --repl --repo-root .
+uv run python scripts/capstone.py --repl --repo-root .
 ```
 
 ## ACP stdio server
 
 ```bash
-./.venv/bin/python scripts/capstone.py --acp-stdio --repo-root .
+uv run python scripts/capstone.py --acp-stdio --repo-root .
 ```
 
 Subcommand form:

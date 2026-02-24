@@ -22,4 +22,8 @@ if [[ -z "${CANTRIP_OPENAI_BASE_URL:-}" ]]; then
   exit 2
 fi
 
+if command -v uv >/dev/null 2>&1; then
+  exec uv run pytest -q tests/test_integration_openai_compat_live.py "$@"
+fi
+
 exec ./.venv/bin/pytest -q tests/test_integration_openai_compat_live.py "$@"

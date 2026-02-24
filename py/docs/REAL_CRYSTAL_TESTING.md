@@ -25,7 +25,7 @@ CANTRIP_OPENAI_BASE_URL=<url> \
 Or run pytest directly:
 
 ```bash
-./.venv/bin/pytest -q tests/test_integration_openai_compat_live.py
+uv run pytest -q tests/test_integration_openai_compat_live.py
 ```
 
 The tests are skipped unless `CANTRIP_INTEGRATION_LIVE=1` is set.

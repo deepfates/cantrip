@@ -77,7 +77,7 @@ This is the working task board for remaining implementation work. Keep it curren
       - tool-call absence for text-only query
       - turn/usage invariants for done path
       - no unavailable-gate errors during live cast
-    - `./.venv/bin/pytest -q tests/test_integration_openai_compat_live.py`
+    - `uv run pytest -q tests/test_integration_openai_compat_live.py`
 
 - [x] Add end-to-end scenario tests for delegated entity workflows.
   - Goal: confirm repo-reading + child-entity orchestration path in one flow.

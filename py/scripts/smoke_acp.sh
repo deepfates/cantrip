@@ -6,11 +6,23 @@ if [[ -f ".env" ]]; then
   set -a; source .env; set +a
 fi
 
-PY="${PYTHON:-./.venv/bin/python}"
+if [[ -n "${PYTHON:-}" ]]; then
+  PY="${PYTHON}"
+  USE_UV=0
+  RUNNER=("${PY}")
+elif command -v uv >/dev/null 2>&1; then
+  PY="${PYTHON:-python}"
+  USE_UV=1
+  RUNNER=(uv run python)
+else
+  PY="./.venv/bin/python"
+  USE_UV=0
+  RUNNER=("${PY}")
+fi
 REPO_ROOT="${1:-.}"
 PROMPT_TEXT="${2:-hi}"
 
-"$PY" - <<'PY' "$PY" "$REPO_ROOT" "$PROMPT_TEXT"
+"${RUNNER[@]}" - <<'PY' "$PY" "$REPO_ROOT" "$PROMPT_TEXT" "$USE_UV"
 import json
 import subprocess
 import sys
@@ -18,7 +30,11 @@ import sys
 py = sys.argv[1]
 repo_root = sys.argv[2]
 prompt_text = sys.argv[3]
-cmd = [py, "scripts/capstone.py", "--fake", "--repo-root", repo_root, "--acp-stdio"]
+use_uv = sys.argv[4] == "1"
+if use_uv:
+    cmd = ["uv", "run", "python", "scripts/capstone.py", "--fake", "--repo-root", repo_root, "--acp-stdio"]
+else:
+    cmd = [py, "scripts/capstone.py", "--fake", "--repo-root", repo_root, "--acp-stdio"]
 p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 assert p.stdin is not None
 assert p.stdout is not None

@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PY="${PYTHON:-./.venv/bin/python}"
+if [[ -n "${PYTHON:-}" ]]; then
+  PY_CMD=("${PYTHON}")
+elif command -v uv >/dev/null 2>&1; then
+  PY_CMD=(uv run python)
+else
+  PY_CMD=(./.venv/bin/python)
+fi
 
 if [[ $# -gt 0 ]]; then
   for mod in "$@"; do
-    "$PY" -m "examples.patterns.${mod}"
+    "${PY_CMD[@]}" -m "examples.patterns.${mod}"
   done
   exit 0
 fi
@@ -15,5 +21,5 @@ for file in examples/patterns/*.py; do
   if [[ "$base" == "__init__" || "$base" == "common" ]]; then
     continue
   fi
-  "$PY" -m "examples.patterns.${base}"
+  "${PY_CMD[@]}" -m "examples.patterns.${base}"
 done
