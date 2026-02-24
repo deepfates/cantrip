@@ -91,6 +91,13 @@ mix escript.install
 cantrip acp
 ```
 
+Show CLI help/version:
+
+```bash
+cantrip --help
+cantrip --version
+```
+
 Zed custom agent example:
 
 ```json
@@ -156,6 +163,32 @@ mix cantrip.example 08 --fake
 # or: cantrip example 08 --fake
 ```
 
+Machine-readable output is available with `--json`:
+
+```bash
+cantrip example 08 --json
+```
+
+Run strict code-mode REPL:
+
+```bash
+mix cantrip.repl
+# or: cantrip repl
+```
+
+Single-shot prompt mode:
+
+```bash
+mix cantrip.repl --prompt "Compute 21*2 and return with done"
+# or: cantrip repl --prompt "Compute 21*2 and return with done"
+```
+
+Smoke-check REPL initialization without entering interactive mode:
+
+```bash
+cantrip repl --no-input
+```
+
 Default scripted runs are pattern-specific and meaningful (not shared `"ok"` stubs). For example:
 - `04` demonstrates truncation (`nil` result with `max_turns` reason in metadata).
 - `12` demonstrates code-medium hot loading via `compile_and_load`.
@@ -192,4 +225,4 @@ Then construct with:
 - The runtime threads crystal state through the cantrip value for deterministic fake-crystal tests.
 - Code-circle snippets are Elixir (`done.(...)`, `call_agent.(...)`, `compile_and_load.(...)`).
 - `FakeCrystal` supports `record_inputs: true` to assert context/tool contracts in tests.
-- Current test count: 101 green tests (`mix verify`).
+- Current test count: 102 green tests (`mix verify`).

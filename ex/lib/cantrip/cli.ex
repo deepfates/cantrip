@@ -12,6 +12,26 @@ defmodule Cantrip.CLI do
 
   def run(args) when is_list(args) do
     case args do
+      ["--help"] ->
+        IO.puts(usage())
+        0
+
+      ["-h"] ->
+        IO.puts(usage())
+        0
+
+      ["help"] ->
+        IO.puts(usage())
+        0
+
+      ["--version"] ->
+        IO.puts(version())
+        0
+
+      ["version"] ->
+        IO.puts(version())
+        0
+
       ["acp"] ->
         with :ok <- ensure_started() do
           Cantrip.ACP.Server.run()
@@ -26,6 +46,10 @@ defmodule Cantrip.CLI do
         IO.puts(acp_usage())
         0
 
+      ["acp", "-h"] ->
+        IO.puts(acp_usage())
+        0
+
       ["example" | rest] ->
         with :ok <- ensure_started() do
           run_example(rest)
@@ -35,9 +59,14 @@ defmodule Cantrip.CLI do
             1
         end
 
-      ["help"] ->
-        IO.puts(usage())
-        0
+      ["repl" | rest] ->
+        with :ok <- ensure_started() do
+          run_repl(rest)
+        else
+          {:error, reason} ->
+            IO.puts(:stderr, "failed to start cantrip application: #{inspect(reason)}")
+            1
+        end
 
       _ ->
         IO.puts(:stderr, usage())
@@ -56,23 +85,87 @@ defmodule Cantrip.CLI do
     0
   end
 
-  defp run_example([id | opts]) do
-    mode = if "--fake" in opts, do: :scripted, else: :real
-
-    case Cantrip.Examples.run(id, mode: mode, real: "--real" in opts) do
-      {:ok, result, _cantrip, _loom, _meta} ->
-        IO.puts("pattern #{id} result: #{inspect(result)}")
+  defp run_example(args) do
+    case Cantrip.CLIArgs.parse_example(args) do
+      {:help} ->
+        IO.puts(example_usage())
         0
 
-      {:error, reason} ->
-        IO.puts(:stderr, "pattern #{id} error: #{inspect(reason)}")
+      {:list, _opts} ->
+        run_example(["list"])
+
+      {:run, id, opts} ->
+        mode = if Keyword.get(opts, :fake, false), do: :scripted, else: :real
+        use_json = Keyword.get(opts, :json, false)
+
+        case Cantrip.Examples.run(id, mode: mode, real: Keyword.get(opts, :real, false)) do
+          {:ok, result, _cantrip, _loom, _meta} ->
+            if use_json do
+              IO.puts(Jason.encode!(%{ok: true, id: id, result: result}))
+            else
+              IO.puts("pattern #{id} result: #{inspect(result)}")
+            end
+
+            0
+
+          {:error, reason} ->
+            if use_json do
+              IO.puts(:stderr, Jason.encode!(%{ok: false, id: id, error: inspect(reason)}))
+            else
+              IO.puts(:stderr, "pattern #{id} error: #{inspect(reason)}")
+            end
+
+            1
+        end
+
+      :invalid ->
+        IO.puts(:stderr, example_usage())
         1
     end
   end
 
-  defp run_example(_args) do
-    IO.puts(:stderr, "usage: cantrip example <id|list> [--real|--fake]")
-    1
+  defp run_repl(args) do
+    case Cantrip.CLIArgs.parse_repl(args) do
+      {:help} ->
+        IO.puts(repl_usage())
+        0
+
+      {:run, opts} ->
+        use_json = Keyword.get(opts, :json, false)
+
+        if prompt = Keyword.get(opts, :prompt) do
+          run_repl_prompt(prompt, use_json)
+        else
+          Cantrip.REPL.run_stdio(no_input: Keyword.get(opts, :no_input, false), json: use_json)
+          0
+        end
+
+      :invalid ->
+        IO.puts(:stderr, repl_usage())
+        1
+    end
+  end
+
+  defp run_repl_prompt(prompt, use_json) do
+    case Cantrip.REPL.run_once(prompt) do
+      {:ok, result} ->
+        if use_json do
+          IO.puts(Jason.encode!(%{ok: true, result: result}))
+        else
+          IO.puts(inspect(result))
+        end
+
+        0
+
+      {:error, reason} ->
+        if use_json do
+          IO.puts(:stderr, Jason.encode!(%{ok: false, error: inspect(reason)}))
+        else
+          IO.puts(:stderr, "error: #{inspect(reason)}")
+        end
+
+        1
+    end
   end
 
   defp ensure_started do
@@ -82,16 +175,29 @@ defmodule Cantrip.CLI do
     end
   end
 
+  defp version do
+    with :ok <- :application.load(:cantrip_ex),
+         vsn when not is_nil(vsn) <- Application.spec(:cantrip_ex, :vsn) do
+      List.to_string(vsn)
+    else
+      _ -> "unknown"
+    end
+  end
+
   defp usage do
     """
     usage: cantrip <command> [args]
 
     commands:
-      acp                  Run ACP stdio server
-      acp --help           Show ACP usage
-      example list         List pattern examples
-      example <id>         Run pattern example (default mode: real)
-      help                 Show this message
+      acp                    Run ACP stdio server
+      acp --help             Show ACP usage
+      example list           List pattern examples
+      example <id>           Run pattern example (default mode: real)
+      example --help         Show example usage
+      repl                   Run strict code-mode REPL
+      repl --help            Show REPL usage
+      version, --version     Show CLI version
+      help, -h, --help       Show this message
     """
   end
 
@@ -100,6 +206,27 @@ defmodule Cantrip.CLI do
     usage: cantrip acp
 
     Runs the ACP JSON-RPC server on stdio.
+    """
+  end
+
+  defp example_usage do
+    """
+    usage: cantrip example <id|list> [--fake] [--real] [--json]
+
+    --fake   Use deterministic scripted crystal
+    --real   Force real mode (default)
+    --json   Print machine-readable JSON output
+    """
+  end
+
+  defp repl_usage do
+    """
+    usage: cantrip repl [--prompt "text"] [--json] [--no-input]
+
+    Runs a strict code-mode REPL using CANTRIP_* env crystal config.
+    --prompt    Run single prompt and exit
+    --json      Print machine-readable JSON output for one-shot mode
+    --no-input  Initialize and exit (useful for smoke checks)
     """
   end
 
