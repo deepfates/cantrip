@@ -53,6 +53,12 @@ Canonical entrypoint:
 ./.venv/bin/python scripts/capstone.py
 ```
 
+Installed entrypoint (preferred after package install):
+
+```bash
+cantrip
+```
+
 Default mode is pipe (stdin intents -> JSONL output).
 
 ## Pipe (default)
@@ -60,6 +66,12 @@ Default mode is pipe (stdin intents -> JSONL output).
 ```bash
 printf "list files\nread cantrip/runtime.py\n" | \
   ./.venv/bin/python scripts/capstone.py --repo-root . --with-events
+```
+
+Equivalent subcommand form:
+
+```bash
+printf "list files\n" | cantrip --repo-root . pipe
 ```
 
 Offline smoke test (no model/API):
@@ -98,6 +110,12 @@ CANTRIP_CAPSTONE_BROWSER_DRIVER=playwright \
 
 ```bash
 ./.venv/bin/python scripts/capstone.py --acp-stdio --repo-root .
+```
+
+Subcommand form:
+
+```bash
+cantrip --repo-root . acp-stdio
 ```
 
 Then send newline-delimited JSON-RPC requests:

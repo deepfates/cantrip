@@ -1,6 +1,7 @@
 from cantrip.acp_server import CantripACPServer
 from cantrip.acp_stdio import ACPStdioRouter, serve_stdio, serve_stdio_once
 from cantrip.adapters import cast_via_acp, cast_via_cli, cast_via_http
+from cantrip.builders import build_cantrip_from_env
 from cantrip.cli_runner import format_cli_json, run_cli
 from cantrip.errors import CantripError
 from cantrip.executor import MiniCodeExecutor, SubprocessPythonExecutor
@@ -33,4 +34,5 @@ __all__ = [
     "CantripHTTPRouter",
     "run_cli",
     "format_cli_json",
+    "build_cantrip_from_env",
 ]

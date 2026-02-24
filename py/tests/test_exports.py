@@ -17,3 +17,9 @@ def test_browser_and_sandbox_exports_available_from_package_root() -> None:
     assert not hasattr(cantrip, "PlaywrightBrowserBackend")
     assert not hasattr(cantrip, "SandboxBackend")
     assert not hasattr(cantrip, "code_runner_from_name")
+
+
+def test_builder_export_available_from_package_root() -> None:
+    from cantrip import build_cantrip_from_env  # noqa: PLC0415
+
+    assert callable(build_cantrip_from_env)

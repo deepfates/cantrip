@@ -135,3 +135,50 @@ def test_capstone_pipe_mode_with_events_includes_step_and_final_events() -> None
     assert "step_start" in kinds
     assert "step_complete" in kinds
     assert "final_response" in kinds
+
+
+def test_capstone_subcommand_pipe_mode_emits_jsonl_result() -> None:
+    proc = subprocess.run(
+        [
+            _python_exe(),
+            str(CAPSTONE),
+            "--fake",
+            "--repo-root",
+            str(ROOT),
+            "pipe",
+        ],
+        input="hello\n",
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["result"] == "fake-ok"
+
+
+def test_capstone_subcommand_repl_mode_handles_single_intent_and_quit() -> None:
+    proc = subprocess.run(
+        [_python_exe(), str(CAPSTONE), "--fake", "--repo-root", str(ROOT), "repl"],
+        input="hello\n:q\n",
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert "session:" in proc.stdout
+    assert "fake-ok" in proc.stdout
+
+
+def test_capstone_help_mentions_subcommands_and_config_precedence() -> None:
+    proc = subprocess.run(
+        [_python_exe(), str(CAPSTONE), "--help"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    out = proc.stdout
+    assert "acp-stdio" in out
+    assert "repl" in out
+    assert "pipe" in out
+    assert "Config precedence" in out

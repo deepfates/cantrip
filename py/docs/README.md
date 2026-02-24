@@ -16,6 +16,7 @@ This is the operational index for running and verifying `cantrip-py`.
 - Capstone interactive and service modes:
   - [CAPSTONE_INTERACTIVE.md](./CAPSTONE_INTERACTIVE.md)
   - Covers pipe, REPL, ACP stdio, and medium/runtime env vars.
+  - Native CLI entrypoint: `cantrip` (`cantrip pipe|repl|acp-stdio`).
 
 ## Live Provider Testing
 
