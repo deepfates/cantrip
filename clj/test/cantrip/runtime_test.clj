@@ -14,7 +14,8 @@
     (let [entity (runtime/invoke valid-cantrip)]
       (is (string? (:entity-id entity)))
       (is (= :ready (:status entity)))
-      (is (instance? clojure.lang.IAtom (:loom entity))))))
+      (is (instance? clojure.lang.IAtom (:loom entity)))
+      (is (instance? clojure.lang.IAtom (:cumulative-usage entity))))))
 
 (deftest cast-terminates-on-successful-done
   (let [cantrip (assoc valid-cantrip
@@ -145,3 +146,31 @@
     (is (= 2 (count (get-in state [:loom :turns]))))
     (is (= 2 (count @invocations)))
     (is (= 4 (count (-> @invocations second :messages))))))
+
+(deftest cast-tracks-usage-and-turn-metadata
+  (let [cantrip {:crystal {:provider :fake
+                           :responses [{:tool-calls [{:id "call_1"
+                                                      :gate :echo
+                                                      :args {:text "1"}}]
+                                        :usage {:prompt_tokens 100
+                                                :completion_tokens 50}}
+                                       {:tool-calls [{:id "call_2"
+                                                      :gate :done
+                                                      :args {:answer "ok"}}]
+                                        :usage {:prompt_tokens 200
+                                                :completion_tokens 30}}]}
+                 :call {:system-prompt "usage test"}
+                 :circle {:medium :conversation
+                          :gates [:done :echo]
+                          :wards [{:max-turns 4}]}}
+        result (runtime/cast cantrip "track usage")
+        first-turn (first (:turns result))
+        second-turn (second (:turns result))]
+    (is (= {:prompt_tokens 300 :completion_tokens 80}
+           (:cumulative-usage result)))
+    (is (number? (get-in first-turn [:metadata :duration_ms])))
+    (is (number? (get-in first-turn [:metadata :timestamp])))
+    (is (= 100 (get-in first-turn [:metadata :tokens_prompt])))
+    (is (= 50 (get-in first-turn [:metadata :tokens_completion])))
+    (is (= 200 (get-in second-turn [:metadata :tokens_prompt])))
+    (is (= 30 (get-in second-turn [:metadata :tokens_completion])))))

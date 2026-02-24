@@ -47,8 +47,18 @@
             base
             turns)))
 
+(defn- normalize-usage [usage]
+  {:prompt_tokens (long (or (:prompt_tokens usage) (:prompt-tokens usage) 0))
+   :completion_tokens (long (or (:completion_tokens usage) (:completion-tokens usage) 0))})
+
+(defn- add-usage [lhs rhs]
+  {:prompt_tokens (+ (long (or (:prompt_tokens lhs) 0))
+                     (long (or (:prompt_tokens rhs) 0)))
+   :completion_tokens (+ (long (or (:completion_tokens lhs) 0))
+                         (long (or (:completion_tokens rhs) 0)))})
+
 (defn- run-cast
-  [entity-id cantrip intent prior-turns initial-loom]
+  [entity-id cantrip intent prior-turns initial-loom initial-usage]
   (let [turn-limit (max-turns cantrip)
         done-required? (require-done-tool? cantrip)
         selected-tool-choice (tool-choice cantrip)
@@ -56,6 +66,7 @@
     (loop [turn-index 0
            turns []
            loom-state initial-loom
+           cumulative-usage initial-usage
            previous-tool-call-ids []]
       (if (>= turn-index turn-limit)
         {:entity-id entity-id
@@ -64,25 +75,34 @@
          :result nil
          :turns turns
          :new-turns turns
+         :cumulative-usage cumulative-usage
          :loom loom-state}
         (let [messages (build-messages cantrip intent prior-turns turns)
+              query-start (System/nanoTime)
               utterance (crystal/query (:crystal cantrip)
                                        {:turn-index turn-index
                                         :messages messages
                                         :tools tools
                                         :tool-choice selected-tool-choice
                                         :previous-tool-call-ids previous-tool-call-ids})
+              query-end (System/nanoTime)
+              turn-usage (normalize-usage (:usage utterance))
+              next-cumulative-usage (add-usage cumulative-usage turn-usage)
               tool-calls (vec (:tool-calls utterance))
               {:keys [observation terminated? result]} (medium/execute-utterance
-                                                       (:circle cantrip)
-                                                       utterance
-                                                       (get-in cantrip [:circle :dependencies]))
+                                                        (:circle cantrip)
+                                                        utterance
+                                                        (get-in cantrip [:circle :dependencies]))
               text-only? (and (empty? tool-calls)
                               (string? (:content utterance)))
               done-by-text? (and text-only? (not done-required?))
               turn-record {:sequence (inc turn-index)
                            :utterance utterance
                            :observation observation
+                           :metadata {:tokens_prompt (:prompt_tokens turn-usage)
+                                      :tokens_completion (:completion_tokens turn-usage)
+                                      :duration_ms (max 0 (long (/ (- query-end query-start) 1000000)))
+                                      :timestamp (System/currentTimeMillis)}
                            :terminated (or terminated? done-by-text?)
                            :truncated false}
               [next-loom _] (loom/append-turn loom-state turn-record)
@@ -94,6 +114,7 @@
                          :result result
                          :turns next-turns
                          :new-turns next-turns
+                         :cumulative-usage next-cumulative-usage
                          :loom next-loom}
 
             done-by-text? {:entity-id entity-id
@@ -102,11 +123,13 @@
                            :result (:content utterance)
                            :turns next-turns
                            :new-turns next-turns
+                           :cumulative-usage next-cumulative-usage
                            :loom next-loom}
 
             :else (recur (inc turn-index)
                          next-turns
                          next-loom
+                         next-cumulative-usage
                          (mapv :id tool-calls))))))))
 
 (defn new-cantrip
@@ -121,7 +144,9 @@
   (domain/require-intent! intent)
   (let [entity-id (str (random-uuid))
         initial-loom (loom/new-loom (:call cantrip))]
-    (dissoc (run-cast entity-id cantrip intent [] initial-loom) :new-turns)))
+    (dissoc (run-cast entity-id cantrip intent [] initial-loom {:prompt_tokens 0
+                                                                :completion_tokens 0})
+            :new-turns)))
 
 (defn invoke
   "Creates a persistent entity handle for multi-cast sessions."
@@ -132,6 +157,8 @@
      :cantrip cantrip
      :status :ready
      :loom (atom (loom/new-loom (:call cantrip)))
+     :cumulative-usage (atom {:prompt_tokens 0
+                              :completion_tokens 0})
      :turn-history (atom [])}))
 
 (defn cast-intent
@@ -142,9 +169,11 @@
         _ (domain/validate-cantrip! cantrip)
         prior-turns @(:turn-history entity)
         current-loom @(:loom entity)
-        result (run-cast (:entity-id entity) cantrip intent prior-turns current-loom)]
+        prior-usage @(:cumulative-usage entity)
+        result (run-cast (:entity-id entity) cantrip intent prior-turns current-loom prior-usage)]
     (swap! (:turn-history entity) into (:new-turns result))
     (reset! (:loom entity) (:loom result))
+    (reset! (:cumulative-usage entity) (:cumulative-usage result))
     (dissoc result :new-turns)))
 
 (defn entity-state
@@ -153,4 +182,5 @@
   {:entity-id (:entity-id entity)
    :status (:status entity)
    :turn-count (count @(:turn-history entity))
+   :cumulative-usage @(:cumulative-usage entity)
    :loom @(:loom entity)})
