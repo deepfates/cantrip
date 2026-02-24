@@ -10,6 +10,16 @@ from cantrip.providers.openai_compat import OpenAICompatCrystal
 from cantrip.runtime import Cantrip
 
 
+def _resolve_dotenv_path(repo_root: Path, dotenv: str) -> str:
+    p = Path(dotenv)
+    if p.is_absolute():
+        return str(p)
+    candidate = (repo_root / p).resolve()
+    if candidate.exists():
+        return str(candidate)
+    return dotenv
+
+
 def resolve_code_runner(name: str | None) -> str:
     key = (name or "mini").strip().lower()
     if key in {"mini", "mini-js", "minicode"}:
@@ -161,7 +171,7 @@ def build_cantrip_from_env(
     browser_driver: str | None = None,
 ) -> Cantrip:
     """Build the default capstone cantrip from environment configuration."""
-    load_dotenv_if_present(dotenv)
+    load_dotenv_if_present(_resolve_dotenv_path(repo_root, dotenv))
     if fake:
         return _build_fake_cantrip(
             repo_root,
