@@ -22,6 +22,7 @@ This project follows strict spec-driven development. These rules are mandatory.
 2. Use behaviours for boundary abstractions (e.g. crystal, medium, storage adapters).
 3. Avoid ad-hoc evaluator shortcuts in core runtime paths.
 4. Code-circle snippets are Elixir executed on the BEAM (`done.(...)`, `call_agent.(...)`), not JS.
+5. Error policy is explicit: expected operational failures become observations; unexpected bugs should crash and be supervised.
 
 ### 4) Slice Discipline
 

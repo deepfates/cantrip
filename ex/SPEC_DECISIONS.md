@@ -105,3 +105,14 @@ Decision:
 3. Placeholder format: `[ephemeral:<gate_name>]`.
 
 Rationale: Required by PROD-5 and deterministic for tests.
+
+## D-011 Error Handling Model (OTP + Cantrip)
+
+Decision:
+1. Expected operational failures (gate failures, provider rate limits, child task failures) are represented as observations with `is_error: true` and remain in-loop.
+2. Crystal/provider retries are handled inside one turn and do not emit extra turns (D-006 / PROD-2).
+3. Parent casts are not terminated by child task failure (COMP-8); child failure is returned as gate result.
+4. Unexpected runtime bugs (invariants violated, programmer errors) should still fail fast and be surfaced to supervision/logging, not silently converted.
+5. "Catch-all" exception handling is discouraged; catches/rescues must be scoped to expected failure boundaries.
+
+Rationale: Preserves cantrip semantics ("error is steering") while remaining intentionally OTP-native about unexpected crashes.
