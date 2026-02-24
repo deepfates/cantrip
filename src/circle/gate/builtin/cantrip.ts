@@ -65,6 +65,13 @@ export class CantripHandleStore {
   }
 
   private asHandle(handle: unknown): number {
+    // Gate results pass through serializeBoundGate which stringifies numbers.
+    // Accept the string form so entity code like `cast(cantrip({...}), intent)` works
+    // without requiring parseInt() on the handle.
+    if (typeof handle === "string") {
+      const n = Number(handle);
+      if (Number.isFinite(n)) return n;
+    }
     if (typeof handle !== "number" || !Number.isFinite(handle)) {
       throw new Error(`Cantrip handle must be a finite number, got: ${typeof handle}`);
     }
@@ -427,6 +434,150 @@ cantripDisposeGate.docs = {
   section: SECTION,
 };
 
+// ── Batch cast ──────────────────────────────────────────────────────
+
+const MAX_BATCH_CONCURRENCY = 8;
+const MAX_BATCH_SIZE = 50;
+
+/**
+ * cast_batch(tasks) — cast multiple cantrips in parallel.
+ *
+ * Takes an array of {cantrip, intent} pairs. Fires them concurrently on the
+ * Node event loop (chunked at 8), returns an array of result strings.
+ * Each handle is consumed, same as cast().
+ *
+ * Hand-built BoundGate (not rawGate) because we return a raw array that must
+ * pass through to the sandbox without serializeBoundGate wrapping.
+ */
+function makeCastBatchGate(): BoundGate {
+  const gate: BoundGate = {
+    name: "cantrip_cast_batch",
+    definition: {
+      name: "cantrip_cast_batch",
+      description:
+        "Cast multiple cantrips in parallel. Returns an array of result strings.",
+      parameters: {
+        type: "object",
+        properties: {
+          tasks: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                cantrip: { type: "integer", description: "Cantrip handle." },
+                intent: { type: "string", description: "Intent for this cantrip." },
+              },
+              required: ["cantrip", "intent"],
+            },
+            description: "Array of {cantrip, intent} objects (max 50).",
+          },
+        },
+        required: ["tasks"],
+        additionalProperties: false,
+      },
+    },
+    ephemeral: false,
+    docs: {
+      sandbox_name: "cast_batch",
+      signature: "cast_batch(tasks: [{cantrip, intent}, ...]): string[]",
+      description:
+        "Cast multiple cantrips in parallel. Returns array of results. Handles are consumed.",
+      section: SECTION,
+    },
+    execute: async (args: Record<string, any>, overrides?: DependencyOverrides) => {
+      const handles = await handlesDep.resolve(overrides);
+      const sharedLoom: Loom | undefined = await loomDep.resolve(overrides);
+      const config = await configDep.resolve(overrides);
+      const progress: ProgressCallback | null = await progressBinding.resolve(overrides);
+
+      const tasks = args.tasks;
+      if (!Array.isArray(tasks)) {
+        throw new Error("cast_batch(tasks) requires an array of task objects.");
+      }
+      if (tasks.length > MAX_BATCH_SIZE) {
+        throw new Error(
+          `cast_batch: array too large (${tasks.length} > ${MAX_BATCH_SIZE}). Split into smaller batches.`,
+        );
+      }
+
+      if (progress) {
+        progress({ type: "batch_start", depth: 1, count: tasks.length });
+      }
+
+      const results: string[] = [];
+
+      for (let i = 0; i < tasks.length; i += MAX_BATCH_CONCURRENCY) {
+        const chunk = tasks.slice(i, i + MAX_BATCH_CONCURRENCY);
+        const chunkResults = await Promise.all(
+          chunk.map(async (task: any, j: number) => {
+            const idx = i + j;
+            const cantripHandle = task.cantrip;
+            const intent = task.intent;
+
+            if (!intent || typeof intent !== "string") {
+              throw new Error(`cast_batch: tasks[${idx}].intent must be a string`);
+            }
+
+            if (progress) {
+              progress({
+                type: "batch_item",
+                depth: 1,
+                index: idx,
+                total: tasks.length,
+                query: intent,
+              });
+            }
+
+            const { record } = handles.get(cantripHandle);
+
+            try {
+              // ── Leaf cantrip ──
+              if (record.kind === "leaf") {
+                handles.remove(cantripHandle);
+                const response = await record.crystal.query(
+                  [
+                    { role: "system", content: record.call },
+                    { role: "user", content: intent },
+                  ],
+                  null,
+                );
+                return truncateResult(completionText(response));
+              }
+
+              // ── Full cantrip ──
+              const child = cantrip({
+                crystal: record.crystal,
+                call: record.call,
+                circle: record.circle,
+                loom: sharedLoom,
+                dependency_overrides: config.dependency_overrides,
+              });
+
+              const result = await child.cast(intent);
+              const output = typeof result === "string" ? result : String(result);
+              handles.remove(cantripHandle);
+              return truncateResult(output);
+            } catch (err: any) {
+              // Don't kill the batch — return error as result string
+              try { handles.remove(cantripHandle); } catch { /* already removed */ }
+              return `Error: ${err?.message ?? String(err)}`;
+            }
+          }),
+        );
+        results.push(...chunkResults);
+      }
+
+      if (progress) {
+        progress({ type: "batch_end", depth: 1 });
+      }
+
+      return results as any;
+    },
+  };
+
+  return gate;
+}
+
 // ── Factory ──────────────────────────────────────────────────────────
 
 /**
@@ -445,6 +596,7 @@ export function cantripGates(
   const gates: BoundGate[] = [
     cantripCreateGate,
     cantripCastGate,
+    makeCastBatchGate(),
     cantripDisposeGate,
   ];
 

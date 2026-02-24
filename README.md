@@ -1,186 +1,339 @@
 # cantrip
 
-A template for building your own agents. Clone it, learn from it, make it yours.
+> "The cantrips have been spoken. The patterns of force are aligned. Now it is up to your machine."
+> — Gargoyles: Reawakening
 
-## What is an agent?
+A framework for building autonomous LLM entities with action capabilities. Give an LLM a goal and an environment, watch it work toward completion.
 
-An agent is a loop. You give an LLM a set of tools, ask it a question, and it responds by either answering or asking to use a tool. If it asks for a tool, you run that tool and show it the result. Then it either answers, or asks for another tool. This continues until it's done.
+## What is a cantrip?
 
-```ts
-while (true) {
-  const response = await crystal.query(messages, tools);
-  messages.push(response);
-  if (!response.tool_calls) break;
-  for (const call of response.tool_calls) {
-    messages.push(await execute(call));
-  }
-}
-```
+A **cantrip** is a composable unit that combines:
+- **Crystal** - An LLM (cognition)
+- **Medium** - An interactive environment (action)  
+- **Circle** - A control loop (autonomy)
 
-That's the core of it. The crystal (LLM) decides what to do, the gates (tools) let it act, and the loop keeps going until there's nothing left to do.
+Together they create an **entity** that can reason, act, observe, and adapt.
 
-## The vocabulary
+---
 
-Cantrip uses a specific vocabulary. The names come from the spec (SPEC.md).
+## Core Concepts
 
-- **Crystal** — a stateless LLM interface. You give it messages, it returns a response.
-- **Gate** — a typed function the entity can call. Gates cross the boundary between the entity and the outside world.
-- **Circle** — the entity's capability envelope: medium + gates + wards.
-- **Medium** — the substrate the entity works in. A JS sandbox, a browser, or conversation (the default).
-- **Ward** — a constraint on the circle: max turns, require done, max depth.
-- **Cantrip** — the recipe: crystal + call + circle. Cast it on an intent to create an entity.
-- **Call** — the system prompt and configuration. Immutable once constructed.
-- **Intent** — the user's request. Appears as the first user message.
-- **Entity** — the running instance. Created by casting a cantrip.
-- **Loom** — the append-only execution record. A tree of turns.
+### 🔮 Crystal (Cognition)
 
-## How does it know when to stop?
+A **crystal** is an interface to an LLM. It takes messages and tools, returns responses with tool calls.
 
-The `done` gate signals "I'm done, here's the answer." When the entity calls it, `TaskComplete` is thrown, which breaks the loop and returns the result.
+\`\`\`typescript
+import { crystal } from "cantrip/crystal";
 
-```ts
-const done = gate(
-  "Signal that you've finished the task",
-  async ({ message }: { message: string }) => {
-    throw new TaskComplete(message);
+const haiku = crystal({
+  model: "anthropic/claude-3.5-haiku",
+  temperature: 0.7
+});
+\`\`\`
+
+Crystals are stateless API wrappers. We use OpenRouter for model access.
+
+---
+
+### 🌊 Medium (Action)
+
+A **medium** is an **interactive evaluation environment** where the model's utterances are executed:
+
+- **Bash medium**: A shell session where the model writes commands
+- **JavaScript medium**: A JS runtime where the model writes code
+- **Python medium**: A Python interpreter where the model writes Python
+- **Browser medium**: A headless browser where the model controls the page
+
+**Key insight:** A medium provides a REPL/interpreter/session, NOT individual tools.
+
+The model uses tools *within* the medium:
+- In bash: Uses git, curl, ffmpeg, jq by writing shell commands
+- In Python: Uses requests, pandas, numpy by writing Python code
+- In JavaScript: Uses fetch, fs, child_process by writing JS code
+
+\`\`\`typescript
+import { bash } from "cantrip/circle/medium";
+
+// Creates a bash session
+const shell = bash({ cwd: "/project" });
+
+// Model can now execute: git status, curl http://..., etc.
+\`\`\`
+
+---
+
+### ⭕ Circle (Control)
+
+A **circle** is the entity loop that connects crystal and medium:
+
+\`\`\`
+Intent → Crystal → Assistant Response → Medium Execution → Observations → Crystal → ...
+\`\`\`
+
+The loop continues until:
+- **Gate opens**: Entity signals completion (e.g., calls \`submit_answer()\`)
+- **Ward violated**: Safety limit reached (max turns, timeout, cost)
+
+\`\`\`typescript
+import { circle } from "cantrip/circle";
+import { done } from "cantrip/circle/gate";
+
+const agent = circle({
+  crystal: haiku,
+  medium: bash({ cwd: "." }),
+  gates: [done()],  // Provides submit_answer() tool
+  wards: [{ max_turns: 10 }]
+});
+\`\`\`
+
+**Gates** (success conditions):
+- \`done()\` - Entity calls \`submit_answer(result)\` when finished
+- Custom gates - Check for specific conditions
+
+**Wards** (safety limits):
+- \`max_turns\` - Limit loop iterations
+- \`max_cost\` - Limit API spending
+- \`max_time\` - Timeout in milliseconds
+
+---
+
+### 🪄 Cantrip (Composition)
+
+Put it all together:
+
+\`\`\`typescript
+import { cantrip, cast } from "cantrip";
+import { crystal } from "cantrip/crystal";
+import { bash } from "cantrip/circle/medium";
+import { done } from "cantrip/circle/gate";
+
+const researcher = cantrip({
+  crystal: crystal({ model: "anthropic/claude-3.5-sonnet" }),
+  call: {
+    system: "You research topics using bash tools. Use curl, grep, etc."
   },
-  { name: "done", params: { message: "string" } }
-);
-```
+  circle: {
+    medium: bash(),
+    gates: [done()],
+    wards: [{ max_turns: 20 }]
+  }
+});
 
-In a JS medium, this becomes `submit_answer(result)` — same mechanism, projected into the sandbox.
+// Cast the cantrip with an intent
+const result = await cast(researcher, "Research TypeScript compiler architecture");
+console.log(result);
+\`\`\`
 
-## Get started
+**Leaf cantrip** (no circle - single LLM call):
 
-```bash
-gh repo create my-agent --template deepfates/cantrip
-cd my-agent
-bun install
-bun run examples/04_cantrip.ts
-```
+\`\`\`typescript
+const analyzer = cantrip({
+  crystal: crystal({ model: "anthropic/claude-3.5-haiku" }),
+  call: { system: "You analyze code for bugs" }
+});
 
-## Learn by example
+const bugs = await cast(analyzer, "Here's my function: " + code);
+\`\`\`
 
-The examples build on each other. Work through them in order.
+---
 
-### The ingredients
+## 🪆 The Familiar (Meta-Circular Cantrips)
 
-**[`01_crystal.ts`](examples/01_crystal.ts)** — A crystal wraps an LLM. Messages in, response out. The simplest building block.
+The **Familiar** is a special cantrip that runs in a JS medium with the ability to create and cast child cantrips:
 
-**[`02_gate.ts`](examples/02_gate.ts)** — A gate is a typed function the entity can call. Gates cross into the outside world.
+\`\`\`typescript
+import { familiar } from "cantrip";
 
-**[`03_circle.ts`](examples/03_circle.ts)** — A circle = medium + gates + wards. Must have a done gate (CIRCLE-1) and at least one ward (CIRCLE-2).
+const myFamiliar = familiar({
+  crystal: crystal({ model: "anthropic/claude-3.5-sonnet" }),
+  workspace: "/project",
+  memory: ".cantrip/loom.jsonl"
+});
 
-**[`04_cantrip.ts`](examples/04_cantrip.ts)** — Crystal + call + circle = cantrip. Cast it on an intent, an entity arises. The full recipe.
+// The Familiar can coordinate complex tasks by creating specialized children
+await cast(myFamiliar, "Analyze the codebase and run the test suite");
+\`\`\`
 
-**[`05_ward.ts`](examples/05_ward.ts)** — Wards constrain the circle. Multiple wards compose: most restrictive wins.
+Inside the Familiar's JS medium, it has access to:
+- \`cantrip(config)\` - Create child cantrips
+- \`cast(handle, intent)\` - Execute children
+- \`repo_files()\`, \`repo_read()\` - Observe the repository
+- Persistent memory across sessions
 
-**[`06_providers.ts`](examples/06_providers.ts)** — Same cantrip, different crystal. Swap the crystal to use any LLM provider.
+This enables **hierarchical task decomposition**: The Familiar breaks down your request into subtasks, creates specialized cantrips for each, coordinates their execution, and synthesizes results.
 
-### Mediums
+---
 
-**[`07_conversation.ts`](examples/07_conversation.ts)** — No medium specified = conversation (tool-calling baseline). The crystal sees gates as tool calls.
+## Available Mediums
 
-**[`08_js_medium.ts`](examples/08_js_medium.ts)** — The entity works inside a QuickJS sandbox. Gates are projected as host functions. ONE medium per circle.
+### Bash
+Execute shell commands with full access to CLI tools.
 
-**[`09_browser_medium.ts`](examples/09_browser_medium.ts)** — The entity works inside a Taiko browser session. It writes Taiko code.
+\`\`\`typescript
+bash({ cwd: "/path", env: { KEY: "value" } })
+\`\`\`
 
-### Composition and memory
+Use: git operations, file manipulation, curl requests, ffmpeg processing
 
-**[`10_composition.ts`](examples/10_composition.ts)** — Nested entities. The JS medium puts data outside the prompt; the entity explores via code.
+### JavaScript (QuickJS)
+Execute JavaScript in a sandboxed runtime.
 
-**[`11_folding.ts`](examples/11_folding.ts)** — Compress older turns to keep the context window small. Original turns preserved in the loom.
+\`\`\`typescript
+js({ 
+  cwd: "/path",
+  host_functions: { /* custom functions */ }
+})
+\`\`\`
 
-### Full agents
+Use: Data processing, API calls, custom logic
 
-**[`12_full_agent.ts`](examples/12_full_agent.ts)** — JS medium + filesystem gates. The code sandbox with host functions crossing into it.
+### Browser
+Control a headless browser with Puppeteer.
 
-**[`13_acp.ts`](examples/13_acp.ts)** — Agent Control Protocol adapter for editor integration (VS Code, Claude Desktop).
+\`\`\`typescript
+browser({ 
+  headless: true,
+  viewport: { width: 1280, height: 720 }
+})
+\`\`\`
 
-**[`14_recursive.ts`](examples/14_recursive.ts)** — Depth-limited self-spawning. Parent delegates subtasks to child entities via call_entity.
+Use: Web scraping, testing, automation
 
-**[`15_research_entity.ts`](examples/15_research_entity.ts)** — The full-package capstone. ACP + jsBrowser medium + recursive children + memory management.
+### Python (Coming Soon)
+Execute Python code with access to the Python ecosystem.
 
-**[`16_familiar.ts`](examples/16_familiar.ts)** — The Familiar. A coordinator entity that constructs and casts child cantrips from code. Repo observation + delegation via cantrip construction.
+### More Mediums
 
-## Directory structure
+Any interactive environment can be a medium:
+- **SQL REPL** - Database queries
+- **Frida** - Dynamic instrumentation
+- **GDB** - Interactive debugging
+- **Redis CLI** - Cache operations
+- **Custom DSLs** - Your domain-specific language
 
-```
-src/
-├── crystal/          # The model — stateless query() interface + providers + tokens
-├── circle/           # The environment — gates + wards + mediums
-│   ├── circle.ts     # Circle = {medium, gates, wards}
-│   ├── ward.ts       # Ward (max_turns, require_done, max_depth)
-│   ├── medium.ts     # Medium interface
-│   ├── medium/       # Medium implementations (js, browser, bash)
-│   └── gate/         # Gate definitions + builtins (done, fs, repo, call_entity)
-├── cantrip/          # The recipe — cantrip() and Entity
-├── loom/             # The execution record — append-only turn tree, threads, folding
-└── entity/           # Runtime support — events, errors, REPL, ACP adapter
-```
+---
 
-## Builtin gates
+## Message Format
 
-**done** — Signals task completion. Required in every circle (CIRCLE-1). In a JS medium, projected as `submit_answer()`.
+Cantrip uses the standard OpenAI message format:
 
-**Filesystem (`src/circle/gate/builtin/fs`)** — Sandboxed access: `read`, `write`, `edit`, `glob`, `bash`.
+\`\`\`typescript
+type Message = 
+  | { role: "system", content: string }
+  | { role: "user", content: string }
+  | { role: "assistant", content: string, tool_calls?: ToolCall[] }
+  | { role: "tool", tool_call_id: string, content: string }
+\`\`\`
 
-**Repo (`src/circle/gate/builtin/repo`)** — Read-only repository introspection: `repo_files`, `repo_read`, `repo_git_log`, `repo_git_status`, `repo_git_diff`. Path-jailed to repo root.
+This ensures compatibility and makes it easy to reason about conversation state.
 
-**call_entity / call_entity_batch** — Delegate to child entities. Depth-limited recursive spawning.
+---
 
-## Mediums
+## Architecture Philosophy
 
-**JS (`src/circle/medium/js.ts`)** — QuickJS WASM sandbox. Gates projected as host functions. The entity writes JavaScript. Supports cantrip construction when configured with `cantrip: { crystals, mediums, gates }`.
+**Separation of Concerns:**
+- **Crystal** = Cognition (stateless LLM interface)
+- **Medium** = Action (stateful execution environment)
+- **Circle** = Control (loop with gates and wards)
 
-**Browser (`src/circle/medium/browser.ts`)** — Headless browser via Taiko. The entity writes Taiko code.
+**Composability:**
+- Cantrips can create other cantrips
+- Mediums can spawn subprocesses using other mediums
+- TypeScript cantrip → Python cantrip → Bash commands
 
-**Bash (`src/circle/medium/bash.ts`)** — Shell execution medium.
+**Polyglot by Design:**
+- Reference implementation in TypeScript
+- Concepts are language-agnostic
+- Each language can implement its native medium best
+- Cross-language communication via subprocess/IPC
 
-**Conversation (default)** — No medium. The crystal sees gates as tool calls in natural language.
+---
 
-## Providers
+## Examples
 
-```ts
-import {
-  ChatAnthropic,
-  ChatOpenAI,
-  ChatGoogle,
-  ChatLMStudio,
-  ChatOpenRouter,
-} from "cantrip/crystal";
-```
+### Research Agent
+\`\`\`typescript
+const researcher = cantrip({
+  crystal: sonnet,
+  call: { system: "Research topics using bash tools" },
+  circle: {
+    medium: bash(),
+    gates: [done()],
+    wards: [{ max_turns: 20 }]
+  }
+});
 
-- **ChatLMStudio** — Local OpenAI-compatible server (`http://localhost:1234/v1` by default).
-- **ChatOpenRouter** — OpenRouter API with attribution headers.
-- All providers implement the `BaseChatModel` interface: `query(messages, tools?, tool_choice?)`.
+await cast(researcher, "What are the latest trends in WebAssembly?");
+\`\`\`
 
-## Agent Client Protocol (ACP)
+### Code Analyzer
+\`\`\`typescript
+const analyzer = cantrip({
+  crystal: haiku,
+  call: { 
+    system: "Analyze code for security vulnerabilities",
+    tools: [/* custom tools */]
+  }
+});
 
-Cantrip can serve agents over [Agent Client Protocol](https://github.com/agentclientprotocol/spec) for editor integration.
+await cast(analyzer, "Review this authentication module: " + code);
+\`\`\`
 
-```json
-{
-  "acp.agents": [
-    {
-      "name": "cantrip",
-      "command": "bun",
-      "args": ["run", "examples/13_acp.ts"],
-      "cwd": "${workspaceFolder}"
-    }
-  ]
-}
-```
+### Browser Automation
+\`\`\`typescript
+const scraper = cantrip({
+  crystal: haiku,
+  call: { system: "Extract data from websites" },
+  circle: {
+    medium: browser({ headless: true }),
+    gates: [done()],
+    wards: [{ max_turns: 15, max_time: 60000 }]
+  }
+});
 
-## The philosophy
+await cast(scraper, "Get the top HN stories with scores > 100");
+\`\`\`
 
-Most agent frameworks add layers between you and the model: planning systems, verification steps, output parsers, state machines. The idea behind cantrip is that you probably don't need most of that. LLMs already know how to reason and use tools. Your job is to give them good tools and get out of the way.
+---
 
-Start simple. Add complexity when you feel the pain, not before.
+## Installation
 
-## Make it yours
+\`\`\`bash
+npm install cantrip
+\`\`\`
 
-Read the source. It's not much code. Change whatever doesn't fit your use case. Delete what you don't need. This is a starting point, not a dependency.
+Set your OpenRouter API key:
+\`\`\`bash
+export OPENROUTER_API_KEY="sk-..."
+\`\`\`
+
+---
+
+## Implementation in Other Languages
+
+This is the reference TypeScript implementation. The concepts are designed to be language-agnostic:
+
+**Python implementation** would:
+- Use \`requests\` for Crystal (OpenRouter)
+- Native Python medium via \`exec()\`
+- Other mediums via subprocess
+- Same message format and control flow
+
+**Rust implementation** would:
+- Use \`reqwest\` for Crystal
+- Embed Lua via \`rlua\` for scripting medium
+- Other mediums via subprocess or FFI
+- Strong typing for gates/wards
+
+The SPEC.md provides a formal specification for implementing cantrip in any language.
+
+---
+
+## Why "Cantrip"?
+
+In D&D, a cantrip is a simple spell that can be cast repeatedly without cost. Here, a cantrip is a reusable pattern for creating LLM entities - configure once, cast many times, compose into larger spells.
+
+---
 
 ## License
 

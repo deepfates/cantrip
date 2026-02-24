@@ -66,13 +66,14 @@ function setup() {
 describe("cantripGates — isomorphic API", () => {
   // ── Shape ─────────────────────────────────────────────────────────
 
-  test("returns cantrip, cast, and dispose gates", () => {
+  test("returns cantrip, cast, cast_batch, and dispose gates", () => {
     const { gates } = setup();
     const names = gates.map((g) => g.docs?.sandbox_name).filter(Boolean);
     expect(names).toContain("cantrip");
     expect(names).toContain("cast");
+    expect(names).toContain("cast_batch");
     expect(names).toContain("dispose");
-    expect(names.length).toBe(3);
+    expect(names.length).toBe(4);
   });
 
   test("all gates have CANTRIP CONSTRUCTION section in docs", () => {

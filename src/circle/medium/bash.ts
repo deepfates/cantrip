@@ -300,6 +300,15 @@ export function bash(opts?: BashMediumOptions): Medium {
       initialized = false;
       projectedGates = [];
     },
+
+    capabilityDocs(): string {
+      return [
+        "### SHELL PHYSICS (bash)",
+        `1. Each command runs in a fresh subprocess (cwd: ${cwd}). Shell state (variables, cd) resets between commands. Filesystem changes persist.`,
+        "2. Use `submit_answer <value>` as a command to return your final result.",
+        `3. stdout and stderr are combined in output (truncated at ${maxChars} chars).`,
+      ].join("\n");
+    },
   };
 
   return medium;
