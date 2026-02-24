@@ -87,7 +87,7 @@ defmodule CantripM5CompositionExtendedTest do
          %{code: "result = call_agent.(%{intent: \"will crash\"})\ndone.(to_string(result))"}
        ])}
 
-    child = {FakeCrystal, FakeCrystal.new([%{code: "this is invalid elixir"}])}
+    child = {FakeCrystal, FakeCrystal.new([%{code: "if ("}])}
 
     {:ok, cantrip} =
       Cantrip.new(

@@ -63,7 +63,7 @@ defmodule Cantrip.CodeMedium do
         end
 
       {:error, {line, error, token}} ->
-        msg = "parse error at line #{line}: #{inspect(error)} #{inspect(token)}"
+        msg = "parse error at #{inspect(line)}: #{inspect(error)} #{inspect(token)}"
         push_observation(%{gate: "code", result: msg, is_error: true})
         {:ok, binding}
     end
