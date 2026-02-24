@@ -60,9 +60,11 @@
 
       (= method "session/new")
       (let [sid (new-session-id router)
+            entity (runtime/invoke (:cantrip router))
             next-router (-> router
                             (update :next-session-id inc)
-                            (assoc-in [:sessions sid] {:history []}))]
+                            (assoc-in [:sessions sid] {:history []
+                                                       :entity entity}))]
         [next-router
          (result-response id {:sessionId sid})
          []])
@@ -79,8 +81,7 @@
             (if (str/blank? (or prompt-text ""))
               [router (error-response id -32602 "prompt must contain a text content block") []]
               (let [history (conj (:history session) prompt-text)
-                    intent (str/join "\n" history)
-                    cast-result (runtime/cast (:cantrip router) intent)
+                    cast-result (runtime/cast-intent (:entity session) prompt-text)
                     text (or (:result cast-result) "")
                     next-router (assoc-in router [:sessions sid :history] history)]
                 [next-router
