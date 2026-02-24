@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from typing import Any
@@ -10,22 +11,69 @@ import yaml
 
 from cantrip.core import Call, Cantrip, CantripError, Circle, FakeCrystal
 
-
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def load_cases() -> list[dict[str, Any]]:
     raw = (ROOT / "tests.yaml").read_text()
-    raw = raw.replace("parent_id: turns[0].id", 'parent_id: "turns[0].id"')
+    raw = re.sub(
+        r"parent_id:\s*(turns\[\d+\]\.id)",
+        lambda m: f'parent_id: "{m.group(1)}"',
+        raw,
+    )
     raw = "\n".join(
-        ln for ln in raw.splitlines() if "{ utterance: not_null, observation: not_null" not in ln
+        ln
+        for ln in raw.splitlines()
+        if "{ utterance: not_null, observation: not_null" not in ln
     )
     data = yaml.safe_load(raw)
     assert isinstance(data, list)
     return data
 
 
-CASES = [c for c in load_cases() if not c.get("skip")]
+CASES = load_cases()
+
+EXPECT_KEYS = {
+    "error",
+    "result",
+    "result_contains",
+    "results",
+    "entities",
+    "entity_ids_unique",
+    "turns",
+    "terminated",
+    "truncated",
+    "gate_call_order",
+    "gate_calls_executed",
+    "gate_results",
+    "crystal_received_tool_choice",
+    "crystal_received_tools",
+    "usage",
+    "cumulative_usage",
+    "thread",
+    "turn_1_observation",
+    "crystal_invocations",
+    "loom",
+    "threads",
+    "thread_0",
+    "thread_1",
+    "fork_crystal_invocations",
+    "child_crystal_invocations",
+}
+
+LOOM_KEYS = {"turn_count", "call", "turns"}
+LOOM_TURN_KEYS = {
+    "sequence",
+    "gate_calls",
+    "terminated",
+    "truncated",
+    "reward",
+    "id",
+    "parent_id",
+    "metadata",
+    "entity_id",
+    "observation_contains",
+}
 
 
 def build_context(case: dict[str, Any]) -> dict[str, Any]:
@@ -38,7 +86,11 @@ def build_context(case: dict[str, Any]) -> dict[str, Any]:
             crystals[name] = FakeCrystal(v)
 
     main_crystal = crystals.get("crystal")
-    if main_crystal is None and "crystal" in setup and isinstance(setup["crystal"], dict):
+    if (
+        main_crystal is None
+        and "crystal" in setup
+        and isinstance(setup["crystal"], dict)
+    ):
         main_crystal = FakeCrystal(setup["crystal"])
         crystals["crystal"] = main_crystal
     if main_crystal is None and crystals:
@@ -50,7 +102,8 @@ def build_context(case: dict[str, Any]) -> dict[str, Any]:
     circle = Circle(
         gates=circle_cfg.get("gates", []),
         wards=circle_cfg.get("wards", []),
-        circle_type=circle_cfg.get("type", "tool"),
+        medium=circle_cfg.get("medium", circle_cfg.get("type", "tool")),
+        depends=circle_cfg.get("depends"),
         filesystem=setup.get("filesystem"),
     )
 
@@ -120,7 +173,9 @@ def execute_then(ctx: dict[str, Any], then_cfg: dict[str, Any]) -> None:
 
     if "annotate_reward" in then_cfg:
         cfg = then_cfg["annotate_reward"]
-        ctx["cantrip"].loom.annotate_reward(ctx["last_thread"], int(cfg["turn"]), float(cfg["reward"]))
+        ctx["cantrip"].loom.annotate_reward(
+            ctx["last_thread"], int(cfg["turn"]), float(cfg["reward"])
+        )
 
     if "fork" in then_cfg:
         cfg = then_cfg["fork"]
@@ -141,7 +196,9 @@ def execute_then(ctx: dict[str, Any], then_cfg: dict[str, Any]) -> None:
         ctx["extracted_thread"] = ctx["cantrip"].loom.extract_thread(ctx["last_thread"])
 
 
-def assert_contains_message(invocations: list[dict[str, Any]], index: int, text: str, negate: bool = False) -> None:
+def assert_contains_message(
+    invocations: list[dict[str, Any]], index: int, text: str, negate: bool = False
+) -> None:
     msgs = invocations[index]["messages"]
     whole = "\n".join((m.get("content") or "") for m in msgs)
     if negate:
@@ -151,6 +208,10 @@ def assert_contains_message(invocations: list[dict[str, Any]], index: int, text:
 
 
 def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
+    unknown_expect = set(expect) - EXPECT_KEYS
+    if unknown_expect:
+        raise AssertionError(f"unknown expect key(s): {sorted(unknown_expect)}")
+
     if "error" in expect:
         assert ctx["last_error"] is not None
         assert expect["error"] in str(ctx["last_error"])
@@ -191,7 +252,10 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
         got = [r.result for r in thread.turns[0].observation]
         assert got == expect["gate_results"]
     if "crystal_received_tool_choice" in expect:
-        assert crystal.invocations[0]["tool_choice"] == expect["crystal_received_tool_choice"]
+        assert (
+            crystal.invocations[0]["tool_choice"]
+            == expect["crystal_received_tool_choice"]
+        )
     if "crystal_received_tools" in expect:
         got = [t["name"] for t in crystal.invocations[0]["tools"]]
         want = [t["name"] for t in expect["crystal_received_tools"]]
@@ -234,39 +298,80 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
                     assert_contains_message(inv, i, c["messages_include"])
                 if "messages_exclude" in c:
                     assert_contains_message(inv, i, c["messages_exclude"], negate=True)
+                if "tools" in c:
+                    got_tools = [t["name"] for t in inv[i]["tools"]]
+                    assert got_tools == [t["name"] for t in c["tools"]]
 
     if "loom" in expect:
         loom_cfg = expect["loom"]
+        unknown_loom = set(loom_cfg) - LOOM_KEYS
+        if unknown_loom:
+            raise AssertionError(f"unknown loom key(s): {sorted(unknown_loom)}")
+
         if "turn_count" in loom_cfg:
-            assert len(cantrip.loom.turns) >= int(loom_cfg["turn_count"]) - 1
+            assert len(cantrip.loom.turns) == int(loom_cfg["turn_count"])
         if "call" in loom_cfg:
-            assert ctx["cantrip"].call.system_prompt == loom_cfg["call"].get("system_prompt")
+            assert ctx["cantrip"].call.system_prompt == loom_cfg["call"].get(
+                "system_prompt"
+            )
         if "turns" in loom_cfg:
+            entity_symbols: dict[str, str] = {}
             for idx, tcfg in enumerate(loom_cfg["turns"]):
-                if idx < len(thread.turns):
-                    t = thread.turns[idx]
-                elif idx < len(cantrip.loom.turns):
-                    t = cantrip.loom.turns[idx]
-                else:
+                unknown_tcfg = set(tcfg) - LOOM_TURN_KEYS
+                if unknown_tcfg:
+                    raise AssertionError(
+                        f"unknown loom.turn key(s): {sorted(unknown_tcfg)}"
+                    )
+                if idx >= len(cantrip.loom.turns):
                     break
+                t = cantrip.loom.turns[idx]
                 if "sequence" in tcfg:
                     assert t.sequence == int(tcfg["sequence"])
                 if "gate_calls" in tcfg:
                     assert [r.gate_name for r in t.observation] == tcfg["gate_calls"]
                 if "terminated" in tcfg:
                     assert t.terminated is bool(tcfg["terminated"])
+                if "truncated" in tcfg:
+                    assert t.truncated is bool(tcfg["truncated"])
                 if "reward" in tcfg:
                     assert t.reward == tcfg["reward"]
                 if "id" in tcfg and tcfg["id"] == "not_null":
                     assert t.id
                 if "parent_id" in tcfg and tcfg["parent_id"] is None:
                     assert t.parent_id is None
+                if "parent_id" in tcfg and isinstance(tcfg["parent_id"], str):
+                    parent_ref = tcfg["parent_id"]
+                    if parent_ref.startswith("turns[") and parent_ref.endswith("].id"):
+                        ref_idx = int(parent_ref[6:-4])
+                        assert t.parent_id == cantrip.loom.turns[ref_idx].id
+                    else:
+                        assert t.parent_id == parent_ref
+                if "entity_id" in tcfg:
+                    symbol = str(tcfg["entity_id"])
+                    if symbol in entity_symbols:
+                        assert t.entity_id == entity_symbols[symbol]
+                    else:
+                        entity_symbols[symbol] = t.entity_id
                 if "metadata" in tcfg:
                     md = t.metadata
-                    assert md["tokens_prompt"] == tcfg["metadata"]["tokens_prompt"]
-                    assert md["tokens_completion"] == tcfg["metadata"]["tokens_completion"]
-                    assert md["duration_ms"] > 0
-                    assert md["timestamp"]
+                    mcfg = tcfg["metadata"]
+                    if "tokens_prompt" in mcfg:
+                        assert md["tokens_prompt"] == mcfg["tokens_prompt"]
+                    if "tokens_completion" in mcfg:
+                        assert md["tokens_completion"] == mcfg["tokens_completion"]
+                    if "duration_ms" in mcfg:
+                        assert md["duration_ms"] > 0
+                    if "timestamp" in mcfg:
+                        assert md["timestamp"]
+                    if "truncation_reason" in mcfg:
+                        assert md.get("truncation_reason") == mcfg["truncation_reason"]
+                if "observation_contains" in tcfg:
+                    needle = str(tcfg["observation_contains"])
+                    observed = "\n".join(
+                        f"{r.content or ''}\n{r.result if r.result is not None else ''}"
+                        for r in t.observation
+                    )
+                    assert needle in observed
 
     if "threads" in expect:
         assert len(ctx["threads"]) == int(expect["threads"])
@@ -297,17 +402,39 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
         f = ctx["crystals"]["fork_crystal"].invocations
         assert len(f) >= 1
 
+    if "child_crystal_invocations" in expect:
+        child = ctx["crystals"]["child_crystal"].invocations
+        if isinstance(expect["child_crystal_invocations"], int):
+            assert len(child) == expect["child_crystal_invocations"]
+        else:
+            for i, c in enumerate(expect["child_crystal_invocations"]):
+                if "messages_include" in c:
+                    assert_contains_message(child, i, c["messages_include"])
+                if "messages_exclude" in c:
+                    assert_contains_message(
+                        child, i, c["messages_exclude"], negate=True
+                    )
+                if "tools" in c:
+                    got_tools = [t["name"] for t in child[i]["tools"]]
+                    assert got_tools == [t["name"] for t in c["tools"]]
+
     if "thread" in expect and isinstance(expect["thread"], dict):
         th = ctx["extracted_thread"]
         assert len(th) == int(expect["thread"]["length"])
 
 
-@pytest.mark.parametrize("case", CASES, ids=[f"{c['rule']}::{c['name']}" for c in CASES])
+@pytest.mark.parametrize(
+    "case", CASES, ids=[f"{c['rule']}::{c['name']}" for c in CASES]
+)
 def test_case(case: dict[str, Any]) -> None:
-    if case.get("rule") in {"ENTITY-1", "PROD-1"}:
-        pytest.skip("design-only")
+    if case.get("skip"):
+        raise AssertionError(
+            f"skipped conformance case is forbidden: {case.get('rule')}::{case.get('name')}"
+        )
     if not case.get("action") and not case.get("expect"):
-        pytest.skip("declarative-only")
+        raise AssertionError(
+            f"non-executable conformance case: {case.get('rule')}::{case.get('name')}"
+        )
 
     ctx = None
     try:

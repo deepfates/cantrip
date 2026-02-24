@@ -48,7 +48,17 @@
 
 - rule: CANTRIP-3
   name: cantrip validates circle has done gate and truncation ward
-  # Same as CIRCLE-1 and CIRCLE-2 — tested below
+  setup:
+    crystal:
+      responses:
+        - content: "hi"
+    circle:
+      gates: [done]
+      wards: []  # no truncation ward
+  action:
+    construct_cantrip: true
+  expect:
+    error: "at least one truncation ward"
 
 - rule: INTENT-1
   name: casting without intent is invalid
@@ -84,13 +94,24 @@
     crystal_invocations:
       - messages:
           - { role: system, content: "You are helpful" }
+          - { role: system, content: "Circle capabilities:\nmedium=tool\ngates=done\nwards=[{\"max_turns\": 10}]" }
           - { role: user, content: "my task" }
 
 - rule: ENTITY-1
   name: entity only created by casting cantrip
-  # Structural — no freestanding entity constructor exists.
-  # Verified by API design rather than I/O test.
-  skip: true
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "create entity"
+  expect:
+    entities: 1
+    turns: 1
 
 - rule: ENTITY-2
   name: each entity has unique ID
@@ -108,6 +129,29 @@
   expect:
     entity_ids_unique: true
 
+- rule: ENTITY-3
+  name: entity thread state grows monotonically
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "2" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "grow state"
+  expect:
+    loom:
+      turn_count: 3
+      turns:
+        - { sequence: 1, gate_calls: ["echo"] }
+        - { sequence: 2, gate_calls: ["echo"] }
+        - { sequence: 3, gate_calls: ["done"], terminated: true }
+    result: "ok"
+
 - rule: ENTITY-4
   name: entity thread persists after termination
   setup:
@@ -124,6 +168,24 @@
     loom:
       turn_count: 1
       # Thread persists even though entity is done
+
+- rule: ENTITY-6
+  name: invoking cantrip repeatedly creates independent entities
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "first" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "second" } }]
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    - cast: { intent: "task one" }
+    - cast: { intent: "task two" }
+  expect:
+    results: ["first", "second"]
+    entities: 2
+    entity_ids_unique: true
 
 - rule: LOOP-1
   name: turns alternate between entity and circle
@@ -230,8 +292,8 @@
       intent: "test context growth"
   expect:
     crystal_invocations:
-      - message_count: 1   # just the user message (intent)
-      - message_count: 3   # user + assistant + tool result
+      - message_count: 2   # capability + user intent
+      - message_count: 4   # + assistant/tool from prior turn
 
 - rule: LOOP-6
   name: text-only response terminates when done not required
@@ -542,7 +604,17 @@
 
 - rule: CIRCLE-2
   name: circle must have termination ward
-  # Same as LOOP-2 — tested above
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+    circle:
+      gates: [done]
+      wards: []
+  action:
+    construct_cantrip: true
+  expect:
+    error: "at least one truncation ward"
 
 - rule: CIRCLE-3
   name: gate execution is synchronous from entity perspective
@@ -634,6 +706,43 @@
       is_error: true
       content_contains: "gate not available"
 
+- rule: WARD-1
+  name: composed wards tighten via min-or-union
+  setup:
+    crystal:
+      responses:
+        - tool_calls:
+            - gate: call_entity
+              args:
+                intent: "child with tighter wards"
+                wards:
+                  - { max_turns: 1 }
+                  - { max_depth: 0 }
+                  - { remove_gate: "echo" }
+                require_done_tool: true
+        - tool_calls: [{ gate: "done", args: { answer: "parent-ok" } }]
+    child_crystal:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "x" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "child-ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done, echo, fetch, call_entity]
+      wards:
+        - { max_turns: 10 }
+        - { max_depth: 2 }
+        - { remove_gate: "fetch" }
+  action:
+    cast:
+      intent: "test ward composition"
+  expect:
+    result: "parent-ok"
+    turn_1_observation:
+      is_error: true
+      content_contains: "child failed"
+    child_crystal_invocations:
+      - tools: [{ name: "done" }]
+
 - rule: CIRCLE-7
   name: multiple gate calls in one utterance executed in order
   setup:
@@ -700,7 +809,7 @@
       gates:
         - name: done
         - name: read
-          dependencies:
+          depends:
             root: "/test/data"
       wards: [{ max_turns: 10 }]
     filesystem:
@@ -711,6 +820,28 @@
   expect:
     turn_1_observation:
       content: "hello world"
+
+- rule: CIRCLE-11
+  name: circle injects capability presentation every query
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+    call:
+      system_prompt: "sys"
+  action:
+    cast:
+      intent: "show capabilities"
+  expect:
+    crystal_invocations:
+      - messages:
+          - { role: system, content: "sys" }
+          - { role: system, content: "Circle capabilities:\nmedium=tool\ngates=done, echo\nwards=[{\"max_turns\": 10}]" }
+          - { role: user, content: "show capabilities" }
 
 # =============================================================================
 # Chapter 5: Composition
@@ -723,13 +854,13 @@
       type: code_circle
       responses:
         - code: |
-            call_agent({
+            call_entity({
               intent: "sub task",
               gates: ["fetch"]  // parent doesn't have fetch
             });
     circle:
       type: code
-      gates: [done, call_agent]  # no fetch
+      gates: [done, call_entity]  # no fetch
       wards: [{ max_turns: 10 }, { max_depth: 1 }]
   action:
     cast:
@@ -740,13 +871,13 @@
       content_contains: "cannot grant gate"
 
 - rule: COMP-2
-  name: call_agent blocks parent until child completes
+  name: call_entity blocks parent until child completes
   setup:
     crystal:
       type: code_circle
       responses:
         - code: |
-            var result = call_agent({ intent: "compute 6*7" });
+            var result = call_entity({ intent: "compute 6*7" });
             done(result);
     child_crystal:
       type: code_circle
@@ -754,7 +885,7 @@
         - code: "done(42);"
     circle:
       type: code
-      gates: [done, call_agent]
+      gates: [done, call_entity]
       wards: [{ max_turns: 10 }, { max_depth: 1 }]
   action:
     cast:
@@ -764,13 +895,13 @@
     # Parent received child's result synchronously
 
 - rule: COMP-3
-  name: call_agent_batch returns results in request order
+  name: call_entity_batch returns results in request order
   setup:
     crystal:
       type: code_circle
       responses:
         - code: |
-            var results = call_agent_batch([
+            var results = call_entity_batch([
               { intent: "return A" },
               { intent: "return B" },
               { intent: "return C" }
@@ -786,7 +917,7 @@
         - code: "done('C');"
     circle:
       type: code
-      gates: [done, call_agent, call_agent_batch]
+      gates: [done, call_entity, call_entity_batch]
       wards: [{ max_turns: 10 }, { max_depth: 1 }]
   action:
     cast:
@@ -802,7 +933,7 @@
       responses:
         - code: "var secret = 'parent_data';"
         - code: |
-            var result = call_agent({ intent: "read secret variable" });
+            var result = call_entity({ intent: "read secret variable" });
             done(result);
     child_crystal:
       type: code_circle
@@ -813,7 +944,7 @@
             catch(e) { done("undefined"); }
     circle:
       type: code
-      gates: [done, call_agent]
+      gates: [done, call_entity]
       wards: [{ max_turns: 10 }, { max_depth: 1 }]
   action:
     cast:
@@ -822,17 +953,17 @@
     result: "undefined"
 
 - rule: COMP-6
-  name: max_depth 0 removes call_agent gate
+  name: max_depth 0 removes call_entity gate
   setup:
     crystal:
       type: code_circle
       responses:
         - code: |
-            try { call_agent({ intent: "sub" }); done("should not reach"); }
+            try { call_entity({ intent: "sub" }); done("should not reach"); }
             catch(e) { done("blocked: " + e.message); }
     circle:
       type: code
-      gates: [done, call_agent]
+      gates: [done, call_entity]
       wards: [{ max_turns: 10 }, { max_depth: 0 }]
   action:
     cast:
@@ -848,7 +979,7 @@
       responses:
         - code: |
             try {
-              var result = call_agent({ intent: "will fail" });
+              var result = call_entity({ intent: "will fail" });
               done("got: " + result);
             } catch(e) {
               done("caught: " + e.message);
@@ -859,7 +990,7 @@
         - code: "throw new Error('child exploded');"
     circle:
       type: code
-      gates: [done, call_agent]
+      gates: [done, call_entity]
       wards: [{ max_turns: 10 }, { max_depth: 1 }]
   action:
     cast:
@@ -868,6 +999,46 @@
     result_contains: "caught"
     # Parent was NOT terminated by child's failure
 
+- rule: COMP-9
+  name: parent completion truncates active child with parent_terminated reason
+  setup:
+    crystal:
+      type: code_circle
+      responses:
+        - code: |
+            try {
+              call_entity({ intent: "child may outlive parent" });
+              done("parent done");
+            } catch(e) {
+              done("parent done");
+            }
+    child_crystal:
+      type: code_circle
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "work" } }]
+        - {}
+    circle:
+      type: code
+      gates: [done, echo, call_entity]
+      wards: [{ max_turns: 10 }, { max_depth: 1 }]
+  action:
+    cast:
+      intent: "test parent termination cancellation"
+  expect:
+    result: "parent done"
+    loom:
+      turn_count: 2
+      turns:
+        - entity_id: child
+          sequence: 1
+          gate_calls: ["echo"]
+          truncated: true
+          metadata:
+            truncation_reason: "parent_terminated"
+        - entity_id: parent
+          sequence: 1
+          terminated: true
+
 - rule: COMP-5
   name: child turns recorded as subtree in loom
   setup:
@@ -875,7 +1046,7 @@
       type: code_circle
       responses:
         - code: |
-            var result = call_agent({ intent: "child work" });
+            var result = call_entity({ intent: "child work" });
             done(result);
     child_crystal:
       type: code_circle
@@ -883,7 +1054,7 @@
         - code: "done('child done');"
     circle:
       type: code
-      gates: [done, call_agent]
+      gates: [done, call_entity]
       wards: [{ max_turns: 10 }, { max_depth: 1 }]
   action:
     cast:
@@ -891,9 +1062,8 @@
   expect:
     loom:
       turns:
-        - { entity_id: parent, sequence: 1 }
-        - { entity_id: child, sequence: 1, parent_id: turns[0].id }
-        - { entity_id: parent, sequence: 2 }
+        - { entity_id: child, sequence: 1, parent_id: turns[1].id }
+        - { entity_id: parent, sequence: 1, parent_id: null }
 
 - rule: COMP-7
   name: child can use different crystal
@@ -902,7 +1072,7 @@
       type: code_circle
       responses:
         - code: |
-            var result = call_agent({
+            var result = call_entity({
               intent: "use different crystal",
               crystal: "alternate_crystal"
             });
@@ -914,7 +1084,7 @@
         - code: "done('from alternate');"
     circle:
       type: code
-      gates: [done, call_agent]
+      gates: [done, call_entity]
       wards: [{ max_turns: 10 }, { max_depth: 1 }]
   action:
     cast:
@@ -929,13 +1099,13 @@
       type: code_circle
       responses:
         - code: |
-            var result = call_agent({ intent: "level 1" });
+            var result = call_entity({ intent: "level 1" });
             done(result);
     child_crystal_l1:
       type: code_circle
       responses:
         - code: |
-            var result = call_agent({ intent: "level 2" });
+            var result = call_entity({ intent: "level 2" });
             done(result);
     child_crystal_l2:
       type: code_circle
@@ -943,14 +1113,14 @@
         - code: "done('deepest');"
     circle:
       type: code
-      gates: [done, call_agent]
+      gates: [done, call_entity]
       wards: [{ max_turns: 10 }, { max_depth: 2 }]
   action:
     cast:
       intent: "test depth decrement"
   expect:
     result: "deepest"
-    # depth 2 → child gets depth 1 → grandchild gets depth 0 (no further call_agent)
+    # depth 2 → child gets depth 1 → grandchild gets depth 0 (no further call_entity)
 
 - rule: CANTRIP-2
   name: null system_prompt is valid (minimal cantrip)
@@ -970,8 +1140,9 @@
   expect:
     result: "ok"
     crystal_invocations:
-      # No system message — first message is the user intent
-      - first_message: { role: user, content: "minimal test" }
+      - first_message:
+          role: system
+          content: "Circle capabilities:\nmedium=tool\ngates=done\nwards=[{\"max_turns\": 10}]"
 
 # =============================================================================
 # Chapter 6: The Loom
@@ -1120,6 +1291,32 @@
     # Even though folding compressed the working context,
     # the full loom has all 5 turns
 
+- rule: LOOM-6
+  name: folding preserves call and gate definitions in context
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+    call:
+      system_prompt: "always keep identity"
+    folding:
+      trigger_after_turns: 1
+  action:
+    cast:
+      intent: "check folded context invariants"
+  expect:
+    result: "ok"
+    crystal_invocations:
+      - messages_include: "always keep identity"
+        tools: [{ name: "done" }, { name: "echo" }]
+      - messages_include: "always keep identity"
+        tools: [{ name: "done" }, { name: "echo" }]
+
 - rule: LOOM-7
   name: loom records terminated vs truncated
   setup:
@@ -1153,7 +1350,7 @@
       type: code_circle
       responses:
         - code: |
-            var result = call_agent({ intent: "sub" });
+            var result = call_entity({ intent: "sub" });
             done(result);
     child_crystal:
       type: code_circle
@@ -1161,21 +1358,19 @@
         - code: "done(42);"
     circle:
       type: code
-      gates: [done, call_agent]
+      gates: [done, call_entity]
       wards: [{ max_turns: 10 }, { max_depth: 1 }]
   action:
     cast:
       intent: "test child in loom"
   expect:
     loom:
-      turn_count: 3  # parent turn 1, child turn 1, parent turn 2
+      turn_count: 2  # one parent turn and one child turn
       turns:
+        - entity_id: child
+          parent_id: turns[1].id  # child root references parent turn
         - entity_id: parent
           parent_id: null
-        - entity_id: child
-          parent_id: turns[0].id  # child's root references parent turn
-        - entity_id: parent
-          parent_id: turns[0].id  # parent continues from its own turn
 
 - rule: LOOM-9
   name: turns record token usage and timing
@@ -1228,9 +1423,21 @@
 
 - rule: PROD-1
   name: protocol does not alter entity behavior
-  # This is a design rule, not easily testable with I/O pairs.
-  # Implementations should verify this through integration tests.
-  skip: true
+  setup:
+    crystal:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "protocol parity baseline"
+  expect:
+    result: "ok"
+    crystal_invocations:
+      - messages_include: "protocol parity baseline"
 
 - rule: PROD-2
   name: retried invocation appears as single turn
