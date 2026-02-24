@@ -1,0 +1,12 @@
+{
+  "name": "batch_order_subtree",
+  "scenario": "batch_order_subtree",
+  "expect": {
+    "result": "A,B,C",
+    "terminated": true,
+    "min_turns": 4,
+    "min_unique_entities": 2,
+    "has_batch_gate_observation": true,
+    "has_child_parent_link": true
+  }
+}
