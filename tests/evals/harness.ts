@@ -14,7 +14,7 @@
 import { Entity } from "../../src/cantrip/entity";
 import { cantrip } from "../../src/cantrip/cantrip";
 import { Circle } from "../../src/circle/circle";
-import { js as jsMedium, getJsMediumSandbox } from "../../src/circle/medium/js";
+import { js, getJsMediumSandbox } from "../../src/circle/medium/js";
 import { JsContext, getJsContext } from "../../src/circle/medium/js/context";
 import { max_turns, require_done } from "../../src/circle/ward";
 import { call_entity, call_entity_batch } from "../../src/circle/gate/builtin/call_entity_gate";
@@ -326,7 +326,7 @@ export async function runJsSandboxEval(options: {
     typeof context === "string" ? context : JSON.stringify(context);
 
   const start = Date.now();
-  const medium = jsMedium({ state: { context } });
+  const medium = js({ state: { context } });
   const gates = [done_for_medium()];
   const entityGate = call_entity({ max_depth: maxDepth, depth: 0, parent_context: context });
   if (entityGate) gates.push(entityGate);

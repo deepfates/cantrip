@@ -33,11 +33,9 @@ import {
   serveCantripACP,
   createAcpProgressCallback,
   progressBinding,
+  js, bash, browser,
+  type CantripMediumConfig,
 } from "../src";
-import { js } from "../src/circle/medium/js";
-import { bash } from "../src/circle/medium/bash";
-import { browser } from "../src/circle/medium/browser";
-import type { CantripMediumConfig } from "../src/circle/gate/builtin/cantrip";
 
 // ── CLI args ──────────────────────────────────────────────────────────
 

@@ -9,6 +9,7 @@
     "./entity": "./src/entity/index.ts",
     "./circle": "./src/circle/index.ts",
     "./circle/gate": "./src/circle/gate/index.ts",
+    "./circle/medium": "./src/circle/medium/index.ts",
     "./crystal/tokens": "./src/crystal/tokens/index.ts",
     "./entity/acp": "./src/entity/acp/index.ts",
     "./loom": "./src/loom/index.ts",

@@ -6,9 +6,8 @@
 import "./env";
 import {
   cantrip, Circle, ChatAnthropic, Loom, MemoryStorage,
-  max_turns, require_done, call_entity_gate,
+  max_turns, require_done, call_entity_gate, js,
 } from "../src";
-import { js } from "../src/circle/medium/js";
 
 export async function main() {
   console.log("=== Example 14: Recursive Entities ===");

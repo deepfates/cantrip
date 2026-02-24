@@ -6,9 +6,8 @@ import "./env";
 import {
   cantrip, Circle, ChatAnthropic, max_turns,
   serveCantripACP,
-  SandboxContext, getSandboxContext, safeFsGates,
+  SandboxContext, getSandboxContext, safeFsGates, js,
 } from "../src";
-import { js } from "../src/circle/medium/js";
 
 export async function main() {
   console.log("--- Example 13: ACP Server ---");

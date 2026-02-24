@@ -185,7 +185,7 @@ const circle = Circle({
 The entity writes and runs JavaScript. Data lives in variables across turns — the entity thinks in code.
 
 ```typescript
-import { jsMedium as js } from "cantrip";
+import { js } from "cantrip";
 
 const circle = Circle({
   medium: js({ state: { context: { items: [1, 2, 3] } } }),
@@ -200,7 +200,7 @@ The entity sees a `context` variable in its sandbox and explores it with code. G
 The entity writes shell commands. Full access to CLI tools — git, curl, ffmpeg, jq, whatever's installed.
 
 ```typescript
-import { bashMedium as bash } from "cantrip";
+import { bash } from "cantrip";
 
 const circle = Circle({
   medium: bash({ cwd: "/project" }),
@@ -213,7 +213,7 @@ const circle = Circle({
 The entity controls a headless browser by writing Taiko code — navigation, clicking, data extraction.
 
 ```typescript
-import { browserMedium as browser } from "cantrip";
+import { browser } from "cantrip";
 
 const circle = Circle({
   medium: browser({ headless: true, profile: "full" }),
@@ -226,11 +226,11 @@ const circle = Circle({
 JS sandbox with browser automation combined — the entity writes JavaScript that can also control a browser.
 
 ```typescript
-import { jsBrowserMedium, BrowserContext } from "cantrip";
+import { jsBrowser, BrowserContext } from "cantrip";
 
 const browserCtx = await BrowserContext.create({ headless: true, profile: "full" });
 const circle = Circle({
-  medium: jsBrowserMedium({ browserContext: browserCtx }),
+  medium: jsBrowser({ browserContext: browserCtx }),
   wards: [max_turns(200), require_done()],
 });
 ```
@@ -248,7 +248,7 @@ Any interactive environment can become a medium — Python, SQL, Frida, GDB, Red
 The simplest pattern. Create a cantrip, cast it, get a result.
 
 ```typescript
-import { cantrip, Circle, ChatAnthropic, jsMedium as js, max_turns, require_done } from "cantrip";
+import { cantrip, Circle, ChatAnthropic, js, max_turns, require_done } from "cantrip";
 
 const spell = cantrip({
   crystal: new ChatAnthropic({ model: "claude-sonnet-4-5" }),
@@ -289,7 +289,7 @@ await runRepl({ entity, greeting: "Agent ready." });
 A parent entity in a JS medium delegates subtasks to children via `call_entity`.
 
 ```typescript
-import { call_entity_gate, Loom, MemoryStorage, jsMedium as js } from "cantrip";
+import { call_entity_gate, Loom, MemoryStorage, js } from "cantrip";
 
 const entityGate = call_entity_gate({ max_depth: 2, depth: 0, parent_context: data });
 
@@ -313,8 +313,7 @@ The capstone pattern: a long-running JS entity that creates and casts child cant
 ```typescript
 import {
   cantripGates, repoGates, RepoContext, Loom, JsonlStorage, done,
-  jsMedium as js, bashMedium as bash, browserMedium as browser,
-  getRepoContextDepends,
+  js, bash, browser, getRepoContextDepends,
 } from "cantrip";
 
 const loom = new Loom(new JsonlStorage(".cantrip/loom.jsonl"));

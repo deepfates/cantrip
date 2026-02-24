@@ -8,9 +8,8 @@ import {
   cantrip, Circle, Loom, MemoryStorage,
   max_turns, require_done,
   call_entity_gate, call_entity_batch_gate,
-  ChatOpenAI,
+  ChatOpenAI, js,
 } from "../src";
-import { js } from "../src/circle/medium/js";
 
 export async function main() {
   console.log("=== Example 10: Composition ===");

@@ -23,7 +23,7 @@ import {
   ChatAnthropic,
   ChatOpenAI,
   ChatGoogle,
-  jsBrowserMedium,
+  jsBrowser,
   type BaseChatModel,
 } from "../src";
 
@@ -68,7 +68,7 @@ export async function main() {
 
     // Circle: jsBrowser medium + recursive gates + wards
     const circle = Circle({
-      medium: jsBrowserMedium({ browserContext }),
+      medium: jsBrowser({ browserContext }),
       gates,
       wards: [max_turns(200), require_done()],
     });

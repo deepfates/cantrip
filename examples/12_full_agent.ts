@@ -6,9 +6,8 @@
 import "./env";
 import {
   cantrip, runRepl, Circle, ChatAnthropic, max_turns,
-  SandboxContext, getSandboxContext, safeFsGates,
+  SandboxContext, getSandboxContext, safeFsGates, js,
 } from "../src";
-import { js } from "../src/circle/medium/js";
 
 export async function main() {
   console.log("--- Example 12: Full Agent ---");

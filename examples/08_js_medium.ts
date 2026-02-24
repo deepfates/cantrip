@@ -3,8 +3,7 @@
 // ONE medium per circle — the medium REPLACES conversation.
 
 import "./env";
-import { cantrip, Circle, ChatAnthropic, max_turns, require_done } from "../src";
-import { js } from "../src/circle/medium/js";
+import { cantrip, Circle, ChatAnthropic, max_turns, require_done, js } from "../src";
 
 export async function main() {
   console.log("=== Example 08: JS Medium ===");
