@@ -82,7 +82,38 @@ defmodule Cantrip.EntityServer do
 
       case invoke_with_retry(state.cantrip, request) do
         {:error, reason, next_crystal_state} ->
-          raise "crystal error: #{inspect(reason)} (state=#{inspect(next_crystal_state)})"
+          message = "crystal error: #{inspect(reason)}"
+
+          loom =
+            Loom.append_turn(state.loom, %{
+              entity_id: state.entity_id,
+              utterance: %{content: nil, tool_calls: []},
+              observation: [%{gate: "crystal", result: message, is_error: true}],
+              gate_calls: ["crystal"],
+              terminated: true,
+              truncated: false,
+              metadata: %{
+                tokens_prompt: 0,
+                tokens_completion: 0,
+                duration_ms: max(System.monotonic_time(:millisecond) - started_at, 1),
+                timestamp: DateTime.utc_now()
+              }
+            })
+
+          meta = %{
+            entity_id: state.entity_id,
+            turns: state.turns + 1,
+            terminated: true,
+            cumulative_usage: state.usage
+          }
+
+          {message,
+           %{
+             state
+             | cantrip: %{state.cantrip | crystal_state: next_crystal_state},
+               loom: loom,
+               turns: state.turns + 1
+           }, meta}
 
         {:ok, response, next_crystal_state} ->
           duration_ms = max(System.monotonic_time(:millisecond) - started_at, 1)
