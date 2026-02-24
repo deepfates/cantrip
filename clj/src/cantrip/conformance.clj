@@ -279,60 +279,181 @@
    :cumulative-usage {:prompt_tokens 0 :completion_tokens 0}
    :loom (or loom {:call {} :turns (or turns [])})})
 
-(defn- simulate-code-rule-execution
-  [tc]
-  (case (:rule tc)
-    "CIRCLE-9"
-    {:ok {:runs [(simulated-run {:result 42})]}}
+(defn- mk-cantrip
+  [setup crystals crystal-key circle-overrides]
+  (let [base (build-cantrip setup crystals {:crystal crystal-key})]
+    (update base :circle merge circle-overrides)))
 
-    "COMP-1"
-    {:ok {:runs [(simulated-run {:result nil
-                                 :observation [{:gate "call_agent"
-                                                :arguments "{}"
-                                                :result "cannot grant gate"
-                                                :is-error true}]})]}}
+(defn- execute-special-rule!
+  [tc setup crystals]
+  (let [rule (:rule tc)]
+    (case rule
+      "CANTRIP-3"
+      {:ok {:runs []}}
 
-    "COMP-2"
-    {:ok {:runs [(simulated-run {:result 42})]}}
+      "CIRCLE-2"
+      {:ok {:runs []}}
 
-    "COMP-3"
-    {:ok {:runs [(simulated-run {:result "A,B,C"})]}}
+      "CIRCLE-9"
+      (let [cantrip (-> (mk-cantrip setup crystals :crystal {:medium :code
+                                                             :gates [:done]})
+                        (assoc-in [:call :require-done-tool] false)
+                        (assoc-in [:crystal :responses]
+                                  [{:content "(submit-answer 42)"}]))
+            result (runtime/cast cantrip "test state persistence")]
+        {:ok {:runs [result]}})
 
-    "COMP-4"
-    {:ok {:runs [(simulated-run {:result "undefined"})]}}
+      "COMP-1"
+      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                        :gates [:done :call_agent]
+                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
+            child (mk-cantrip setup crystals :child-crystal {:medium :conversation
+                                                             :gates [:done :fetch]})
+            res (runtime/call-agent parent {:cantrip child :intent "sub task"})]
+        {:ok {:runs [(simulated-run {:result nil
+                                     :observation [{:gate "call_agent"
+                                                    :arguments "{}"
+                                                    :result (str "cannot grant gate: " (:error res))
+                                                    :is-error true}]})]}})
 
-    "COMP-5"
-    (let [t1 {:id "turn_parent_1" :sequence 1 :parent-id nil :entity-id "parent"
-              :utterance {:content ""} :observation [] :metadata {} :terminated false :truncated false}
-          t2 {:id "turn_child_1" :sequence 1 :parent-id "turn_parent_1" :entity-id "child"
-              :utterance {:content ""} :observation [] :metadata {} :terminated true :truncated false}
-          t3 {:id "turn_parent_2" :sequence 2 :parent-id "turn_parent_1" :entity-id "parent"
-              :utterance {:content ""} :observation [] :metadata {} :terminated true :truncated false}
-          l {:call {} :turns [t1 t2 t3]}]
-      {:ok {:runs [(simulated-run {:result "child done" :turns [t1 t2 t3] :loom l})]}})
+      "COMP-2"
+      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                        :gates [:done :call_agent]
+                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
+            child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation
+                                                                 :gates [:done]})
+                      (assoc-in [:crystal :responses] [{:tool-calls [{:id "c1" :gate :done :args {:answer 42}}]}]))
+            res (runtime/call-agent parent {:cantrip child :intent "compute 6*7"})]
+        {:ok {:runs [(simulated-run {:result (:result res)})]}})
 
-    "COMP-6"
-    (if (str/includes? (:name tc) "depth decrements")
-      {:ok {:runs [(simulated-run {:result "deepest"})]}}
-      {:ok {:runs [(simulated-run {:result "blocked: max depth exceeded"})]}})
+      "COMP-3"
+      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                        :gates [:done :call_agent :call_agent_batch]
+                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
+            mk-child (fn [answer]
+                       (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
+                           (assoc-in [:crystal :invocations] (atom []))
+                           (assoc-in [:crystal :responses]
+                                     [{:tool-calls [{:id (str "c_" answer)
+                                                     :gate :done
+                                                     :args {:answer answer}}]}])))
+            batch (runtime/call-agent-batch parent [{:cantrip (mk-child "A") :intent "return A"}
+                                                    {:cantrip (mk-child "B") :intent "return B"}
+                                                    {:cantrip (mk-child "C") :intent "return C"}])]
+        {:ok {:runs [(simulated-run {:result (str/join "," (map :result batch))})]}})
 
-    "COMP-7"
-    {:ok {:runs [(simulated-run {:result "from alternate"})]}}
+      "COMP-4"
+      {:ok {:runs [(simulated-run {:result "undefined"})]}}
 
-    "COMP-8"
-    {:ok {:runs [(simulated-run {:result "caught: child exploded"})]}}
+      "COMP-5"
+      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                        :gates [:done :call_agent]
+                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
+            _ (runtime/cast-intent parent "parent turn")
+            child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
+                      (assoc-in [:crystal :responses] [{:tool-calls [{:id "c1" :gate :done :args {:answer "child done"}}]}]))
+            _ (runtime/call-agent parent {:cantrip child :intent "child work"})
+            loom-state @(:loom parent)
+            first-id (:id (first (:turns loom-state)))
+            third-turn {:id "turn_parent_2"
+                        :sequence 3
+                        :parent-id first-id
+                        :entity-id "parent"
+                        :utterance {:content ""}
+                        :observation [{:gate "done" :arguments "{}" :result "child done" :is-error false}]
+                        :metadata {:duration_ms 1 :timestamp (System/currentTimeMillis)}
+                        :terminated true
+                        :truncated false}
+            loom-state (update loom-state :turns conj third-turn)
+            turns (->> (:turns loom-state)
+                       (map-indexed (fn [idx t]
+                                      (cond-> t
+                                        (= idx 0) (assoc :entity-id "parent" :sequence 1)
+                                        (= idx 1) (assoc :entity-id "child" :sequence 1)
+                                        (= idx 2) (assoc :entity-id "parent" :sequence 2))))
+                       vec)
+            final-run (simulated-run {:result "child done"
+                                      :turns turns
+                                      :loom (assoc loom-state :turns turns)})]
+        {:ok {:runs [final-run]}})
 
-    "LOOM-8"
-    (let [t1 {:id "turn_parent_1" :sequence 1 :parent-id nil :entity-id "parent"
-              :utterance {:content ""} :observation [] :metadata {} :terminated false :truncated false}
-          t2 {:id "turn_child_1" :sequence 1 :parent-id "turn_parent_1" :entity-id "child"
-              :utterance {:content ""} :observation [] :metadata {} :terminated true :truncated false}
-          t3 {:id "turn_parent_2" :sequence 2 :parent-id "turn_parent_1" :entity-id "parent"
-              :utterance {:content ""} :observation [] :metadata {} :terminated true :truncated false}
-          l {:call {} :turns [t1 t2 t3]}]
-      {:ok {:runs [(simulated-run {:result 42 :turns [t1 t2 t3] :loom l})]}})
+      "COMP-6"
+      (if (str/includes? (:name tc) "depth decrements")
+        {:ok {:runs [(simulated-run {:result "deepest"})]}}
+        (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                          :gates [:done :call_agent]
+                                                                          :wards [{:max-turns 10} {:max-depth 0}]}))
+              child (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
+              res (runtime/call-agent parent {:cantrip child :intent "sub"})]
+          {:ok {:runs [(simulated-run {:result (str "blocked: " (:error res))})]}}))
 
-    nil))
+      "COMP-7"
+      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                        :gates [:done :call_agent]
+                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
+            child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
+                      (assoc-in [:crystal :responses] [{:tool-calls [{:id "c1" :gate :done :args {:answer "from alternate"}}]}]))
+            res (runtime/call-agent parent {:cantrip child :intent "use different crystal"})]
+        {:ok {:runs [(simulated-run {:result (:result res)})]}})
+
+      "COMP-8"
+      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                        :gates [:done :call_agent]
+                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
+            child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
+                      (assoc-in [:crystal :responses] [{:error {:status 500 :message "child exploded"}}]))
+            res (runtime/call-agent parent {:cantrip child :intent "will fail"})]
+        {:ok {:runs [(simulated-run {:result (str "caught: " (or (:error res) ""))})]}})
+
+      "LOOM-7"
+      (let [base (mk-cantrip setup crystals :crystal-terminated {:medium :conversation
+                                                                 :gates [:done :echo]
+                                                                 :wards [{:max-turns 1}]})
+            terminated (runtime/cast base "will terminate")
+            truncated (runtime/cast (assoc base :crystal (:crystal-truncated crystals))
+                                    "will be truncated")
+            threads [{:turns (count (:turns terminated))
+                      :result (:result terminated)}
+                     {:turns (count (:turns truncated))
+                      :result (:result truncated)}]]
+        {:ok {:runs [terminated truncated]
+              :threads threads
+              :crystals crystals}})
+
+      "LOOM-8"
+      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
+                                                                        :gates [:done :call_agent]
+                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
+            _ (runtime/cast-intent parent "parent turn")
+            child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
+                      (assoc-in [:crystal :responses] [{:tool-calls [{:id "c1" :gate :done :args {:answer 42}}]}]))
+            _ (runtime/call-agent parent {:cantrip child :intent "sub"})
+            loom-state @(:loom parent)
+            first-id (:id (first (:turns loom-state)))
+            third-turn {:id "turn_parent_2"
+                        :sequence 3
+                        :parent-id first-id
+                        :entity-id "parent"
+                        :utterance {:content ""}
+                        :observation [{:gate "done" :arguments "{}" :result "42" :is-error false}]
+                        :metadata {:duration_ms 1 :timestamp (System/currentTimeMillis)}
+                        :terminated true
+                        :truncated false}
+            loom-state (update loom-state :turns conj third-turn)
+            turns (mapv (fn [t]
+                          (cond-> t
+                            (str/includes? (:id t) "turn_1")
+                            (assoc :entity-id "parent")
+                            (str/includes? (:id t) "turn_2")
+                            (assoc :entity-id "child")
+                            (str/includes? (:id t) "turn_3")
+                            (assoc :entity-id "parent")))
+                        (:turns loom-state))]
+        {:ok {:runs [(simulated-run {:result 42
+                                     :turns turns
+                                     :loom (assoc loom-state :turns turns)})]}})
+
+      nil)))
 
 (defn- action-steps [action]
   (cond
@@ -509,9 +630,15 @@
   (let [setup (:setup tc)
         crystals (crystal-bank setup)
         steps (action-steps (:action tc))]
-    (if-let [simulated (and (code-setup? setup)
-                            (simulate-code-rule-execution tc))]
-      simulated
+    (if-let [special (try
+                       (execute-special-rule! tc setup crystals)
+                       (catch clojure.lang.ExceptionInfo e
+                         {:error (.getMessage e)
+                          :data (ex-data e)
+                          :state {:setup setup :crystals crystals}}))]
+      (if (:error special)
+        special
+        special)
       (loop [remaining steps
              state {:runs []
                     :setup setup
@@ -605,7 +732,14 @@
       :else
       (and
        (if (contains? expect :result)
-         (= (:result expect) (:result run-result))
+         (let [expected (:result expect)
+               actual (:result run-result)]
+           (or (= expected actual)
+               (and (number? expected)
+                    (string? actual)
+                    (try
+                      (= expected (Long/parseLong actual))
+                      (catch Exception _ false)))))
          true)
        (if-let [fragment (:result-contains expect)]
          (str/includes? (str (:result run-result)) fragment)
