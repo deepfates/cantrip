@@ -28,22 +28,10 @@ defmodule Cantrip.CodeMedium do
 
   @spec eval(String.t(), state(), runtime()) :: {state(), list(map()), term() | nil, boolean()}
   def eval(code, state, runtime) when is_binary(code) do
-    statements = split_statements(code)
     initial_binding = build_binding(Map.get(state, :binding, []), runtime)
 
     Process.put(:cantrip_code_observations, [])
-
-    {binding, result, terminated} =
-      Enum.reduce_while(statements, {initial_binding, nil, false}, fn statement,
-                                                                      {binding, _result, _term} ->
-        case eval_statement(statement, binding) do
-          {:ok, next_binding} ->
-            {:cont, {next_binding, nil, false}}
-
-          {:done, next_binding, answer} ->
-            {:halt, {next_binding, answer, true}}
-        end
-      end)
+    {binding, result, terminated} = eval_block(code, initial_binding)
 
     observations = Process.get(:cantrip_code_observations, [])
     Process.delete(:cantrip_code_observations)
@@ -52,27 +40,29 @@ defmodule Cantrip.CodeMedium do
     {next_state, observations, result, terminated}
   end
 
-  defp eval_statement("", binding), do: {:ok, binding}
+  defp eval_block(code, binding) do
+    if String.trim(code) == "" do
+      {binding, nil, false}
+    else
+      case Code.string_to_quoted(code) do
+        {:ok, quoted} ->
+          try do
+            {_value, next_binding} = Code.eval_quoted(quoted, binding)
+            {next_binding, nil, false}
+          rescue
+            e ->
+              push_observation(%{gate: "code", result: Exception.message(e), is_error: true})
+              {binding, nil, false}
+          catch
+            {:cantrip_done, answer} ->
+              {binding, answer, true}
+          end
 
-  defp eval_statement(statement, binding) do
-    case Code.string_to_quoted(statement) do
-      {:ok, quoted} ->
-        try do
-          {_value, next_binding} = Code.eval_quoted(quoted, binding)
-          {:ok, next_binding}
-        rescue
-          e ->
-            push_observation(%{gate: "code", result: Exception.message(e), is_error: true})
-            {:ok, binding}
-        catch
-          {:cantrip_done, answer} ->
-            {:done, binding, answer}
-        end
-
-      {:error, {line, error, token}} ->
-        msg = "parse error at #{inspect(line)}: #{inspect(error)} #{inspect(token)}"
-        push_observation(%{gate: "code", result: msg, is_error: true})
-        {:ok, binding}
+        {:error, {line, error, token}} ->
+          msg = "parse error at #{inspect(line)}: #{inspect(error)} #{inspect(token)}"
+          push_observation(%{gate: "code", result: msg, is_error: true})
+          {binding, nil, false}
+      end
     end
   end
 
@@ -152,11 +142,4 @@ defmodule Cantrip.CodeMedium do
   end
 
   defp normalize_batch(_), do: []
-
-  defp split_statements(code) do
-    code
-    |> String.split("\n")
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-  end
 end
