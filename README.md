@@ -22,14 +22,14 @@ Together they create an **entity** that can reason, act, observe, and adapt.
 
 A **crystal** is an interface to an LLM. It takes messages and tools, returns responses with tool calls.
 
-\`\`\`typescript
+```typescript
 import { crystal } from "cantrip/crystal";
 
 const haiku = crystal({
   model: "anthropic/claude-3.5-haiku",
   temperature: 0.7
 });
-\`\`\`
+```
 
 Crystals are stateless API wrappers. We use OpenRouter for model access.
 
@@ -51,14 +51,14 @@ The model uses tools *within* the medium:
 - In Python: Uses requests, pandas, numpy by writing Python code
 - In JavaScript: Uses fetch, fs, child_process by writing JS code
 
-\`\`\`typescript
+```typescript
 import { bash } from "cantrip/circle/medium";
 
 // Creates a bash session
 const shell = bash({ cwd: "/project" });
 
 // Model can now execute: git status, curl http://..., etc.
-\`\`\`
+```
 
 ---
 
@@ -66,15 +66,15 @@ const shell = bash({ cwd: "/project" });
 
 A **circle** is the entity loop that connects crystal and medium:
 
-\`\`\`
+```
 Intent → Crystal → Assistant Response → Medium Execution → Observations → Crystal → ...
-\`\`\`
+```
 
 The loop continues until:
 - **Gate opens**: Entity signals completion (e.g., calls \`submit_answer()\`)
 - **Ward violated**: Safety limit reached (max turns, timeout, cost)
 
-\`\`\`typescript
+```typescript
 import { circle } from "cantrip/circle";
 import { done } from "cantrip/circle/gate";
 
@@ -84,7 +84,7 @@ const agent = circle({
   gates: [done()],  // Provides submit_answer() tool
   wards: [{ max_turns: 10 }]
 });
-\`\`\`
+```
 
 **Gates** (success conditions):
 - \`done()\` - Entity calls \`submit_answer(result)\` when finished
@@ -101,7 +101,7 @@ const agent = circle({
 
 Put it all together:
 
-\`\`\`typescript
+```typescript
 import { cantrip, cast } from "cantrip";
 import { crystal } from "cantrip/crystal";
 import { bash } from "cantrip/circle/medium";
@@ -122,18 +122,18 @@ const researcher = cantrip({
 // Cast the cantrip with an intent
 const result = await cast(researcher, "Research TypeScript compiler architecture");
 console.log(result);
-\`\`\`
+```
 
 **Leaf cantrip** (no circle - single LLM call):
 
-\`\`\`typescript
+```typescript
 const analyzer = cantrip({
   crystal: crystal({ model: "anthropic/claude-3.5-haiku" }),
   call: { system: "You analyze code for bugs" }
 });
 
 const bugs = await cast(analyzer, "Here's my function: " + code);
-\`\`\`
+```
 
 ---
 
@@ -141,7 +141,7 @@ const bugs = await cast(analyzer, "Here's my function: " + code);
 
 The **Familiar** is a special cantrip that runs in a JS medium with the ability to create and cast child cantrips:
 
-\`\`\`typescript
+```typescript
 import { familiar } from "cantrip";
 
 const myFamiliar = familiar({
@@ -152,7 +152,7 @@ const myFamiliar = familiar({
 
 // The Familiar can coordinate complex tasks by creating specialized children
 await cast(myFamiliar, "Analyze the codebase and run the test suite");
-\`\`\`
+```
 
 Inside the Familiar's JS medium, it has access to:
 - \`cantrip(config)\` - Create child cantrips
@@ -169,33 +169,33 @@ This enables **hierarchical task decomposition**: The Familiar breaks down your 
 ### Bash
 Execute shell commands with full access to CLI tools.
 
-\`\`\`typescript
+```typescript
 bash({ cwd: "/path", env: { KEY: "value" } })
-\`\`\`
+```
 
 Use: git operations, file manipulation, curl requests, ffmpeg processing
 
 ### JavaScript (QuickJS)
 Execute JavaScript in a sandboxed runtime.
 
-\`\`\`typescript
+```typescript
 js({ 
   cwd: "/path",
   host_functions: { /* custom functions */ }
 })
-\`\`\`
+```
 
 Use: Data processing, API calls, custom logic
 
 ### Browser
 Control a headless browser with Puppeteer.
 
-\`\`\`typescript
+```typescript
 browser({ 
   headless: true,
   viewport: { width: 1280, height: 720 }
 })
-\`\`\`
+```
 
 Use: Web scraping, testing, automation
 
@@ -217,13 +217,13 @@ Any interactive environment can be a medium:
 
 Cantrip uses the standard OpenAI message format:
 
-\`\`\`typescript
+```typescript
 type Message = 
   | { role: "system", content: string }
   | { role: "user", content: string }
   | { role: "assistant", content: string, tool_calls?: ToolCall[] }
   | { role: "tool", tool_call_id: string, content: string }
-\`\`\`
+```
 
 This ensures compatibility and makes it easy to reason about conversation state.
 
@@ -252,7 +252,7 @@ This ensures compatibility and makes it easy to reason about conversation state.
 ## Examples
 
 ### Research Agent
-\`\`\`typescript
+```typescript
 const researcher = cantrip({
   crystal: sonnet,
   call: { system: "Research topics using bash tools" },
@@ -264,10 +264,10 @@ const researcher = cantrip({
 });
 
 await cast(researcher, "What are the latest trends in WebAssembly?");
-\`\`\`
+```
 
 ### Code Analyzer
-\`\`\`typescript
+```typescript
 const analyzer = cantrip({
   crystal: haiku,
   call: { 
@@ -277,10 +277,10 @@ const analyzer = cantrip({
 });
 
 await cast(analyzer, "Review this authentication module: " + code);
-\`\`\`
+```
 
 ### Browser Automation
-\`\`\`typescript
+```typescript
 const scraper = cantrip({
   crystal: haiku,
   call: { system: "Extract data from websites" },
@@ -292,20 +292,20 @@ const scraper = cantrip({
 });
 
 await cast(scraper, "Get the top HN stories with scores > 100");
-\`\`\`
+```
 
 ---
 
 ## Installation
 
-\`\`\`bash
+```bash
 npm install cantrip
-\`\`\`
+```
 
 Set your OpenRouter API key:
-\`\`\`bash
+```bash
 export OPENROUTER_API_KEY="sk-..."
-\`\`\`
+```
 
 ---
 
