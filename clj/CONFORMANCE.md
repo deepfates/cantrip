@@ -38,3 +38,9 @@ Optional exploratory command:
 1. Full `tests.yaml` behavioral execution is not complete yet.
 2. YAML execution scaffolding exists and is wired into `make conformance`.
 3. Remaining implementation is tracked in `IMPLEMENTATION_TASKS.md` under Phase 1 (`P1-2`, `P1-3`, `P1-4`).
+
+## ACP Idle/Debug Notes (`PROD-9`)
+
+1. Use `cantrip.protocol.acp/router-health` to inspect healthy idle state (`:healthy?`, `:idle?`, `:session-count`, `:initialized?`).
+2. Enable router debug collection via `(new-router cantrip {:debug-mode true})`.
+3. In debug mode, `handle-request` appends method/outcome events to `:debug-events` for smoke-level protocol tracing.

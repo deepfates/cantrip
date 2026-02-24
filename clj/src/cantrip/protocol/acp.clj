@@ -3,11 +3,25 @@
             [cantrip.runtime :as runtime]
             [clojure.string :as str]))
 
-(defn new-router [cantrip]
-  {:cantrip cantrip
-   :initialized? false
-   :sessions {}
-   :next-session-id 1})
+(defn new-router
+  ([cantrip]
+   (new-router cantrip {}))
+  ([cantrip {:keys [debug-mode]}]
+   {:cantrip cantrip
+    :initialized? false
+    :sessions {}
+    :next-session-id 1
+    :debug-mode (true? debug-mode)
+    :debug-events []}))
+
+(defn router-health
+  "Returns operational state for stdio health/idle reporting."
+  [router]
+  {:healthy? true
+   :idle? true
+   :initialized? (:initialized? router)
+   :session-count (count (:sessions router))
+   :debug-mode (:debug-mode router)})
 
 (defn- error-response [id code message]
   {:jsonrpc "2.0"
@@ -48,15 +62,28 @@
   [router req]
   (let [id (:id req)
         method (:method req)
-        params (:params req)]
+        params (:params req)
+        respond (fn [next-router response notifications outcome]
+                  (let [event {:method method
+                               :request-id id
+                               :outcome outcome}
+                        routed (if (:debug-mode next-router)
+                                 (update next-router :debug-events conj event)
+                                 next-router)]
+                    [routed response notifications]))]
     (cond
       (= method "initialize")
-      [(assoc router :initialized? true)
-       (result-response id {:protocolVersion 1 :serverInfo {:name "cantrip-clj"}})
-       []]
+      (respond (assoc router :initialized? true)
+               (result-response id {:protocolVersion 1
+                                    :serverInfo {:name "cantrip-clj"}})
+               []
+               :ok)
 
       (not (:initialized? router))
-      [router (error-response id -32002 "server not initialized") []]
+      (respond router
+               (error-response id -32002 "server not initialized")
+               []
+               :error)
 
       (= method "session/new")
       (let [sid (new-session-id router)
@@ -65,30 +92,39 @@
                             (update :next-session-id inc)
                             (assoc-in [:sessions sid] {:history []
                                                        :entity entity}))]
-        [next-router
-         (result-response id {:sessionId sid})
-         []])
+        (respond next-router
+                 (result-response id {:sessionId sid})
+                 []
+                 :ok))
 
       (= method "session/prompt")
       (let [sid (:sessionId params)
             session (get-in router [:sessions sid])]
-        (cond
-          (nil? session)
-          [router (error-response id -32004 "unknown session") []]
-
-          :else
+        (if (nil? session)
+          (respond router
+                   (error-response id -32004 "unknown session")
+                   []
+                   :error)
           (let [prompt-text (extract-prompt-text params)]
             (if (str/blank? (or prompt-text ""))
-              [router (error-response id -32602 "prompt must contain a text content block") []]
+              (respond router
+                       (error-response id -32602 "prompt must contain a text content block")
+                       []
+                       :error)
               (let [history (conj (:history session) prompt-text)
                     cast-result (runtime/cast-intent (:entity session) prompt-text)
                     text (or (:result cast-result) "")
+                    redacted (redaction/redact-text text)
                     next-router (assoc-in router [:sessions sid :history] history)]
-                [next-router
-                 (result-response id {:sessionId sid
-                                      :output [{:type "text"
-                                                :text (redaction/redact-text text)}]})
-                 [(session-update sid (redaction/redact-text text))]])))))
+                (respond next-router
+                         (result-response id {:sessionId sid
+                                              :output [{:type "text"
+                                                        :text redacted}]})
+                         [(session-update sid redacted)]
+                         :ok))))))
 
       :else
-      [router (error-response id -32601 "method not found") []])))
+      (respond router
+               (error-response id -32601 "method not found")
+               []
+               :error))))

@@ -90,3 +90,19 @@
                                      :params {:sessionId sid :prompt "second"}})]
     (is (= 2 (count @invocations)))
     (is (= 4 (count (-> @invocations second :messages))))))
+
+(deftest router-health-reports-idle-and-session-count
+  (let [router (acp/new-router acp-cantrip)
+        health (acp/router-health router)]
+    (is (true? (:healthy? health)))
+    (is (true? (:idle? health)))
+    (is (= 0 (:session-count health)))
+    (is (false? (:initialized? health)))))
+
+(deftest debug-mode-collects-request-events
+  (let [[router _ _] (acp/handle-request (acp/new-router acp-cantrip {:debug-mode true})
+                                         {:jsonrpc "2.0" :id "1" :method "initialize" :params {:protocolVersion 1}})
+        [router2 _ _] (acp/handle-request router
+                                          {:jsonrpc "2.0" :id "2" :method "no/such/method" :params {}})]
+    (is (= 2 (count (:debug-events router2))))
+    (is (= [:ok :error] (mapv :outcome (:debug-events router2))))))
