@@ -46,18 +46,31 @@
 (defn- circle-tools [circle]
   (gates/gate-tools (:gates circle)))
 
-(defn- turn->messages [turn]
+(defn- folding-config [cantrip]
+  (get-in cantrip [:runtime :folding]))
+
+(defn- max-turns-in-context [cantrip]
+  (let [cfg (folding-config cantrip)]
+    (or (:max-turns-in-context cfg)
+        (:max_turns_in_context cfg))))
+
+(defn- ephemeral-observations? [cantrip]
+  (true? (get-in cantrip [:runtime :ephemeral-observations])))
+
+(defn- turn->messages [turn compact-observation?]
   (let [utterance (:utterance turn)
         assistant-msg (cond-> {:role :assistant}
                         (string? (:content utterance))
                         (assoc :content (:content utterance))
                         (seq (:tool-calls utterance))
                         (assoc :tool-calls (vec (:tool-calls utterance))))
-        tool-msgs (mapv (fn [record]
-                          {:role :tool
-                           :name (:gate record)
-                           :content (str (:result record))})
-                        (:observation turn))]
+        tool-msgs (map-indexed (fn [idx record]
+                                 {:role :tool
+                                  :name (:gate record)
+                                  :content (if compact-observation?
+                                             (str "[ephemeral-ref:" (:id turn) ":" idx "]")
+                                             (str (:result record)))})
+                               (:observation turn))]
     (into [assistant-msg] tool-msgs)))
 
 (defn- build-messages [cantrip intent prior-turns current-cast-turns]
@@ -67,11 +80,24 @@
                (conj {:role :system :content system-prompt})
                :always
                (conj {:role :user :content intent}))
-        turns (concat prior-turns current-cast-turns)]
-    (reduce (fn [acc turn]
-              (into acc (turn->messages turn)))
-            base
-            turns)))
+        all-turns (vec (concat prior-turns current-cast-turns))
+        keep-limit (max-turns-in-context cantrip)
+        [folded-count turns] (if (and (integer? keep-limit)
+                                      (pos? keep-limit)
+                                      (> (count all-turns) keep-limit))
+                               [(- (count all-turns) keep-limit)
+                                (subvec all-turns (- (count all-turns) keep-limit))]
+                               [0 all-turns])
+        with-folding (if (pos? folded-count)
+                       (conj base {:role :system
+                                   :content (str "Folded " folded-count " prior turns into summary context.")})
+                       base)
+        ephemeral? (ephemeral-observations? cantrip)]
+    (reduce (fn [acc [idx turn]]
+              (let [compact? (and ephemeral? (< idx (dec (count turns))))]
+                (into acc (turn->messages turn compact?))))
+            with-folding
+            (map-indexed vector turns))))
 
 (defn- normalize-usage [usage]
   {:prompt_tokens (long (or (:prompt_tokens usage) (:prompt-tokens usage) 0))

@@ -1,5 +1,6 @@
 (ns cantrip.runtime-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [cantrip.runtime :as runtime]))
 
 (def valid-cantrip
@@ -196,3 +197,47 @@
     (is (= "ok" (:result result)))
     (is (= 1 (count (:turns result))))
     (is (= 2 (count @invocations)))))
+
+(deftest folding-limits-context-with-summary-message
+  (let [invocations (atom [])
+        entity (runtime/invoke
+                {:crystal {:provider :fake
+                           :record-inputs true
+                           :responses-by-invocation true
+                           :invocations invocations
+                           :responses [{:tool-calls [{:id "call_1" :gate :done :args {:answer "a"}}]}
+                                       {:tool-calls [{:id "call_2" :gate :done :args {:answer "b"}}]}
+                                       {:tool-calls [{:id "call_3" :gate :done :args {:answer "c"}}]}]}
+                 :call {:system-prompt "fold test"}
+                 :circle {:medium :conversation
+                          :gates [:done]
+                          :wards [{:max-turns 3}]}
+                 :runtime {:folding {:max_turns_in_context 1}}})]
+    (runtime/cast-intent entity "one")
+    (runtime/cast-intent entity "two")
+    (runtime/cast-intent entity "three")
+    (is (= 3 (count @invocations)))
+    (is (some #(and (= :system (:role %))
+                    (str/includes? (:content %) "Folded"))
+              (-> @invocations (nth 2) :messages)))))
+
+(deftest ephemeral-observations-compact-older-turn-messages
+  (let [invocations (atom [])
+        cantrip {:crystal {:provider :fake
+                           :record-inputs true
+                           :invocations invocations
+                           :responses [{:tool-calls [{:id "call_1" :gate :echo :args {:text "one"}}]}
+                                       {:tool-calls [{:id "call_2" :gate :echo :args {:text "two"}}]}
+                                       {:tool-calls [{:id "call_3" :gate :done :args {:answer "ok"}}]}]}
+                 :call {:system-prompt "ephemeral test"
+                        :require-done-tool true}
+                 :circle {:medium :conversation
+                          :gates [:done :echo]
+                          :wards [{:max-turns 5}]}
+                 :runtime {:ephemeral-observations true}}
+        result (runtime/cast cantrip "compact")
+        third-messages (-> @invocations (nth 2) :messages)
+        tool-contents (map :content (filter #(= :tool (:role %)) third-messages))
+        first-turn-observation (-> result :turns first :observation first :result)]
+    (is (some #(str/starts-with? % "[ephemeral-ref:") tool-contents))
+    (is (= "gate not implemented" first-turn-observation))))
