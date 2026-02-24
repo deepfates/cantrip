@@ -9,9 +9,13 @@ defmodule Cantrip.CodeMedium do
 
   alias Cantrip.Circle
 
-  @reserved_bindings [:done, :call_agent]
+  @reserved_bindings [:done, :call_agent, :compile_and_load]
 
-  @type runtime :: %{required(:circle) => Circle.t(), required(:call_agent) => (map() -> map())}
+  @type runtime :: %{
+          required(:circle) => Circle.t(),
+          required(:call_agent) => (map() -> map()),
+          optional(:compile_and_load) => (map() -> map())
+        }
   @type state :: %{optional(:binding) => keyword()}
 
   @spec eval(String.t(), state(), runtime()) :: {state(), list(map()), term() | nil, boolean()}
@@ -70,9 +74,24 @@ defmodule Cantrip.CodeMedium do
       payload.value
     end
 
-    user_binding
-    |> Keyword.put(:done, done_fun)
-    |> Keyword.put(:call_agent, call_agent_fun)
+    binding =
+      user_binding
+      |> Keyword.put(:done, done_fun)
+      |> Keyword.put(:call_agent, call_agent_fun)
+
+    case Map.get(runtime, :compile_and_load) do
+      nil ->
+        binding
+
+      gate_fun ->
+        compile_and_load_fun = fn opts ->
+          payload = gate_fun.(normalize_opts(opts))
+          push_observation(payload.observation)
+          payload.value
+        end
+
+        Keyword.put(binding, :compile_and_load, compile_and_load_fun)
+    end
   end
 
   defp persist_binding(binding) do

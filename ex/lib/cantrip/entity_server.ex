@@ -116,7 +116,8 @@ defmodule Cantrip.EntityServer do
           if is_binary(code) do
             runtime = %{
               circle: state.cantrip.circle,
-              call_agent: fn opts -> execute_call_agent(state, opts) end
+              call_agent: fn opts -> execute_call_agent(state, opts) end,
+              compile_and_load: fn opts -> execute_compile_and_load(state, opts) end
             }
 
             {next_state, obs, result, terminated} =
@@ -289,6 +290,11 @@ defmodule Cantrip.EntityServer do
 
   defp default_child_crystal(state),
     do: {state.cantrip.crystal_module, state.cantrip.crystal_state}
+
+  defp execute_compile_and_load(state, opts) do
+    observation = Circle.execute_gate(state.cantrip.circle, "compile_and_load", opts)
+    %{value: observation.result, observation: observation}
+  end
 
   defp invoke_with_retry(cantrip, request) do
     do_invoke_with_retry(

@@ -96,27 +96,27 @@ defmodule Cantrip.Circle do
   defp normalize_type("code"), do: :code
   defp normalize_type(_), do: :conversation
 
-  defp do_execute(%__MODULE__{gates: gates}, gate_name, args) do
+  defp do_execute(%__MODULE__{gates: gates, wards: wards}, gate_name, args) do
     case Map.fetch(gates, gate_name) do
       :error ->
         %{gate: gate_name, result: "unknown gate: #{gate_name}", is_error: true}
 
       {:ok, gate} ->
-        run_gate(gate, args)
+        run_gate(gate, args, wards)
         |> Map.put(:ephemeral, Map.get(gate, :ephemeral, false))
     end
   end
 
-  defp run_gate(%{name: "done"}, args) do
+  defp run_gate(%{name: "done"}, args, _gates) do
     answer = Map.get(args, "answer", Map.get(args, :answer))
     %{gate: "done", result: answer, is_error: false}
   end
 
-  defp run_gate(%{name: "echo"}, args) do
+  defp run_gate(%{name: "echo"}, args, _gates) do
     %{gate: "echo", result: Map.get(args, "text", Map.get(args, :text)), is_error: false}
   end
 
-  defp run_gate(%{name: "read", dependencies: %{root: root}}, args) do
+  defp run_gate(%{name: "read", dependencies: %{root: root}}, args, _gates) do
     path = Map.get(args, "path", Map.get(args, :path))
     full_path = Path.join(root, path)
 
@@ -126,20 +126,120 @@ defmodule Cantrip.Circle do
     end
   end
 
-  defp run_gate(%{behavior: :throw, error: msg, name: name}, _args) do
+  defp run_gate(%{name: "compile_and_load"} = gate, args, wards) do
+    module_name = Map.get(args, "module", Map.get(args, :module))
+    source = Map.get(args, "source", Map.get(args, :source))
+    path = Map.get(args, "path", Map.get(args, :path))
+
+    with :ok <- guard_compile_module(wards, module_name),
+         :ok <- guard_compile_path(wards, path),
+         {:ok, module} <- ensure_module(module_name),
+         :ok <- compile_and_load(module, source, path, gate) do
+      %{gate: "compile_and_load", result: "ok", is_error: false}
+    else
+      {:error, reason} ->
+        %{gate: "compile_and_load", result: reason, is_error: true}
+    end
+  end
+
+  defp run_gate(%{behavior: :throw, error: msg, name: name}, _args, _gates) do
     %{gate: name, result: msg || "gate error", is_error: true}
   end
 
-  defp run_gate(%{behavior: :delay, delay_ms: delay, result: value, name: name}, _args) do
+  defp run_gate(%{behavior: :delay, delay_ms: delay, result: value, name: name}, _args, _gates) do
     Process.sleep(delay || 0)
     %{gate: name, result: value, is_error: false}
   end
 
-  defp run_gate(%{name: name, result: value}, _args),
+  defp run_gate(%{name: name, result: value}, _args, _gates),
     do: %{gate: name, result: value, is_error: false}
 
-  defp run_gate(%{name: name}, _args),
+  defp run_gate(%{name: name}, _args, _gates),
     do: %{gate: name, result: "ok", is_error: false}
+
+  defp guard_compile_module(gates, module_name) when is_binary(module_name) do
+    allow =
+      gates
+      |> Enum.flat_map(fn gate ->
+        case gate do
+          %{allow_compile_modules: names} when is_list(names) -> names
+          _ -> []
+        end
+      end)
+      |> Enum.uniq()
+
+    if allow == [] or module_name in allow do
+      :ok
+    else
+      {:error, "module not allowed: #{module_name}"}
+    end
+  end
+
+  defp guard_compile_module(_gates, _), do: {:error, "module is required"}
+
+  defp guard_compile_path(_gates, nil), do: :ok
+
+  defp guard_compile_path(gates, path) when is_binary(path) do
+    allow =
+      gates
+      |> Enum.flat_map(fn gate ->
+        case gate do
+          %{allow_compile_paths: paths} when is_list(paths) -> paths
+          _ -> []
+        end
+      end)
+      |> Enum.uniq()
+
+    expanded = Path.expand(path)
+
+    if allow == [] or Enum.any?(allow, &String.starts_with?(expanded, Path.expand(&1))) do
+      :ok
+    else
+      {:error, "path not allowed: #{path}"}
+    end
+  end
+
+  defp guard_compile_path(_gates, _), do: {:error, "invalid compile path"}
+
+  defp ensure_module(name) when is_binary(name) do
+    try do
+      {:ok, String.to_atom(name)}
+    rescue
+      _ -> {:error, "invalid module name"}
+    end
+  end
+
+  defp compile_and_load(module, source, path, gate) when is_binary(source) do
+    if Code.ensure_loaded?(module) do
+      :code.purge(module)
+      :code.delete(module)
+    end
+
+    file = path || "nofile"
+
+    if is_binary(path) do
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, source)
+    end
+
+    case Code.compile_string(source, file) do
+      compiled when is_list(compiled) and compiled != [] ->
+        if Enum.any?(compiled, fn {mod, _bin} -> mod == module end) do
+          :ok
+        else
+          {:error, "compiled module mismatch"}
+        end
+
+      _ ->
+        {:error, "no module compiled"}
+    end
+  rescue
+    e ->
+      fallback = Map.get(gate, :compile_error, Exception.message(e))
+      {:error, fallback}
+  end
+
+  defp compile_and_load(_module, _source, _path, _gate), do: {:error, "source is required"}
 
   defp removed_by_ward?(%__MODULE__{wards: wards}, gate_name) do
     Enum.any?(wards, fn
