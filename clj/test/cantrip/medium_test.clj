@@ -25,3 +25,8 @@
         result (medium/execute-utterance circle utterance {})]
     (is (true? (:terminated? result)))
     (is (= "ok" (:result result)))))
+
+(deftest medium-state-hooks-dispatch
+  (let [circle {:medium :conversation :gates [:done]}]
+    (is (= {} (medium/snapshot-state circle {})))
+    (is (= {:x 1} (medium/restore-state circle {:x 1} {})))))

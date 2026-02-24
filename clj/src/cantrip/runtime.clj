@@ -204,11 +204,14 @@
   "Creates a persistent entity handle for multi-cast sessions."
   [cantrip]
   (domain/validate-cantrip! cantrip)
-  (let [entity-id (str (random-uuid))]
+  (let [entity-id (str (random-uuid))
+        medium-state (medium/snapshot-state (:circle cantrip)
+                                            (get-in cantrip [:circle :dependencies]))]
     {:entity-id entity-id
      :cantrip cantrip
      :status :ready
      :loom (atom (loom/new-loom (:call cantrip)))
+     :medium-state (atom medium-state)
      :cumulative-usage (atom {:prompt_tokens 0
                               :completion_tokens 0})
      :turn-history (atom [])}))
@@ -221,10 +224,17 @@
         _ (domain/validate-cantrip! cantrip)
         prior-turns @(:turn-history entity)
         current-loom @(:loom entity)
+        current-medium-state @(:medium-state entity)
+        _ (medium/restore-state (:circle cantrip)
+                                current-medium-state
+                                (get-in cantrip [:circle :dependencies]))
         prior-usage @(:cumulative-usage entity)
         result (run-cast (:entity-id entity) cantrip intent prior-turns current-loom prior-usage)]
     (swap! (:turn-history entity) into (:new-turns result))
     (reset! (:loom entity) (:loom result))
+    (reset! (:medium-state entity)
+            (medium/snapshot-state (:circle cantrip)
+                                   (get-in cantrip [:circle :dependencies])))
     (reset! (:cumulative-usage entity) (:cumulative-usage result))
     (dissoc result :new-turns)))
 
@@ -234,5 +244,6 @@
   {:entity-id (:entity-id entity)
    :status (:status entity)
    :turn-count (count @(:turn-history entity))
+   :medium-state @(:medium-state entity)
    :cumulative-usage @(:cumulative-usage entity)
    :loom @(:loom entity)})

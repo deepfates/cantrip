@@ -16,6 +16,7 @@
       (is (string? (:entity-id entity)))
       (is (= :ready (:status entity)))
       (is (instance? clojure.lang.IAtom (:loom entity)))
+      (is (instance? clojure.lang.IAtom (:medium-state entity)))
       (is (instance? clojure.lang.IAtom (:cumulative-usage entity))))))
 
 (deftest cast-terminates-on-successful-done
@@ -144,6 +145,7 @@
     (is (= "ok" (:result first-result)))
     (is (= "ok" (:result second-result)))
     (is (= 2 (:turn-count state)))
+    (is (map? (:medium-state state)))
     (is (= 2 (count (get-in state [:loom :turns]))))
     (is (= 2 (count @invocations)))
     (is (= 4 (count (-> @invocations second :messages))))))
