@@ -102,28 +102,28 @@ defmodule Cantrip.Examples do
   defp build(_, _opts), do: {:error, "unknown pattern id"}
 
   defp build_basic(intent, spec, opts) do
-    crystal = Map.get(opts, :crystal, default_crystal())
-    child_crystal = Map.get(opts, :child_crystal, crystal)
-    type = Map.get(spec, :type, :conversation)
-    gates = Map.get(spec, :gates, [:done])
-    max_turns = Map.get(spec, :max_turns, 12)
+    with {:ok, crystal, child_crystal} <- resolve_crystals(opts) do
+      type = Map.get(spec, :type, :conversation)
+      gates = Map.get(spec, :gates, [:done])
+      max_turns = Map.get(spec, :max_turns, 12)
 
-    wards =
-      [%{max_turns: max_turns}]
-      |> maybe_put_ward(:max_depth, Map.get(spec, :max_depth))
+      wards =
+        [%{max_turns: max_turns}]
+        |> maybe_put_ward(:max_depth, Map.get(spec, :max_depth))
 
-    attrs = %{
-      crystal: crystal,
-      child_crystal: child_crystal,
-      call: Map.get(spec, :call, %{}),
-      circle: %{type: type, gates: gates, wards: wards},
-      folding: Map.get(spec, :folding, %{}),
-      loom_storage: Map.get(spec, :loom_storage)
-    }
+      attrs = %{
+        crystal: crystal,
+        child_crystal: child_crystal,
+        call: Map.get(spec, :call, %{}),
+        circle: %{type: type, gates: gates, wards: wards},
+        folding: Map.get(spec, :folding, %{}),
+        loom_storage: Map.get(spec, :loom_storage)
+      }
 
-    case Cantrip.new(Enum.reject(attrs, fn {_k, v} -> is_nil(v) end)) do
-      {:ok, cantrip} -> {:ok, {intent, cantrip}}
-      {:error, reason} -> {:error, reason}
+      case Cantrip.new(Enum.reject(attrs, fn {_k, v} -> is_nil(v) end)) do
+        {:ok, cantrip} -> {:ok, {intent, cantrip}}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
@@ -141,6 +141,27 @@ defmodule Cantrip.Examples do
 
   defp maybe_put_ward(wards, _key, nil), do: wards
   defp maybe_put_ward(wards, key, value), do: wards ++ [%{key => value}]
+
+  defp resolve_crystals(opts) do
+    crystal = Map.get(opts, :crystal)
+    child_crystal = Map.get(opts, :child_crystal)
+    real? = Map.get(opts, :real, false)
+
+    cond do
+      crystal != nil ->
+        {:ok, crystal, child_crystal || crystal}
+
+      real? ->
+        case Cantrip.crystal_from_env() do
+          {:ok, real_crystal} -> {:ok, real_crystal, child_crystal || real_crystal}
+          {:error, reason} -> {:error, reason}
+        end
+
+      true ->
+        default = default_crystal()
+        {:ok, default, child_crystal || default}
+    end
+  end
 
   defp default_crystal do
     {FakeCrystal, FakeCrystal.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}

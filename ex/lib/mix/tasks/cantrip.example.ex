@@ -7,15 +7,18 @@ defmodule Mix.Tasks.Cantrip.Example do
   @impl true
   def run(args) do
     Mix.Task.run("app.start")
+    {opts, rest, _invalid} = OptionParser.parse(args, strict: [real: :boolean])
 
-    case args do
+    case rest do
       ["list"] ->
         Enum.each(Cantrip.Examples.catalog(), fn item ->
           Mix.shell().info("#{item.id}  #{item.title}")
         end)
 
       [id] ->
-        case Cantrip.Examples.run(id) do
+        example_opts = [real: Keyword.get(opts, :real, false)]
+
+        case Cantrip.Examples.run(id, example_opts) do
           {:ok, result, _cantrip, _loom, _meta} ->
             Mix.shell().info("pattern #{id} result: #{inspect(result)}")
 
@@ -24,7 +27,7 @@ defmodule Mix.Tasks.Cantrip.Example do
         end
 
       _ ->
-        Mix.shell().info("usage: mix cantrip.example <id|list>")
+        Mix.shell().info("usage: mix cantrip.example <id|list> [--real]")
     end
   end
 end

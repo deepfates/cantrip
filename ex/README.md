@@ -101,6 +101,12 @@ Run a pattern by id:
 mix cantrip.example 08
 ```
 
+Run a pattern with real crystal from env:
+
+```bash
+mix cantrip.example 08 --real
+```
+
 Pattern `06` uses env-backed real crystal configuration; others default to deterministic fake crystals unless overridden in code/tests.
 
 ## Real Crystals (.env)

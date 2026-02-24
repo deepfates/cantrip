@@ -4,6 +4,14 @@ defmodule CantripM12ExamplesTest do
   alias Cantrip.Examples
   alias Cantrip.FakeCrystal
 
+  setup do
+    previous_model = System.get_env("CANTRIP_MODEL")
+
+    on_exit(fn ->
+      restore_env("CANTRIP_MODEL", previous_model)
+    end)
+  end
+
   test "catalog exposes all 16 pattern ids" do
     ids = Examples.catalog() |> Enum.map(& &1.id)
     assert ids == Enum.map(1..16, &String.pad_leading(Integer.to_string(&1), 2, "0"))
@@ -61,4 +69,12 @@ defmodule CantripM12ExamplesTest do
 
     assert File.exists?(path)
   end
+
+  test "real example mode fails fast when env crystal config is missing" do
+    System.delete_env("CANTRIP_MODEL")
+    assert {:error, "missing CANTRIP_MODEL"} = Examples.run("01", real: true)
+  end
+
+  defp restore_env(key, nil), do: System.delete_env(key)
+  defp restore_env(key, value), do: System.put_env(key, value)
 end
