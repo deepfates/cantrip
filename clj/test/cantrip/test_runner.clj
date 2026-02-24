@@ -5,6 +5,7 @@
             [cantrip.composition-test]
             [cantrip.crystal-test]
             [cantrip.domain-test]
+            [cantrip.examples-test]
             [cantrip.gates-test]
             [cantrip.loom-test]
             [cantrip.medium-test]
@@ -17,6 +18,7 @@
                                           'cantrip.composition-test
                                           'cantrip.crystal-test
                                           'cantrip.domain-test
+                                          'cantrip.examples-test
                                           'cantrip.gates-test
                                           'cantrip.loom-test
                                           'cantrip.medium-test
