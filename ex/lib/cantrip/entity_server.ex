@@ -13,7 +13,7 @@ defmodule Cantrip.EntityServer do
             loom: nil,
             turns: 0,
             depth: 0,
-            cancel_on_parent: nil,
+            cancel_on_parent: [],
             usage: %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0},
             code_state: %{}
 
@@ -33,7 +33,7 @@ defmodule Cantrip.EntityServer do
     loom = Keyword.get(opts, :loom, Loom.new(cantrip.call, storage: cantrip.loom_storage))
     turns = Keyword.get(opts, :turns, 0)
     depth = Keyword.get(opts, :depth, 0)
-    cancel_on_parent = Keyword.get(opts, :cancel_on_parent)
+    cancel_on_parent = normalize_cancel_parents(Keyword.get(opts, :cancel_on_parent))
 
     {:ok,
      %__MODULE__{
@@ -230,7 +230,7 @@ defmodule Cantrip.EntityServer do
             if item[:ephemeral] do
               "[ephemeral:#{item.gate}]"
             else
-              to_string(item.result)
+              stringify_tool_result(item.result)
             end
 
           %{
@@ -321,9 +321,11 @@ defmodule Cantrip.EntityServer do
           circle: child_circle
       }
 
+      cancel_on_parent = [self() | state.cancel_on_parent] |> Enum.uniq()
+
       case Cantrip.cast(child_cantrip, child_intent,
              depth: state.depth + 1,
-             cancel_on_parent: self()
+             cancel_on_parent: cancel_on_parent
            ) do
         {:ok, value, next_cantrip, child_loom, _meta} ->
           remember_child_crystal(next_cantrip)
@@ -520,7 +522,7 @@ defmodule Cantrip.EntityServer do
 
   defp truncation_reason(state) do
     cond do
-      is_pid(state.cancel_on_parent) and not Process.alive?(state.cancel_on_parent) ->
+      Enum.any?(state.cancel_on_parent, fn pid -> is_pid(pid) and not Process.alive?(pid) end) ->
         "parent_terminated"
 
       state.turns >= Circle.max_turns(state.cantrip.circle) ->
@@ -530,4 +532,18 @@ defmodule Cantrip.EntityServer do
         nil
     end
   end
+
+  defp normalize_cancel_parents(nil), do: []
+
+  defp normalize_cancel_parents(parents) when is_list(parents) do
+    parents
+    |> Enum.filter(&is_pid/1)
+    |> Enum.uniq()
+  end
+
+  defp normalize_cancel_parents(parent) when is_pid(parent), do: [parent]
+  defp normalize_cancel_parents(_), do: []
+
+  defp stringify_tool_result(result) when is_binary(result), do: result
+  defp stringify_tool_result(result), do: inspect(result)
 end
