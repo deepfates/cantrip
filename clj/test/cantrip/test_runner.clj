@@ -1,5 +1,6 @@
 (ns cantrip.test-runner
   (:require [clojure.test :as t]
+            [cantrip.acp-test]
             [cantrip.circle-test]
             [cantrip.crystal-test]
             [cantrip.domain-test]
@@ -8,7 +9,8 @@
             [cantrip.runtime-test]))
 
 (defn -main [& _]
-  (let [{:keys [fail error]} (t/run-tests 'cantrip.circle-test
+  (let [{:keys [fail error]} (t/run-tests 'cantrip.acp-test
+                                          'cantrip.circle-test
                                           'cantrip.crystal-test
                                           'cantrip.domain-test
                                           'cantrip.loom-test

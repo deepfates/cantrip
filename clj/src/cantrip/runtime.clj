@@ -34,6 +34,7 @@
            previous-tool-call-ids []]
       (if (>= turn-index turn-limit)
         {:entity-id entity-id
+         :intent intent
          :status :truncated
          :result nil
          :turns turns}
@@ -57,11 +58,13 @@
               next-turns (conj turns turn-record)]
           (cond
             terminated? {:entity-id entity-id
+                         :intent intent
                          :status :terminated
                          :result result
                          :turns next-turns}
 
             done-by-text? {:entity-id entity-id
+                           :intent intent
                            :status :terminated
                            :result (:content utterance)
                            :turns next-turns}
