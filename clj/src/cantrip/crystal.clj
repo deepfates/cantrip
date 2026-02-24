@@ -56,13 +56,24 @@
              (instance? clojure.lang.IAtom (:invocations crystal)))
     (swap! (:invocations crystal) conj invocation)))
 
+(defn- response-index [crystal turn-index]
+  (if (and (:responses-by-invocation crystal)
+           (instance? clojure.lang.IAtom (:invocations crystal)))
+    (max 0 (dec (count @(:invocations crystal))))
+    turn-index))
+
 (defn query
   "Queries the configured crystal. For now supports deterministic fake responses."
   [crystal {:keys [turn-index messages tools tool-choice previous-tool-call-ids]}]
   (record-invocation! crystal {:messages (vec messages)
                                :tools (vec tools)
                                :tool-choice tool-choice})
-  (let [response (or (get (:responses crystal) turn-index) {})
+  (let [idx (response-index crystal turn-index)
+        response (or (get (:responses crystal) idx) {})
+        _ (when-let [err (:error response)]
+            (throw (ex-info (or (:message err) "crystal provider error")
+                            {:status (:status err)
+                             :provider-error err})))
         normalized (normalize-response response)]
     (-> normalized
         ensure-required-shape!

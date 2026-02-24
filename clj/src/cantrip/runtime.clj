@@ -17,6 +17,32 @@
   (or (get-in cantrip [:call :tool-choice])
       :auto))
 
+(defn- retry-config [cantrip]
+  (let [cfg (:retry cantrip)]
+    {:max-retries (long (or (:max-retries cfg) (:max_retries cfg) 0))
+     :retryable-status-codes (set (or (:retryable-status-codes cfg)
+                                      (:retryable_status_codes cfg)
+                                      []))}))
+
+(defn- retryable-error? [error retryable-status-codes]
+  (let [status (:status (ex-data error))]
+    (and (integer? status) (contains? retryable-status-codes status))))
+
+(defn- query-with-retry
+  [cantrip query-params]
+  (let [{:keys [max-retries retryable-status-codes]} (retry-config cantrip)]
+    (loop [attempt 0]
+      (let [result (try
+                     {:ok (crystal/query (:crystal cantrip) query-params)}
+                     (catch clojure.lang.ExceptionInfo e
+                       {:error e}))]
+        (if-let [error (:error result)]
+          (if (and (< attempt max-retries)
+                   (retryable-error? error retryable-status-codes))
+            (recur (inc attempt))
+            (throw error))
+          (:ok result))))))
+
 (defn- circle-tools [circle]
   (gates/gate-tools (:gates circle)))
 
@@ -79,12 +105,12 @@
          :loom loom-state}
         (let [messages (build-messages cantrip intent prior-turns turns)
               query-start (System/nanoTime)
-              utterance (crystal/query (:crystal cantrip)
-                                       {:turn-index turn-index
-                                        :messages messages
-                                        :tools tools
-                                        :tool-choice selected-tool-choice
-                                        :previous-tool-call-ids previous-tool-call-ids})
+              utterance (query-with-retry cantrip
+                                          {:turn-index turn-index
+                                           :messages messages
+                                           :tools tools
+                                           :tool-choice selected-tool-choice
+                                           :previous-tool-call-ids previous-tool-call-ids})
               query-end (System/nanoTime)
               turn-usage (normalize-usage (:usage utterance))
               next-cumulative-usage (add-usage cumulative-usage turn-usage)

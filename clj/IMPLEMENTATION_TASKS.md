@@ -37,7 +37,7 @@ Status legend: `TODO` | `IN_PROGRESS` | `BLOCKED` | `DONE`
 
 | ID | Task | Status | Done Criteria |
 |---|---|---|---|
-| P3-1 | Retry semantics as single-turn concern (`PROD-2`) | TODO | Retry path represented as one logical turn in loom |
+| P3-1 | Retry semantics as single-turn concern (`PROD-2`) | DONE | Retry path represented as one logical turn in loom |
 | P3-2 | Cumulative token accounting (`PROD-3`) | DONE | Entity/cast exposes cumulative usage with tests |
 | P3-3 | Folding trigger + non-destructive compaction (`PROD-4`) | TODO | Folding policy implemented and tested without data loss |
 | P3-4 | Ephemeral observation references (`PROD-5`) | TODO | Working context compacts while loom retains full records |

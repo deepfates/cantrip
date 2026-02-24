@@ -174,3 +174,25 @@
     (is (= 50 (get-in first-turn [:metadata :tokens_completion])))
     (is (= 200 (get-in second-turn [:metadata :tokens_prompt])))
     (is (= 30 (get-in second-turn [:metadata :tokens_completion])))))
+
+(deftest cast-retries-retryable-provider-errors-in-single-turn
+  (let [invocations (atom [])
+        cantrip {:crystal {:provider :fake
+                           :record-inputs true
+                           :responses-by-invocation true
+                           :invocations invocations
+                           :responses [{:error {:status 429 :message "rate limited"}}
+                                       {:tool-calls [{:id "call_1"
+                                                      :gate :done
+                                                      :args {:answer "ok"}}]}]}
+                 :call {:system-prompt "retry test"}
+                 :circle {:medium :conversation
+                          :gates [:done]
+                          :wards [{:max-turns 3}]}
+                 :retry {:max_retries 1
+                         :retryable_status_codes [429]}}
+        result (runtime/cast cantrip "retry intent")]
+    (is (= :terminated (:status result)))
+    (is (= "ok" (:result result)))
+    (is (= 1 (count (:turns result))))
+    (is (= 2 (count @invocations)))))
