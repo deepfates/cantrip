@@ -60,7 +60,7 @@ defmodule Cantrip.Crystals.OpenAICompatible do
       base =
         %{
           role: role,
-          content: if(is_nil(content), do: nil, else: to_string(content))
+          content: if(is_nil(content), do: "", else: to_string(content))
         }
 
       base
