@@ -74,7 +74,9 @@ defmodule CantripM2LoopRuntimeTest do
     {:ok, nil, _cantrip, loom, meta} = Cantrip.cast(cantrip, "count")
 
     assert meta.truncated
+    assert meta.truncation_reason == "max_turns"
     assert List.last(loom.turns).truncated
+    assert get_in(List.last(loom.turns), [:metadata, :truncation_reason]) == "max_turns"
   end
 
   test "LOOP-6 text-only terminates when done not required" do
