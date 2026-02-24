@@ -7,8 +7,10 @@
                         #"neither content nor tool_calls"
                         (crystal/query {:provider :fake
                                         :responses [{}]}
-                                       0
-                                       {:tool-choice :auto
+                                       {:turn-index 0
+                                        :messages []
+                                        :tools []
+                                        :tool-choice :auto
                                         :previous-tool-call-ids []}))))
 
 (deftest crystal-requires-unique-tool-call-ids
@@ -21,8 +23,10 @@
                                                                   {:id "call_1"
                                                                    :gate :echo
                                                                    :args {:text "b"}}]}]}
-                                       0
-                                       {:tool-choice :auto
+                                       {:turn-index 0
+                                        :messages []
+                                        :tools []
+                                        :tool-choice :auto
                                         :previous-tool-call-ids []}))))
 
 (deftest crystal-enforces-required-tool-choice
@@ -30,8 +34,10 @@
                         #"tool_choice required"
                         (crystal/query {:provider :fake
                                         :responses [{:content "hello"}]}
-                                       0
-                                       {:tool-choice :required
+                                       {:turn-index 0
+                                        :messages []
+                                        :tools []
+                                        :tool-choice :required
                                         :previous-tool-call-ids []}))))
 
 (deftest crystal-enforces-tool-result-linkage
@@ -42,8 +48,10 @@
                                                     {:content "step 2"
                                                      :tool-results [{:tool-call-id "call_99"
                                                                      :content "oops"}]}]}
-                                       1
-                                       {:tool-choice :auto
+                                       {:turn-index 1
+                                        :messages []
+                                        :tools []
+                                        :tool-choice :auto
                                         :previous-tool-call-ids ["call_1"]}))))
 
 (deftest crystal-normalizes-tool-call-keys
@@ -51,8 +59,25 @@
                              :responses [{:tool-calls [{:id "call_1"
                                                         :name :done
                                                         :arguments {:answer "ok"}}]}]}
-                            0
-                            {:tool-choice :auto
+                            {:turn-index 0
+                             :messages []
+                             :tools []
+                             :tool-choice :auto
                              :previous-tool-call-ids []})]
     (is (= [{:id "call_1" :gate :done :args {:answer "ok"}}]
            (:tool-calls resp)))))
+
+(deftest crystal-can-record-query-inputs
+  (let [invocations (atom [])
+        _ (crystal/query {:provider :fake
+                          :record-inputs true
+                          :invocations invocations
+                          :responses [{:content "ok"}]}
+                         {:turn-index 0
+                          :messages [{:role :system :content "s"}]
+                          :tools [{:name "done"}]
+                          :tool-choice :auto
+                          :previous-tool-call-ids []})]
+    (is (= 1 (count @invocations)))
+    (is (= :auto (-> @invocations first :tool-choice)))
+    (is (= [{:name "done"}] (-> @invocations first :tools)))))

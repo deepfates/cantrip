@@ -50,9 +50,18 @@
       (update :tool-calls #(mapv normalize-tool-call (or % [])))
       (update :tool-results #(vec (or % [])))))
 
+(defn- record-invocation!
+  [crystal invocation]
+  (when (and (:record-inputs crystal)
+             (instance? clojure.lang.IAtom (:invocations crystal)))
+    (swap! (:invocations crystal) conj invocation)))
+
 (defn query
   "Queries the configured crystal. For now supports deterministic fake responses."
-  [crystal turn-index {:keys [tool-choice previous-tool-call-ids]}]
+  [crystal {:keys [turn-index messages tools tool-choice previous-tool-call-ids]}]
+  (record-invocation! crystal {:messages (vec messages)
+                               :tools (vec tools)
+                               :tool-choice tool-choice})
   (let [response (or (get (:responses crystal) turn-index) {})
         normalized (normalize-response response)]
     (-> normalized

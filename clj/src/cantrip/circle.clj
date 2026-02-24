@@ -11,7 +11,13 @@
         gate-key (keyword gate)]
     (cond
       (map? gates) (contains? gates gate-key)
-      (sequential? gates) (boolean (some #(= gate-key %) gates))
+      (sequential? gates) (boolean (some (fn [candidate]
+                                           (cond
+                                             (keyword? candidate) (= gate-key candidate)
+                                             (string? candidate) (= gate-key (keyword candidate))
+                                             (map? candidate) (= gate-key (keyword (:name candidate)))
+                                             :else false))
+                                         gates))
       :else false)))
 
 (defn- done-observation [args]

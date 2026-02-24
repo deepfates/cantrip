@@ -13,7 +13,8 @@
   (testing "invoke returns an entity map with id and status"
     (let [entity (runtime/invoke valid-cantrip)]
       (is (string? (:entity-id entity)))
-      (is (= :ready (:status entity))))))
+      (is (= :ready (:status entity)))
+      (is (instance? clojure.lang.IAtom (:loom entity))))))
 
 (deftest cast-terminates-on-successful-done
   (let [cantrip (assoc valid-cantrip
@@ -77,3 +78,70 @@
     (is (= :truncated (:status result)))
     (is (nil? (:result result)))
     (is (= 2 (count (:turns result))))))
+
+(deftest cast-builds-call-context-for-crystal
+  (let [invocations (atom [])
+        cantrip {:crystal {:provider :fake
+                           :record-inputs true
+                           :invocations invocations
+                           :responses [{:tool-calls [{:id "call_1"
+                                                      :gate :echo
+                                                      :args {:text "1"}}]}
+                                       {:tool-calls [{:id "call_2"
+                                                      :gate :done
+                                                      :args {:answer "ok"}}]}]}
+                 :call {:system-prompt "You are a test agent"}
+                 :circle {:medium :conversation
+                          :gates [:done :echo]
+                          :wards [{:max-turns 4}]}}
+        _ (runtime/cast cantrip "test context")
+        first-call (first @invocations)
+        second-call (second @invocations)]
+    (is (= {:role :system :content "You are a test agent"}
+           (first (:messages first-call))))
+    (is (= {:role :user :content "test context"}
+           (second (:messages first-call))))
+    (is (= 2 (count (:messages first-call))))
+    (is (= 4 (count (:messages second-call))))))
+
+(deftest cast-derives-tools-from-circle-gates
+  (let [invocations (atom [])
+        cantrip {:crystal {:provider :fake
+                           :record-inputs true
+                           :invocations invocations
+                           :responses [{:tool-calls [{:id "call_1"
+                                                      :gate :done
+                                                      :args {:answer "ok"}}]}]}
+                 :call {:system-prompt "test"}
+                 :circle {:medium :conversation
+                          :gates [{:name :done
+                                   :parameters {:type "object"}}
+                                  {:name :read
+                                   :parameters {:type "object"}}]
+                          :wards [{:max-turns 2}]}}]
+    (runtime/cast cantrip "tool shape")
+    (is (= ["done" "read"]
+           (mapv :name (-> @invocations first :tools))))))
+
+(deftest invoke-cast-intent-persists-turn-history
+  (let [invocations (atom [])
+        entity (runtime/invoke
+                {:crystal {:provider :fake
+                           :record-inputs true
+                           :invocations invocations
+                           :responses [{:tool-calls [{:id "call_1"
+                                                      :gate :done
+                                                      :args {:answer "ok"}}]}]}
+                 :call {:system-prompt "test"}
+                 :circle {:medium :conversation
+                          :gates [:done]
+                          :wards [{:max-turns 3}]}})
+        first-result (runtime/cast-intent entity "a")
+        second-result (runtime/cast-intent entity "b")
+        state (runtime/entity-state entity)]
+    (is (= "ok" (:result first-result)))
+    (is (= "ok" (:result second-result)))
+    (is (= 2 (:turn-count state)))
+    (is (= 2 (count (get-in state [:loom :turns]))))
+    (is (= 2 (count @invocations)))
+    (is (= 4 (count (-> @invocations second :messages))))))

@@ -5,7 +5,13 @@
   (let [gates (:gates circle)]
     (cond
       (map? gates) (contains? gates :done)
-      (sequential? gates) (boolean (some #(= :done %) gates))
+      (sequential? gates) (boolean (some (fn [gate]
+                                           (cond
+                                             (keyword? gate) (= :done gate)
+                                             (string? gate) (= "done" gate)
+                                             (map? gate) (#{:done "done"} (:name gate))
+                                             :else false))
+                                         gates))
       :else false)))
 
 (defn- has-truncation-ward? [circle]
