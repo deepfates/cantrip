@@ -62,6 +62,31 @@ Recommended extension loop:
 mix test
 ```
 
+## Real Crystals (.env)
+
+You can run with real providers (or local OpenAI-compatible servers) via env vars.
+
+Example `.env`:
+
+```bash
+CANTRIP_CRYSTAL_PROVIDER=openai_compatible
+CANTRIP_MODEL=gpt-4.1-mini
+CANTRIP_API_KEY=sk-...
+CANTRIP_BASE_URL=https://api.openai.com/v1
+CANTRIP_TIMEOUT_MS=30000
+```
+
+Then construct with:
+
+```elixir
+{:ok, cantrip} =
+  Cantrip.new_from_env(
+    circle: %{gates: [:done], wards: [%{max_turns: 10}]}
+  )
+```
+
+`.env` is loaded at app boot for local development.
+
 ## Notes for Onboarding
 
 - The runtime threads crystal state through the cantrip value for deterministic fake-crystal tests.

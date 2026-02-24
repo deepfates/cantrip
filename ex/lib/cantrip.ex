@@ -52,6 +52,50 @@ defmodule Cantrip do
   end
 
   @doc """
+  Build a cantrip from environment-based crystal configuration.
+
+  Required env:
+  - `CANTRIP_MODEL`
+  Optional env:
+  - `CANTRIP_CRYSTAL_PROVIDER` (default: `openai_compatible`)
+  - `CANTRIP_API_KEY`
+  - `CANTRIP_BASE_URL` (default: `https://api.openai.com/v1`)
+  - `CANTRIP_TIMEOUT_MS` (default: `30000`)
+  """
+  @spec new_from_env(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
+  def new_from_env(attrs \\ %{}) do
+    attrs = Map.new(attrs)
+
+    with {:ok, crystal} <- crystal_from_env() do
+      new(Map.put(attrs, :crystal, crystal))
+    end
+  end
+
+  @spec crystal_from_env() :: {:ok, {module(), map()}} | {:error, String.t()}
+  def crystal_from_env do
+    provider = System.get_env("CANTRIP_CRYSTAL_PROVIDER", "openai_compatible")
+    model = System.get_env("CANTRIP_MODEL")
+
+    cond do
+      model in [nil, ""] ->
+        {:error, "missing CANTRIP_MODEL"}
+
+      provider == "openai_compatible" ->
+        {:ok,
+         {Cantrip.Crystals.OpenAICompatible,
+          %{
+            model: model,
+            api_key: System.get_env("CANTRIP_API_KEY"),
+            base_url: System.get_env("CANTRIP_BASE_URL", "https://api.openai.com/v1"),
+            timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000)
+          }}}
+
+      true ->
+        {:error, "unsupported crystal provider: #{provider}"}
+    end
+  end
+
+  @doc """
   Invoke the configured crystal once and validate/normalize the response contract.
   Returns updated cantrip with advanced crystal state.
   """
@@ -209,4 +253,13 @@ defmodule Cantrip do
     do: {module, state}
 
   defp normalize_child_crystal(_, crystal), do: crystal
+
+  defp parse_int(nil, default), do: default
+
+  defp parse_int(value, default) when is_binary(value) do
+    case Integer.parse(value) do
+      {n, _} -> n
+      :error -> default
+    end
+  end
 end
