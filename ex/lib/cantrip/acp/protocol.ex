@@ -113,6 +113,10 @@ defmodule Cantrip.ACP.Protocol do
     extract_text_from_content_blocks(content)
   end
 
+  defp extract_text(content) when is_list(content) do
+    extract_text_from_content_blocks(content)
+  end
+
   defp extract_text(_), do: {:error, :bad_prompt}
 
   defp extract_text_from_content_blocks(content) do
@@ -149,7 +153,12 @@ defmodule Cantrip.ACP.Protocol do
         "sessionId" => session_id,
         "update" => %{"kind" => "agent_message_end"}
       }),
-      ok(id, %{"stopReason" => "end_turn"})
+      ok(id, %{
+        "stopReason" => "end_turn",
+        "content" => [%{"type" => "text", "text" => answer}],
+        "text" => answer,
+        "output_text" => answer
+      })
     ]
   end
 

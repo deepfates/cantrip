@@ -142,11 +142,13 @@ defmodule Cantrip.Crystals.OpenAICompatible do
 
   defp normalize_body(body) do
     choice = get_in(body, ["choices", Access.at(0), "message"]) || %{}
+    content = choice["content"]
     tool_calls = Enum.map(choice["tool_calls"] || [], &normalize_tool_call/1)
     usage = body["usage"] || %{}
 
     %{
-      content: choice["content"],
+      content: content,
+      code: extract_code(content),
       tool_calls: tool_calls,
       usage: %{
         prompt_tokens: usage["prompt_tokens"] || 0,
@@ -154,6 +156,20 @@ defmodule Cantrip.Crystals.OpenAICompatible do
       },
       raw_response: body
     }
+  end
+
+  defp extract_code(content) when not is_binary(content), do: nil
+
+  defp extract_code(content) do
+    text = String.trim(content)
+
+    case Regex.run(~r/```(?:elixir)?\s*\n([\s\S]*?)\n```/i, text) do
+      [_, code] ->
+        String.trim(code)
+
+      _ ->
+        text
+    end
   end
 
   defp normalize_tool_call(call) do

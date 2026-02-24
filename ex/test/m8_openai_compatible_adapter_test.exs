@@ -4,7 +4,7 @@ defmodule CantripM8OpenAICompatibleAdapterTest do
   alias Cantrip.Crystals.OpenAICompatible
 
   test "encodes assistant tool_calls and tool_call_id with string content fields" do
-    {:ok, server} = start_stub_server()
+    {:ok, server} = start_stub_server(%{"content" => nil, "tool_calls" => []})
     port = server.port
 
     state = %{
@@ -54,7 +54,27 @@ defmodule CantripM8OpenAICompatibleAdapterTest do
     assert tool["tool_call_id"] == "call_1"
   end
 
-  defp start_stub_server do
+  test "maps message content into response code for code mediums" do
+    {:ok, server} =
+      start_stub_server(%{
+        "content" => "```elixir\nx = 21 * 2\ndone.(Integer.to_string(x))\n```",
+        "tool_calls" => []
+      })
+
+    port = server.port
+
+    state = %{
+      model: "gpt-test",
+      base_url: "http://127.0.0.1:#{port}/v1",
+      timeout_ms: 5_000
+    }
+
+    assert {:ok, response, _state} = OpenAICompatible.query(state, %{messages: [], tools: []})
+    assert is_binary(response.content)
+    assert response.code == "x = 21 * 2\ndone.(Integer.to_string(x))"
+  end
+
+  defp start_stub_server(message) do
     parent = self()
     {:ok, listener} = :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true])
     {:ok, {_, port}} = :inet.sockname(listener)
@@ -70,7 +90,7 @@ defmodule CantripM8OpenAICompatibleAdapterTest do
 
         response_body =
           Jason.encode!(%{
-            "choices" => [%{"message" => %{"content" => nil, "tool_calls" => []}}],
+            "choices" => [%{"message" => message}],
             "usage" => %{"prompt_tokens" => 1, "completion_tokens" => 1}
           })
 

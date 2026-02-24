@@ -6,7 +6,7 @@
         "jsonrpc": "2.0",
         "id": 1,
         "method": "initialize",
-        "params": {"protocolVersion": 1}
+        "params": { "protocolVersion": 1 }
       },
       "expect": {
         "response_count": 1,
@@ -18,7 +18,7 @@
             "result": {
               "protocolVersion": 1,
               "agentCapabilities": {
-                "promptCapabilities": {"image": false},
+                "promptCapabilities": { "image": false },
                 "loadSession": false
               }
             }
@@ -31,7 +31,7 @@
         "jsonrpc": "2.0",
         "id": 2,
         "method": "session/new",
-        "params": {"cwd": "/tmp"}
+        "params": { "cwd": "/tmp" }
       },
       "expect": {
         "response_count": 1,
@@ -40,7 +40,7 @@
           {
             "jsonrpc": "2.0",
             "id": 2,
-            "result": {"sessionId": "$SESSION_ID"}
+            "result": { "sessionId": "$SESSION_ID" }
           }
         ]
       }
@@ -67,7 +67,7 @@
               "sessionId": "$SESSION_ID",
               "update": {
                 "kind": "agent_message_chunk",
-                "content": {"type": "text", "text": "echo:hola"}
+                "content": { "type": "text", "text": "echo:hola" }
               }
             }
           },
@@ -76,13 +76,18 @@
             "method": "session/update",
             "params": {
               "sessionId": "$SESSION_ID",
-              "update": {"kind": "agent_message_end"}
+              "update": { "kind": "agent_message_end" }
             }
           },
           {
             "jsonrpc": "2.0",
             "id": 3,
-            "result": {"stopReason": "end_turn"}
+            "result": {
+              "stopReason": "end_turn",
+              "content": [{ "type": "text", "text": "echo:hola" }],
+              "text": "echo:hola",
+              "output_text": "echo:hola"
+            }
           }
         ]
       }
@@ -96,8 +101,11 @@
           "sessionId": "$SESSION_ID",
           "prompt": {
             "messages": [
-              {"role": "system", "content": "ignore"},
-              {"role": "user", "content": [{"type": "input_text", "text": "adios"}]}
+              { "role": "system", "content": "ignore" },
+              {
+                "role": "user",
+                "content": [{ "type": "input_text", "text": "adios" }]
+              }
             ]
           }
         }
@@ -114,7 +122,7 @@
               "sessionId": "$SESSION_ID",
               "update": {
                 "kind": "agent_message_chunk",
-                "content": {"type": "text", "text": "echo:adios"}
+                "content": { "type": "text", "text": "echo:adios" }
               }
             }
           },
@@ -123,13 +131,18 @@
             "method": "session/update",
             "params": {
               "sessionId": "$SESSION_ID",
-              "update": {"kind": "agent_message_end"}
+              "update": { "kind": "agent_message_end" }
             }
           },
           {
             "jsonrpc": "2.0",
             "id": 4,
-            "result": {"stopReason": "end_turn"}
+            "result": {
+              "stopReason": "end_turn",
+              "content": [{ "type": "text", "text": "echo:adios" }],
+              "text": "echo:adios",
+              "output_text": "echo:adios"
+            }
           }
         ]
       }

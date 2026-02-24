@@ -251,6 +251,35 @@ defmodule CantripM11AcpProtocolTest do
     assert done["result"]["stopReason"] == "end_turn"
   end
 
+  test "session/prompt accepts prompt as direct content block array" do
+    state = initialized_state()
+
+    {state, [new_resp]} =
+      Protocol.handle_request(state, %{
+        "jsonrpc" => "2.0",
+        "id" => 16,
+        "method" => "session/new",
+        "params" => %{"cwd" => "/tmp"}
+      })
+
+    session_id = get_in(new_resp, ["result", "sessionId"])
+
+    {_state, responses} =
+      Protocol.handle_request(state, %{
+        "jsonrpc" => "2.0",
+        "id" => 17,
+        "method" => "session/prompt",
+        "params" => %{
+          "sessionId" => session_id,
+          "prompt" => [%{"type" => "text", "text" => "hello"}]
+        }
+      })
+
+    [_, _, done] = responses
+    assert done["id"] == 17
+    assert done["result"]["stopReason"] == "end_turn"
+  end
+
   defp initialized_state do
     state = Protocol.new(runtime: StubRuntime)
 
