@@ -150,10 +150,13 @@ defmodule Cantrip.Circle do
     source = Map.get(args, "source", Map.get(args, :source))
     path = Map.get(args, "path", Map.get(args, :path))
     sha256 = Map.get(args, "sha256", Map.get(args, :sha256))
+    key_id = Map.get(args, "key_id", Map.get(args, :key_id))
+    signature = Map.get(args, "signature", Map.get(args, :signature))
 
     with :ok <- guard_compile_module(wards, module_name),
          :ok <- guard_compile_path(wards, path),
          :ok <- guard_compile_hash(wards, source, sha256),
+         :ok <- guard_compile_signature(wards, source, key_id, signature),
          {:ok, module} <- ensure_module(module_name),
          :ok <- compile_and_load(module, source, path, gate) do
       %{gate: "compile_and_load", result: "ok", is_error: false}
@@ -270,6 +273,78 @@ defmodule Cantrip.Circle do
     else
       {:error, "sha256 not allowed"}
     end
+  end
+
+  defp guard_compile_signature(wards, source, key_id, signature) do
+    signers =
+      wards
+      |> Enum.flat_map(fn ward ->
+        case ward do
+          %{allow_compile_signers: signer_map} when is_map(signer_map) ->
+            Map.to_list(signer_map)
+
+          _ ->
+            []
+        end
+      end)
+      |> Map.new(fn {id, key} -> {to_string(id), key} end)
+
+    if map_size(signers) == 0 do
+      :ok
+    else
+      with :ok <- require_binary_source(source),
+           :ok <- require_key_id(key_id),
+           :ok <- require_signature(signature),
+           {:ok, public_key_pem} <- fetch_public_key(signers, key_id),
+           {:ok, signature_bin} <- decode_signature(signature),
+           {:ok, public_key} <- decode_public_key(public_key_pem),
+           :ok <- verify_signature(source, signature_bin, public_key) do
+        :ok
+      end
+    end
+  end
+
+  defp require_key_id(id) when is_binary(id) and id != "", do: :ok
+  defp require_key_id(_), do: {:error, "key_id is required"}
+
+  defp require_signature(sig) when is_binary(sig) and sig != "", do: :ok
+  defp require_signature(_), do: {:error, "signature is required"}
+
+  defp fetch_public_key(signers, key_id) do
+    case Map.fetch(signers, key_id) do
+      {:ok, pem} when is_binary(pem) -> {:ok, pem}
+      {:ok, _} -> {:error, "signer key is invalid for key_id: #{key_id}"}
+      :error -> {:error, "unknown key_id: #{key_id}"}
+    end
+  end
+
+  defp decode_signature(signature) do
+    case Base.decode64(signature) do
+      {:ok, bin} -> {:ok, bin}
+      :error -> {:error, "signature must be base64"}
+    end
+  end
+
+  defp decode_public_key(pem) when is_binary(pem) do
+    case :public_key.pem_decode(pem) do
+      [entry | _] ->
+        {:ok, :public_key.pem_entry_decode(entry)}
+
+      _ ->
+        {:error, "invalid signer public key"}
+    end
+  rescue
+    _ -> {:error, "invalid signer public key"}
+  end
+
+  defp verify_signature(source, signature, public_key) do
+    if :public_key.verify(source, :sha256, signature, public_key) do
+      :ok
+    else
+      {:error, "signature verification failed"}
+    end
+  rescue
+    _ -> {:error, "signature verification failed"}
   end
 
   defp ensure_module(name) when is_binary(name) do

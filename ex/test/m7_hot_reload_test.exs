@@ -258,8 +258,124 @@ defmodule CantripM7HotReloadTest do
     purge_module(module)
   end
 
+  test "hot-reload gate accepts valid signature from allowlisted signer" do
+    module_name = "Elixir.Cantrip.SignedByKey"
+    module = String.to_atom(module_name)
+    purge_module(module)
+
+    source = """
+    defmodule Cantrip.SignedByKey do
+      def version, do: 5
+    end
+    """
+
+    {private_key, public_key_pem} = signer_keypair()
+    signature = Base.encode64(:public_key.sign(source, :sha256, private_key))
+
+    crystal =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{
+           tool_calls: [
+             %{
+               gate: "compile_and_load",
+               args: %{
+                 module: module_name,
+                 source: source,
+                 key_id: "dev-key-1",
+                 signature: signature
+               }
+             },
+             %{gate: "done", args: %{answer: "ok"}}
+           ]
+         }
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: crystal,
+        circle: %{
+          gates: [:done, :compile_and_load],
+          wards: [
+            %{max_turns: 10},
+            %{allow_compile_modules: [module_name]},
+            %{allow_compile_signers: %{"dev-key-1" => public_key_pem}}
+          ]
+        }
+      )
+
+    assert {:ok, "ok", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "signed compile")
+    assert apply(module, :version, []) == 5
+    purge_module(module)
+  end
+
+  test "hot-reload gate rejects compile when signature verification fails" do
+    module_name = "Elixir.Cantrip.SignedInvalid"
+    module = String.to_atom(module_name)
+    purge_module(module)
+
+    source = """
+    defmodule Cantrip.SignedInvalid do
+      def version, do: 6
+    end
+    """
+
+    {private_key, public_key_pem} = signer_keypair()
+    bad_signature = Base.encode64(:public_key.sign("different source", :sha256, private_key))
+
+    crystal =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{
+           tool_calls: [
+             %{
+               gate: "compile_and_load",
+               args: %{
+                 module: module_name,
+                 source: source,
+                 key_id: "dev-key-1",
+                 signature: bad_signature
+               }
+             },
+             %{gate: "done", args: %{answer: "blocked"}}
+           ]
+         }
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: crystal,
+        circle: %{
+          gates: [:done, :compile_and_load],
+          wards: [
+            %{max_turns: 10},
+            %{allow_compile_modules: [module_name]},
+            %{allow_compile_signers: %{"dev-key-1" => public_key_pem}}
+          ]
+        }
+      )
+
+    assert {:ok, "blocked", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "bad signature")
+    [turn] = loom.turns
+    [obs | _] = turn.observation
+    assert obs.is_error
+    assert obs.result =~ "signature verification failed"
+    purge_module(module)
+  end
+
   defp purge_module(module) do
     :code.purge(module)
     :code.delete(module)
+  end
+
+  defp signer_keypair do
+    private_key = :public_key.generate_key({:rsa, 1024, 65_537})
+
+    {:RSAPrivateKey, :"two-prime", modulus, public_exp, _private_exp, _p1, _p2, _exp1, _exp2,
+     _coef, _other} = private_key
+
+    public_key = {:RSAPublicKey, modulus, public_exp}
+    pem = :public_key.pem_encode([:public_key.pem_entry_encode(:RSAPublicKey, public_key)])
+    {private_key, pem}
   end
 end
