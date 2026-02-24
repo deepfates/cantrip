@@ -1,0 +1,24 @@
+{
+  "name": "not_initialized",
+  "steps": [
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "session/new",
+        "params": {"cwd": "/tmp"}
+      },
+      "expect": {
+        "response_count": 1,
+        "first_error_code": -32000,
+        "responses": [
+          {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {"code": -32000, "message": "not initialized"}
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "malformed_line",
+  "steps": [
+    {
+      "raw_line": "{invalid\\n",
+      "expect": {
+        "response_count": 1,
+        "first_error_code": -32700,
+        "responses": [
+          {
+            "jsonrpc": "2.0",
+            "id": null,
+            "error": {"code": -32700, "message": "parse error"}
+          }
+        ]
+      }
+    }
+  ]
+}

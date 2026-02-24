@@ -57,9 +57,10 @@ defmodule Cantrip.ACP.Protocol do
     id = request["id"]
     params = request["params"] || %{}
     session_id = params["sessionId"]
+    prompt_payload = params["prompt"] || params["content"] || params["text"] || params
 
     with {:ok, session} <- fetch_session(state, session_id),
-         {:ok, text} <- extract_text(params["prompt"]),
+         {:ok, text} <- extract_text(prompt_payload),
          {:ok, answer, next_session} <- state.runtime.prompt(session, text) do
       next = put_in(state.sessions[session_id], next_session)
       {next, prompt_responses(id, session_id, answer)}
@@ -87,14 +88,53 @@ defmodule Cantrip.ACP.Protocol do
     end
   end
 
-  defp extract_text(%{"content" => content}) when is_list(content) do
-    case Enum.find(content, &(&1["type"] == "text" and is_binary(&1["text"]))) do
-      %{"text" => text} -> {:ok, text}
+  defp extract_text(text) when is_binary(text) and text != "", do: {:ok, text}
+
+  defp extract_text(%{"text" => text}) when is_binary(text), do: {:ok, text}
+
+  defp extract_text(%{"content" => text}) when is_binary(text), do: {:ok, text}
+
+  defp extract_text(%{"messages" => messages}) when is_list(messages) do
+    messages
+    |> Enum.reverse()
+    |> Enum.find_value(fn message ->
+      case extract_text(message) do
+        {:ok, text} -> text
+        _ -> nil
+      end
+    end)
+    |> case do
+      text when is_binary(text) and text != "" -> {:ok, text}
       _ -> {:error, :bad_prompt}
     end
   end
 
+  defp extract_text(%{"content" => content}) when is_list(content) do
+    extract_text_from_content_blocks(content)
+  end
+
   defp extract_text(_), do: {:error, :bad_prompt}
+
+  defp extract_text_from_content_blocks(content) do
+    case Enum.find_value(content, fn block ->
+           cond do
+             is_binary(block["text"]) and block["text"] != "" ->
+               block["text"]
+
+             is_binary(block["content"]) and block["content"] != "" ->
+               block["content"]
+
+             is_binary(block["value"]) and block["value"] != "" ->
+               block["value"]
+
+             true ->
+               nil
+           end
+         end) do
+      text when is_binary(text) -> {:ok, text}
+      _ -> {:error, :bad_prompt}
+    end
+  end
 
   defp prompt_responses(id, session_id, answer) do
     [

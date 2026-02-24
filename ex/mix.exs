@@ -7,8 +7,14 @@ defmodule Cantrip.MixProject do
       version: "0.1.0",
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
+      escript: [main_module: Cantrip.CLI, name: "cantrip"],
+      aliases: aliases(),
       deps: deps()
     ]
+  end
+
+  def cli do
+    [preferred_envs: [verify: :test]]
   end
 
   # Run "mix help compile.app" to learn about applications.
@@ -24,6 +30,12 @@ defmodule Cantrip.MixProject do
     [
       {:req, "~> 0.5"},
       {:jason, "~> 1.4"}
+    ]
+  end
+
+  defp aliases do
+    [
+      verify: ["format --check-formatted", "test"]
     ]
   end
 end

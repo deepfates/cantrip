@@ -99,6 +99,158 @@ defmodule CantripM11AcpProtocolTest do
     assert done["result"]["stopReason"] == "end_turn"
   end
 
+  test "session/prompt accepts plain string prompt payload" do
+    state = initialized_state()
+
+    {state, [new_resp]} =
+      Protocol.handle_request(state, %{
+        "jsonrpc" => "2.0",
+        "id" => 6,
+        "method" => "session/new",
+        "params" => %{"cwd" => "/tmp"}
+      })
+
+    session_id = get_in(new_resp, ["result", "sessionId"])
+
+    {_state, responses} =
+      Protocol.handle_request(state, %{
+        "jsonrpc" => "2.0",
+        "id" => 7,
+        "method" => "session/prompt",
+        "params" => %{
+          "sessionId" => session_id,
+          "prompt" => "hello"
+        }
+      })
+
+    [_, _, done] = responses
+    assert done["id"] == 7
+    assert done["result"]["stopReason"] == "end_turn"
+  end
+
+  test "session/prompt accepts text-only content blocks without type" do
+    state = initialized_state()
+
+    {state, [new_resp]} =
+      Protocol.handle_request(state, %{
+        "jsonrpc" => "2.0",
+        "id" => 8,
+        "method" => "session/new",
+        "params" => %{"cwd" => "/tmp"}
+      })
+
+    session_id = get_in(new_resp, ["result", "sessionId"])
+
+    {_state, responses} =
+      Protocol.handle_request(state, %{
+        "jsonrpc" => "2.0",
+        "id" => 9,
+        "method" => "session/prompt",
+        "params" => %{
+          "sessionId" => session_id,
+          "prompt" => %{
+            "content" => [%{"text" => "hello"}]
+          }
+        }
+      })
+
+    [_, _, done] = responses
+    assert done["id"] == 9
+    assert done["result"]["stopReason"] == "end_turn"
+  end
+
+  test "session/prompt accepts prompt payload where content is a plain string" do
+    state = initialized_state()
+
+    {state, [new_resp]} =
+      Protocol.handle_request(state, %{
+        "jsonrpc" => "2.0",
+        "id" => 10,
+        "method" => "session/new",
+        "params" => %{"cwd" => "/tmp"}
+      })
+
+    session_id = get_in(new_resp, ["result", "sessionId"])
+
+    {_state, responses} =
+      Protocol.handle_request(state, %{
+        "jsonrpc" => "2.0",
+        "id" => 11,
+        "method" => "session/prompt",
+        "params" => %{
+          "sessionId" => session_id,
+          "prompt" => %{"content" => "hello"}
+        }
+      })
+
+    [_, _, done] = responses
+    assert done["id"] == 11
+    assert done["result"]["stopReason"] == "end_turn"
+  end
+
+  test "session/prompt accepts prompt payload with messages array" do
+    state = initialized_state()
+
+    {state, [new_resp]} =
+      Protocol.handle_request(state, %{
+        "jsonrpc" => "2.0",
+        "id" => 12,
+        "method" => "session/new",
+        "params" => %{"cwd" => "/tmp"}
+      })
+
+    session_id = get_in(new_resp, ["result", "sessionId"])
+
+    {_state, responses} =
+      Protocol.handle_request(state, %{
+        "jsonrpc" => "2.0",
+        "id" => 13,
+        "method" => "session/prompt",
+        "params" => %{
+          "sessionId" => session_id,
+          "prompt" => %{
+            "messages" => [
+              %{"role" => "system", "content" => "ignore"},
+              %{"role" => "user", "content" => [%{"type" => "input_text", "text" => "hello"}]}
+            ]
+          }
+        }
+      })
+
+    [_, _, done] = responses
+    assert done["id"] == 13
+    assert done["result"]["stopReason"] == "end_turn"
+  end
+
+  test "session/prompt accepts text at params root when prompt key is absent" do
+    state = initialized_state()
+
+    {state, [new_resp]} =
+      Protocol.handle_request(state, %{
+        "jsonrpc" => "2.0",
+        "id" => 14,
+        "method" => "session/new",
+        "params" => %{"cwd" => "/tmp"}
+      })
+
+    session_id = get_in(new_resp, ["result", "sessionId"])
+
+    {_state, responses} =
+      Protocol.handle_request(state, %{
+        "jsonrpc" => "2.0",
+        "id" => 15,
+        "method" => "session/prompt",
+        "params" => %{
+          "sessionId" => session_id,
+          "text" => "hello"
+        }
+      })
+
+    [_, _, done] = responses
+    assert done["id"] == 15
+    assert done["result"]["stopReason"] == "end_turn"
+  end
+
   defp initialized_state do
     state = Protocol.new(runtime: StubRuntime)
 
