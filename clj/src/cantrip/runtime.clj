@@ -182,11 +182,13 @@
                {:keys [observation terminated? result]} (medium/execute-utterance
                                                          (:circle cantrip)
                                                          utterance
-                                                         (get-in cantrip [:circle :dependencies]))
+                                                         (assoc (or (get-in cantrip [:circle :dependencies]) {})
+                                                                :prior-turns turns))
                text-only? (and (empty? tool-calls)
                                (string? (:content utterance)))
                done-by-text? (and text-only? (not done-required?))
                turn-record {:sequence (inc turn-index)
+                            :entity-id entity-id
                             :parent-id (when (and (zero? turn-index)
                                                   (some? first-parent-id))
                                          first-parent-id)

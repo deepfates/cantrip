@@ -288,12 +288,6 @@
   [tc setup crystals]
   (let [rule (:rule tc)]
     (case rule
-      "CANTRIP-3"
-      {:ok {:runs []}}
-
-      "CIRCLE-2"
-      {:ok {:runs []}}
-
       "CIRCLE-9"
       (let [cantrip (-> (mk-cantrip setup crystals :crystal {:medium :code
                                                              :gates [:done]})
@@ -404,21 +398,6 @@
                       (assoc-in [:crystal :responses] [{:error {:status 500 :message "child exploded"}}]))
             res (runtime/call-agent parent {:cantrip child :intent "will fail"})]
         {:ok {:runs [(simulated-run {:result (str "caught: " (or (:error res) ""))})]}})
-
-      "LOOM-7"
-      (let [base (mk-cantrip setup crystals :crystal-terminated {:medium :conversation
-                                                                 :gates [:done :echo]
-                                                                 :wards [{:max-turns 1}]})
-            terminated (runtime/cast base "will terminate")
-            truncated (runtime/cast (assoc base :crystal (:crystal-truncated crystals))
-                                    "will be truncated")
-            threads [{:turns (count (:turns terminated))
-                      :result (:result terminated)}
-                     {:turns (count (:turns truncated))
-                      :result (:result truncated)}]]
-        {:ok {:runs [terminated truncated]
-              :threads threads
-              :crystals crystals}})
 
       "LOOM-8"
       (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation

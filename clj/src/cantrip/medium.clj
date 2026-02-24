@@ -4,7 +4,7 @@
             [sci.core :as sci]))
 
 (defn- eval-script->tool-calls
-  [code bindings]
+  [prior-snippets code bindings]
   (let [emitted (atom [])
         next-id (fn [] (str "code_call_" (inc (count @emitted))))
         emit! (fn [gate args]
@@ -19,9 +19,13 @@
         base-bindings {'submit-answer submit!
                        'submit_answer submit!
                        'call-gate call-gate!
-                       'call_gate call-gate!}]
-    (sci/eval-string code {:bindings (merge base-bindings bindings)})
-    @emitted))
+                       'call_gate call-gate!}
+        ctx (sci/init {:bindings (merge base-bindings bindings)})]
+    (doseq [snippet prior-snippets]
+      (sci/eval-string* ctx snippet))
+    (let [prior-count (count @emitted)]
+      (sci/eval-string* ctx code)
+      (subvec (vec @emitted) prior-count))))
 
 (defn- maybe-resolve
   [sym]
@@ -118,10 +122,16 @@
 (defmethod execute-utterance :code
   [circle utterance dependencies]
   (let [tool-calls (vec (:tool-calls utterance))
-        code (:content utterance)]
+        code (:content utterance)
+        prior-turns (or (:prior-turns dependencies) [])]
     (if (and (empty? tool-calls) (string? code))
       (try
-        (circle/execute-tool-calls circle (eval-script->tool-calls code {}) dependencies)
+        (let [snippets (->> prior-turns
+                            (map #(get-in % [:utterance :content]))
+                            (filter string?))]
+          (circle/execute-tool-calls circle
+                                     (eval-script->tool-calls snippets code {})
+                                     dependencies))
         (catch Exception e
           {:observation [{:gate "code"
                           :arguments "{}"
@@ -138,7 +148,7 @@
     (if (and (empty? tool-calls) (string? code))
       (try
         (circle/execute-tool-calls circle
-                                   (eval-script->tool-calls code
+                                   (eval-script->tool-calls [] code
                                                             (minecraft-bindings dependencies))
                                    dependencies)
         (catch Exception e

@@ -12,9 +12,14 @@
   [loom turn]
   (let [sequence (inc (count (:turns loom)))
         id (or (:id turn) (str "turn_" sequence))
+        entity-id (:entity-id turn)
+        last-same-entity (when entity-id
+                           (last (filter #(= entity-id (:entity-id %))
+                                         (:turns loom))))
         parent-id (if (= sequence 1)
                     (:parent-id turn)
                     (or (:parent-id turn)
+                        (:id last-same-entity)
                         (:id (last (:turns loom)))))
         stored (assoc turn
                       :id id
