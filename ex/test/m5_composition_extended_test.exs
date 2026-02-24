@@ -105,4 +105,33 @@ defmodule CantripM5CompositionExtendedTest do
     assert parent_turn.entity_id != child_turn.entity_id
     assert child_turn.parent_id == parent_turn.id
   end
+
+  test "COMP-7 call_agent can override child crystal per request" do
+    parent =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{
+           code: """
+           alt = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: "done.(\\"from alternate\\")"}])}
+           result = call_agent.(%{intent: "override", crystal: alt})
+           done.(result)
+           """
+         }
+       ])}
+
+    child = {FakeCrystal, FakeCrystal.new([%{code: "done.(\"default\")"}])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: parent,
+        child_crystal: child,
+        circle: %{
+          type: :code,
+          gates: [:done, :call_agent],
+          wards: [%{max_turns: 10}, %{max_depth: 1}]
+        }
+      )
+
+    assert {:ok, "from alternate", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "override")
+  end
 end

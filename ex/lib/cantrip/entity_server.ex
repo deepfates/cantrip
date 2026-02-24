@@ -269,7 +269,7 @@ defmodule Cantrip.EntityServer do
     else
       child_intent = opts[:intent] || opts["intent"] || ""
       child_circle = Circle.subset(state.cantrip.circle, requested_gates)
-      {child_module, child_state} = current_child_crystal(state)
+      {child_module, child_state} = choose_child_crystal(state, opts)
 
       child_cantrip = %{
         state.cantrip
@@ -315,6 +315,13 @@ defmodule Cantrip.EntityServer do
   defp current_child_crystal(state) do
     Process.get(:cantrip_child_crystal) || state.cantrip.child_crystal ||
       default_child_crystal(state)
+  end
+
+  defp choose_child_crystal(state, opts) do
+    case opts[:crystal] || opts["crystal"] do
+      {module, child_state} when is_atom(module) -> {module, child_state}
+      _ -> current_child_crystal(state)
+    end
   end
 
   defp remember_child_crystal(next_cantrip) do
