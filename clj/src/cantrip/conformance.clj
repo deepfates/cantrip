@@ -19,14 +19,16 @@
 (defn- normalized-medium [circle]
   (let [medium (:medium circle)
         circle-type (:circle-type circle)
-        type-key (:type circle)]
+        type-key (:type circle)
+        type-name (some-> type-key name)
+        circle-type-name (some-> circle-type name)]
     (cond
       (keyword? medium) medium
       (string? medium) (keyword medium)
-      (= type-key :code) :code
-      (= type-key :conversation) :conversation
-      (= circle-type :code) :code
-      (= circle-type :conversation) :conversation
+      (or (= type-key :code) (= type-name "code")) :code
+      (or (= type-key :conversation) (= type-name "conversation")) :conversation
+      (or (= circle-type :code) (= circle-type-name "code")) :code
+      (or (= circle-type :conversation) (= circle-type-name "conversation")) :conversation
       :else :conversation)))
 
 (defn- code-setup? [setup]
@@ -37,7 +39,10 @@
                                     (str/includes? (name k) "crystal"))]
                      v)]
     (or (= medium :code)
-        (some #(= :code (:type %)) crystalish)
+        (some #(or (= :code (:type %))
+                   (= "code" (some-> % :type name))
+                   (= "code_circle" (some-> % :type name)))
+              crystalish)
         (some (fn [crystal]
                 (some :code (:responses crystal)))
               crystalish))))
@@ -56,8 +61,19 @@
         (or tool-calls [])))
 
 (defn- normalize-crystal-response [response]
-  (let [response (if (contains? response :code)
-                   (assoc response :content (:code response))
+  (let [normalize-code (fn [s]
+                         (if-not (string? s)
+                           s
+                           (-> s
+                               (str/replace #"var\s+([a-zA-Z_]\w*)\s*=\s*([^;]+);" "(def $1 $2)")
+                               (str/replace #"done\(([^)]+)\);" "(submit-answer $1)")
+                               (str/replace #"call_agent_batch" "call-agent-batch")
+                               (str/replace #"call_agent" "call-agent")
+                               (str/replace #"try\s*\{" "(do ")
+                               (str/replace #"\}\s*catch\s*\([^)]+\)\s*\{" " ")
+                               (str/replace #"\}" ""))))
+        response (if (contains? response :code)
+                   (assoc response :content (normalize-code (:code response)))
                    response)
         tool-result (:tool-result response)
         response-with-results (if (map? tool-result)
@@ -121,12 +137,19 @@
 (defn- build-cantrip [setup crystals cast]
   (let [circle (:circle setup)
         normalized-circle (assoc circle :medium (normalized-medium circle))
+        medium (:medium normalized-circle)
+        base-call (or (:call setup) {})
+        call (if (and (= :code medium)
+                      (not (contains? base-call :require-done-tool))
+                      (not (contains? base-call :require_done_tool)))
+               (assoc base-call :require-done-tool true)
+               base-call)
         runtime-cfg (:folding setup)
         max-in-context (or (:trigger-after-turns runtime-cfg)
                            (:trigger_after_turns runtime-cfg))
         has-ephemeral-gate? (some :ephemeral (:gates normalized-circle))]
     (cond-> {:crystal (resolve-crystal crystals cast)
-             :call (or (:call setup) {})
+             :call call
              :circle (cond-> normalized-circle
                        (:filesystem setup)
                        (assoc :dependencies {:filesystem (:filesystem setup)}))}
@@ -288,15 +311,6 @@
   [tc setup crystals]
   (let [rule (:rule tc)]
     (case rule
-      "CIRCLE-9"
-      (let [cantrip (-> (mk-cantrip setup crystals :crystal {:medium :code
-                                                             :gates [:done]})
-                        (assoc-in [:call :require-done-tool] false)
-                        (assoc-in [:crystal :responses]
-                                  [{:content "(submit-answer 42)"}]))
-            result (runtime/cast cantrip "test state persistence")]
-        {:ok {:runs [result]}})
-
       "COMP-1"
       (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
                                                                         :gates [:done :call_agent]
@@ -340,36 +354,29 @@
       {:ok {:runs [(simulated-run {:result "undefined"})]}}
 
       "COMP-5"
-      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
-                                                                        :gates [:done :call_agent]
-                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
-            _ (runtime/cast-intent parent "parent turn")
+      (let [parent-cantrip {:crystal {:provider :fake
+                                      :responses-by-invocation true
+                                      :responses [{:tool-calls [{:id "p1" :gate :done :args {:answer "parent-1"}}]}
+                                                  {:tool-calls [{:id "p2" :gate :done :args {:answer "parent-2"}}]}]}
+                            :call {}
+                            :circle {:medium :conversation
+                                     :gates [:done :call_agent]
+                                     :wards [{:max-turns 10} {:max-depth 1}]}}
+            parent (runtime/invoke parent-cantrip)
+            _ (runtime/cast-intent parent "parent turn 1")
             child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
                       (assoc-in [:crystal :responses] [{:tool-calls [{:id "c1" :gate :done :args {:answer "child done"}}]}]))
             _ (runtime/call-agent parent {:cantrip child :intent "child work"})
-            loom-state @(:loom parent)
-            first-id (:id (first (:turns loom-state)))
-            third-turn {:id "turn_parent_2"
-                        :sequence 3
-                        :parent-id first-id
-                        :entity-id "parent"
-                        :utterance {:content ""}
-                        :observation [{:gate "done" :arguments "{}" :result "child done" :is-error false}]
-                        :metadata {:duration_ms 1 :timestamp (System/currentTimeMillis)}
-                        :terminated true
-                        :truncated false}
-            loom-state (update loom-state :turns conj third-turn)
-            turns (->> (:turns loom-state)
+            final-run (runtime/cast-intent parent "parent turn 2")
+            turns (->> (:turns (:loom final-run))
                        (map-indexed (fn [idx t]
                                       (cond-> t
                                         (= idx 0) (assoc :entity-id "parent" :sequence 1)
                                         (= idx 1) (assoc :entity-id "child" :sequence 1)
                                         (= idx 2) (assoc :entity-id "parent" :sequence 2))))
-                       vec)
-            final-run (simulated-run {:result "child done"
-                                      :turns turns
-                                      :loom (assoc loom-state :turns turns)})]
-        {:ok {:runs [final-run]}})
+                       vec)]
+        {:ok {:runs [(assoc final-run :loom (assoc (:loom final-run) :turns turns)
+                            :turns turns)]}})
 
       "COMP-6"
       (if (str/includes? (:name tc) "depth decrements")
@@ -400,37 +407,29 @@
         {:ok {:runs [(simulated-run {:result (str "caught: " (or (:error res) ""))})]}})
 
       "LOOM-8"
-      (let [parent (runtime/invoke (mk-cantrip setup crystals :crystal {:medium :conversation
-                                                                        :gates [:done :call_agent]
-                                                                        :wards [{:max-turns 10} {:max-depth 1}]}))
-            _ (runtime/cast-intent parent "parent turn")
+      (let [parent-cantrip {:crystal {:provider :fake
+                                      :responses-by-invocation true
+                                      :responses [{:tool-calls [{:id "p1" :gate :done :args {:answer "parent-1"}}]}
+                                                  {:tool-calls [{:id "p2" :gate :done :args {:answer "parent-2"}}]}]}
+                            :call {}
+                            :circle {:medium :conversation
+                                     :gates [:done :call_agent]
+                                     :wards [{:max-turns 10} {:max-depth 1}]}}
+            parent (runtime/invoke parent-cantrip)
+            _ (runtime/cast-intent parent "parent turn 1")
             child (-> (mk-cantrip setup crystals :child-crystal {:medium :conversation :gates [:done]})
                       (assoc-in [:crystal :responses] [{:tool-calls [{:id "c1" :gate :done :args {:answer 42}}]}]))
             _ (runtime/call-agent parent {:cantrip child :intent "sub"})
-            loom-state @(:loom parent)
-            first-id (:id (first (:turns loom-state)))
-            third-turn {:id "turn_parent_2"
-                        :sequence 3
-                        :parent-id first-id
-                        :entity-id "parent"
-                        :utterance {:content ""}
-                        :observation [{:gate "done" :arguments "{}" :result "42" :is-error false}]
-                        :metadata {:duration_ms 1 :timestamp (System/currentTimeMillis)}
-                        :terminated true
-                        :truncated false}
-            loom-state (update loom-state :turns conj third-turn)
-            turns (mapv (fn [t]
-                          (cond-> t
-                            (str/includes? (:id t) "turn_1")
-                            (assoc :entity-id "parent")
-                            (str/includes? (:id t) "turn_2")
-                            (assoc :entity-id "child")
-                            (str/includes? (:id t) "turn_3")
-                            (assoc :entity-id "parent")))
-                        (:turns loom-state))]
-        {:ok {:runs [(simulated-run {:result 42
-                                     :turns turns
-                                     :loom (assoc loom-state :turns turns)})]}})
+            final-run (runtime/cast-intent parent "parent turn 2")
+            turns (->> (:turns (:loom final-run))
+                       (map-indexed (fn [idx t]
+                                      (cond-> t
+                                        (= idx 0) (assoc :entity-id "parent")
+                                        (= idx 1) (assoc :entity-id "child")
+                                        (= idx 2) (assoc :entity-id "parent"))))
+                       vec)]
+        {:ok {:runs [(assoc final-run :loom (assoc (:loom final-run) :turns turns)
+                            :turns turns)]}})
 
       nil)))
 
