@@ -122,7 +122,23 @@ defmodule Cantrip.Examples do
   defp build("06", opts) do
     build_basic(
       "Pattern 06: provider portability exercise",
-      %{gates: [:done], default_crystal: done_crystal("pattern-06:provider-portable")},
+      %{
+        gates: [:done, :call_agent],
+        type: :code,
+        max_depth: 1,
+        default_crystal:
+          fake_crystal([
+            %{
+              code: """
+              openai_crystal = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: "done.(\\"openai\\")"}])}
+              gemini_crystal = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: "done.(\\"gemini\\")"}])}
+              left = call_agent.(%{intent: "provider a", gates: ["done"], crystal: openai_crystal})
+              right = call_agent.(%{intent: "provider b", gates: ["done"], crystal: gemini_crystal})
+              done.("pattern-06:" <> left <> "/" <> right)
+              """
+            }
+          ])
+      },
       opts
     )
   end
@@ -132,7 +148,11 @@ defmodule Cantrip.Examples do
       "Pattern 07: conversation medium terminates on assistant content",
       %{
         gates: [:done, :echo],
-        default_crystal: fake_crystal([%{content: "pattern-07:conversation"}])
+        default_crystal:
+          fake_crystal([
+            %{tool_calls: [%{gate: "echo", args: %{text: "conversation-turn"}}]},
+            %{content: "pattern-07:conversation+tool"}
+          ])
       },
       opts
     )
@@ -158,8 +178,8 @@ defmodule Cantrip.Examples do
         type: :code,
         default_crystal:
           fake_crystal([
-            %{code: "prefix = \"pattern-09\""},
-            %{code: "done.(prefix <> \":stateful\")"}
+            %{code: "n = 40"},
+            %{code: "n = n + 2\ndone.(\"pattern-09:\" <> Integer.to_string(n))"}
           ])
       },
       opts
@@ -211,22 +231,29 @@ defmodule Cantrip.Examples do
     suffix = Integer.to_string(System.unique_integer([:positive]))
     bare_module_name = "CantripExampleM12_#{suffix}"
     module_name = "Elixir.#{bare_module_name}"
+    root = temp_root("cantrip_pattern12")
+    File.write!(Path.join(root, "agent.txt"), "agent-source")
 
     source = """
     defmodule #{bare_module_name} do
-      def label, do: "pattern-12:compiled"
+      def label(input), do: "pattern-12:compiled:" <> input
     end
     """
 
     code = """
+    text = read.(%{path: "agent.txt"})
     compile_and_load.(%{module: "#{module_name}", source: #{inspect(source)}})
-    done.(apply(String.to_existing_atom("#{module_name}"), :label, []))
+    done.(apply(String.to_existing_atom("#{module_name}"), :label, [text]))
     """
 
     build_basic(
       "Pattern 12: full code agent with compile_and_load",
       %{
-        gates: [:done, :compile_and_load],
+        gates: [
+          %{name: :done},
+          %{name: :read, dependencies: %{root: root}},
+          %{name: :compile_and_load}
+        ],
         type: :code,
         default_crystal: fake_crystal([%{code: code}]),
         wards: [%{allow_compile_modules: [module_name]}]
@@ -272,20 +299,35 @@ defmodule Cantrip.Examples do
 
   defp build("15", opts) do
     root = temp_root("cantrip_pattern15")
-    File.write!(Path.join(root, "source.txt"), "pattern-15-source")
+    File.write!(Path.join(root, "source_a.txt"), "alpha")
+    File.write!(Path.join(root, "source_b.txt"), "beta")
 
     build_basic(
       "Pattern 15: research-style read gate",
       %{
-        gates: [%{name: :done}, %{name: :read, dependencies: %{root: root}}],
         type: :code,
         default_crystal:
           fake_crystal([
             %{
-              code:
-                "text = read.(%{path: \"source.txt\"})\ndone.(if String.contains?(text, \"pattern-15-source\"), do: \"pattern-15:research\", else: \"pattern-15:missing\")"
+              code: """
+              reader_a = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: "text = read.(%{path: \\"source_a.txt\\"})\\ndone.(text)"}])}
+              reader_b = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: "text = read.(%{path: \\"source_b.txt\\"})\\ndone.(text)"}])}
+              results = call_agent_batch.([
+                %{intent: "read source a", gates: ["done", "read"], crystal: reader_a},
+                %{intent: "read source b", gates: ["done", "read"], crystal: reader_b}
+              ])
+              sorted = Enum.sort(results)
+              done.(if sorted == ["alpha", "beta"], do: "pattern-15:research+batch", else: "pattern-15:missing")
+              """
             }
-          ])
+          ]),
+        wards: [%{max_depth: 1}],
+        default_child_crystal: fake_crystal([%{code: "done.(\"unused\")"}]),
+        gates: [
+          %{name: :done},
+          %{name: :read, dependencies: %{root: root}},
+          %{name: :call_agent_batch}
+        ]
       },
       opts
     )
@@ -306,18 +348,26 @@ defmodule Cantrip.Examples do
     build_basic(
       "Pattern 16: familiar-style coordinator with persistent loom",
       %{
-        gates: [:done, :call_agent, :call_agent_batch],
+        gates: [:done, :call_agent],
         type: :code,
+        max_depth: 1,
         loom_storage: storage,
         default_crystal:
           fake_crystal([
             %{
-              code:
-                "results = call_agent_batch.([%{intent: \"first\"}, %{intent: \"second\"}])\ndone.(\"pattern-16:\" <> Enum.join(results, \",\"))"
-            }
+              code: "history = [\"bootstrap\"]"
+            },
+            %{
+              code: """
+              worker = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: "done.(\\"familiar-worker\\")"}])}
+              note = call_agent.(%{intent: "spawn worker", gates: ["done"], crystal: worker})
+              history = history ++ [note]
+              done.("pattern-16:" <> Enum.join(history, "|"))
+              """
+            },
+            %{code: "done.(\"pattern-16:unexpected\")"}
           ]),
-        default_child_crystal:
-          fake_crystal([%{code: "done.(\"familiar\")"}, %{code: "done.(\"loom\")"}])
+        default_child_crystal: fake_crystal([%{code: "done.(\"familiar-worker\")"}])
       },
       opts
     )

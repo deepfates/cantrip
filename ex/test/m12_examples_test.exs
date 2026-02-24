@@ -38,17 +38,17 @@ defmodule CantripM12ExamplesTest do
       "03" => "pattern-03:require-done",
       "04" => nil,
       "05" => "pattern-05:stop-at-done",
-      "06" => "pattern-06:provider-portable",
-      "07" => "pattern-07:conversation",
+      "06" => "pattern-06:openai/gemini",
+      "07" => "pattern-07:conversation+tool",
       "08" => "pattern-08:code",
-      "09" => "pattern-09:stateful",
+      "09" => "pattern-09:42",
       "10" => "pattern-10:parallel+delegation",
       "11" => "pattern-11:folded",
-      "12" => "pattern-12:compiled",
+      "12" => "pattern-12:compiled:agent-source",
       "13" => "pattern-13:acp-ready",
       "14" => "pattern-14:mid:leaf",
-      "15" => "pattern-15:research",
-      "16" => "pattern-16:familiar,loom"
+      "15" => "pattern-15:research+batch",
+      "16" => "pattern-16:bootstrap|familiar-worker"
     }
 
     Enum.each(Examples.ids(), fn id ->
@@ -80,15 +80,45 @@ defmodule CantripM12ExamplesTest do
   end
 
   test "pattern 12 performs compile_and_load in code medium" do
-    assert {:ok, "pattern-12:compiled", _cantrip, loom, _meta} = Examples.run("12")
+    assert {:ok, "pattern-12:compiled:agent-source", _cantrip, loom, _meta} = Examples.run("12")
     [turn] = loom.turns
     assert Enum.any?(turn.observation, &(&1.gate == "compile_and_load" and not &1.is_error))
+    assert Enum.any?(turn.observation, &(&1.gate == "read" and not &1.is_error))
   end
 
-  test "pattern 15 uses read gate with dependency injection" do
-    assert {:ok, "pattern-15:research", _cantrip, loom, _meta} = Examples.run("15")
-    [turn1 | _] = loom.turns
-    assert Enum.any?(turn1.observation, &(&1.gate == "read" and &1.result =~ "pattern-15-source"))
+  test "pattern 06 demonstrates per-call crystal portability via delegation" do
+    assert {:ok, "pattern-06:openai/gemini", _cantrip, loom, _meta} = Examples.run("06")
+    [turn | _] = loom.turns
+    assert Enum.count(turn.observation, &(&1.gate == "call_agent")) == 2
+  end
+
+  test "pattern 15 runs batch delegation with read gate workers" do
+    assert {:ok, "pattern-15:research+batch", _cantrip, loom, _meta} = Examples.run("15")
+
+    assert Enum.any?(loom.turns, fn t ->
+             Enum.any?(t.observation || [], &(&1.gate == "call_agent_batch"))
+           end)
+
+    assert Enum.any?(loom.turns, fn t ->
+             Enum.any?(t.observation || [], &(&1.gate == "read" and not &1.is_error))
+           end)
+  end
+
+  test "pattern 16 combines persistent loom with stateful coordinator flow" do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "cantrip_example16_stateful_" <>
+          Integer.to_string(System.unique_integer([:positive])) <> ".jsonl"
+      )
+
+    File.rm(path)
+
+    assert {:ok, "pattern-16:bootstrap|familiar-worker", _cantrip, loom, _meta} =
+             Examples.run("16", loom_storage: {:jsonl, path})
+
+    assert length(loom.turns) >= 3
+    assert File.exists?(path)
   end
 
   test "pattern 10 supports parallel delegation shape" do
