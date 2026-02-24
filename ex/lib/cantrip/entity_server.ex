@@ -164,6 +164,8 @@ defmodule Cantrip.EntityServer do
         }
       })
 
+    loom = append_child_subtrees(loom, observation)
+
     next_state = %{
       state
       | loom: loom,
@@ -278,9 +280,18 @@ defmodule Cantrip.EntityServer do
 
       try do
         case Cantrip.cast(child_cantrip, child_intent, depth: state.depth + 1) do
-          {:ok, value, next_cantrip, _loom, _meta} ->
+          {:ok, value, next_cantrip, child_loom, _meta} ->
             remember_child_crystal(next_cantrip)
-            %{value: value, observation: %{gate: "call_agent", result: value, is_error: false}}
+
+            %{
+              value: value,
+              observation: %{
+                gate: "call_agent",
+                result: value,
+                is_error: false,
+                child_turns: child_loom.turns
+              }
+            }
 
           {:error, reason, next_cantrip} ->
             remember_child_crystal(next_cantrip)
@@ -319,10 +330,16 @@ defmodule Cantrip.EntityServer do
     payloads = Enum.map(opts_list, &execute_call_agent(state, &1))
     values = Enum.map(payloads, & &1.value)
     has_error = Enum.any?(payloads, & &1.observation.is_error)
+    child_turns = Enum.flat_map(payloads, &Map.get(&1.observation, :child_turns, []))
 
     %{
       value: values,
-      observation: %{gate: "call_agent_batch", result: values, is_error: has_error}
+      observation: %{
+        gate: "call_agent_batch",
+        result: values,
+        is_error: has_error,
+        child_turns: child_turns
+      }
     }
   end
 
@@ -389,5 +406,36 @@ defmodule Cantrip.EntityServer do
     summary = %{role: :system, content: "folded prior turns; see loom for full history"}
     keep_tail = Enum.take(tail, -4)
     system ++ head ++ [summary] ++ keep_tail
+  end
+
+  defp append_child_subtrees(loom, observation) do
+    parent_turn_id = loom.turns |> List.last() |> Map.get(:id)
+
+    child_turns =
+      observation
+      |> Enum.flat_map(&Map.get(&1, :child_turns, []))
+
+    {loom, _id_map} =
+      Enum.reduce(child_turns, {loom, %{}}, fn turn, {acc_loom, id_map} ->
+        old_parent = Map.get(turn, :parent_id)
+
+        new_parent =
+          cond do
+            is_nil(old_parent) -> parent_turn_id
+            Map.has_key?(id_map, old_parent) -> Map.fetch!(id_map, old_parent)
+            true -> parent_turn_id
+          end
+
+        attrs =
+          turn
+          |> Map.drop([:id, :sequence])
+          |> Map.put(:parent_id, new_parent)
+
+        next_loom = Loom.append_turn(acc_loom, attrs)
+        new_id = next_loom.turns |> List.last() |> Map.fetch!(:id)
+        {next_loom, Map.put(id_map, turn.id, new_id)}
+      end)
+
+    loom
   end
 end

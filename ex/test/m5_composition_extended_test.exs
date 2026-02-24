@@ -79,4 +79,30 @@ defmodule CantripM5CompositionExtendedTest do
     assert {:ok, result, _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "child fail")
     assert String.contains?(result, "child")
   end
+
+  test "COMP-5 child turns are recorded as a subtree in parent loom" do
+    parent =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{code: "result = call_agent.(%{intent: \"child work\"})\ndone.(result)"}
+       ])}
+
+    child = {FakeCrystal, FakeCrystal.new([%{code: "done.(\"child done\")"}])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: parent,
+        child_crystal: child,
+        circle: %{
+          type: :code,
+          gates: [:done, :call_agent],
+          wards: [%{max_turns: 10}, %{max_depth: 1}]
+        }
+      )
+
+    assert {:ok, "child done", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "subtree")
+    [parent_turn, child_turn | _] = loom.turns
+    assert parent_turn.entity_id != child_turn.entity_id
+    assert child_turn.parent_id == parent_turn.id
+  end
 end
