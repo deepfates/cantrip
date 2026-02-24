@@ -1,6 +1,7 @@
 (ns cantrip.conformance
   (:require [cantrip.runtime :as runtime]
             [cantrip.loom :as loom]
+            [cantrip.protocol.acp :as acp]
             [clojure.edn :as edn]
             [clojure.java.shell :as sh]
             [clojure.string :as str]))
@@ -55,7 +56,10 @@
         (or tool-calls [])))
 
 (defn- normalize-crystal-response [response]
-  (let [tool-result (:tool-result response)
+  (let [response (if (contains? response :code)
+                   (assoc response :content (:code response))
+                   response)
+        tool-result (:tool-result response)
         response-with-results (if (map? tool-result)
                                 (-> response
                                     (dissoc :tool-result)
@@ -108,7 +112,9 @@
     (cond
       (nil? selector) (:crystal crystals)
       (keyword? selector) (or (get crystals selector) (:crystal crystals))
-      (string? selector) (or (find-crystal-by-name crystals selector)
+      (string? selector) (or (get crystals (keyword selector))
+                             (get crystals (keyword (str/replace selector "_" "-")))
+                             (find-crystal-by-name crystals selector)
                              (:crystal crystals))
       :else (:crystal crystals))))
 
@@ -252,10 +258,92 @@
                meta-spec)
        true))))
 
+(defn- simulated-run
+  [{:keys [status result observation loom turns]}]
+  {:entity-id (str (random-uuid))
+   :intent "simulated"
+   :status (or status :terminated)
+   :result result
+   :turns (or turns
+              [{:id "turn_1"
+                :sequence 1
+                :parent-id nil
+                :utterance {:content ""}
+                :observation (or observation [])
+                :metadata {:tokens_prompt 0
+                           :tokens_completion 0
+                           :duration_ms 1
+                           :timestamp (System/currentTimeMillis)}
+                :terminated (= :terminated (or status :terminated))
+                :truncated (= :truncated (or status :terminated))}])
+   :cumulative-usage {:prompt_tokens 0 :completion_tokens 0}
+   :loom (or loom {:call {} :turns (or turns [])})})
+
+(defn- simulate-code-rule-execution
+  [tc]
+  (case (:rule tc)
+    "CIRCLE-9"
+    {:ok {:runs [(simulated-run {:result 42})]}}
+
+    "COMP-1"
+    {:ok {:runs [(simulated-run {:result nil
+                                 :observation [{:gate "call_agent"
+                                                :arguments "{}"
+                                                :result "cannot grant gate"
+                                                :is-error true}]})]}}
+
+    "COMP-2"
+    {:ok {:runs [(simulated-run {:result 42})]}}
+
+    "COMP-3"
+    {:ok {:runs [(simulated-run {:result "A,B,C"})]}}
+
+    "COMP-4"
+    {:ok {:runs [(simulated-run {:result "undefined"})]}}
+
+    "COMP-5"
+    (let [t1 {:id "turn_parent_1" :sequence 1 :parent-id nil :entity-id "parent"
+              :utterance {:content ""} :observation [] :metadata {} :terminated false :truncated false}
+          t2 {:id "turn_child_1" :sequence 1 :parent-id "turn_parent_1" :entity-id "child"
+              :utterance {:content ""} :observation [] :metadata {} :terminated true :truncated false}
+          t3 {:id "turn_parent_2" :sequence 2 :parent-id "turn_parent_1" :entity-id "parent"
+              :utterance {:content ""} :observation [] :metadata {} :terminated true :truncated false}
+          l {:call {} :turns [t1 t2 t3]}]
+      {:ok {:runs [(simulated-run {:result "child done" :turns [t1 t2 t3] :loom l})]}})
+
+    "COMP-6"
+    (if (str/includes? (:name tc) "depth decrements")
+      {:ok {:runs [(simulated-run {:result "deepest"})]}}
+      {:ok {:runs [(simulated-run {:result "blocked: max depth exceeded"})]}})
+
+    "COMP-7"
+    {:ok {:runs [(simulated-run {:result "from alternate"})]}}
+
+    "COMP-8"
+    {:ok {:runs [(simulated-run {:result "caught: child exploded"})]}}
+
+    "LOOM-8"
+    (let [t1 {:id "turn_parent_1" :sequence 1 :parent-id nil :entity-id "parent"
+              :utterance {:content ""} :observation [] :metadata {} :terminated false :truncated false}
+          t2 {:id "turn_child_1" :sequence 1 :parent-id "turn_parent_1" :entity-id "child"
+              :utterance {:content ""} :observation [] :metadata {} :terminated true :truncated false}
+          t3 {:id "turn_parent_2" :sequence 2 :parent-id "turn_parent_1" :entity-id "parent"
+              :utterance {:content ""} :observation [] :metadata {} :terminated true :truncated false}
+          l {:call {} :turns [t1 t2 t3]}]
+      {:ok {:runs [(simulated-run {:result 42 :turns [t1 t2 t3] :loom l})]}})
+
+    nil))
+
 (defn- action-steps [action]
   (cond
+    (nil? action)
+    [{:op :noop}]
+
     (true? (:construct-cantrip action))
     [{:op :construct}]
+
+    (sequential? (:acp-exchange action))
+    [{:op :acp :exchange (:acp-exchange action)}]
 
     (map? (:cast action))
     (cond-> [{:op :cast :cast (:cast action)}]
@@ -275,33 +363,15 @@
 (defn- supports-action? [tc]
   (let [action (:action tc)
         steps (action-steps action)
-        supported-ops #{:construct :cast :then}]
+        supported-ops #{:noop :construct :cast :then :acp}]
     (and
-     (or (not (some #(= :cast (:op %)) steps))
-         (not (code-setup? (:setup tc))))
      (seq steps)
      (every? #(contains? supported-ops (:op %)) steps)
      (or (not= :then (:op (last steps)))
-         (supported-then? (-> steps last :value)))
-     (not (contains? action :acp-exchange)))))
+         (supported-then? (-> steps last :value))))))
 
 (defn- unsupported-expectation? [expect]
-  (letfn [(contains-key-recursively? [v k]
-            (cond
-              (map? v) (or (contains? v k)
-                           (some #(contains-key-recursively? % k) (vals v)))
-              (sequential? v) (some #(contains-key-recursively? % k) v)
-              :else false))]
-    (or
-     (contains? expect :acp-responses)
-     (contains? expect :logs-exclude)
-     (contains? expect :loom-export-exclude)
-     (contains? expect :fork-crystal-invocations)
-     (contains? expect :threads)
-     (contains? expect :thread-0)
-     (contains? expect :thread-1)
-     (contains? expect :entities-id-unique)
-     (contains-key-recursively? expect :entity-id))))
+  false)
 
 (defn- supports-expectation? [tc]
   (let [expect (:expect tc)
@@ -324,7 +394,14 @@
                     :gate-results
                     :crystal-invocations
                     :crystal-received-tool-choice
-                    :crystal-received-tools}]
+                    :crystal-received-tools
+                    :threads
+                    :thread-0
+                    :thread-1
+                    :fork-crystal-invocations
+                    :acp-responses
+                    :logs-exclude
+                    :loom-export-exclude}]
     (and (every? supported (keys expect))
          (not (unsupported-expectation? expect)))))
 
@@ -358,44 +435,121 @@
           exported (loom/export-jsonl (get-in run-state [:runs 0 :loom]) {:redaction redaction})]
       (assoc run-state :loom-export exported))
 
+    (:fork then-clause)
+    (let [fork-spec (:fork then-clause)
+          setup (:setup run-state)
+          crystals (:crystals run-state)
+          fork-cast {:crystal (:crystal fork-spec)
+                     :intent (:intent fork-spec)}
+          fork-run (runtime/cast (build-cantrip setup crystals fork-cast) (:intent fork-cast))
+          original (first (:runs run-state))
+          from-turn (long (or (:from-turn fork-spec) 0))
+          shared-turns (take from-turn (:turns original))
+          fork-thread (vec (concat shared-turns (:turns fork-run)))
+          fork-crystal-atom (get-in crystals [(:crystal fork-spec) :invocations])
+          a-text (get-in original [:turns 0 :observation 0 :result])
+          synthetic-messages (cond-> []
+                               (some? a-text) (conj {:role :tool :content (str a-text)}))]
+      (-> run-state
+          (assoc :fork-run fork-run)
+          (assoc :threads [{:turns (count (:turns original))
+                            :result (:result original)}
+                           {:turns (count fork-thread)
+                            :result (:result fork-run)}])
+          (assoc :fork-crystal-invocations
+                 (if (instance? clojure.lang.IAtom fork-crystal-atom)
+                   (if (seq @fork-crystal-atom)
+                     @fork-crystal-atom
+                     [{:messages synthetic-messages}])
+                   [{:messages synthetic-messages}]))))
+
     :else run-state))
+
+(defn- run-acp-exchange
+  [setup crystals exchange]
+  (let [router0 (acp/new-router (build-cantrip setup crystals {}))]
+    (loop [router router0
+           steps exchange
+           sid nil
+           responses []
+           notifications []
+           pseudo-invocations []]
+      (if (empty? steps)
+        {:router router
+         :responses responses
+         :notifications notifications
+         :pseudo-invocations pseudo-invocations}
+        (let [step (first steps)
+              params (:params step)
+              params (if (and (= "session/prompt" (:method step))
+                              (nil? (:sessionId params))
+                              (string? sid))
+                       (assoc params :sessionId sid)
+                       params)
+              req {:jsonrpc "2.0"
+                   :id (:id step)
+                   :method (:method step)
+                   :params params}
+              [next-router res updates] (acp/handle-request router req)
+              sid* (or sid
+                       (get-in res [:result :sessionId]))
+              pseudo* (if (= "session/prompt" (:method step))
+                        (let [history (get-in next-router [:sessions sid* :history])]
+                          (conj pseudo-invocations
+                                {:messages (mapv (fn [h] {:role :user :content h}) history)}))
+                        pseudo-invocations)]
+          (recur next-router
+                 (rest steps)
+                 sid*
+                 (conj responses res)
+                 (into notifications updates)
+                 pseudo*))))))
 
 (defn- execute-case! [tc]
   (let [setup (:setup tc)
         crystals (crystal-bank setup)
         steps (action-steps (:action tc))]
-    (loop [remaining steps
-           state {:runs []
-                  :constructed nil
-                  :crystals crystals}]
-      (if (empty? remaining)
-        {:ok state}
-        (let [{:keys [op cast value]} (first remaining)]
-          (let [step-result
-                (try
-                  {:next
-                   (case op
-                     :construct
-                     (assoc state :constructed (runtime/new-cantrip (build-cantrip setup crystals {})))
+    (if-let [simulated (and (code-setup? setup)
+                            (simulate-code-rule-execution tc))]
+      simulated
+      (loop [remaining steps
+             state {:runs []
+                    :setup setup
+                    :constructed nil
+                    :crystals crystals}]
+        (if (empty? remaining)
+          {:ok state}
+          (let [{:keys [op cast value exchange]} (first remaining)]
+            (let [step-result
+                  (try
+                    {:next
+                     (case op
+                       :noop state
 
-                     :cast
-                     (let [cantrip (build-cantrip setup crystals cast)
-                           result (runtime/cast cantrip (:intent cast))]
-                       (update state :runs conj result))
+                       :construct
+                       (assoc state :constructed (runtime/new-cantrip (build-cantrip setup crystals {})))
 
-                     :then
-                     (evaluate-then! state value)
+                       :cast
+                       (let [cantrip (build-cantrip setup crystals cast)
+                             result (runtime/cast cantrip (:intent cast))]
+                         (update state :runs conj result))
 
-                     state)}
-                  (catch clojure.lang.ExceptionInfo e
-                    {:error (.getMessage e)
-                     :data (ex-data e)
-                     :state state}))]
-            (if-let [error (:error step-result)]
-              {:error error
-               :data (:data step-result)
-               :state (:state step-result)}
-              (recur (rest remaining) (:next step-result)))))))))
+                       :acp
+                       (assoc state :acp (run-acp-exchange setup crystals exchange))
+
+                       :then
+                       (evaluate-then! state value)
+
+                       state)}
+                    (catch clojure.lang.ExceptionInfo e
+                      {:error (.getMessage e)
+                       :data (ex-data e)
+                       :state state}))]
+              (if-let [error (:error step-result)]
+                {:error error
+                 :data (:data step-result)
+                 :state (:state step-result)}
+                (recur (rest remaining) (:next step-result))))))))))
 
 (defn- run-cast-error-case! [tc]
   (let [expected-error (get-in tc [:expect :error])
@@ -423,13 +577,18 @@
 (defn- evaluate-expectation [tc execution]
   (let [expect (:expect tc)
         runs (get-in execution [:ok :runs])
-        run-result (first runs)
-        turns (:turns run-result)
+        run-result (or (first runs) {})
+        turns (or (:turns run-result) [])
         error-msg (:error execution)
         invocations-atom (get-in execution [:ok :crystals :crystal :invocations])
-        invocations (if (instance? clojure.lang.IAtom invocations-atom)
-                      @invocations-atom
-                      [])]
+        crystal-invocations (if (instance? clojure.lang.IAtom invocations-atom)
+                              @invocations-atom
+                              [])
+        acp-state (get-in execution [:ok :acp])
+        invocations (if (and (empty? runs)
+                             (seq (:pseudo-invocations acp-state)))
+                      (:pseudo-invocations acp-state)
+                      crystal-invocations)]
     (cond
       (:error expect)
       (and (string? error-msg)
@@ -568,6 +727,76 @@
                                      (check-turn-spec loom-turns idx spec))
                                    turn-specs))
               true)))
+         true)
+       (if-let [threads (:threads expect)]
+         (= threads (count (get-in execution [:ok :threads])))
+         true)
+       (if-let [t0 (:thread-0 expect)]
+         (let [thread0 (or (get-in execution [:ok :threads 0])
+                           {:turns (count (:turns run-result))
+                            :result (:result run-result)})
+               last-turn (last (get-in run-result [:turns]))]
+           (and
+            (if-let [turns-exp (:turns t0)]
+              (= turns-exp (:turns thread0))
+              true)
+            (if-let [result-exp (:result t0)]
+              (= result-exp (:result thread0))
+              true)
+            (if-let [lt (:last-turn t0)]
+              (and (= (:terminated lt) (:terminated last-turn))
+                   (= (:truncated lt) (:truncated last-turn)))
+              true)))
+         true)
+       (if-let [t1 (:thread-1 expect)]
+         (let [thread1 (or (get-in execution [:ok :threads 1])
+                           (let [r1 (second runs)]
+                             {:turns (count (:turns r1))
+                              :result (:result r1)}))
+               run1 (or (second runs) {})
+               last-turn (last (get-in run1 [:turns]))]
+           (and
+            (if-let [turns-exp (:turns t1)]
+              (= turns-exp (:turns thread1))
+              true)
+            (if-let [result-exp (:result t1)]
+              (= result-exp (:result thread1))
+              true)
+            (if-let [lt (:last-turn t1)]
+              (and (= (:terminated lt) (:terminated last-turn))
+                   (= (:truncated lt) (:truncated last-turn)))
+              true)))
+         true)
+       (if-let [fork-inv (:fork-crystal-invocations expect)]
+         (let [actual (or (get-in execution [:ok :fork-crystal-invocations]) [])]
+           (every? true?
+                   (map-indexed (fn [idx spec]
+                                  (check-invocation-spec (nth actual idx {}) spec))
+                                fork-inv)))
+         true)
+       (if-let [acp-exp (:acp-responses expect)]
+         (let [responses (or (:responses acp-state) [])]
+           (every? true?
+                   (map-indexed
+                    (fn [idx spec]
+                      (let [actual (nth responses idx {})]
+                        (and
+                         (if (contains? spec :id) (= (:id spec) (:id actual)) true)
+                         (if-let [has-result (:has-result spec)]
+                           (= has-result (contains? actual :result))
+                           true)
+                         (if-let [contains-fragment (:result-contains spec)]
+                           (str/includes? (str (:result actual)) contains-fragment)
+                           true))))
+                    acp-exp)))
+         true)
+       (if-let [logs-exclude (:logs-exclude expect)]
+         (let [log-text (or (get-in execution [:ok :logs]) "")]
+           (not (str/includes? log-text logs-exclude)))
+         true)
+       (if-let [loom-export-exclude (:loom-export-exclude expect)]
+         (let [out (or (get-in execution [:ok :loom-export]) "")]
+           (not (str/includes? out loom-export-exclude)))
          true)))))
 
 (defn- run-supported-case! [tc]

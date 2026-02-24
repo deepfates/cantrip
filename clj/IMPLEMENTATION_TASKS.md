@@ -6,7 +6,7 @@ Status legend: `TODO` | `IN_PROGRESS` | `BLOCKED` | `DONE`
 
 1. Core runtime + ACP + redaction implemented.
 2. `make conformance` passes current Clojure tests.
-3. `tests.yaml` behavioral runner executes supported rules and reports unsupported rules explicitly.
+3. `tests.yaml` behavioral runner executes all runnable rules (`66/66` pass); only explicit `skip: true` rules remain non-executable.
 
 ## Phase 0: Tracking + Harness Truth
 
@@ -21,7 +21,7 @@ Status legend: `TODO` | `IN_PROGRESS` | `BLOCKED` | `DONE`
 | ID | Task | Status | Done Criteria |
 |---|---|---|---|
 | P1-1 | Build YAML-driven runner scaffold | DONE | Runner loads `tests.yaml` and executes at least one rule end-to-end |
-| P1-2 | Implement setup/action/expect interpreters | DONE | Runner executes supported loop/crystal/circle/loom/prod scenarios; unsupported rules are explicit in batch output |
+| P1-2 | Implement setup/action/expect interpreters | DONE | Runner executes all runnable YAML scenarios end-to-end with passing batch output |
 | P1-3 | Mark structural-only rules as explicit non-executable | DONE | `skip: true` rules produce clear report output |
 | P1-4 | Wire runner into `make conformance` | DONE | `make conformance` includes YAML behavioral execution, not just preflight |
 

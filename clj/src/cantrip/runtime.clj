@@ -153,14 +153,20 @@
             cumulative-usage initial-usage
             previous-tool-call-ids []]
        (if (>= turn-index turn-limit)
-         {:entity-id entity-id
-          :intent intent
-          :status :truncated
-          :result nil
-          :turns turns
-          :new-turns turns
-          :cumulative-usage cumulative-usage
-          :loom loom-state}
+         (let [truncated-turns (if (seq turns)
+                                 (assoc turns (dec (count turns))
+                                        (assoc (last turns) :truncated true))
+                                 turns)]
+           {:entity-id entity-id
+            :intent intent
+            :status :truncated
+            :result nil
+            :turns truncated-turns
+            :new-turns truncated-turns
+            :cumulative-usage cumulative-usage
+            :loom (if (seq turns)
+                    (assoc loom-state :turns truncated-turns)
+                    loom-state)})
          (let [messages (build-messages cantrip intent prior-turns turns)
                query-start (System/nanoTime)
                utterance (query-with-retry cantrip
