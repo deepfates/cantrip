@@ -124,7 +124,7 @@
                        base)
         ephemeral? (ephemeral-observations? cantrip)]
     (reduce (fn [acc [idx turn]]
-              (let [compact? (and ephemeral? (< idx (dec (count turns))))]
+              (let [compact? (and ephemeral? (pos? (count turns)))]
                 (into acc (turn->messages turn compact?))))
             with-folding
             (map-indexed vector turns))))
@@ -188,7 +188,7 @@
                             :observation observation
                             :metadata {:tokens_prompt (:prompt_tokens turn-usage)
                                        :tokens_completion (:completion_tokens turn-usage)
-                                       :duration_ms (max 0 (long (/ (- query-end query-start) 1000000)))
+                                       :duration_ms (max 1 (long (/ (- query-end query-start) 1000000)))
                                        :timestamp (System/currentTimeMillis)}
                             :terminated (or terminated? done-by-text?)
                             :truncated false}

@@ -37,9 +37,14 @@
   (when-not (map? cantrip)
     (throw (ex-info "cantrip must be a map" {:rule "CANTRIP-1"})))
   (doseq [k [:crystal :call :circle]]
-    (when-not (contains? cantrip k)
+    (when (or (not (contains? cantrip k))
+              (nil? (get cantrip k)))
       (throw (ex-info (str "cantrip requires " (name k))
                       {:rule "CANTRIP-1" :missing k}))))
+  (when (and (true? (get-in cantrip [:call :require-done-tool]))
+             (not (has-done-gate? (:circle cantrip))))
+    (throw (ex-info "cantrip with require_done must have a done gate"
+                    {:rule "LOOP-2"})))
   (validate-circle! (:circle cantrip))
   cantrip)
 

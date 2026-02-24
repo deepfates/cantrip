@@ -112,16 +112,16 @@
   (or state {}))
 
 (defmethod execute-utterance :conversation
-  [circle utterance _]
-  (circle/execute-tool-calls circle (vec (:tool-calls utterance))))
+  [circle utterance dependencies]
+  (circle/execute-tool-calls circle (vec (:tool-calls utterance)) dependencies))
 
 (defmethod execute-utterance :code
-  [circle utterance _]
+  [circle utterance dependencies]
   (let [tool-calls (vec (:tool-calls utterance))
         code (:content utterance)]
     (if (and (empty? tool-calls) (string? code))
       (try
-        (circle/execute-tool-calls circle (eval-script->tool-calls code {}))
+        (circle/execute-tool-calls circle (eval-script->tool-calls code {}) dependencies)
         (catch Exception e
           {:observation [{:gate "code"
                           :arguments "{}"
@@ -129,7 +129,7 @@
                           :is-error true}]
            :terminated? false
            :result nil}))
-      (circle/execute-tool-calls circle tool-calls))))
+      (circle/execute-tool-calls circle tool-calls dependencies))))
 
 (defmethod execute-utterance :minecraft
   [circle utterance dependencies]
@@ -139,7 +139,8 @@
       (try
         (circle/execute-tool-calls circle
                                    (eval-script->tool-calls code
-                                                            (minecraft-bindings dependencies)))
+                                                            (minecraft-bindings dependencies))
+                                   dependencies)
         (catch Exception e
           {:observation [{:gate "minecraft"
                           :arguments "{}"
@@ -147,4 +148,4 @@
                           :is-error true}]
            :terminated? false
            :result nil}))
-      (circle/execute-tool-calls circle tool-calls))))
+      (circle/execute-tool-calls circle tool-calls dependencies))))

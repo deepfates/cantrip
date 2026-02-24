@@ -242,4 +242,4 @@
         tool-contents (map :content (filter #(= :tool (:role %)) third-messages))
         first-turn-observation (-> result :turns first :observation first :result)]
     (is (some #(str/starts-with? % "[ephemeral-ref:") tool-contents))
-    (is (= "gate not implemented" first-turn-observation))))
+    (is (= "one" first-turn-observation))))
