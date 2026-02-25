@@ -27,6 +27,16 @@
       (sci/eval-string* ctx code)
       (subvec (vec @emitted) prior-count))))
 
+(defn- host-code-bindings
+  [dependencies]
+  (merge
+   (when-let [f (:call-agent-fn dependencies)]
+     {'call-agent f
+      'call_agent f})
+   (when-let [f (:call-agent-batch-fn dependencies)]
+     {'call-agent-batch f
+      'call_agent_batch f})))
+
 (defn- maybe-resolve
   [sym]
   (try
@@ -123,14 +133,15 @@
   [circle utterance dependencies]
   (let [tool-calls (vec (:tool-calls utterance))
         code (:content utterance)
-        prior-turns (or (:prior-turns dependencies) [])]
+        prior-turns (or (:prior-turns dependencies) [])
+        code-bindings (host-code-bindings dependencies)]
     (if (and (empty? tool-calls) (string? code))
       (try
         (let [snippets (->> prior-turns
                             (map #(get-in % [:utterance :content]))
                             (filter string?))]
           (circle/execute-tool-calls circle
-                                     (eval-script->tool-calls snippets code {})
+                                     (eval-script->tool-calls snippets code code-bindings)
                                      dependencies))
         (catch Exception e
           {:observation [{:gate "code"
@@ -144,12 +155,13 @@
 (defmethod execute-utterance :minecraft
   [circle utterance dependencies]
   (let [tool-calls (vec (:tool-calls utterance))
-        code (:content utterance)]
+        code (:content utterance)
+        code-bindings (merge (minecraft-bindings dependencies)
+                             (host-code-bindings dependencies))]
     (if (and (empty? tool-calls) (string? code))
       (try
         (circle/execute-tool-calls circle
-                                   (eval-script->tool-calls [] code
-                                                            (minecraft-bindings dependencies))
+                                   (eval-script->tool-calls [] code code-bindings)
                                    dependencies)
         (catch Exception e
           {:observation [{:gate "minecraft"

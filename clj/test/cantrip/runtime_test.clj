@@ -243,3 +243,25 @@
         first-turn-observation (-> result :turns first :observation first :result)]
     (is (some #(str/starts-with? % "[ephemeral-ref:") tool-contents))
     (is (= "one" first-turn-observation))))
+
+(deftest code-medium-call-agent-binding-invokes-child-runtime
+  (let [child-cantrip {:crystal {:provider :fake
+                                 :responses [{:tool-calls [{:id "c1"
+                                                            :gate :done
+                                                            :args {:answer "child-ok"}}]}]}
+                       :call {}
+                       :circle {:medium :code
+                                :gates [:done]
+                                :wards [{:max-turns 2}]}}
+        code (str "(submit-answer (call-agent {:cantrip "
+                  (pr-str child-cantrip)
+                  " :intent \"child\"}))")
+        cantrip {:crystal {:provider :fake
+                           :responses [{:content code}]}
+                 :call {:require-done-tool true}
+                 :circle {:medium :code
+                          :gates [:done :call_agent]
+                          :wards [{:max-turns 3} {:max-depth 1}]}}
+        result (runtime/cast cantrip "compose via code")]
+    (is (= :terminated (:status result)))
+    (is (= "child-ok" (:result result)))))

@@ -52,6 +52,22 @@
     (is (false? (:terminated? result)))
     (is (true? (-> result :observation first :is-error)))))
 
+(deftest code-medium-supports-host-call-agent-bindings
+  (let [circle {:medium :code :gates [:done] :wards [{:max-turns 2}]}
+        utterance {:content "(submit-answer (call-agent {:intent \"child\"}))"}
+        deps {:call-agent-fn (fn [_] "child-ok")}
+        result (medium/execute-utterance circle utterance deps)]
+    (is (true? (:terminated? result)))
+    (is (= "child-ok" (:result result)))))
+
+(deftest code-medium-supports-host-call-agent-batch-bindings
+  (let [circle {:medium :code :gates [:done] :wards [{:max-turns 2}]}
+        utterance {:content "(let [xs (call-agent-batch [{:intent \"a\"} {:intent \"b\"}])] (submit-answer (str (first xs) \",\" (second xs))))"}
+        deps {:call-agent-batch-fn (fn [_] ["a" "b"])}
+        result (medium/execute-utterance circle utterance deps)]
+    (is (true? (:terminated? result)))
+    (is (= "a,b" (:result result)))))
+
 (deftest minecraft-medium-readonly-bindings
   (let [circle {:medium :minecraft :gates [:done] :wards [{:max-turns 2}]}
         utterance {:content "(submit-answer (str (player) \"@\" (xyz)))"}
