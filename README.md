@@ -1,7 +1,8 @@
 # cantrip
 
 > "The cantrips have been spoken. The patterns of force are aligned. Now it is up to your machine."
-> — Gargoyles: Reawakening
+> — Gargoyles: Reawakening (1995)
+
 
 A framework for building autonomous LLM entities. You draw a circle, speak an intent into it, and an entity arises — it reasons, acts in an environment, observes the results, and loops until the work is done or a limit is reached.
 
