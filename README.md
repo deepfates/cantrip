@@ -10,7 +10,37 @@ Eleven terms describe everything in the system. Three are fundamental: the **cry
 
 ---
 
-## Quick Start
+## Quick Start: Launch an Entity
+
+The fastest way to experience cantrip is to launch the **Familiar** — a long-running entity that can explore a codebase, run shell commands, browse the web, and reason about what it finds. It works in a JS medium and delegates to child cantrips with different mediums (bash, browser, etc.).
+
+```bash
+# Clone and install
+git clone https://github.com/deepfates/cantrip.git
+cd cantrip
+bun install
+
+# Set your API key
+export ANTHROPIC_API_KEY="sk-..."
+
+# Launch the Familiar as an interactive REPL
+bun run examples/16_familiar.ts
+```
+
+You'll get an interactive session where the entity can observe the repo (`repo_files`, `repo_read`), spawn child cantrips to run shell commands or browse the web, and reason about everything in code. Ask it to explore the codebase, run tests, analyze files — it figures out how to decompose the task and coordinate the work.
+
+```bash
+# Or give it a single task
+bun run examples/16_familiar.ts "Explain the gate system and find all builtin gates"
+```
+
+The `examples/` directory has simpler starting points too — see the [examples table](#examples) below to walk through the concepts one at a time.
+
+---
+
+## Minimal Example
+
+To build a cantrip from scratch: a crystal, a circle with gates and wards, and a call.
 
 ```typescript
 import { cantrip, Circle, ChatAnthropic, done, max_turns, gate } from "cantrip";
@@ -42,35 +72,7 @@ const result = await spell.cast("What is 2 + 3?");
 console.log(result); // "5"
 ```
 
-Each `cast` creates a fresh entity — the cantrip is a reusable recipe.
-
----
-
-## Try It: Launch an Entity
-
-The fastest way to experience cantrip is to launch the **Familiar** — a long-running entity that can explore a codebase, run shell commands, browse the web, and reason about what it finds. It works in a JS medium and delegates to child cantrips with different mediums (bash, browser, etc.).
-
-```bash
-# Clone and install
-git clone https://github.com/deepfates/cantrip.git
-cd cantrip
-bun install
-
-# Set your API key
-export ANTHROPIC_API_KEY="sk-..."
-
-# Launch the Familiar as an interactive REPL
-bun run examples/16_familiar.ts
-```
-
-You'll get an interactive session where the entity can observe the repo (`repo_files`, `repo_read`), spawn child cantrips to run shell commands or browse the web, and reason about everything in code. Ask it to explore the codebase, run tests, analyze files — it figures out how to decompose the task and coordinate the work.
-
-```bash
-# Or give it a single task
-bun run examples/16_familiar.ts "Explain the gate system and find all builtin gates"
-```
-
-The `examples/` directory has simpler starting points too — see the [examples table](#examples) below to walk through the concepts one at a time.
+Each `cast` creates a fresh entity — the cantrip is a reusable recipe. No medium specified here: the circle uses **conversation** by default, where gates appear as tool calls in natural language. Add a medium to upgrade the entity's action space — see [Mediums](#mediums) below.
 
 ---
 
