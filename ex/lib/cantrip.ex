@@ -61,12 +61,16 @@ defmodule Cantrip do
   Build a cantrip from environment-based crystal configuration.
 
   Required env:
-  - `CANTRIP_MODEL`
+  - `CANTRIP_MODEL` (or provider-specific: `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL`)
   Optional env:
   - `CANTRIP_CRYSTAL_PROVIDER` (default: `openai_compatible`)
-  - `CANTRIP_API_KEY`
-  - `CANTRIP_BASE_URL` (default: `https://api.openai.com/v1`)
+  - `CANTRIP_API_KEY` (or provider-specific: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`)
+  - `CANTRIP_BASE_URL` (or provider-specific variants)
   - `CANTRIP_TIMEOUT_MS` (default: `30000`)
+
+  Provider-specific env vars take precedence over `CANTRIP_*` generics,
+  so you can have all three API keys set simultaneously and switch via
+  `CANTRIP_CRYSTAL_PROVIDER`.
   """
   @spec new_from_env(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
   def new_from_env(attrs \\ %{}) do
@@ -80,50 +84,73 @@ defmodule Cantrip do
   @spec crystal_from_env() :: {:ok, {module(), map()}} | {:error, String.t()}
   def crystal_from_env do
     provider = System.get_env("CANTRIP_CRYSTAL_PROVIDER", "openai_compatible")
-    model = System.get_env("CANTRIP_MODEL")
 
-    cond do
-      model in [nil, ""] ->
-        {:error, "missing CANTRIP_MODEL"}
+    case provider do
+      "openai_compatible" ->
+        model = env_first(["OPENAI_MODEL", "CANTRIP_MODEL"])
 
-      provider == "openai_compatible" ->
-        {:ok,
-         {Cantrip.Crystals.OpenAICompatible,
-          %{
-            model: model,
-            api_key: System.get_env("CANTRIP_API_KEY"),
-            base_url: System.get_env("CANTRIP_BASE_URL", "https://api.openai.com/v1"),
-            timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000)
-          }}}
+        if model in [nil, ""] do
+          {:error, "missing CANTRIP_MODEL or OPENAI_MODEL"}
+        else
+          {:ok,
+           {Cantrip.Crystals.OpenAICompatible,
+            %{
+              model: model,
+              api_key: env_first(["OPENAI_API_KEY", "CANTRIP_API_KEY"]),
+              base_url:
+                env_first(["OPENAI_BASE_URL", "CANTRIP_BASE_URL"]) || "https://api.openai.com/v1",
+              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000)
+            }}}
+        end
 
-      provider == "anthropic" ->
-        {:ok,
-         {Cantrip.Crystals.Anthropic,
-          %{
-            model: model,
-            api_key: System.get_env("CANTRIP_API_KEY"),
-            base_url: System.get_env("CANTRIP_BASE_URL", "https://api.anthropic.com"),
-            timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000),
-            max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), 4096)
-          }}}
+      "anthropic" ->
+        model = env_first(["ANTHROPIC_MODEL", "CANTRIP_MODEL"])
 
-      provider == "gemini" ->
-        {:ok,
-         {Cantrip.Crystals.Gemini,
-          %{
-            model: model,
-            api_key: System.get_env("CANTRIP_API_KEY"),
-            base_url:
-              System.get_env(
-                "CANTRIP_BASE_URL",
-                "https://generativelanguage.googleapis.com"
-              ),
-            timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000)
-          }}}
+        if model in [nil, ""] do
+          {:error, "missing CANTRIP_MODEL or ANTHROPIC_MODEL"}
+        else
+          {:ok,
+           {Cantrip.Crystals.Anthropic,
+            %{
+              model: model,
+              api_key: env_first(["ANTHROPIC_API_KEY", "CANTRIP_API_KEY"]),
+              base_url:
+                System.get_env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com",
+              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000),
+              max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), 4096)
+            }}}
+        end
 
-      true ->
+      "gemini" ->
+        model = env_first(["GEMINI_MODEL", "CANTRIP_MODEL"])
+
+        if model in [nil, ""] do
+          {:error, "missing CANTRIP_MODEL or GEMINI_MODEL"}
+        else
+          {:ok,
+           {Cantrip.Crystals.Gemini,
+            %{
+              model: model,
+              api_key: env_first(["GEMINI_API_KEY", "CANTRIP_API_KEY"]),
+              base_url:
+                System.get_env("GEMINI_BASE_URL") || "https://generativelanguage.googleapis.com",
+              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000)
+            }}}
+        end
+
+      _ ->
         {:error, "unsupported crystal provider: #{provider}"}
     end
+  end
+
+  defp env_first(keys) do
+    Enum.find_value(keys, fn key ->
+      case System.get_env(key) do
+        nil -> nil
+        "" -> nil
+        val -> val
+      end
+    end)
   end
 
   @doc """
