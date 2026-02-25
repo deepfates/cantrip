@@ -43,4 +43,49 @@ defmodule CantripM2LoomApiTest do
     assert length(thread) == 2
     assert Enum.all?(thread, &(!is_nil(&1.utterance) and !is_nil(&1.observation)))
   end
+
+  test "LOOM-1 turns record cantrip_id, entity_id, and role" do
+    crystal =
+      {FakeCrystal, FakeCrystal.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
+
+    {:ok, cantrip} =
+      Cantrip.new(crystal: crystal, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
+
+    {:ok, _val, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "fields test")
+
+    [turn] = loom.turns
+    assert is_binary(turn.cantrip_id)
+    assert String.starts_with?(turn.cantrip_id, "cantrip_")
+    assert is_binary(turn.entity_id)
+    assert turn.role == "turn"
+  end
+
+  test "LOOM-9 turns record tokens_cached in metadata" do
+    crystal =
+      {FakeCrystal, FakeCrystal.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
+
+    {:ok, cantrip} =
+      Cantrip.new(crystal: crystal, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
+
+    {:ok, _val, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "cached tokens test")
+
+    [turn] = loom.turns
+    assert Map.has_key?(turn.metadata, :tokens_cached)
+    assert is_integer(turn.metadata.tokens_cached)
+  end
+
+  test "LOOM-10 extract_thread with leaf_id traces root-to-leaf path" do
+    call = %{system_prompt: nil}
+    loom = Cantrip.Loom.new(call)
+
+    loom = Cantrip.Loom.append_turn(loom, %{utterance: "a", observation: []})
+    loom = Cantrip.Loom.append_turn(loom, %{utterance: "b", observation: []})
+    loom = Cantrip.Loom.append_turn(loom, %{utterance: "c", observation: []})
+
+    leaf_id = List.last(loom.turns).id
+    thread = Cantrip.Loom.extract_thread(loom, leaf_id)
+
+    assert length(thread) == 3
+    assert Enum.map(thread, & &1.utterance) == ["a", "b", "c"]
+  end
 end

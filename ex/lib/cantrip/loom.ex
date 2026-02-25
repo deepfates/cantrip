@@ -78,15 +78,38 @@ defmodule Cantrip.Loom do
     end
   end
 
-  def extract_thread(%__MODULE__{turns: turns}) do
-    Enum.map(turns, fn turn ->
+  def extract_thread(%__MODULE__{turns: turns}, leaf_id \\ nil) do
+    path = if leaf_id, do: trace_path(turns, leaf_id), else: turns
+
+    Enum.map(path, fn turn ->
       %{
+        id: Map.get(turn, :id),
+        cantrip_id: Map.get(turn, :cantrip_id),
+        entity_id: Map.get(turn, :entity_id),
+        role: Map.get(turn, :role, "turn"),
         utterance: Map.get(turn, :utterance),
         observation: Map.get(turn, :observation),
         terminated: Map.get(turn, :terminated, false),
-        truncated: Map.get(turn, :truncated, false)
+        truncated: Map.get(turn, :truncated, false),
+        metadata: Map.get(turn, :metadata)
       }
     end)
+  end
+
+  defp trace_path(turns, leaf_id) do
+    by_id = Map.new(turns, fn t -> {t.id, t} end)
+
+    leaf = Map.get(by_id, leaf_id)
+    if is_nil(leaf), do: turns, else: walk_ancestors(by_id, leaf, [leaf])
+  end
+
+  defp walk_ancestors(_by_id, %{parent_id: nil}, acc), do: acc
+
+  defp walk_ancestors(by_id, %{parent_id: pid}, acc) do
+    case Map.get(by_id, pid) do
+      nil -> acc
+      parent -> walk_ancestors(by_id, parent, [parent | acc])
+    end
   end
 
   defp normalize_storage({:jsonl, path}) when is_binary(path),

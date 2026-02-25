@@ -197,17 +197,22 @@ defmodule Cantrip.EntityServer do
           false
       end
 
+    usage_data = Map.get(response, :usage, %{})
+
     loom =
       Loom.append_turn(state.loom, %{
+        cantrip_id: state.cantrip.id,
         entity_id: state.entity_id,
+        role: "turn",
         utterance: utterance,
         observation: observation,
         gate_calls: Enum.map(observation, & &1.gate),
         terminated: terminated,
         truncated: false,
         metadata: %{
-          tokens_prompt: Map.get(Map.get(response, :usage, %{}), :prompt_tokens, 0),
-          tokens_completion: Map.get(Map.get(response, :usage, %{}), :completion_tokens, 0),
+          tokens_prompt: Map.get(usage_data, :prompt_tokens, 0),
+          tokens_completion: Map.get(usage_data, :completion_tokens, 0),
+          tokens_cached: Map.get(usage_data, :cached_tokens, 0),
           duration_ms: duration_ms,
           timestamp: DateTime.utc_now()
         }
@@ -590,13 +595,13 @@ defmodule Cantrip.EntityServer do
     trigger = Map.get(cantrip.folding, :trigger_after_turns)
 
     if is_integer(trigger) and trigger > 0 and turns >= trigger do
-      do_fold_messages(messages)
+      do_fold_messages(messages, turns)
     else
       messages
     end
   end
 
-  defp do_fold_messages(messages) do
+  defp do_fold_messages(messages, turns) do
     {system, rest} =
       case messages do
         [%{role: :system} = sys | tail] -> {[sys], tail}
@@ -610,8 +615,17 @@ defmodule Cantrip.EntityServer do
       end
 
     {head, tail} = base
-    summary = %{role: :system, content: "folded prior turns; see loom for full history"}
-    keep_tail = Enum.take(tail, -4)
+    keep_count = 4
+    folded_count = max(length(tail) - keep_count, 0)
+    folded_end = max(turns - keep_count, 1)
+
+    summary = %{
+      role: :system,
+      content:
+        "[Folded: turns 1-#{folded_end}] #{folded_count} turns summarized; see loom for full history"
+    }
+
+    keep_tail = Enum.take(tail, -keep_count)
     system ++ head ++ [summary] ++ keep_tail
   end
 

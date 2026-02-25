@@ -9,7 +9,8 @@ defmodule Cantrip do
 
   alias Cantrip.{Call, Circle, Crystal, EntityServer, Loom}
 
-  defstruct crystal_module: nil,
+  defstruct id: nil,
+            crystal_module: nil,
             crystal_state: nil,
             child_crystal: nil,
             call: nil,
@@ -19,6 +20,7 @@ defmodule Cantrip do
             folding: %{}
 
   @type t :: %__MODULE__{
+          id: String.t(),
           crystal_module: module(),
           crystal_state: term(),
           child_crystal: {module(), term()} | nil,
@@ -42,6 +44,7 @@ defmodule Cantrip do
 
       {:ok,
        %__MODULE__{
+         id: "cantrip_" <> Integer.to_string(System.unique_integer([:positive])),
          crystal_module: module,
          crystal_state: state,
          child_crystal: normalize_child_crystal(Map.get(attrs, :child_crystal), crystal),

@@ -77,7 +77,7 @@ defmodule CantripM12ExamplesTest do
 
     assert Enum.any?(
              third.messages,
-             &(&1[:content] == "folded prior turns; see loom for full history")
+             &(is_binary(&1[:content]) and String.starts_with?(&1[:content], "[Folded:"))
            )
   end
 
