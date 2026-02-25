@@ -16,7 +16,7 @@ import {
 import { TaskComplete } from "../entity/errors";
 import { executeToolCall, extractScreenshot } from "../entity/runtime";
 import type { Medium } from "./medium";
-import { done_for_medium } from "./gate/builtin/done";
+import { done, done_for_medium } from "./gate/builtin/done";
 
 /** A gate call record produced by circle.execute(). */
 export type CircleGateCall = {
@@ -83,7 +83,7 @@ export interface Circle {
 
 /**
  * Build capability docs string from gates. Pure function, shared by both circle variants.
- * Exported so recipe-level code can reuse the core logic.
+ * Exported so script-level code can reuse the core logic.
  */
 export function buildCapabilityDocs(gates: BoundGate[]): string {
   const sectionedGates = gates.filter(
@@ -120,18 +120,21 @@ export function buildCapabilityDocs(gates: BoundGate[]): string {
  * When no medium: returns a ToolCallingCircle that dispatches tool_calls to gates.
  * When medium present: delegates crystalView/execute/dispose to the medium.
  */
-export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward[] }): Circle {
+export function Circle(opts: {
+  medium?: Medium;
+  gates?: BoundGate[];
+  wards: Ward[];
+}): Circle {
   const gates = opts.gates ?? [];
   const hasMedium = !!opts.medium;
 
-  // Auto-inject done_for_medium when medium is present and no done gate provided
-  if (hasMedium && !gates.some((g) => g.name === "done")) {
-    gates.push(done_for_medium());
-  }
-
-  // CIRCLE-1: done gate required unless medium handles termination
-  if (!hasMedium && !gates.some((g) => g.name === "done")) {
-    throw new Error("Circle must have a done gate");
+  // Auto-inject done gate when not provided
+  if (!gates.some((g) => g.name === "done")) {
+    if (hasMedium) {
+      gates.push(done_for_medium());
+    } else {
+      gates.push(done);
+    }
   }
   if (opts.wards.length === 0) {
     throw new Error("Circle must have at least one ward");
@@ -148,9 +151,10 @@ export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward
 
     // Apply gate exclusions from wards for the medium path too
     const excludedSet = new Set(resolved.exclude_gates);
-    const filteredGates = excludedSet.size > 0
-      ? gates.filter((g) => !excludedSet.has(g.name))
-      : gates;
+    const filteredGates =
+      excludedSet.size > 0
+        ? gates.filter((g) => !excludedSet.has(g.name))
+        : gates;
 
     return {
       gates: filteredGates,
@@ -176,7 +180,10 @@ export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward
       async execute(utterance, options) {
         // Lazy init on first execute
         if (!initPromise) {
-          initPromise = medium.init(filteredGates, options.dependency_overrides);
+          initPromise = medium.init(
+            filteredGates,
+            options.dependency_overrides,
+          );
         }
         await initPromise;
 
@@ -199,9 +206,10 @@ export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward
 
   // Apply gate exclusions from wards
   const excludedSet = new Set(resolved.exclude_gates);
-  const filteredGates = excludedSet.size > 0
-    ? gates.filter((g) => !excludedSet.has(g.name))
-    : gates;
+  const filteredGates =
+    excludedSet.size > 0
+      ? gates.filter((g) => !excludedSet.has(g.name))
+      : gates;
 
   // Build tool_map once
   const tool_map = new Map<string, BoundGate>();
@@ -230,11 +238,7 @@ export function Circle(opts: { medium?: Medium; gates?: BoundGate[]; wards: Ward
     },
 
     async execute(utterance, options) {
-      const {
-        dependency_overrides,
-        on_event,
-        on_tool_result,
-      } = options;
+      const { dependency_overrides, on_event, on_tool_result } = options;
       const emit = on_event ?? (() => {});
 
       const messages: ToolMessage[] = [];

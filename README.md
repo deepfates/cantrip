@@ -183,9 +183,24 @@ const circle = Circle({
 });
 ```
 
+### VM (node:vm sandbox)
+
+The entity writes and runs JavaScript in a node:vm context. Full ES2024 — arrow functions, async/await, destructuring. Zero external dependencies. Gates are projected as async functions the entity calls with `await`.
+
+```typescript
+import { vm } from "cantrip";
+
+const circle = Circle({
+  medium: vm({ state: { context: { items: [1, 2, 3] } } }),
+  wards: [max_turns(20), require_done()],
+});
+```
+
+The entity sees a `context` variable in its sandbox and explores it with code. `var` and `globalThis` persist across turns. Weak isolation (V8 context, not a security boundary).
+
 ### JavaScript (QuickJS sandbox)
 
-The entity writes and runs JavaScript. Data lives in variables across turns — the entity thinks in code.
+The entity works in a QuickJS WASM sandbox. Strong isolation but limited ES version and a serialization boundary — gate results are strings, not native objects.
 
 ```typescript
 import { js } from "cantrip";
@@ -195,8 +210,6 @@ const circle = Circle({
   wards: [max_turns(20), require_done()],
 });
 ```
-
-The entity sees a `context` variable in its sandbox and explores it with code. Gates are projected as host functions — `submit_answer()` is available in the JS environment.
 
 ### Bash
 
@@ -238,7 +251,7 @@ const circle = Circle({
 });
 ```
 
-### Future mediums
+### Other mediums
 
 Any interactive environment can become a medium — Python, SQL, Frida, GDB, Redis, or a custom DSL. The interface is the same: the entity writes, the medium executes, the result feeds back.
 
@@ -311,12 +324,12 @@ Children get independent circles. The shared loom captures parent + child turns 
 
 ### The Familiar
 
-The capstone pattern: a long-running JS entity that creates and casts child cantrips from code. It observes the repo, delegates to specialized children (bash, browser, JS), and synthesizes results.
+The capstone pattern: a long-running entity in a `vm()` medium that creates and casts child cantrips from code. It observes the repo, delegates to specialized children (bash, browser, JS), and synthesizes results.
 
 ```typescript
 import {
   cantripGates, repoGates, RepoContext, Loom, JsonlStorage, done,
-  js, bash, browser, getRepoContextDepends,
+  vm, js, bash, browser, getRepoContextDepends,
 } from "cantrip";
 
 const loom = new Loom(new JsonlStorage(".cantrip/loom.jsonl"));
@@ -326,6 +339,7 @@ const cantripConfig = {
   mediums: {
     bash: (opts) => bash({ cwd: opts?.cwd ?? repoRoot }),
     js: (opts) => js({ state: opts?.state }),
+    vm: (opts) => vm({ state: opts?.state }),
     browser: () => browser({ headless: true, profile: "full" }),
   },
   gates: { done: [done] },
@@ -337,7 +351,7 @@ const { gates: cGates, overrides: cOverrides } = cantripGates(cantripConfig);
 const repoCtx = new RepoContext(repoRoot);
 
 const circle = Circle({
-  medium: js(),
+  medium: vm(),
   gates: [...repoGates, ...cGates],
   wards: [max_turns(50), require_done()],
 });
@@ -355,31 +369,31 @@ const spell = cantrip({
 });
 ```
 
-Inside the Familiar's JS medium, the entity writes code to coordinate:
+Inside the Familiar's vm medium, the entity writes modern JS to coordinate:
 
 ```javascript
 // Shell work — child runs in bash
-var worker = cantrip({
+const worker = cantrip({
   crystal: "anthropic/claude-haiku-4.5",
   call: "Execute the command and report output.",
   circle: { medium: "bash", gates: ["done"], wards: [{ max_turns: 5 }] }
 });
-var output = cast(worker, "Run the test suite");
+const output = await cast(worker, "Run the test suite");
 
 // Thinking — leaf cantrip, single LLM call
-var thinker = cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "Analyze code." });
-var analysis = cast(thinker, "What bugs do you see?\n" + code);
+const thinker = cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "Analyze code." });
+const analysis = await cast(thinker, "What bugs do you see?\n" + code);
 
 // Compose in code — loops, conditionals, pipelines
-var files = repo_files("src/**/*.ts");
-for (var i = 0; i < files.length; i++) {
-  var src = repo_read(files[i]);
-  if (src.indexOf("TODO") !== -1) {
-    var review = cast(
+const files = JSON.parse(await repo_files("src/**/*.ts"));
+for (const file of files) {
+  const src = await repo_read(file);
+  if (src.includes("TODO")) {
+    const review = await cast(
       cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "Find TODOs." }),
       src
     );
-    console.log(files[i] + ": " + review);
+    console.log(file + ": " + review);
   }
 }
 ```
@@ -428,7 +442,7 @@ The `examples/` directory walks through the concepts in order:
 | 01 | `crystal` | LLM as stateless query |
 | 02 | `gate` | Defining callable functions |
 | 03 | `circle` | Gates + wards + validation |
-| 04 | `cantrip` | Crystal + call + circle = recipe |
+| 04 | `cantrip` | Crystal + call + circle = script |
 | 05 | `ward` | Constraints and safety limits |
 | 06 | `providers` | Multi-provider crystals |
 | 07 | `conversation` | Conversation medium (default) |
@@ -441,6 +455,11 @@ The `examples/` directory walks through the concepts in order:
 | 14 | `recursive` | Depth-limited recursive entities |
 | 15 | `research_entity` | jsBrowser + recursion + ACP |
 | 16 | `familiar` | Cantrip construction as medium physics |
+| 17 | `leaf_cantrip` | Simplest delegation — crystal + call, one LLM call |
+| 18 | `vm_medium` | node:vm sandbox — full ES2024, async/await |
+| 19 | `bash_medium` | Entity works IN bash as primary medium |
+| 20 | `data_exploration` | RLM pattern — data in sandbox, explore with code |
+| 21 | `independent_axes` | M, G, W as orthogonal knobs |
 
 Run any example:
 ```bash
@@ -470,7 +489,7 @@ export OPENAI_API_KEY="sk-..."
 
 In tabletop RPGs, a cantrip is the simplest spell — it costs nothing to cast and you can cast it repeatedly. The etymology traces to Gaelic *canntaireachd*, a piper's mnemonic chant. It's a loop of language.
 
-Here, a cantrip is a reusable recipe for creating LLM entities. Configure once, cast many times, compose into larger spells. The loop is the mechanism. The repetition is the point.
+Here, a cantrip is a reusable script for creating LLM entities. Configure once, cast many times, compose into larger spells. The loop is the mechanism. The repetition is the point.
 
 ---
 

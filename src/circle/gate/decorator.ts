@@ -74,7 +74,6 @@ export class Gate<TArgs extends Record<string, any> = Record<string, any>> {
     for (const [name, dep] of Object.entries(this.dependencies)) {
       resolvedDeps[name] = await dep.resolve(overrides);
     }
-
     const result = await this.handler(args, resolvedDeps);
     return serializeBoundGate(result);
   }

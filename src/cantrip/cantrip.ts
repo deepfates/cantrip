@@ -10,7 +10,7 @@ import { Loom, MemoryStorage } from "../loom";
 import type { FoldingConfig } from "../loom/folding";
 
 /**
- * A Cantrip is the minimal recipe for creating an Entity.
+ * A Cantrip is the minimal script for creating an Entity.
  *
  * It combines:
  * - A Crystal (LLM) — the intelligence that powers reasoning
@@ -95,9 +95,8 @@ export function cantrip(input: CantripInput): Cantrip {
   }
 
   // Normalize string shorthand: "prompt" → { system_prompt: "prompt" }
-  const callInput: CallInput = typeof input.call === "string"
-    ? { system_prompt: input.call }
-    : input.call;
+  const callInput: CallInput =
+    typeof input.call === "string" ? { system_prompt: input.call } : input.call;
   const { crystal, circle, dependency_overrides } = input;
 
   // CANTRIP-3: circle must have at least one ward

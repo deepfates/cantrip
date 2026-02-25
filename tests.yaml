@@ -716,8 +716,8 @@
 # Chapter 5: Composition
 # =============================================================================
 
-- rule: COMP-1
-  name: child circle is subset of parent
+- rule: COMP-1a
+  name: delegation — child circle is subset of parent
   setup:
     crystal:
       type: code_circle
@@ -738,6 +738,14 @@
     turn_1_observation:
       is_error: true
       content_contains: "cannot grant gate"
+
+- rule: COMP-1b
+  name: construction — child circle governed by host registry, not parent
+  notes: |
+    Host-mediated construction (cantrip()/cast() inside a code medium) allows
+    the entity to construct children with mediums/gates the parent doesn't have,
+    as long as the host authorized them in the capability registry.
+    This is tested empirically via the Familiar (example 16).
 
 - rule: COMP-2
   name: call_agent blocks parent until child completes

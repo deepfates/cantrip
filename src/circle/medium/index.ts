@@ -6,3 +6,5 @@ export { browser } from "./browser";
 export type { BrowserMediumOptions } from "./browser";
 export { jsBrowser } from "./js_browser";
 export type { JsBrowserMediumOptions } from "./js_browser";
+export { vm } from "./vm";
+export type { VmMediumOptions } from "./vm";
