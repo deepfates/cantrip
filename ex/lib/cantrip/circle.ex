@@ -56,6 +56,14 @@ defmodule Cantrip.Circle do
     end)
   end
 
+  @spec code_eval_timeout_ms(t()) :: pos_integer()
+  def code_eval_timeout_ms(%__MODULE__{wards: wards}) do
+    Enum.find_value(wards, 30_000, fn
+      %{code_eval_timeout_ms: n} when is_integer(n) and n > 0 -> n
+      _ -> nil
+    end)
+  end
+
   @spec tool_definitions(t()) :: list(gate())
   def tool_definitions(%__MODULE__{gates: gates}) do
     gates

@@ -270,12 +270,11 @@ defmodule Cantrip.EntityServer do
     end
   end
 
-  @code_eval_timeout_ms 30_000
-
   defp eval_code_sandboxed(code, code_state, runtime) do
+    timeout = Circle.code_eval_timeout_ms(runtime.circle)
     task = Task.async(fn -> CodeMedium.eval(code, code_state, runtime) end)
 
-    case Task.yield(task, @code_eval_timeout_ms) do
+    case Task.yield(task, timeout) do
       {:ok, result} ->
         result
 
