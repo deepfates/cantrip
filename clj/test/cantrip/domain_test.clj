@@ -51,3 +51,30 @@
     (is (thrown-with-msg? clojure.lang.ExceptionInfo
                           #"intent is required"
                           (domain/require-intent! "  ")))))
+
+(deftest ward-validation
+  (testing "new ward values must be valid"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                          #"max-batch-size must be a positive integer"
+                          (domain/validate-cantrip!
+                           {:crystal {}
+                            :call {}
+                            :circle {:medium :conversation
+                                     :gates [:done]
+                                     :wards [{:max-turns 2} {:max-batch-size 0}]}})))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                          #"max-eval-ms must be a positive integer"
+                          (domain/validate-cantrip!
+                           {:crystal {}
+                            :call {}
+                            :circle {:medium :code
+                                     :gates [:done]
+                                     :wards [{:max-turns 2} {:max_eval_ms "nope"}]}})))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                          #"allow-require must be boolean"
+                          (domain/validate-cantrip!
+                           {:crystal {}
+                            :call {}
+                            :circle {:medium :code
+                                     :gates [:done]
+                                     :wards [{:max-turns 2} {:allow_require :yes}]}})))))
