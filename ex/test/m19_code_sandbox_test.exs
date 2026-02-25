@@ -176,5 +176,60 @@ defmodule CantripM19CodeSandboxTest do
 
       assert tool_messages == [], "expected no role:tool messages in code mode"
     end
+
+    test "IO.puts output is captured and fed back to crystal" do
+      crystal =
+        {FakeCrystal,
+         FakeCrystal.new(
+           [
+             %{code: ~s[IO.puts("hello from sandbox")]},
+             %{code: ~s[done.("ok")]}
+           ],
+           record_inputs: true
+         )}
+
+      {:ok, cantrip} = code_cantrip(crystal)
+      {:ok, "ok", next_cantrip, loom, _meta} = Cantrip.cast(cantrip, "io capture test")
+
+      # stdio observation is in the loom
+      stdio_obs =
+        Enum.find_value(loom.turns, fn t ->
+          Enum.find(t.observation || [], fn obs ->
+            obs.gate == "stdio" and String.contains?(obs.result, "hello from sandbox")
+          end)
+        end)
+
+      assert stdio_obs, "expected a stdio observation with captured IO output"
+
+      # feedback reaches the crystal on the next turn
+      [_first, second] = FakeCrystal.invocations(next_cantrip.crystal_state)
+      user_messages = Enum.filter(second.messages, &(&1.role == :user))
+
+      feedback =
+        Enum.find(user_messages, fn msg ->
+          String.contains?(msg.content, "hello from sandbox")
+        end)
+
+      assert feedback, "expected IO output in crystal feedback"
+    end
+
+    test "IO.puts does not leak to real stdout" do
+      crystal =
+        {FakeCrystal,
+         FakeCrystal.new([
+           %{code: ~s[IO.puts("should not appear")]},
+           %{code: ~s[done.("ok")]}
+         ])}
+
+      {:ok, cantrip} = code_cantrip(crystal)
+
+      output =
+        ExUnit.CaptureIO.capture_io(fn ->
+          {:ok, "ok", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "no leak test")
+        end)
+
+      refute String.contains?(output, "should not appear"),
+             "IO.puts from eval leaked to stdout"
+    end
   end
 end

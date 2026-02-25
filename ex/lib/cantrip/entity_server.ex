@@ -276,19 +276,25 @@ defmodule Cantrip.EntityServer do
 
     task =
       Task.async(fn ->
+        {:ok, capture_pid} = StringIO.open("")
+        Process.group_leader(self(), capture_pid)
+
         if saved_child_crystal, do: Process.put(:cantrip_child_crystal, saved_child_crystal)
         result = CodeMedium.eval(code, code_state, runtime)
         child_crystal = Process.get(:cantrip_child_crystal)
-        {result, child_crystal}
+        {_, captured_output} = StringIO.contents(capture_pid)
+        StringIO.close(capture_pid)
+        {result, child_crystal, captured_output}
       end)
 
     case Task.yield(task, timeout) do
-      {:ok, {{next_state, obs, result, terminated}, child_crystal}} ->
+      {:ok, {{next_state, obs, result, terminated}, child_crystal, captured_output}} ->
         next_state =
           if child_crystal,
             do: Map.put(next_state, :child_crystal, child_crystal),
             else: next_state
 
+        obs = maybe_append_stdio(obs, captured_output)
         {next_state, obs, result, terminated}
 
       nil ->
@@ -304,6 +310,18 @@ defmodule Cantrip.EntityServer do
 
       {code_state, obs, nil, false}
   end
+
+  defp maybe_append_stdio(obs, captured) when is_binary(captured) do
+    trimmed = String.trim(captured)
+
+    if trimmed == "" do
+      obs
+    else
+      obs ++ [%{gate: "stdio", result: trimmed, is_error: false}]
+    end
+  end
+
+  defp maybe_append_stdio(obs, _), do: obs
 
   defp format_code_feedback(observations, eval_result) do
     error_parts =
