@@ -272,11 +272,24 @@ defmodule Cantrip.EntityServer do
 
   defp eval_code_sandboxed(code, code_state, runtime) do
     timeout = Circle.code_eval_timeout_ms(runtime.circle)
-    task = Task.async(fn -> CodeMedium.eval(code, code_state, runtime) end)
+    saved_child_crystal = Map.get(code_state, :child_crystal)
+
+    task =
+      Task.async(fn ->
+        if saved_child_crystal, do: Process.put(:cantrip_child_crystal, saved_child_crystal)
+        result = CodeMedium.eval(code, code_state, runtime)
+        child_crystal = Process.get(:cantrip_child_crystal)
+        {result, child_crystal}
+      end)
 
     case Task.yield(task, timeout) do
-      {:ok, result} ->
-        result
+      {:ok, {{next_state, obs, result, terminated}, child_crystal}} ->
+        next_state =
+          if child_crystal,
+            do: Map.put(next_state, :child_crystal, child_crystal),
+            else: next_state
+
+        {next_state, obs, result, terminated}
 
       nil ->
         Task.shutdown(task, :brutal_kill)
@@ -420,7 +433,8 @@ defmodule Cantrip.EntityServer do
     do: {state.cantrip.crystal_module, state.cantrip.crystal_state}
 
   defp current_child_crystal(state) do
-    Process.get(:cantrip_child_crystal) || state.cantrip.child_crystal ||
+    Process.get(:cantrip_child_crystal) ||
+      state.cantrip.child_crystal ||
       default_child_crystal(state)
   end
 
