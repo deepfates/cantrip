@@ -72,9 +72,55 @@
         child-max-turns (long (max-turns-ward child-cantrip))]
     (cond
       (not= parent-medium child-medium) "child circle medium must match parent medium"
-      (not (set/subset? child-gates parent-gates)) "child gates must be subset of parent gates"
+      (not (set/subset? child-gates parent-gates)) "cannot grant gate: child gates must be subset of parent gates"
       (> child-max-turns parent-max-turns) "child max-turns must not exceed parent max-turns"
       :else nil)))
+
+(defn- crystal-by-selector
+  [named-crystals selector]
+  (let [selector-k (cond
+                     (keyword? selector) selector
+                     (string? selector) (keyword selector)
+                     :else nil)
+        by-name (when (string? selector)
+                  (some (fn [[_ crystal]]
+                          (when (= selector (:name crystal))
+                            crystal))
+                        named-crystals))]
+    (or (get named-crystals selector-k)
+        by-name)))
+
+(defn- normalize-request-gates
+  [gates]
+  (mapv (fn [g]
+          (if (string? g) (keyword g) g))
+        gates))
+
+(defn- child-crystal-by-depth
+  [named-crystals parent-depth]
+  (let [child-level (inc (long (or parent-depth 0)))]
+    (or (get named-crystals (keyword (str "child-crystal-l" child-level)))
+        (get named-crystals (keyword (str "child_crystal_l" child-level))))))
+
+(defn- derive-child-cantrip
+  [parent-cantrip request dependencies parent-depth]
+  (let [named-crystals (:named-crystals dependencies)
+        default-child-crystal (:default-child-crystal dependencies)
+        requested-gates (:gates request)
+        requested-crystal (:crystal request)
+        depth-derived-crystal (when (and (nil? requested-crystal)
+                                         (nil? default-child-crystal))
+                                (child-crystal-by-depth named-crystals parent-depth))
+        chosen-crystal (or (when requested-crystal
+                             (crystal-by-selector named-crystals requested-crystal))
+                           (when (and (nil? requested-crystal)
+                                      default-child-crystal)
+                             default-child-crystal)
+                           depth-derived-crystal
+                           (:crystal parent-cantrip))]
+    (cond-> (assoc parent-cantrip :crystal chosen-crystal)
+      (seq requested-gates)
+      (assoc-in [:circle :gates] (normalize-request-gates requested-gates)))))
 
 (defn- circle-tools [circle]
   (gates/gate-tools (:gates circle)))
@@ -155,7 +201,9 @@
          execution-parent (if parent-entity
                             (assoc parent-entity
                                    :loom local-loom
-                                   :turn-history local-history)
+                                   :turn-history local-history
+                                   :inline-intent intent
+                                   :allow-inline-root-turn? true)
                             nil)]
      (loop [turn-index 0
             turns []
@@ -201,19 +249,29 @@
                                          (let [req (if (map? request)
                                                      request
                                                      {:intent (str request)})
-                                               response (call-agent execution-parent req)]
-                                           (if (= :error (:status response))
+                                               parent-depth (long (or (:depth execution-parent) 0))
+                                               child-cantrip (or (:cantrip req)
+                                                                 (derive-child-cantrip cantrip req base parent-depth))
+                                               response (call-agent execution-parent
+                                                                    {:cantrip child-cantrip
+                                                                     :intent (:intent req)})]
+                                           (if (not= :terminated (:status response))
                                              (throw (ex-info (or (:error response) "child call failed")
                                                              {:response response}))
                                              (:result response))))
                                        :call-agent-batch-fn
                                        (fn [requests]
                                          (mapv (fn [request]
-                                                 (let [response (call-agent execution-parent
-                                                                            (if (map? request)
-                                                                              request
-                                                                              {:intent (str request)}))]
-                                                   (if (= :error (:status response))
+                                                 (let [req (if (map? request)
+                                                             request
+                                                             {:intent (str request)})
+                                                       parent-depth (long (or (:depth execution-parent) 0))
+                                                       child-cantrip (or (:cantrip req)
+                                                                         (derive-child-cantrip cantrip req base parent-depth))
+                                                       response (call-agent execution-parent
+                                                                            {:cantrip child-cantrip
+                                                                             :intent (:intent req)})]
+                                                   (if (not= :terminated (:status response))
                                                      (throw (ex-info (or (:error response) "child call failed")
                                                                      {:response response}))
                                                      (:result response))))
@@ -361,8 +419,29 @@
         (try
           (domain/require-intent! intent)
           (domain/validate-cantrip! child-cantrip)
-          (let [parent-turn-id (:id (last @(:turn-history parent-entity)))
-                initial-loom @(:loom parent-entity)
+          (let [parent-loom @(:loom parent-entity)
+                parent-history @(:turn-history parent-entity)
+                parent-turn-id (:id (last parent-history))
+                [initial-loom initial-parent-turn-id]
+                (if (and (nil? parent-turn-id)
+                         (:allow-inline-root-turn? parent-entity))
+                  (let [synthetic-parent-turn {:entity-id (:entity-id parent-entity)
+                                               :utterance {:content (or (:inline-intent parent-entity)
+                                                                        intent)}
+                                               :observation [{:gate "call_agent"
+                                                              :arguments "{}"
+                                                              :result "inline composition bridge"}]
+                                               :metadata {:tokens_prompt 0
+                                                          :tokens_completion 0
+                                                          :duration_ms 1
+                                                          :timestamp (System/currentTimeMillis)}
+                                               :terminated false
+                                               :truncated false}
+                        [loom-with-parent parent-turn] (loom/append-turn parent-loom synthetic-parent-turn)]
+                    (reset! (:loom parent-entity) loom-with-parent)
+                    (reset! (:turn-history parent-entity) (conj (vec parent-history) parent-turn))
+                    [loom-with-parent (:id parent-turn)])
+                  [parent-loom parent-turn-id])
                 child-id (str (random-uuid))
                 child-entity {:entity-id child-id
                               :cantrip child-cantrip
@@ -375,7 +454,7 @@
                                  []
                                  initial-loom
                                  {:prompt_tokens 0 :completion_tokens 0}
-                                 {:first-parent-id parent-turn-id
+                                 {:first-parent-id initial-parent-turn-id
                                   :parent-entity child-entity})]
             (reset! (:loom parent-entity) (:loom result))
             {:status (:status result)

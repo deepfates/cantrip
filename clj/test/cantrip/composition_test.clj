@@ -38,7 +38,7 @@
                                 :wards [{:max-turns 2}]}}
         result (runtime/call-agent entity {:cantrip child-cantrip :intent "child task"})]
     (is (= :error (:status result)))
-    (is (= "child gates must be subset of parent gates" (:error result)))))
+    (is (= "cannot grant gate: child gates must be subset of parent gates" (:error result)))))
 
 (deftest call-agent-enforces-depth-ward
   (let [entity (runtime/invoke (assoc-in parent-cantrip [:circle :wards] [{:max-turns 3} {:max-depth 0}]))

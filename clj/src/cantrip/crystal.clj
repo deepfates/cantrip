@@ -69,7 +69,10 @@
                                :tools (vec tools)
                                :tool-choice tool-choice})
   (let [idx (response-index crystal turn-index)
-        response (or (get (:responses crystal) idx) {})
+        responses (:responses crystal)
+        response (or (get responses idx)
+                     (when (seq responses) (last responses))
+                     {})
         _ (when-let [err (:error response)]
             (throw (ex-info (or (:message err) "crystal provider error")
                             {:status (:status err)

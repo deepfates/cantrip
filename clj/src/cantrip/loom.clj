@@ -10,17 +10,25 @@
 (defn append-turn
   "Appends a turn record. Returns updated loom and inserted turn."
   [loom turn]
-  (let [sequence (inc (count (:turns loom)))
-        id (or (:id turn) (str "turn_" sequence))
+  (let [global-index (inc (count (:turns loom)))
+        id (or (:id turn) (str "turn_" global-index))
         entity-id (:entity-id turn)
+        last-turn (last (:turns loom))
         last-same-entity (when entity-id
                            (last (filter #(= entity-id (:entity-id %))
                                          (:turns loom))))
-        parent-id (if (= sequence 1)
+        sequence (if entity-id
+                   (if last-same-entity
+                     (inc (long (or (:sequence last-same-entity) 0)))
+                     1)
+                   global-index)
+        parent-id (if (if entity-id
+                        (= sequence 1)
+                        (= global-index 1))
                     (:parent-id turn)
                     (or (:parent-id turn)
                         (:id last-same-entity)
-                        (:id (last (:turns loom)))))
+                        (:id last-turn)))
         stored (assoc turn
                       :id id
                       :sequence sequence

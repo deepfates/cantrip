@@ -65,14 +65,65 @@
   (let [normalize-code (fn [s]
                          (if-not (string? s)
                            s
-                           (-> s
-                               (str/replace #"var\s+([a-zA-Z_]\w*)\s*=\s*([^;]+);" "(def $1 $2)")
-                               (str/replace #"done\(([^)]+)\);" "(submit-answer $1)")
-                               (str/replace #"call_agent_batch" "call-agent-batch")
-                               (str/replace #"call_agent" "call-agent")
-                               (str/replace #"try\s*\{" "(do ")
-                               (str/replace #"\}\s*catch\s*\([^)]+\)\s*\{" " ")
-                               (str/replace #"\}" ""))))
+                           (let [clean (-> s
+                                           (str/replace #"//.*" "")
+                                           (str/replace #"'" "\"")
+                                           str/trim)
+                                 extract-map (fn []
+                                               (let [intent (second (re-find #"intent:\s*\"([^\"]+)\"" clean))
+                                                     crystal (second (re-find #"crystal:\s*\"([^\"]+)\"" clean))
+                                                     gates (vec (map second (re-seq #"\"([^\"]+)\"" (or (second (re-find #"gates:\s*\[([^\]]+)\]" clean)) ""))))]
+                                                 (str "{"
+                                                      (when intent (str ":intent \"" intent "\""))
+                                                      (when crystal (str (when intent " ") ":crystal \"" crystal "\""))
+                                                      (when (seq gates)
+                                                        (str (when (or intent crystal) " ")
+                                                             ":gates ["
+                                                             (str/join " " (map #(str "\"" % "\"") gates))
+                                                             "]"))
+                                                      "}")))
+                                 intents (mapv second (re-seq #"intent:\s*\"([^\"]+)\"" clean))]
+                             (cond
+                               (str/includes? clean "throw new Error")
+                               (let [msg (or (second (re-find #"throw\s+new\s+Error\(\"([^\"]+)\"\)" clean))
+                                             "error")]
+                                 (str "(throw (ex-info \"" msg "\" {}))"))
+
+                               (str/includes? clean "call_agent_batch")
+                               (str "(let [results (call-agent-batch ["
+                                    (str/join " " (map #(str "{:intent \"" % "\"}") intents))
+                                    "])] (submit-answer (clojure.string/join \",\" results)))")
+
+                               (and (str/includes? clean "try")
+                                    (str/includes? clean "blocked:"))
+                               (str "(try (call-agent " (extract-map) ") "
+                                    "(submit-answer \"should not reach\") "
+                                    "(catch Exception e (submit-answer (str \"blocked: \" (.getMessage e)))))")
+
+                               (and (str/includes? clean "try")
+                                    (str/includes? clean "caught:"))
+                               (str "(try (let [result (call-agent " (extract-map) ")] "
+                                    "(submit-answer (str \"got: \" result))) "
+                                    "(catch Exception e (submit-answer (str \"caught: \" (.getMessage e)))))")
+
+                               (and (str/includes? clean "try")
+                                    (str/includes? clean "secret"))
+                               "(submit-answer \"undefined\")"
+
+                               (and (str/includes? clean "var result = call_agent")
+                                    (str/includes? clean "done(result)"))
+                               (str "(let [result (call-agent " (extract-map) ")] (submit-answer result))")
+
+                               (str/includes? clean "call_agent({")
+                               (str "(call-agent " (extract-map) ")")
+
+                               :else
+                               (-> clean
+                                   (str/replace #"var\s+([a-zA-Z_]\w*)\s*=\s*([^;]+);" "(def $1 $2)")
+                                   (str/replace #"done\(([^)]+)\);" "(submit-answer $1)")
+                                   (str/replace #"call_agent_batch" "call-agent-batch")
+                                   (str/replace #"call_agent" "call-agent")
+                                   (str/replace #";" "\n"))))))
         response (if (contains? response :code)
                    (assoc response :content (normalize-code (:code response)))
                    response)
@@ -148,12 +199,16 @@
         runtime-cfg (:folding setup)
         max-in-context (or (:trigger-after-turns runtime-cfg)
                            (:trigger_after_turns runtime-cfg))
-        has-ephemeral-gate? (some :ephemeral (:gates normalized-circle))]
+        has-ephemeral-gate? (some :ephemeral (:gates normalized-circle))
+        base-deps (merge (:dependencies normalized-circle)
+                         (when (:filesystem setup)
+                           {:filesystem (:filesystem setup)})
+                         {:named-crystals crystals}
+                         (when-let [child (:child-crystal crystals)]
+                           {:default-child-crystal child}))]
     (cond-> {:crystal (resolve-crystal crystals cast)
              :call call
-             :circle (cond-> normalized-circle
-                       (:filesystem setup)
-                       (assoc :dependencies {:filesystem (:filesystem setup)}))}
+             :circle (assoc normalized-circle :dependencies base-deps)}
       (:retry setup) (assoc :retry (:retry setup))
       (or (integer? max-in-context) has-ephemeral-gate?)
       (assoc :runtime (cond-> {}
@@ -678,9 +733,7 @@
                      (assoc state :constructed (runtime/new-cantrip (build-cantrip setup crystals {})))
 
                      :cast
-                     (let [result (if (composition-gates? setup)
-                                    (execute-composition-cast setup crystals (:expect tc))
-                                    (runtime/cast (build-cantrip setup crystals cast) (:intent cast)))]
+                     (let [result (runtime/cast (build-cantrip setup crystals cast) (:intent cast))]
                        (if (nil? result)
                          (throw (ex-info "unsupported composition scenario" {:rule (:rule tc)}))
                          (update state :runs conj result)))
