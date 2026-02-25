@@ -145,6 +145,37 @@ defmodule Cantrip do
   def extract_thread(%__MODULE__{}, loom), do: Loom.extract_thread(loom)
 
   @doc """
+  ENTITY-5: Start a persistent entity that can receive multiple intents.
+  Returns `{:ok, pid, result, cantrip, loom, meta}` after the first cast completes.
+  The entity remains alive — send additional intents with `send_intent/2`.
+  """
+  @spec invoke(t(), String.t()) ::
+          {:ok, pid(), term(), t(), Loom.t(), map()} | {:error, term(), t()}
+  def invoke(%__MODULE__{} = cantrip, intent) when is_binary(intent) do
+    spec = {EntityServer, cantrip: cantrip, intent: intent}
+
+    with {:ok, pid} <- DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec) do
+      case EntityServer.run_persistent(pid) do
+        {:ok, result, next_cantrip, loom, meta} ->
+          {:ok, pid, result, next_cantrip, loom, meta}
+
+        {:error, reason, next_cantrip} ->
+          {:error, reason, next_cantrip}
+      end
+    end
+  end
+
+  @doc """
+  ENTITY-5: Send a new intent to a persistent entity, running another loop episode.
+  State (loom, code_state, messages) accumulates across all casts.
+  """
+  @spec send_intent(pid(), String.t()) ::
+          {:ok, term(), t(), Loom.t(), map()} | {:error, term()}
+  def send_intent(pid, intent) when is_pid(pid) and is_binary(intent) do
+    EntityServer.cast_intent(pid, intent)
+  end
+
+  @doc """
   M2 cast entrypoint: executes one loop episode in an entity process.
   """
   @spec cast(t(), String.t() | nil) ::

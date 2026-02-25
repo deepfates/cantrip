@@ -23,6 +23,14 @@ defmodule Cantrip.EntityServer do
 
   def run(pid), do: GenServer.call(pid, :run, :infinity)
 
+  @doc "Run the first loop episode without stopping the process (for persistent entities)."
+  def run_persistent(pid), do: GenServer.call(pid, :run_persistent, :infinity)
+
+  @doc "Send a new intent to a persistent entity, running another loop episode."
+  def cast_intent(pid, intent) when is_binary(intent) do
+    GenServer.call(pid, {:cast_intent, intent}, :infinity)
+  end
+
   @impl true
   def init(opts) do
     cantrip = Keyword.fetch!(opts, :cantrip)
@@ -57,6 +65,22 @@ defmodule Cantrip.EntityServer do
     {result, next_state, meta} = run_loop(state)
     reply = {:ok, result, next_state.cantrip, next_state.loom, meta}
     {:stop, :normal, reply, next_state}
+  end
+
+  @impl true
+  def handle_call(:run_persistent, _from, state) do
+    {result, next_state, meta} = run_loop(state)
+    reply = {:ok, result, next_state.cantrip, next_state.loom, meta}
+    {:reply, reply, next_state}
+  end
+
+  @impl true
+  def handle_call({:cast_intent, intent}, _from, state) do
+    next_messages = state.messages ++ [%{role: :user, content: intent}]
+    next_state = %{state | messages: next_messages}
+    {result, final_state, meta} = run_loop(next_state)
+    reply = {:ok, result, final_state.cantrip, final_state.loom, meta}
+    {:reply, reply, final_state}
   end
 
   defp run_loop(state) do
