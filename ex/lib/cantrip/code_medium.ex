@@ -48,8 +48,8 @@ defmodule Cantrip.CodeMedium do
       case Code.string_to_quoted(code) do
         {:ok, quoted} ->
           try do
-            {_value, next_binding} = Code.eval_quoted(quoted, binding)
-            {next_binding, nil, false}
+            {value, next_binding} = Code.eval_quoted(quoted, binding)
+            {next_binding, value, false}
           rescue
             e ->
               push_observation(%{gate: "code", result: Exception.message(e), is_error: true})

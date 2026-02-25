@@ -163,7 +163,7 @@ defmodule Cantrip.EntityServer do
             }
 
             {next_state, obs, result, terminated} =
-              CodeMedium.eval(code, state.code_state, runtime)
+              eval_code_sandboxed(code, state.code_state, runtime)
 
             {%{content: code, tool_calls: []}, obs, result, terminated, next_state}
           else
@@ -227,32 +227,95 @@ defmodule Cantrip.EntityServer do
 
       {value, next_state, meta}
     else
-      tool_messages =
-        Enum.map(observation, fn item ->
-          content =
-            if item[:ephemeral] do
-              "[ephemeral:#{item.gate}]"
-            else
-              stringify_tool_result(item.result)
-            end
+      next_messages =
+        if state.cantrip.circle.type == :code do
+          assistant = %{role: :assistant, content: utterance.content, tool_calls: []}
+          feedback = format_code_feedback(observation, result)
 
-          %{
-            role: :tool,
-            content: content,
-            gate: item.gate,
-            is_error: item.is_error,
-            tool_call_id: item[:tool_call_id]
+          if feedback do
+            state.messages ++ [assistant, %{role: :user, content: feedback}]
+          else
+            state.messages ++ [assistant]
+          end
+        else
+          tool_messages =
+            Enum.map(observation, fn item ->
+              content =
+                if item[:ephemeral] do
+                  "[ephemeral:#{item.gate}]"
+                else
+                  stringify_tool_result(item.result)
+                end
+
+              %{
+                role: :tool,
+                content: content,
+                gate: item.gate,
+                is_error: item.is_error,
+                tool_call_id: item[:tool_call_id]
+              }
+            end)
+
+          assistant = %{
+            role: :assistant,
+            content: utterance.content,
+            tool_calls: utterance.tool_calls
           }
-        end)
 
-      assistant = %{
-        role: :assistant,
-        content: utterance.content,
-        tool_calls: utterance.tool_calls
-      }
+          state.messages ++ [assistant] ++ tool_messages
+        end
 
-      next_state = %{next_state | messages: state.messages ++ [assistant] ++ tool_messages}
+      next_state = %{next_state | messages: next_messages}
       run_loop(next_state)
+    end
+  end
+
+  @code_eval_timeout_ms 30_000
+
+  defp eval_code_sandboxed(code, code_state, runtime) do
+    task = Task.async(fn -> CodeMedium.eval(code, code_state, runtime) end)
+
+    case Task.yield(task, @code_eval_timeout_ms) do
+      {:ok, result} ->
+        result
+
+      nil ->
+        Task.shutdown(task, :brutal_kill)
+        obs = [%{gate: "code", result: "code evaluation timed out", is_error: true}]
+        {code_state, obs, nil, false}
+    end
+  catch
+    :exit, reason ->
+      obs = [
+        %{gate: "code", result: "code evaluation crashed: #{inspect(reason)}", is_error: true}
+      ]
+
+      {code_state, obs, nil, false}
+  end
+
+  defp format_code_feedback(observations, eval_result) do
+    error_parts =
+      observations
+      |> Enum.filter(& &1.is_error)
+      |> Enum.map(fn obs -> "[error] #{obs.result}" end)
+
+    non_error_parts =
+      observations
+      |> Enum.reject(& &1.is_error)
+      |> Enum.reject(fn obs -> obs.gate == "done" end)
+      |> Enum.map(fn obs -> "[#{obs.gate}] #{stringify_tool_result(obs.result)}" end)
+
+    parts = error_parts ++ non_error_parts
+
+    cond do
+      parts != [] ->
+        Enum.join(parts, "\n")
+
+      not is_nil(eval_result) ->
+        "Code evaluated. Result: #{stringify_tool_result(eval_result)}"
+
+      true ->
+        "Code executed with no return value. Call done.(result) to complete."
     end
   end
 
