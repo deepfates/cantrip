@@ -63,7 +63,7 @@ This is the working task board for remaining implementation work. Keep it curren
 - [x] Improve progress visibility in ACP sessions.
   - Goal: ensure update payloads are client-compatible and useful for Toad/Zed.
   - Verify:
-    - Added progress summary chunk (`agent_message_chunk`) and `_meta.progress`.
+    - Kept progress summary in `_meta.progress`; `agent_message_chunk` mirrors assistant text for clients that render chunk-only updates.
     - `./scripts/run_nonlive_tests.sh -q tests/test_acp_stdio.py tests/test_capstone_cli_modes.py`
     - `./scripts/smoke_acp.sh . "hello"`
 

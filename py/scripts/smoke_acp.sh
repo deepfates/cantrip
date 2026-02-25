@@ -26,6 +26,7 @@ PROMPT_TEXT="${2:-hi}"
 import json
 import subprocess
 import sys
+import time
 
 py = sys.argv[1]
 repo_root = sys.argv[2]
@@ -47,7 +48,14 @@ def send(obj):
     return json.loads(line)
 
 send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1}})
-new = send({"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {}})
+new = send(
+    {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "session/new",
+        "params": {"cwd": repo_root, "mcpServers": []},
+    }
+)
 sid = new["result"]["sessionId"]
 p.stdin.write(
     json.dumps(
@@ -61,8 +69,28 @@ p.stdin.write(
     + "\n"
 )
 p.stdin.flush()
-print(p.stdout.readline().strip())
-print(p.stdout.readline().strip())
-print(p.stdout.readline().strip())
+
+# Updates can vary by transport and model behavior. Read until prompt response id=3 arrives.
+deadline = time.time() + 20.0
+got_prompt_result = False
+while time.time() < deadline:
+    raw = p.stdout.readline()
+    if not raw:
+        break
+    line = raw.strip()
+    if not line:
+        continue
+    print(line)
+    try:
+        msg = json.loads(line)
+    except Exception:
+        continue
+    if msg.get("id") == 3 and "result" in msg:
+        got_prompt_result = True
+        break
+
+if not got_prompt_result:
+    raise SystemExit("did not receive prompt response (id=3) within timeout")
+
 p.terminate()
 PY
