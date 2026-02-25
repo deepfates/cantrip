@@ -1,8 +1,8 @@
 SHELL := /bin/zsh
 
-.PHONY: conformance conformance-preflight conformance-unit conformance-yaml-scaffold conformance-yaml-batch conformance-run
+.PHONY: conformance conformance-preflight conformance-unit conformance-yaml conformance-yaml-batch conformance-yaml-scaffold conformance-run
 
-conformance: conformance-preflight conformance-unit conformance-yaml-scaffold
+conformance: conformance-preflight conformance-unit conformance-yaml
 
 conformance-preflight:
 	@ruby scripts/conformance_preflight.rb
@@ -20,20 +20,19 @@ conformance-unit:
 		exit 1; \
 	fi
 
-conformance-yaml-scaffold:
+conformance-yaml:
 	@if command -v clojure >/dev/null 2>&1; then \
-		clojure -M -m cantrip.conformance ; \
+		clojure -M -m cantrip.conformance --batch ; \
 	else \
-		echo "Clojure CLI required for YAML scaffold conformance runner."; \
+		echo "Clojure CLI required for YAML conformance runner."; \
 		exit 1; \
 	fi
 
 conformance-yaml-batch:
-	@if command -v clojure >/dev/null 2>&1; then \
-		clojure -M -m cantrip.conformance --batch ; \
-	else \
-		echo "Clojure CLI required for YAML batch conformance runner."; \
-		exit 1; \
-	fi
+	@$(MAKE) conformance-yaml
+
+conformance-yaml-scaffold:
+	@echo "conformance-yaml-scaffold is deprecated; running full YAML conformance batch."
+	@$(MAKE) conformance-yaml
 
 conformance-run: conformance-unit
