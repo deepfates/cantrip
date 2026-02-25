@@ -29,7 +29,10 @@ defmodule Cantrip.EntityServer do
     intent = Keyword.fetch!(opts, :intent)
 
     entity_id = "ent_" <> Integer.to_string(System.unique_integer([:positive]))
-    messages = Keyword.get(opts, :messages, initial_messages(cantrip.call, intent))
+
+    messages =
+      Keyword.get(opts, :messages, initial_messages(cantrip.call, cantrip.circle, intent))
+
     loom = Keyword.get(opts, :loom, Loom.new(cantrip.call, storage: cantrip.loom_storage))
     turns = Keyword.get(opts, :turns, 0)
     depth = Keyword.get(opts, :depth, 0)
@@ -81,10 +84,12 @@ defmodule Cantrip.EntityServer do
       started_at = System.monotonic_time(:millisecond)
       messages = fold_messages(state.messages, state.turns, state.cantrip)
 
+      {tools, tool_choice_override, _cap} = Circle.crystal_view(state.cantrip.circle)
+
       request = %{
         messages: messages,
-        tools: Circle.tool_definitions(state.cantrip.circle),
-        tool_choice: state.cantrip.call.tool_choice
+        tools: tools,
+        tool_choice: tool_choice_override || state.cantrip.call.tool_choice
       }
 
       case invoke_with_retry(state.cantrip, request) do
@@ -151,6 +156,9 @@ defmodule Cantrip.EntityServer do
     {utterance, observation, result, by_done, next_code_state} =
       case state.cantrip.circle.type do
         :code ->
+          # Extract code from tool call args (crystalView) or from content (FakeCrystal/legacy)
+          code = code || extract_code_from_tool_call(tool_calls)
+
           if is_binary(code) do
             runtime = %{
               circle: state.cantrip.circle,
@@ -370,10 +378,20 @@ defmodule Cantrip.EntityServer do
     end)
   end
 
-  defp initial_messages(%{system_prompt: nil}, intent), do: [%{role: :user, content: intent}]
+  defp initial_messages(call, circle, intent) do
+    {_tools, _tc, capability_text} = Circle.crystal_view(circle)
 
-  defp initial_messages(%{system_prompt: prompt}, intent) do
-    [%{role: :system, content: prompt}, %{role: :user, content: intent}]
+    system =
+      if call.system_prompt,
+        do: [%{role: :system, content: call.system_prompt}],
+        else: []
+
+    capability =
+      if capability_text,
+        do: [%{role: :system, content: capability_text}],
+        else: []
+
+    system ++ capability ++ [%{role: :user, content: intent}]
   end
 
   defp execute_call_agent(state, opts) do
@@ -407,7 +425,10 @@ defmodule Cantrip.EntityServer do
       }
     else
       child_intent = opts[:intent] || opts["intent"] || ""
+      child_wards = normalize_child_wards(opts)
+      composed_wards = Circle.compose_wards(state.cantrip.circle.wards, child_wards)
       child_circle = Circle.subset(state.cantrip.circle, requested_gates)
+      child_circle = %{child_circle | wards: composed_wards}
       {child_module, child_state} = choose_child_crystal(state, opts)
 
       child_cantrip = %{
@@ -544,6 +565,8 @@ defmodule Cantrip.EntityServer do
         max_retries = Map.get(retry, :max_retries, 0)
 
         if attempts < max_retries and retryable_reason?(reason, retry) do
+          backoff_ms = retry_backoff_ms(retry, attempts)
+          Process.sleep(backoff_ms)
           do_invoke_with_retry(module, next_state, request, retry, attempts + 1)
         else
           {:error, reason, next_state}
@@ -556,6 +579,12 @@ defmodule Cantrip.EntityServer do
   end
 
   defp retryable_reason?(_reason, _retry), do: false
+
+  defp retry_backoff_ms(retry, attempt) do
+    base = Map.get(retry, :backoff_base_ms, 1_000)
+    max_backoff = Map.get(retry, :backoff_max_ms, 30_000)
+    min(base * Integer.pow(2, attempt), max_backoff)
+  end
 
   defp fold_messages(messages, turns, cantrip) do
     trigger = Map.get(cantrip.folding, :trigger_after_turns)
@@ -640,6 +669,19 @@ defmodule Cantrip.EntityServer do
 
   defp normalize_cancel_parents(parent) when is_pid(parent), do: [parent]
   defp normalize_cancel_parents(_), do: []
+
+  defp normalize_child_wards(opts) do
+    case opts[:wards] || opts["wards"] do
+      wards when is_list(wards) -> wards
+      _ -> []
+    end
+  end
+
+  defp extract_code_from_tool_call([%{gate: "elixir", args: args} | _]) do
+    Map.get(args, "code") || Map.get(args, :code)
+  end
+
+  defp extract_code_from_tool_call(_), do: nil
 
   defp stringify_tool_result(result) when is_binary(result), do: result
   defp stringify_tool_result(result), do: inspect(result)

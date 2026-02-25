@@ -7,8 +7,6 @@ defmodule Cantrip.REPL do
   def default_cantrip_attrs do
     %{
       call: %{
-        system_prompt:
-          "Return only executable Elixir code. Always finish with done.(\"...\"). No markdown.",
         require_done_tool: true
       },
       circle: %{

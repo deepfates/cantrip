@@ -93,6 +93,17 @@ defmodule Cantrip do
             timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000)
           }}}
 
+      provider == "anthropic" ->
+        {:ok,
+         {Cantrip.Crystals.Anthropic,
+          %{
+            model: model,
+            api_key: System.get_env("CANTRIP_API_KEY"),
+            base_url: System.get_env("CANTRIP_BASE_URL", "https://api.anthropic.com"),
+            timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000),
+            max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), 4096)
+          }}}
+
       true ->
         {:error, "unsupported crystal provider: #{provider}"}
     end
@@ -247,7 +258,9 @@ defmodule Cantrip do
 
     %{
       max_retries: Map.get(retry, :max_retries, 0),
-      retryable_status_codes: Map.get(retry, :retryable_status_codes, [])
+      retryable_status_codes: Map.get(retry, :retryable_status_codes, []),
+      backoff_base_ms: Map.get(retry, :backoff_base_ms, 1_000),
+      backoff_max_ms: Map.get(retry, :backoff_max_ms, 30_000)
     }
   end
 

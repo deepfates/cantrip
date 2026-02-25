@@ -76,6 +76,84 @@ defmodule Cantrip.Circle do
     end)
   end
 
+  @doc """
+  CIRCLE-11: Returns {tool_defs, tool_choice, capability_text} shaped for the circle's medium.
+
+  - Conversation circles: all gates as tools, no tool_choice override, no capability text.
+  - Code circles: single "elixir" tool with tool_choice "required", plus a capability
+    presentation describing the available host functions.
+  """
+  @spec crystal_view(t()) :: {list(map()), String.t() | nil, String.t() | nil}
+  def crystal_view(%__MODULE__{type: :code} = circle) do
+    tools = [
+      %{
+        name: "elixir",
+        parameters: %{
+          type: "object",
+          properties: %{
+            code: %{type: "string", description: "Elixir code to execute in the sandbox"}
+          },
+          required: ["code"]
+        }
+      }
+    ]
+
+    capability_text = capability_presentation(circle)
+    {tools, "required", capability_text}
+  end
+
+  def crystal_view(%__MODULE__{} = circle) do
+    {tool_definitions(circle), nil, nil}
+  end
+
+  @spec capability_presentation(t()) :: String.t()
+  def capability_presentation(%__MODULE__{} = circle) do
+    gate_lines =
+      circle
+      |> gate_names()
+      |> Enum.reject(&removed_by_ward?(circle, &1))
+      |> Enum.map(&format_gate_description/1)
+      |> Enum.join("\n")
+
+    """
+    You write Elixir code that executes in a persistent sandbox. \
+    Respond ONLY with the elixir tool containing valid Elixir code. \
+    Do not write prose or markdown.
+
+    Available host functions:
+    #{gate_lines}
+
+    Variables persist across turns. Call done.(result) when finished.\
+    """
+  end
+
+  defp format_gate_description("done"),
+    do: "- done.(answer) — complete the task and return the answer"
+
+  defp format_gate_description("echo"),
+    do: "- echo.(opts) — echo text back"
+
+  defp format_gate_description("call_agent"),
+    do: "- call_agent.(opts) — delegate to a child entity; opts must include :intent"
+
+  defp format_gate_description("call_agent_batch"),
+    do: "- call_agent_batch.(list) — delegate to multiple child entities in parallel"
+
+  defp format_gate_description("call_entity"),
+    do: "- call_entity.(opts) — alias for call_agent"
+
+  defp format_gate_description("call_entity_batch"),
+    do: "- call_entity_batch.(list) — alias for call_agent_batch"
+
+  defp format_gate_description("compile_and_load"),
+    do: "- compile_and_load.(opts) — compile and load an Elixir module"
+
+  defp format_gate_description("read"),
+    do: "- read.(opts) — read a file; opts must include :path"
+
+  defp format_gate_description(name),
+    do: "- #{name}.(opts) — invoke the #{name} gate"
+
   @spec execute_gate(t(), String.t(), map()) :: %{
           gate: String.t(),
           result: term(),
@@ -102,6 +180,80 @@ defmodule Cantrip.Circle do
       Enum.filter(circle.gates, fn {name, _gate} -> MapSet.member?(allow, name) end) |> Map.new()
 
     %{circle | gates: gates}
+  end
+
+  @doc """
+  Compose parent and child wards per WARD-1:
+  - Numeric wards (max_turns, max_depth, etc.): take min()
+  - Boolean wards (require_done_tool): take OR
+  - Set-valued wards (remove_gate): take union
+  A child can only tighten, never loosen, the parent's constraints.
+  """
+  @spec compose_wards(list(map()), list(map())) :: list(map())
+  def compose_wards(parent_wards, child_wards) do
+    numeric_keys = [
+      :max_turns,
+      :max_depth,
+      :max_batch_size,
+      :max_concurrent_children,
+      :code_eval_timeout_ms
+    ]
+
+    # Collect all numeric ward values from both sides
+    parent_numerics = extract_numerics(parent_wards, numeric_keys)
+    child_numerics = extract_numerics(child_wards, numeric_keys)
+
+    # Take min() of each numeric ward present in either side
+    merged_numerics =
+      (Map.keys(parent_numerics) ++ Map.keys(child_numerics))
+      |> Enum.uniq()
+      |> Enum.map(fn key ->
+        case {Map.get(parent_numerics, key), Map.get(child_numerics, key)} do
+          {nil, v} -> {key, v}
+          {v, nil} -> {key, v}
+          {a, b} -> {key, min(a, b)}
+        end
+      end)
+      |> Enum.map(fn {k, v} -> %{k => v} end)
+
+    # Collect all remove_gate wards (union)
+    parent_removals = extract_removals(parent_wards)
+    child_removals = extract_removals(child_wards)
+    all_removals = MapSet.union(parent_removals, child_removals)
+    removal_wards = Enum.map(all_removals, fn gate -> %{remove_gate: gate} end)
+
+    # Pass through non-numeric, non-removal wards from both sides
+    passthrough =
+      (parent_wards ++ child_wards)
+      |> Enum.reject(fn ward ->
+        Enum.any?(numeric_keys, &Map.has_key?(ward, &1)) or Map.has_key?(ward, :remove_gate)
+      end)
+      |> Enum.uniq()
+
+    merged_numerics ++ removal_wards ++ passthrough
+  end
+
+  defp extract_numerics(wards, keys) do
+    Enum.reduce(wards, %{}, fn ward, acc ->
+      Enum.reduce(keys, acc, fn key, inner_acc ->
+        case Map.get(ward, key) do
+          n when is_integer(n) and n > 0 ->
+            Map.update(inner_acc, key, n, &min(&1, n))
+
+          _ ->
+            inner_acc
+        end
+      end)
+    end)
+  end
+
+  defp extract_removals(wards) do
+    wards
+    |> Enum.flat_map(fn
+      %{remove_gate: gate} when is_binary(gate) -> [gate]
+      _ -> []
+    end)
+    |> MapSet.new()
   end
 
   defp fetch(map, key, default),

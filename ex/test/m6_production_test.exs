@@ -15,11 +15,35 @@ defmodule CantripM6ProductionTest do
       Cantrip.new(
         crystal: crystal,
         circle: %{gates: [:done], wards: [%{max_turns: 10}]},
-        retry: %{max_retries: 3, retryable_status_codes: [429]}
+        retry: %{max_retries: 3, retryable_status_codes: [429], backoff_base_ms: 1}
       )
 
     assert {:ok, "ok", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "retry")
     assert length(loom.turns) == 1
+  end
+
+  test "PROD-2 retry uses exponential backoff" do
+    crystal =
+      {FakeCrystal,
+       FakeCrystal.new([
+         %{error: %{status: 429, message: "rate limited"}},
+         %{error: %{status: 429, message: "rate limited"}},
+         %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        crystal: crystal,
+        circle: %{gates: [:done], wards: [%{max_turns: 10}]},
+        retry: %{max_retries: 3, retryable_status_codes: [429], backoff_base_ms: 50}
+      )
+
+    started = System.monotonic_time(:millisecond)
+    assert {:ok, "ok", _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "backoff")
+    elapsed = System.monotonic_time(:millisecond) - started
+
+    # 2 retries: 50ms + 100ms = 150ms minimum
+    assert elapsed >= 100, "expected backoff delay, got #{elapsed}ms"
   end
 
   test "PROD-3 cumulative token tracking" do
