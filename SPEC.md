@@ -603,9 +603,15 @@ The child entity gets its own circle, its own context, its own turn sequence. It
 
 > **COMP-4**: A child entity MUST have its own independent context (message history). The child does not inherit the parent's conversation history.
 
-The child's circle is carved from the parent's — the subtractive principle from Chapter 4 applied to composition. The parent cannot grant gates it does not have. A parent entity with no `fetch` gate cannot give its child network access. The child's circle is always a subset.
+There are two ways an entity can create children, and they have different rules:
 
-> **COMP-1**: A child entity's circle MUST be a subset of the parent's circle. You cannot grant gates the parent doesn't have.
+**Delegation** via `call_entity`: The child's circle is carved from the parent's — the subtractive principle from Chapter 4 applied to composition. The parent cannot grant gates it does not have. A parent entity with no `fetch` gate cannot give its child a `fetch` gate. The child's circle is a subset of the parent's.
+
+**Construction** via host-mediated gates (e.g., `cantrip()`/`cast()` inside a code medium): The entity constructs cantrips from a registry the host application authorized. The host decides which crystals, mediums, and gates are available for construction — the entity picks from that registry. The child's circle is NOT governed by the parent's circle. A JS-medium entity can construct a child with a bash medium it doesn't have, because the host authorized bash as a constructible medium.
+
+> **COMP-1a**: When delegating via `call_entity`, the child's circle MUST be a subset of the parent's circle. The parent cannot grant gates it does not have.
+
+> **COMP-1b**: When constructing via host-mediated gates, the child's circle is governed by the host's capability registry, not the parent's circle. The entity MAY construct children with mediums, gates, or crystals that differ from its own, provided the host authorized them.
 
 But the child's crystal and call may differ. You might send a cheaper, faster crystal to handle a simple sub-task, or provide a different system prompt that specializes the child for the work at hand. The circle is inherited subtractively. Everything else can be configured per child.
 

@@ -1,6 +1,6 @@
 // Example 16: The Familiar — cantrip construction as medium physics.
 // A long-running coordinator entity that creates and casts child cantrips from code.
-// Medium: JS (with cantrip() + cast() + repo introspection) | LLM: Yes | Recursion: via cantrip/cast
+// Medium: vm (node:vm with cantrip() + cast() + repo introspection) | LLM: Yes | Recursion: via cantrip/cast
 //
 // The Familiar doesn't have direct access to bash, browser, or filesystem.
 // It constructs child cantrips with those capabilities and delegates to them.
@@ -33,7 +33,7 @@ import {
   serveCantripACP,
   createAcpProgressCallback,
   progressBinding,
-  js, bash, browser,
+  js, vm, bash, browser,
   type CantripMediumConfig,
 } from "../src";
 
@@ -79,21 +79,28 @@ const SYSTEM_PROMPT = (repoRoot: string, loomPath: string | null) =>
 ## How your medium works
 
 You work IN code. JavaScript is your medium — not a tool you use, but the substance
-you think in. This changes how you work:
+you think in. Full ES2024: arrow functions, async/await, destructuring, all of it.
 
 **Data lives in variables, not in the prompt.** When you call a function, the result
 appears as a short metadata summary: \`[Result: 4823 chars] "first 150 chars..."\`.
-This is by design. Your context window is not a scratchpad. Store results in \`var\`s
+This is by design. Your context window is not a scratchpad. Store results in variables
 and operate on them with code:
 
-  var content = repo_read("src/main.ts");
-  // content is now in a variable — process it as code
-  var lines = content.split("\\n");
-  var imports = lines.filter(function(l) { return l.startsWith("import"); });
-  console.log("Found " + imports.length + " imports");
+  const content = await repo_read("src/main.ts");
+  const lines = content.split("\\n");
+  const imports = lines.filter(l => l.startsWith("import"));
+  console.log(\`Found \${imports.length} imports\`);
 
-Variables persist across turns. Build up state incrementally. Use loops, filters,
-maps — the full language. This is your primary reasoning mechanism.
+**Persistence across turns:**
+- Sync code (no \`await\`): \`var\` declarations persist automatically.
+- Async code (uses \`await\`): use \`globalThis.name = value\` to persist state.
+- \`let\`/\`const\` are always block-scoped to the current turn.
+
+Build up state incrementally. Use loops, filters, maps — the full language.
+This is your primary reasoning mechanism.
+
+**Gate results are strings.** Gates return serialized strings. For structured data, use
+\`JSON.parse()\` — e.g. \`const files = JSON.parse(await repo_files("src/**/*.ts"))\`.
 
 **Use cantrips for reasoning and acting in other mediums — not for I/O.** You can
 read files yourself with repo_read(). You can parse JSON, count lines, aggregate
@@ -107,43 +114,42 @@ Right: reading the file yourself, processing it in code, spawning a cantrip to r
 
 ## Cantrip patterns
 
-The host functions section above documents cantrip(), cast(), and dispose().
-Here are the patterns:
+The host functions section above documents cantrip(), cast(), cast_batch(), and dispose().
+Each cast() invokes an LLM — be cost-aware. Here are the patterns:
 
   // Shell work — child runs in bash, you get the result back
-  var worker = cantrip({
+  const worker = cantrip({
     crystal: "anthropic/claude-haiku-4.5",
     call: "Execute the command and report output. Use submit_answer <result> when done.",
     circle: { medium: "bash", medium_opts: { cwd: "${repoRoot}" }, gates: ["done"], wards: [{ max_turns: 5 }] }
   });
-  var output = cast(worker, "Run the test suite and summarize failures");
+  const output = await cast(worker, "Run the test suite and summarize failures");
 
   // Thinking — leaf cantrip, no medium, single LLM call
-  var thinker = cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "You analyze code." });
-  var analysis = cast(thinker, "Here's a function:\\n" + code + "\\nWhat bugs do you see?");
+  const thinker = cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "You analyze code." });
+  const analysis = await cast(thinker, "Here's a function:\\n" + code + "\\nWhat bugs do you see?");
 
   // Compose in code — loops, conditionals, pipelines
-  var files = repo_files("src/**/*.ts");
-  for (var i = 0; i < files.length; i++) {
-    var src = repo_read(files[i]);
-    if (src.indexOf("TODO") !== -1) {
-      var reviewer = cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "Find TODOs and assess priority." });
-      var review = cast(reviewer, files[i] + ":\\n" + src);
-      console.log(files[i] + ": " + review);
+  const files = JSON.parse(await repo_files("src/**/*.ts"));
+  for (const file of files) {
+    const src = await repo_read(file);
+    if (src.includes("TODO")) {
+      const reviewer = cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "Find TODOs and assess priority." });
+      const review = await cast(reviewer, file + ":\\n" + src);
+      console.log(file + ": " + review);
     }
   }
 
   // Parallel fan-out — cast_batch fires N cantrips concurrently on the host
-  var handles = files.map(function(f) {
-    return {
-      cantrip: cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "Summarize this file." }),
-      intent: repo_read(f)
-    };
-  });
-  var summaries = cast_batch(handles);  // all N run in parallel, returns string[]
+  const handles = files.map(f => ({
+    cantrip: cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "Summarize this file." }),
+    intent: f  // or pre-read content
+  }));
+  const summaries = await cast_batch(handles);  // all N run in parallel, returns string[]
 
-Crystal takes any OpenRouter model ID. Available mediums: "bash", "js", "browser".
-Gate sets: "done". Handle is consumed on cast — create a new cantrip for each task.
+**Available crystals:** Any model ID — "anthropic/claude-haiku-4.5", "anthropic/claude-sonnet-4-5", etc.
+**Available mediums:** "bash", "js", "vm", "browser".
+**Gate sets:** "done". Handle is consumed on cast — create a new cantrip for each task.
 ${
   loomPath
     ? `
@@ -154,11 +160,10 @@ The loom is a TREE of threads, not a flat list. Each line is a Turn with fields:
   id, parent_id, cantrip_id, entity_id, sequence, utterance, observation, metadata
 
 To understand it, write code:
-  var raw = repo_read("${loomPath.replace(repoRoot + "/", "")}", {offset: 0, limit: 200});
-  var turns = raw.split("\\n").filter(Boolean).map(JSON.parse);
-  // Group by cantrip_id to find threads
-  var threads = {};
-  turns.forEach(function(t) {
+  const raw = await repo_read("${loomPath.replace(repoRoot + "/", "")}", {offset: 0, limit: 200});
+  const turns = raw.split("\\n").filter(Boolean).map(JSON.parse);
+  const threads = {};
+  turns.forEach(t => {
     threads[t.cantrip_id] = threads[t.cantrip_id] || [];
     threads[t.cantrip_id].push(t);
   });
@@ -200,6 +205,8 @@ export async function main(intent?: string) {
             bash({ cwd: opts?.cwd ?? repoRoot }),
           js: (opts?: { state?: Record<string, unknown> }) =>
             js({ state: opts?.state }),
+          vm: (opts?: { state?: Record<string, unknown> }) =>
+            vm({ state: opts?.state }),
           browser: () => browser({ headless: true, profile: "full" }),
         },
         gates: { done: [done] },
@@ -221,7 +228,7 @@ export async function main(intent?: string) {
       ]);
 
       const circle = Circle({
-        medium: js(),
+        medium: vm(),
         gates: [...repoGates, ...cGates],
         wards: [max_turns(50), require_done()],
       });
@@ -277,6 +284,8 @@ export async function main(intent?: string) {
       bash: (opts?: { cwd?: string }) => bash({ cwd: opts?.cwd ?? repoRoot }),
       js: (opts?: { state?: Record<string, unknown> }) =>
         js({ state: opts?.state }),
+      vm: (opts?: { state?: Record<string, unknown> }) =>
+        vm({ state: opts?.state }),
       browser: () => browser({ headless: true, profile: "full" }),
     },
     gates: { done: [done] },
@@ -286,7 +295,7 @@ export async function main(intent?: string) {
 
   const { gates: cGates, overrides: cOverrides } = cantripGates(cantripConfig);
 
-  // The Familiar's circle: JS medium + repo observation + cantrip construction gates
+  // The Familiar's circle: vm medium + repo observation + cantrip construction gates
   const repoCtx = new RepoContext(repoRoot);
   const depOverrides = new Map<any, any>([
     [getRepoContextDepends, () => repoCtx],
@@ -294,7 +303,7 @@ export async function main(intent?: string) {
   ]);
 
   const circle = Circle({
-    medium: js(),
+    medium: vm(),
     gates: [...repoGates, ...cGates],
     wards: [max_turns(50), require_done()],
   });

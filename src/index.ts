@@ -34,6 +34,8 @@ export { browser } from "./circle/medium/browser";
 export type { BrowserMediumOptions } from "./circle/medium/browser";
 export { bash } from "./circle/medium/bash";
 export type { BashMediumOptions } from "./circle/medium/bash";
+export { vm } from "./circle/medium/vm";
+export type { VmMediumOptions } from "./circle/medium/vm";
 export type { Ward, ResolvedWard } from "./circle/ward";
 export {
   DEFAULT_WARD,
