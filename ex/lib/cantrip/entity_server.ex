@@ -15,7 +15,8 @@ defmodule Cantrip.EntityServer do
             depth: 0,
             cancel_on_parent: [],
             usage: %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0},
-            code_state: %{}
+            code_state: %{},
+            stream_to: nil
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
@@ -45,6 +46,7 @@ defmodule Cantrip.EntityServer do
     turns = Keyword.get(opts, :turns, 0)
     depth = Keyword.get(opts, :depth, 0)
     code_state = Keyword.get(opts, :code_state, %{})
+    stream_to = Keyword.get(opts, :stream_to)
     cancel_on_parent = normalize_cancel_parents(Keyword.get(opts, :cancel_on_parent))
 
     {:ok,
@@ -56,6 +58,7 @@ defmodule Cantrip.EntityServer do
        turns: turns,
        depth: depth,
        code_state: code_state,
+       stream_to: stream_to,
        cancel_on_parent: cancel_on_parent
      }}
   end
@@ -107,6 +110,7 @@ defmodule Cantrip.EntityServer do
 
       {nil, %{state | loom: loom}, meta}
     else
+      emit_event(state, {:step_start, %{turn: state.turns + 1, entity_id: state.entity_id}})
       started_at = System.monotonic_time(:millisecond)
       messages = fold_messages(state.messages, state.turns, state.cantrip)
 
@@ -117,6 +121,8 @@ defmodule Cantrip.EntityServer do
         tools: tools,
         tool_choice: tool_choice_override || state.cantrip.call.tool_choice
       }
+
+      emit_event(state, {:message_start, %{turn: state.turns + 1}})
 
       case invoke_with_retry(state.cantrip, request) do
         {:error, reason, next_crystal_state} ->
@@ -155,6 +161,26 @@ defmodule Cantrip.EntityServer do
 
         {:ok, response, next_crystal_state} ->
           duration_ms = max(System.monotonic_time(:millisecond) - started_at, 1)
+
+          emit_event(
+            state,
+            {:message_complete, %{turn: state.turns + 1, duration_ms: duration_ms}}
+          )
+
+          resp_usage = Map.get(response, :usage, %{})
+
+          emit_event(
+            state,
+            {:usage,
+             %{
+               prompt_tokens: Map.get(resp_usage, :prompt_tokens, 0),
+               completion_tokens: Map.get(resp_usage, :completion_tokens, 0)
+             }}
+          )
+
+          if is_binary(Map.get(response, :content)) do
+            emit_event(state, {:text, Map.get(response, :content)})
+          end
 
           execute_turn(
             %{state | cantrip: %{state.cantrip | crystal_state: next_crystal_state}},
@@ -211,6 +237,16 @@ defmodule Cantrip.EntityServer do
            state.code_state}
       end
 
+    # Emit tool call and result events
+    Enum.each(observation, fn obs ->
+      emit_event(state, {:tool_call, %{gate: obs.gate, tool_call_id: obs[:tool_call_id]}})
+
+      emit_event(
+        state,
+        {:tool_result, %{gate: obs.gate, result: obs.result, is_error: obs.is_error}}
+      )
+    end)
+
     terminated =
       cond do
         by_done ->
@@ -263,8 +299,11 @@ defmodule Cantrip.EntityServer do
         code_state: next_code_state
     }
 
+    emit_event(state, {:step_complete, %{turn: next_state.turns, terminated: terminated}})
+
     if terminated do
       value = if is_nil(result) and is_binary(content), do: content, else: result
+      emit_event(state, {:final_response, %{result: value}})
 
       meta = %{
         entity_id: state.entity_id,
@@ -731,6 +770,12 @@ defmodule Cantrip.EntityServer do
   end
 
   defp extract_code_from_tool_call(_), do: nil
+
+  defp emit_event(%{stream_to: nil}, _event), do: :ok
+
+  defp emit_event(%{stream_to: pid}, event) when is_pid(pid) do
+    send(pid, {:cantrip_event, event})
+  end
 
   defp stringify_tool_result(result) when is_binary(result), do: result
   defp stringify_tool_result(result), do: inspect(result)

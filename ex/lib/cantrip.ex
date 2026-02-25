@@ -194,6 +194,60 @@ defmodule Cantrip do
     run_cast(cantrip, intent, opts)
   end
 
+  @doc """
+  Cast with streaming events. Returns `{stream, task}` where:
+  - `stream` is an `Enumerable` of `{:cantrip_event, event}` tuples
+  - `task` is a `Task` that resolves to the final `{:ok, result, cantrip, loom, meta}` or error
+
+  Events follow the spec §7.5 hierarchy: `:step_start`, `:message_start`,
+  `:text`, `:tool_call`, `:tool_result`, `:usage`, `:message_complete`,
+  `:step_complete`, `:final_response`.
+  """
+  @spec cast_stream(t(), String.t()) :: {Enumerable.t(), Task.t()}
+  def cast_stream(%__MODULE__{} = cantrip, intent) when is_binary(intent) do
+    caller = self()
+
+    task =
+      Task.async(fn ->
+        run_cast(cantrip, intent, stream_to: caller)
+      end)
+
+    stream =
+      Stream.resource(
+        fn -> :running end,
+        fn
+          :done ->
+            {:halt, :done}
+
+          :running ->
+            receive do
+              {:cantrip_event, event} ->
+                {[event], :running}
+
+              {ref, result} when is_reference(ref) ->
+                # Task completed — drain any remaining events, then stop
+                Process.demonitor(ref, [:flush])
+                remaining = drain_events()
+                {remaining ++ [{:done, result}], :done}
+
+              {:DOWN, _ref, :process, _pid, reason} ->
+                {[{:done, {:error, reason}}], :done}
+            end
+        end,
+        fn _ -> :ok end
+      )
+
+    {stream, task}
+  end
+
+  defp drain_events do
+    receive do
+      {:cantrip_event, event} -> [event | drain_events()]
+    after
+      0 -> []
+    end
+  end
+
   @spec fork(t(), Loom.t(), non_neg_integer(), map()) ::
           {:ok, term(), t(), Loom.t(), map()} | {:error, term(), t()}
   def fork(%__MODULE__{} = cantrip, %Loom{} = loom, from_turn, opts) do
