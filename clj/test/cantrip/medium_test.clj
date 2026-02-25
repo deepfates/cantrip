@@ -85,3 +85,19 @@
         result (medium/execute-utterance circle utterance deps)]
     (is (false? (:terminated? result)))
     (is (true? (-> result :observation first :is-error)))))
+
+(deftest code-medium-blocks-require-by-default
+  (let [circle {:medium :code :gates [:done] :wards [{:max-turns 2}]}
+        utterance {:content "(require 'clojure.set)"}
+        result (medium/execute-utterance circle utterance {})]
+    (is (false? (:terminated? result)))
+    (is (true? (-> result :observation first :is-error)))
+    (is (re-find #"blocked" (-> result :observation first :result)))))
+
+(deftest code-medium-enforces-max-forms-ward
+  (let [circle {:medium :code :gates [:done] :wards [{:max-turns 2} {:max-forms 1}]}
+        utterance {:content "(def a 1)\n(submit-answer a)"}
+        result (medium/execute-utterance circle utterance {})]
+    (is (false? (:terminated? result)))
+    (is (true? (-> result :observation first :is-error)))
+    (is (re-find #"max forms exceeded" (-> result :observation first :result)))))

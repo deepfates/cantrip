@@ -35,3 +35,15 @@
     (is (= "fixed" (:result res)))
     (is (= 2 (count (:observation res))))
     (is (true? (-> res :observation first :is-error)))))
+
+(deftest read-gate-blocks-root-escape
+  (let [circle {:medium :conversation
+                :gates [{:name :done}
+                        {:name :read :dependencies {:root "/safe"}}]
+                :wards [{:max-turns 2}]}
+        res (circle/execute-tool-calls
+             circle
+             [{:id "call_1" :gate :read :args {:path "../secrets.txt"}}]
+             {:filesystem {"/safe/ok.txt" "ok"}})]
+    (is (= "path escapes root" (-> res :observation first :result)))
+    (is (false? (-> res :observation first :is-error)))))

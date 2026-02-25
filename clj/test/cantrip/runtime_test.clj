@@ -265,3 +265,27 @@
         result (runtime/cast cantrip "compose via code")]
     (is (= :terminated (:status result)))
     (is (= "child-ok" (:result result)))))
+
+(deftest call-agent-rejects-unknown-request-keys
+  (let [entity (runtime/invoke valid-cantrip)]
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo
+         #"unknown keys"
+         (runtime/call-agent entity {:intent "x" :bogus true})))))
+
+(deftest call-agent-batch-enforces-vector-and-max-size
+  (let [entity (runtime/invoke (assoc-in valid-cantrip [:circle :wards]
+                                         [{:max-turns 2} {:max-batch-size 1}]))
+        child {:cantrip {:crystal {:provider :fake
+                                   :responses [{:tool-calls [{:id "c1" :gate :done :args {:answer "ok"}}]}]}
+                         :call {}
+                         :circle {:medium :conversation :gates [:done] :wards [{:max-turns 1}]}}
+               :intent "x"}]
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo
+         #"requires a vector"
+         (runtime/call-agent-batch entity (list child))))
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo
+         #"max-batch-size"
+         (runtime/call-agent-batch entity [child child])))))

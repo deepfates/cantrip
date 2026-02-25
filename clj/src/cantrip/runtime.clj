@@ -102,6 +102,28 @@
     (or (get named-crystals (keyword (str "child-crystal-l" child-level)))
         (get named-crystals (keyword (str "child_crystal_l" child-level))))))
 
+(def ^:private allowed-call-agent-request-keys
+  #{:intent :cantrip :crystal :gates})
+
+(defn- validate-call-agent-request!
+  [request]
+  (when-not (map? request)
+    (throw (ex-info "call-agent request must be a map"
+                    {:request request})))
+  (let [unknown (seq (remove allowed-call-agent-request-keys (keys request)))]
+    (when unknown
+      (throw (ex-info "call-agent request has unknown keys"
+                      {:unknown-keys (vec unknown)}))))
+  request)
+
+(defn- max-child-calls-per-turn-ward
+  [cantrip]
+  (ward-value cantrip :max-child-calls-per-turn))
+
+(defn- max-batch-size-ward
+  [cantrip]
+  (ward-value cantrip :max-batch-size))
+
 (defn- derive-child-cantrip
   [parent-cantrip request dependencies parent-depth]
   (let [named-crystals (:named-crystals dependencies)
@@ -196,6 +218,8 @@
          done-required? (require-done-tool? cantrip)
          selected-tool-choice (tool-choice cantrip)
          tools (circle-tools (:circle cantrip))
+         max-child-calls-per-turn (max-child-calls-per-turn-ward cantrip)
+         max-batch-size (max-batch-size-ward cantrip)
          local-loom (atom initial-loom)
          local-history (atom (vec prior-turns))
          execution-parent (if parent-entity
@@ -237,10 +261,18 @@
                turn-usage (normalize-usage (:usage utterance))
                next-cumulative-usage (add-usage cumulative-usage turn-usage)
                tool-calls (vec (:tool-calls utterance))
+               child-call-count (atom 0)
                _ (do
                    (reset! local-loom loom-state)
                    (reset! local-history (vec (concat prior-turns turns))))
-               runtime-deps (let [base (assoc (or (get-in cantrip [:circle :dependencies]) {})
+               runtime-deps (let [raw-deps (or (get-in cantrip [:circle :dependencies]) {})
+                                  base (assoc (select-keys raw-deps
+                                                           [:filesystem
+                                                            :player-fn
+                                                            :xyz-fn
+                                                            :block-fn
+                                                            :set-block-fn
+                                                            :allow-mutation?])
                                               :prior-turns turns)]
                               (if execution-parent
                                 (assoc base
@@ -249,9 +281,15 @@
                                          (let [req (if (map? request)
                                                      request
                                                      {:intent (str request)})
+                                               _ (validate-call-agent-request! req)
                                                parent-depth (long (or (:depth execution-parent) 0))
+                                               _ (swap! child-call-count inc)
+                                               _ (when (and (some? max-child-calls-per-turn)
+                                                            (> @child-call-count (long max-child-calls-per-turn)))
+                                                   (throw (ex-info "max child calls per turn exceeded"
+                                                                   {:max-child-calls-per-turn (long max-child-calls-per-turn)})))
                                                child-cantrip (or (:cantrip req)
-                                                                 (derive-child-cantrip cantrip req base parent-depth))
+                                                                 (derive-child-cantrip cantrip req raw-deps parent-depth))
                                                response (call-agent execution-parent
                                                                     {:cantrip child-cantrip
                                                                      :intent (:intent req)})]
@@ -261,13 +299,27 @@
                                              (:result response))))
                                        :call-agent-batch-fn
                                        (fn [requests]
+                                         (when-not (vector? requests)
+                                           (throw (ex-info "call-agent-batch requires a vector of requests"
+                                                           {:requests requests})))
+                                         (when (and (some? max-batch-size)
+                                                    (> (count requests) (long max-batch-size)))
+                                           (throw (ex-info "batch size exceeds max-batch-size ward"
+                                                           {:max-batch-size (long max-batch-size)
+                                                            :count (count requests)})))
                                          (mapv (fn [request]
                                                  (let [req (if (map? request)
                                                              request
                                                              {:intent (str request)})
+                                                       _ (validate-call-agent-request! req)
                                                        parent-depth (long (or (:depth execution-parent) 0))
+                                                       _ (swap! child-call-count inc)
+                                                       _ (when (and (some? max-child-calls-per-turn)
+                                                                    (> @child-call-count (long max-child-calls-per-turn)))
+                                                           (throw (ex-info "max child calls per turn exceeded"
+                                                                           {:max-child-calls-per-turn (long max-child-calls-per-turn)})))
                                                        child-cantrip (or (:cantrip req)
-                                                                         (derive-child-cantrip cantrip req base parent-depth))
+                                                                         (derive-child-cantrip cantrip req raw-deps parent-depth))
                                                        response (call-agent execution-parent
                                                                             {:cantrip child-cantrip
                                                                              :intent (:intent req)})]
@@ -402,8 +454,10 @@
 
 (defn call-agent
   "Composes a child cast from a parent entity while preserving parent continuity."
-  [parent-entity {:keys [cantrip intent]}]
-  (let [parent-cantrip (:cantrip parent-entity)
+  [parent-entity request]
+  (validate-call-agent-request! request)
+  (let [{:keys [cantrip intent]} request
+        parent-cantrip (:cantrip parent-entity)
         parent-depth (long (or (:depth parent-entity) 0))
         max-depth (max-depth-ward parent-cantrip)
         child-cantrip (or cantrip parent-cantrip)]
@@ -426,8 +480,7 @@
                 (if (and (nil? parent-turn-id)
                          (:allow-inline-root-turn? parent-entity))
                   (let [synthetic-parent-turn {:entity-id (:entity-id parent-entity)
-                                               :utterance {:content (or (:inline-intent parent-entity)
-                                                                        intent)}
+                                               :utterance {:content (or (:inline-intent parent-entity) intent)}
                                                :observation [{:gate "call_agent"
                                                               :arguments "{}"
                                                               :result "inline composition bridge"}]
@@ -469,4 +522,13 @@
 (defn call-agent-batch
   "Runs child compositions and returns results in input order."
   [parent-entity requests]
+  (when-not (vector? requests)
+    (throw (ex-info "call-agent-batch requires a vector of requests"
+                    {:requests requests})))
+  (let [max-batch-size (max-batch-size-ward (:cantrip parent-entity))]
+    (when (and (some? max-batch-size)
+               (> (count requests) (long max-batch-size)))
+      (throw (ex-info "batch size exceeds max-batch-size ward"
+                      {:max-batch-size (long max-batch-size)
+                       :count (count requests)}))))
   (mapv #(call-agent parent-entity %) requests))

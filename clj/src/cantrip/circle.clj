@@ -1,5 +1,6 @@
 (ns cantrip.circle
-  (:require [cantrip.gates :as gates]))
+  (:require [cantrip.gates :as gates]
+            [clojure.string :as str]))
 
 (defn- done-observation [args]
   (if (contains? args :answer)
@@ -39,12 +40,17 @@
   (let [filesystem (:filesystem dependencies)
         root (get-in spec [:dependencies :root])
         path (:path args)
+        path-escape? (or (not (string? path))
+                         (.startsWith path "/")
+                         (some #{".." "."} (remove empty? (str/split path #"/+"))))
         rooted (if (and (string? root) (string? path) (not (.startsWith path "/")))
                  (str root "/" path)
                  path)]
-    (or (get filesystem rooted)
-        (get filesystem path)
-        "file not found")))
+    (if (and (string? root) path-escape?)
+      "path escapes root"
+      (or (get filesystem rooted)
+          (get filesystem path)
+          "file not found"))))
 
 (defn- gate-observation
   [circle gate args dependencies]

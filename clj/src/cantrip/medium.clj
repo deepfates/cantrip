@@ -1,6 +1,7 @@
 (ns cantrip.medium
   (:require [cantrip.circle :as circle]
             [cantrip.gates :as gates]
+            [clojure.string :as str]
             [sci.core :as sci]))
 
 (defn- eval-script->tool-calls
@@ -37,20 +38,67 @@
      {'call-agent-batch f
       'call_agent_batch f})))
 
-(defn- maybe-resolve
-  [sym]
-  (try
-    (require 'lambdaisland.witchcraft)
-    (ns-resolve 'lambdaisland.witchcraft sym)
-    (catch Throwable _
-      nil)))
+(defn- ward-value
+  [circle k]
+  (some #(or (get % k) (get % (keyword (str/replace (name k) "-" "_"))))
+        (:wards circle)))
+
+(defn- allow-require?
+  [circle]
+  (true? (ward-value circle :allow-require)))
+
+(defn- max-forms
+  [circle]
+  (ward-value circle :max-forms))
+
+(defn- max-eval-ms
+  [circle]
+  (ward-value circle :max-eval-ms))
+
+(defn- count-forms
+  [code]
+  (let [reader (java.io.PushbackReader. (java.io.StringReader. code))]
+    (loop [n 0]
+      (let [form (read {:eof ::eof} reader)]
+        (if (= ::eof form)
+          n
+          (recur (inc n)))))))
+
+(defn- validate-code!
+  [circle snippets code]
+  (let [all-code (str/join "\n" (concat snippets [code]))
+        allow-req? (allow-require? circle)
+        forms-limit (max-forms circle)]
+    (when (and (not allow-req?)
+               (re-find #"(?i)\(\s*require\b|(?i)\(\s*ns\b" all-code))
+      (throw (ex-info "code execution blocked: require/ns not allowed"
+                      {:ward :allow-require :value false})))
+    (when (re-find #"(?i)\b(load-string|eval|slurp|spit|clojure\.java\.shell|System/exit)\b" all-code)
+      (throw (ex-info "code execution blocked: forbidden symbol"
+                      {:ward :sandbox :reason :forbidden-symbol})))
+    (when (and (some? forms-limit)
+               (> (count-forms code) (long forms-limit)))
+      (throw (ex-info "code execution blocked: max forms exceeded"
+                      {:ward :max-forms :max-forms (long forms-limit)})))))
+
+(defn- eval-with-timeout!
+  [circle f]
+  (if-let [timeout-ms (max-eval-ms circle)]
+    (let [job (future (f))
+          result (deref job (long timeout-ms) ::timeout)]
+      (if (= ::timeout result)
+        (do
+          (future-cancel job)
+          (throw (ex-info "code execution timeout" {:ward :max-eval-ms :max-eval-ms (long timeout-ms)})))
+        result))
+    (f)))
 
 (defn- minecraft-bindings
   [deps]
-  (let [player-fn (or (:player-fn deps) (maybe-resolve 'player))
-        xyz-fn (or (:xyz-fn deps) (maybe-resolve 'xyz))
-        block-fn (or (:block-fn deps) (maybe-resolve 'block))
-        set-block-fn (or (:set-block-fn deps) (maybe-resolve 'set-block))
+  (let [player-fn (:player-fn deps)
+        xyz-fn (:xyz-fn deps)
+        block-fn (:block-fn deps)
+        set-block-fn (:set-block-fn deps)
         allow-mutation? (true? (:allow-mutation? deps))]
     (merge
      (when player-fn
@@ -140,8 +188,10 @@
         (let [snippets (->> prior-turns
                             (map #(get-in % [:utterance :content]))
                             (filter string?))]
+          (validate-code! circle snippets code)
           (circle/execute-tool-calls circle
-                                     (eval-script->tool-calls snippets code code-bindings)
+                                     (eval-with-timeout! circle
+                                                         #(eval-script->tool-calls snippets code code-bindings))
                                      dependencies))
         (catch Exception e
           {:observation [{:gate "code"
@@ -160,8 +210,10 @@
                              (host-code-bindings dependencies))]
     (if (and (empty? tool-calls) (string? code))
       (try
+        (validate-code! circle [] code)
         (circle/execute-tool-calls circle
-                                   (eval-script->tool-calls [] code code-bindings)
+                                   (eval-with-timeout! circle
+                                                       #(eval-script->tool-calls [] code code-bindings))
                                    dependencies)
         (catch Exception e
           {:observation [{:gate "minecraft"
