@@ -36,6 +36,7 @@ defmodule Cantrip.EntityServer do
     loom = Keyword.get(opts, :loom, Loom.new(cantrip.call, storage: cantrip.loom_storage))
     turns = Keyword.get(opts, :turns, 0)
     depth = Keyword.get(opts, :depth, 0)
+    code_state = Keyword.get(opts, :code_state, %{})
     cancel_on_parent = normalize_cancel_parents(Keyword.get(opts, :cancel_on_parent))
 
     {:ok,
@@ -46,6 +47,7 @@ defmodule Cantrip.EntityServer do
        loom: loom,
        turns: turns,
        depth: depth,
+       code_state: code_state,
        cancel_on_parent: cancel_on_parent
      }}
   end
@@ -199,24 +201,33 @@ defmodule Cantrip.EntityServer do
 
     usage_data = Map.get(response, :usage, %{})
 
-    loom =
-      Loom.append_turn(state.loom, %{
-        cantrip_id: state.cantrip.id,
-        entity_id: state.entity_id,
-        role: "turn",
-        utterance: utterance,
-        observation: observation,
-        gate_calls: Enum.map(observation, & &1.gate),
-        terminated: terminated,
-        truncated: false,
-        metadata: %{
-          tokens_prompt: Map.get(usage_data, :prompt_tokens, 0),
-          tokens_completion: Map.get(usage_data, :completion_tokens, 0),
-          tokens_cached: Map.get(usage_data, :cached_tokens, 0),
-          duration_ms: duration_ms,
-          timestamp: DateTime.utc_now()
-        }
-      })
+    turn_attrs = %{
+      cantrip_id: state.cantrip.id,
+      entity_id: state.entity_id,
+      role: "turn",
+      utterance: utterance,
+      observation: observation,
+      gate_calls: Enum.map(observation, & &1.gate),
+      terminated: terminated,
+      truncated: false,
+      metadata: %{
+        tokens_prompt: Map.get(usage_data, :prompt_tokens, 0),
+        tokens_completion: Map.get(usage_data, :completion_tokens, 0),
+        tokens_cached: Map.get(usage_data, :cached_tokens, 0),
+        duration_ms: duration_ms,
+        timestamp: DateTime.utc_now()
+      }
+    }
+
+    # Snapshot sandbox state for fork support (LOOM-4)
+    turn_attrs =
+      if state.cantrip.circle.type == :code do
+        Map.put(turn_attrs, :code_state, next_code_state)
+      else
+        turn_attrs
+      end
+
+    loom = Loom.append_turn(state.loom, turn_attrs)
 
     loom = append_child_subtrees(loom, observation)
 

@@ -175,6 +175,13 @@ defmodule Cantrip do
     fork_messages = prefix_messages ++ [%{role: :user, content: intent}]
     fork_loom = %{loom | turns: prefix_turns}
 
+    # LOOM-4: Restore sandbox state from the fork point (snapshot strategy)
+    fork_code_state =
+      case List.last(prefix_turns) do
+        %{code_state: cs} when is_map(cs) -> cs
+        _ -> %{}
+      end
+
     {:ok, forked_cantrip} =
       new(
         crystal: crystal,
@@ -193,7 +200,8 @@ defmodule Cantrip do
     run_cast(forked_cantrip, intent,
       messages: fork_messages,
       loom: fork_loom,
-      turns: length(prefix_turns)
+      turns: length(prefix_turns),
+      code_state: fork_code_state
     )
   end
 
