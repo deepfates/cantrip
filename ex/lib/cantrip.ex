@@ -107,6 +107,20 @@ defmodule Cantrip do
             max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), 4096)
           }}}
 
+      provider == "gemini" ->
+        {:ok,
+         {Cantrip.Crystals.Gemini,
+          %{
+            model: model,
+            api_key: System.get_env("CANTRIP_API_KEY"),
+            base_url:
+              System.get_env(
+                "CANTRIP_BASE_URL",
+                "https://generativelanguage.googleapis.com"
+              ),
+            timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000)
+          }}}
+
       true ->
         {:error, "unsupported crystal provider: #{provider}"}
     end
