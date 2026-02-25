@@ -188,37 +188,45 @@ class SubprocessPythonExecutor(CodeExecutor):
     """Runs Python snippets in a subprocess with timeout and structured output.
 
     The user code can set a `result` variable for the return value.
+    In code-medium flows, termination still requires explicit `done(...)`.
     This executor is intentionally separate from the JS-like mini interpreter.
     """
 
     def __init__(self, timeout_s: float = 5.0) -> None:
         self.timeout_s = timeout_s
+        self._sentinel = "__CANTRIP_EXEC_RESULT__"
 
     def execute(
         self, source: str, call_gate: Callable[[str, Any], Any]
     ) -> CodeExecResult:
-        # Gate calls are not supported in subprocess mode yet.
-        if (
-            "done(" in source
-            or "call_entity(" in source
-            or "call_entity_batch(" in source
-        ):
+        # Delegation gates are not available in subprocess mode.
+        if "call_entity(" in source or "call_entity_batch(" in source:
             raise RuntimeError(
-                "gate calls are not available in SubprocessPythonExecutor"
+                "delegation gate calls are not available in SubprocessPythonExecutor"
             )
 
         script = textwrap.dedent(
             f"""
             import json
-            namespace = {{}}
-            output = {{"ok": True, "result": None, "error": None}}
+            _state = {{"done": False, "result": None}}
+
+            def done(answer):
+                _state["done"] = True
+                _state["result"] = answer
+                return answer
+
+            namespace = {{"done": done}}
+            output = {{"ok": True, "done": False, "result": None, "error": None}}
             try:
                 exec({source!r}, {{}}, namespace)
-                output["result"] = namespace.get("result")
+                output["done"] = bool(_state["done"])
+                output["result"] = (
+                    _state["result"] if _state["done"] else namespace.get("result")
+                )
             except Exception as e:
                 output["ok"] = False
                 output["error"] = str(e)
-            print(json.dumps(output))
+            print("{self._sentinel}" + json.dumps(output))
             """
         )
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as fp:
@@ -226,13 +234,18 @@ class SubprocessPythonExecutor(CodeExecutor):
             path = fp.name
 
         try:
-            proc = subprocess.run(
-                [sys.executable, path],
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_s,
-                check=False,
-            )
+            try:
+                proc = subprocess.run(
+                    [sys.executable, path],
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout_s,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as e:
+                raise RuntimeError(
+                    f"code execution timed out after {self.timeout_s:.1f}s"
+                ) from e
         finally:
             try:
                 os.unlink(path)
@@ -241,11 +254,33 @@ class SubprocessPythonExecutor(CodeExecutor):
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr.strip() or "subprocess execution failed")
 
-        try:
-            payload = json.loads(io.StringIO(proc.stdout).read().strip())
-        except Exception as e:  # noqa: BLE001
-            raise RuntimeError(f"invalid subprocess output: {e}") from e
+        raw_out = io.StringIO(proc.stdout).read()
+        payload = None
+        for line in reversed(raw_out.splitlines()):
+            if line.startswith(self._sentinel):
+                body = line[len(self._sentinel) :].strip()
+                try:
+                    payload = json.loads(body)
+                except Exception as e:  # noqa: BLE001
+                    raise RuntimeError(f"invalid subprocess output: {e}") from e
+                break
+        if payload is None:
+            try:
+                payload = json.loads(raw_out.strip())
+            except Exception as e:  # noqa: BLE001
+                raise RuntimeError(f"invalid subprocess output: {e}") from e
 
         if not payload.get("ok"):
             raise RuntimeError(payload.get("error") or "subprocess execution error")
-        return CodeExecResult(observation=[], result=payload.get("result"), done=True)
+        obs: list[Any] = []
+        if payload.get("done"):
+            rec = call_gate("done", {"answer": payload.get("result")})
+            obs.append(rec)
+            if rec.is_error:
+                raise RuntimeError(rec.content)
+            return CodeExecResult(observation=obs, result=rec.result, done=True)
+        return CodeExecResult(
+            observation=obs,
+            result=payload.get("result"),
+            done=False,
+        )

@@ -60,6 +60,30 @@ def test_router_session_prompt_alias_accepts_text_blocks() -> None:
     assert prompt_resp["result"]["_meta"]["result"] == "ok"
     assert prompt_resp["result"]["_meta"]["progress"]["steps"] >= 1
     assert prompt_resp["result"]["_meta"]["progress"]["tool_calls"] >= 1
+    assert prompt_resp["result"]["_meta"]["timing"]["cast_ms"] >= 1
+    assert prompt_resp["result"]["_meta"]["timing"]["turns"] >= 1
+
+
+def test_router_session_prompt_dot_alias_emits_notifications() -> None:
+    router = ACPStdioRouter(_build_cantrip())
+    create_resp = router.handle({"id": "1", "method": "session.new"})
+    session_id = create_resp["result"]["sessionId"]
+    req = {
+        "id": "2",
+        "method": "session.prompt",
+        "params": {
+            "sessionId": session_id,
+            "prompt": [{"type": "text", "text": "hello"}],
+        },
+    }
+    prompt_resp = router.handle(req)
+    updates = router.notifications_for(req, prompt_resp)
+
+    assert prompt_resp["result"]["stopReason"] == "end_turn"
+    assert [u["params"]["update"]["sessionUpdate"] for u in updates] == [
+        "agent_message_chunk",
+        "agent_message",
+    ]
 
 
 def test_router_initialize_and_authenticate() -> None:
@@ -71,8 +95,32 @@ def test_router_initialize_and_authenticate() -> None:
     assert init_resp["result"]["protocolVersion"] == 1
     assert init_resp["result"]["agentInfo"]["name"] == "cantrip-py"
     assert init_resp["result"]["capabilities"]["session/prompt"] is True
+    assert init_resp["result"]["capabilities"]["session.prompt"] is True
+    assert init_resp["result"]["agentCapabilities"]["loadSession"] is False
+    assert (
+        init_resp["result"]["agentCapabilities"]["promptCapabilities"]["image"] is False
+    )
+    assert init_resp["result"]["agentCapabilities"]["defaultModeId"] == "default"
+    assert init_resp["result"]["agentCapabilities"]["modes"][0]["id"] == "default"
     auth_resp = router.handle({"id": "a", "method": "authenticate", "params": {}})
     assert auth_resp["result"]["authenticated"] is True
+
+
+def test_router_session_set_mode_noop_ack() -> None:
+    router = ACPStdioRouter(_build_cantrip())
+    create_resp = router.handle({"id": "n", "method": "session/new", "params": {}})
+    session_id = create_resp["result"]["sessionId"]
+
+    resp = router.handle(
+        {
+            "id": "m",
+            "method": "session/setMode",
+            "params": {"sessionId": session_id, "modeId": "default"},
+        }
+    )
+    assert resp["id"] == "m"
+    assert resp["result"]["sessionId"] == session_id
+    assert resp["result"]["modeId"] == "default"
 
 
 def test_serve_stdio_once_emits_update_then_prompt_response() -> None:
@@ -85,20 +133,38 @@ def test_serve_stdio_once_emits_update_then_prompt_response() -> None:
     out = StringIO()
     serve_stdio_once(_build_cantrip(), inp, out)
     lines = [json.loads(ln) for ln in out.getvalue().splitlines() if ln.strip()]
-    assert len(lines) == 3
-    assert lines[0]["method"] == "session/update"
-    assert set(lines[0]["params"]["update"].keys()) == {"sessionUpdate", "content"}
-    assert lines[0]["params"]["update"]["content"]["type"] == "text"
-    assert set(lines[0]["params"]["update"]["content"].keys()) == {"type", "text"}
-    assert lines[0]["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
-    assert lines[0]["params"]["update"]["content"]["text"].startswith("progress:")
-    assert lines[0]["jsonrpc"] == "2.0"
-    assert lines[1]["method"] == "session/update"
-    assert set(lines[1]["params"]["update"].keys()) == {"sessionUpdate", "content"}
-    assert lines[1]["params"]["update"]["sessionUpdate"] == "agent_message"
-    assert lines[2]["id"] == "2"
-    assert lines[2]["result"]["stopReason"] == "end_turn"
-    assert lines[2]["result"]["output"][0]["type"] == "text"
+    assert len(lines) >= 4
+    updates = [ln for ln in lines if ln.get("method") == "session/update"]
+    response = lines[-1]
+    assert response["id"] == "2"
+    assert response["result"]["stopReason"] == "end_turn"
+    assert response["result"]["output"][0]["type"] == "text"
+
+    assert any(
+        u["params"]["update"]["sessionUpdate"] == "agent_thought_chunk"
+        and u["params"]["update"]["content"]["text"].startswith("progress: steps=")
+        for u in updates
+    )
+    assert any(
+        u["params"]["update"]["sessionUpdate"] == "tool_call"
+        and u["params"]["update"]["status"] == "in_progress"
+        for u in updates
+    )
+    assert any(
+        u["params"]["update"]["sessionUpdate"] == "tool_call_update"
+        and u["params"]["update"]["status"] in {"completed", "failed"}
+        for u in updates
+    )
+    assert any(
+        u["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+        and u["params"]["update"]["content"]["text"] == "ok"
+        for u in updates
+    )
+    assert any(
+        u["params"]["update"]["sessionUpdate"] == "agent_message"
+        and u["params"]["update"]["content"]["text"] == "ok"
+        for u in updates
+    )
 
 
 def test_router_returns_error_for_unknown_method() -> None:
@@ -136,6 +202,23 @@ def test_router_session_exists_and_close() -> None:
         {"id": "4", "method": "session.exists", "params": {"session_id": session_id}}
     )
     assert exists_after["result"]["exists"] is False
+
+
+def test_router_session_cancel_requests_cancellation_without_closing() -> None:
+    router = ACPStdioRouter(_build_cantrip())
+    create_resp = router.handle({"id": "1", "method": "session/new"})
+    session_id = create_resp["result"]["sessionId"]
+
+    cancel_resp = router.handle(
+        {"id": "2", "method": "session/cancel", "params": {"sessionId": session_id}}
+    )
+    exists_resp = router.handle(
+        {"id": "3", "method": "session/exists", "params": {"sessionId": session_id}}
+    )
+
+    assert cancel_resp["result"]["cancelled"] is True
+    assert cancel_resp["result"]["sessionId"] == session_id
+    assert exists_resp["result"]["exists"] is True
 
 
 def test_serve_stdio_processes_multiple_lines_until_eof() -> None:
@@ -308,7 +391,43 @@ def test_router_session_prompt_uses_fallback_text_when_cast_result_is_none() -> 
         updates[1]["params"]["update"]["content"]["text"]
         == "No final answer produced. Last error: gate not available"
     )
-    assert updates[0]["params"]["update"]["content"]["text"].startswith("progress:")
+    assert (
+        updates[0]["params"]["update"]["content"]["text"]
+        == "No final answer produced. Last error: gate not available"
+    )
+
+
+def test_router_session_prompt_uses_max_turn_stop_reason_when_truncated() -> None:
+    cantrip = Cantrip(
+        crystal=FakeCrystal(
+            {
+                "responses": [
+                    {"code": "done('   ');"},
+                ],
+            }
+        ),
+        circle=Circle(gates=["done"], wards=[{"max_turns": 1}], medium="code"),
+    )
+    router = ACPStdioRouter(cantrip)
+    sid = router.handle({"id": "n1", "method": "session/new"})["result"]["sessionId"]
+    req = {
+        "id": "p1",
+        "method": "session/prompt",
+        "params": {"sessionId": sid, "prompt": [{"type": "text", "text": "hi"}]},
+    }
+
+    resp = router.handle(req)
+
+    assert resp["result"]["stopReason"] == "max_turn_requests"
+    assert resp["result"]["output"][0]["text"].startswith(
+        "No final answer produced before max_turns."
+    )
+    assert (
+        "Last error: done requires non-empty answer"
+        in resp["result"]["output"][0]["text"]
+    )
+    assert resp["result"]["_meta"]["error"]["type"] == "non_terminal_outcome"
+    assert resp["result"]["_meta"]["error"]["reason"] == "max_turn_requests"
 
 
 def test_serve_stdio_once_ignores_non_request_jsonrpc_frames() -> None:
@@ -332,3 +451,26 @@ def test_serve_stdio_ignores_non_request_frames_and_processes_next_request() -> 
     assert len(payloads) == 1
     assert payloads[0]["id"] == "i1"
     assert "result" in payloads[0]
+
+
+def test_router_session_prompt_returns_text_payload_when_cast_raises(
+    monkeypatch,
+) -> None:
+    router = ACPStdioRouter(_build_cantrip())
+
+    def _raise(*, session_id: str, intent: str, event_sink=None):  # noqa: ARG001
+        raise TimeoutError("provider timed out")
+
+    monkeypatch.setattr(router.server, "cast", _raise)
+    resp = router.handle(
+        {
+            "id": "p1",
+            "method": "session/prompt",
+            "params": {"prompt": [{"type": "text", "text": "hello"}]},
+        }
+    )
+
+    assert "result" in resp
+    assert resp["result"]["stopReason"] == "end_turn"
+    assert resp["result"]["output"][0]["text"] == "Error: provider timed out"
+    assert resp["result"]["_meta"]["error"]["type"] == "internal_error"

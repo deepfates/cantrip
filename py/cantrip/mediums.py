@@ -139,6 +139,9 @@ class CodeMedium(Medium):
                 if exec_result.done:
                     terminated = True
                     result = exec_result.result
+                elif not require_done_tool and exec_result.result is not None:
+                    terminated = True
+                    result = exec_result.result
             except Exception as e:  # noqa: BLE001
                 observation.append(
                     GateCallRecord(
@@ -196,6 +199,10 @@ class CodeMedium(Medium):
                                 )
                             )
                         if exec_result.done:
+                            terminated = True
+                            result = exec_result.result
+                            break
+                        if not require_done_tool and exec_result.result is not None:
                             terminated = True
                             result = exec_result.result
                             break

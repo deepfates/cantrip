@@ -26,11 +26,11 @@ def test_build_real_cantrip_uses_subprocess_runner_when_selected(
     assert cantrip.circle.depends["code"]["timeout_s"] == 7.0
 
 
-def test_build_fake_cantrip_defaults_to_mini_runtime_depends() -> None:
+def test_build_fake_cantrip_defaults_to_python_code_medium() -> None:
     cantrip = capstone.build_fake_cantrip(Path(".").resolve())
-    assert cantrip.circle.depends["code"]["runner"] == "mini"
+    assert cantrip.circle.depends["code"]["runner"] == "python-subprocess"
     assert cantrip.circle.depends["browser"]["driver"] == "memory"
-    assert cantrip.circle.medium == "tool"
+    assert cantrip.circle.medium == "code"
 
 
 def test_build_cantrip_invalid_code_runner_surfaces_error() -> None:

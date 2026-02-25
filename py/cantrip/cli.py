@@ -2,12 +2,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
+from cantrip.acp_sdk import serve_stdio_sdk
 from cantrip.acp_server import CantripACPServer
 from cantrip.acp_stdio import serve_stdio
 from cantrip.builders import build_cantrip_from_env
+
+
+def _structured_error_payload(exc: Exception) -> dict[str, str]:
+    return {
+        "type": "internal_error",
+        "error_type": exc.__class__.__name__,
+        "message": str(exc),
+    }
 
 
 def _find_git_root(start: Path) -> Path | None:
@@ -39,24 +49,35 @@ def cmd_repl(args: argparse.Namespace) -> int:
 
     print(f"session: {session_id}")
     print("enter an intent (`:q` to quit)")
-    while True:
-        try:
-            intent = input("> ").strip()
-        except EOFError:
-            break
-        if not intent:
-            continue
-        if intent in {":q", ":quit", ":exit"}:
-            break
-        payload = server.cast(session_id=session_id, intent=intent)
-        print(f"\nresult:\n{payload['result']}\n")
-        for ev in payload["events"]:
-            if ev["type"] == "tool_result":
-                status = "error" if ev["is_error"] else "ok"
-                print(f"[tool:{ev['gate']}] {status}")
-        print()
-
-    server.close_session(session_id)
+    try:
+        while True:
+            try:
+                intent = input("> ").strip()
+            except EOFError:
+                break
+            except KeyboardInterrupt:
+                print()
+                break
+            if not intent:
+                continue
+            if intent in {":q", ":quit", ":exit"}:
+                break
+            try:
+                payload = server.cast(session_id=session_id, intent=intent)
+            except Exception as exc:  # noqa: BLE001
+                error_payload = {"error": _structured_error_payload(exc)}
+                print(f"\nresult:\n{json.dumps(error_payload)}\n")
+                continue
+            print(
+                f"\nresult:\n{payload.get('assistant_text', payload.get('result'))}\n"
+            )
+            for ev in payload["events"]:
+                if ev["type"] == "tool_result":
+                    status = "error" if ev["is_error"] else "ok"
+                    print(f"[tool:{ev['gate']}] {status}")
+            print()
+    finally:
+        server.close_session(session_id)
     return 0
 
 
@@ -70,24 +91,41 @@ def cmd_pipe(args: argparse.Namespace) -> int:
     )
     server = CantripACPServer(cantrip)
     session_id = server.create_session()
-    for raw in sys.stdin:
-        intent = raw.strip()
-        if not intent or intent.startswith("#"):
-            continue
-        if intent in {":q", ":quit", ":exit"}:
-            break
-        payload = server.cast(session_id=session_id, intent=intent)
-        out = {
-            "intent": intent,
-            "session_id": session_id,
-            "thread_id": payload["thread_id"],
-            "result": payload["result"],
-        }
-        if args.with_events:
-            out["events"] = payload["events"]
-        sys.stdout.write(json.dumps(out) + "\n")
-        sys.stdout.flush()
-    server.close_session(session_id)
+    try:
+        for raw in sys.stdin:
+            intent = raw.strip()
+            if not intent or intent.startswith("#"):
+                continue
+            if intent in {":q", ":quit", ":exit"}:
+                break
+            try:
+                payload = server.cast(session_id=session_id, intent=intent)
+            except Exception as exc:  # noqa: BLE001
+                error = _structured_error_payload(exc)
+                out = {
+                    "intent": intent,
+                    "session_id": session_id,
+                    "thread_id": None,
+                    "result": None,
+                    "error": error,
+                }
+                if args.with_events:
+                    out["events"] = [{"type": "error", "error": error}]
+                sys.stdout.write(json.dumps(out) + "\n")
+                sys.stdout.flush()
+                continue
+            out = {
+                "intent": intent,
+                "session_id": session_id,
+                "thread_id": payload["thread_id"],
+                "result": payload["result"],
+            }
+            if args.with_events:
+                out["events"] = payload["events"]
+            sys.stdout.write(json.dumps(out) + "\n")
+            sys.stdout.flush()
+    finally:
+        server.close_session(session_id)
     return 0
 
 
@@ -99,7 +137,12 @@ def cmd_acp_stdio(args: argparse.Namespace) -> int:
         code_runner=args.code_runner,
         browser_driver=args.browser_driver,
     )
-    serve_stdio(cantrip, sys.stdin, sys.stdout)
+    transport = str(os.getenv("CANTRIP_ACP_TRANSPORT", "sdk")).strip().lower()
+    use_sdk = transport != "legacy"
+    if use_sdk:
+        serve_stdio_sdk(cantrip)
+    else:
+        serve_stdio(cantrip, sys.stdin, sys.stdout)
     return 0
 
 

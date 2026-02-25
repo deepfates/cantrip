@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from cantrip import Call, Cantrip, Circle
+from cantrip.errors import CantripError
+from cantrip.models import CrystalResponse, ToolCall
 from cantrip.loom import Loom, SQLiteLoomStore
 from cantrip.providers.fake import FakeCrystal
 
@@ -12,7 +14,9 @@ def test_sqlite_loom_persists_turns(tmp_path: Path) -> None:
     store = SQLiteLoomStore(db)
     loom = Loom(store=store)
 
-    crystal = FakeCrystal({"responses": [{"tool_calls": [{"gate": "done", "args": {"answer": "ok"}}]}]})
+    crystal = FakeCrystal(
+        {"responses": [{"tool_calls": [{"gate": "done", "args": {"answer": "ok"}}]}]}
+    )
     cantrip = Cantrip(
         crystal=crystal,
         circle=Circle(gates=["done"], wards=[{"max_turns": 3}]),
@@ -48,6 +52,31 @@ def test_retry_on_provider_error() -> None:
     assert len(crystal.invocations) == 2
 
 
+def test_retry_on_provider_timeout() -> None:
+    class _TimeoutThenSuccessCrystal:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def query(self, _messages, _tools, _tool_choice):
+            self.calls += 1
+            if self.calls == 1:
+                raise CantripError("provider_timeout:slow upstream")
+            return CrystalResponse(
+                content=None,
+                tool_calls=[ToolCall(id="c1", gate="done", args={"answer": "ok"})],
+                usage={"prompt_tokens": 1, "completion_tokens": 1},
+            )
+
+    crystal = _TimeoutThenSuccessCrystal()
+    cantrip = Cantrip(
+        crystal=crystal,
+        circle=Circle(gates=["done"], wards=[{"max_turns": 3}]),
+        retry={"max_retries": 1},
+    )
+    assert cantrip.cast("x") == "ok"
+    assert crystal.calls == 2
+
+
 def test_loom_thread_lookup_and_fork() -> None:
     crystal = FakeCrystal(
         {
@@ -57,7 +86,9 @@ def test_loom_thread_lookup_and_fork() -> None:
             ]
         }
     )
-    fork_crystal = FakeCrystal({"responses": [{"tool_calls": [{"gate": "done", "args": {"answer": "fork"}}]}]})
+    fork_crystal = FakeCrystal(
+        {"responses": [{"tool_calls": [{"gate": "done", "args": {"answer": "fork"}}]}]}
+    )
     cantrip = Cantrip(
         crystal=crystal,
         circle=Circle(gates=["done", "echo"], wards=[{"max_turns": 5}]),
@@ -67,6 +98,8 @@ def test_loom_thread_lookup_and_fork() -> None:
     assert cantrip.loom.get_thread(thread.id) is not None
     assert len(cantrip.loom.list_threads()) >= 1
 
-    fork_result, fork_thread = cantrip.fork(thread, from_turn=0, crystal=fork_crystal, intent="fork intent")
+    fork_result, fork_thread = cantrip.fork(
+        thread, from_turn=0, crystal=fork_crystal, intent="fork intent"
+    )
     assert fork_result == "fork"
     assert len(fork_thread.turns) >= 2

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import copy
 import json
+import threading
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -200,8 +202,24 @@ class Cantrip:
         try:
             if gate_name == "done":
                 answer = args.get("answer") if isinstance(args, dict) else args
+                if answer is None:
+                    return GateCallRecord(
+                        gate_name=gate_name,
+                        arguments=args,
+                        is_error=True,
+                        content="done requires non-empty answer",
+                    )
+                answer_text = str(answer).strip()
+                if not answer_text:
+                    return GateCallRecord(
+                        gate_name=gate_name,
+                        arguments=args,
+                        is_error=True,
+                        content="done requires non-empty answer",
+                    )
+                normalized_answer = answer_text if isinstance(answer, str) else answer
                 return GateCallRecord(
-                    gate_name=gate_name, arguments=args, result=answer
+                    gate_name=gate_name, arguments=args, result=normalized_answer
                 )
 
             if gate_name == "echo":
@@ -512,16 +530,58 @@ class Cantrip:
             )
 
     def _query_with_retry(
-        self, crystal: Crystal, messages, tools, tool_choice
+        self,
+        crystal: Crystal,
+        messages,
+        tools,
+        tool_choice,
+        *,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> CrystalResponse:
         max_retries = int(self.retry.get("max_retries", 0))
         retryable = set(self.retry.get("retryable_status_codes", []))
         attempts = 0
+
+        def _query_once() -> CrystalResponse:
+            if cancel_check is None:
+                return crystal.query(messages, tools, tool_choice)
+            result_holder: dict[str, Any] = {}
+            error_holder: dict[str, BaseException] = {}
+
+            def _worker() -> None:
+                try:
+                    result_holder["response"] = crystal.query(
+                        messages, tools, tool_choice
+                    )
+                except BaseException as e:  # noqa: BLE001
+                    error_holder["error"] = e
+
+            t = threading.Thread(target=_worker, daemon=True)
+            t.start()
+            while t.is_alive():
+                if cancel_check():
+                    raise CantripError("cancelled")
+                t.join(timeout=0.05)
+            if "error" in error_holder:
+                raise error_holder["error"]
+            return result_holder["response"]
+
         while True:
             try:
-                return crystal.query(messages, tools, tool_choice)
+                if cancel_check is not None and cancel_check():
+                    raise CantripError("cancelled")
+                return _query_once()
             except CantripError as e:
                 msg = str(e)
+                if msg == "cancelled":
+                    raise
+                if msg.startswith("provider_timeout:") or msg.startswith(
+                    "provider_transport_error:"
+                ):
+                    if attempts < max_retries:
+                        attempts += 1
+                        continue
+                    raise
                 if not msg.startswith("provider_error:"):
                     raise
                 parts = msg.split(":", 2)
@@ -566,6 +626,8 @@ class Cantrip:
         parent_turn_id: str | None = None,
         depth: int | None = None,
         seed_turns: list[Turn] | None = None,
+        event_sink: Callable[[dict[str, Any]], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> tuple[Any, Thread]:
         if not intent:
             raise CantripError("intent is required")
@@ -626,16 +688,50 @@ class Cantrip:
         last_turn_id_for_entity = parent_turn_id or (
             thread.turns[-1].id if thread.turns else None
         )
+        stagnant_code_turns = 0
 
         while sequence < max_turns:
+            if cancel_check is not None and cancel_check():
+                thread.truncated = True
+                thread.__dict__["cancelled"] = True
+                if thread.turns:
+                    thread.turns[-1].truncated = True
+                    thread.turns[-1].metadata = dict(thread.turns[-1].metadata)
+                    thread.turns[-1].metadata["truncation_reason"] = "cancelled"
+                break
             sequence += 1
             t0 = time.perf_counter()
             current_turn_id = str(uuid.uuid4())
+            if event_sink is not None:
+                event_sink(
+                    {
+                        "type": "step_start",
+                        "turn_id": current_turn_id,
+                        "sequence": sequence,
+                    }
+                )
             messages = self._context_messages(thread)
             tools = self._make_tools(self.circle)
             tool_choice = medium.tool_choice(self.call.tool_choice)
 
-            response = self._query_with_retry(crystal, messages, tools, tool_choice)
+            try:
+                response = self._query_with_retry(
+                    crystal,
+                    messages,
+                    tools,
+                    tool_choice,
+                    cancel_check=cancel_check,
+                )
+            except CantripError as e:
+                if str(e) == "cancelled":
+                    thread.truncated = True
+                    thread.__dict__["cancelled"] = True
+                    if thread.turns:
+                        thread.turns[-1].truncated = True
+                        thread.turns[-1].metadata = dict(thread.turns[-1].metadata)
+                        thread.turns[-1].metadata["truncation_reason"] = "cancelled"
+                    break
+                raise
             if response.content is None and (
                 response.tool_calls is None or len(response.tool_calls) == 0
             ):
@@ -649,6 +745,14 @@ class Cantrip:
                 "content": response.content,
                 "tool_calls": [c.__dict__ for c in (response.tool_calls or [])],
             }
+            if event_sink is not None and utterance.get("content"):
+                event_sink(
+                    {
+                        "type": "text",
+                        "turn_id": current_turn_id,
+                        "content": utterance["content"],
+                    }
+                )
 
             observation, terminated, result = medium.process_response(
                 cantrip=self,
@@ -660,6 +764,54 @@ class Cantrip:
                 runtime=runtime,
                 require_done_tool=self.call.require_done_tool,
             )
+
+            if (
+                self.circle.medium == "code"
+                and self.call.require_done_tool
+                and not terminated
+                and (
+                    (
+                        observation
+                        and all(
+                            (not rec.is_error)
+                            and rec.gate_name == "code"
+                            and (rec.result in {"", None})
+                            and not rec.content
+                            for rec in observation
+                        )
+                    )
+                    or (not observation and response.content is not None)
+                )
+            ):
+                stagnant_code_turns += 1
+            else:
+                stagnant_code_turns = 0
+
+            # Guard against non-terminal code loops that generate no progress.
+            if not terminated and stagnant_code_turns >= 4:
+                observation.append(
+                    GateCallRecord(
+                        gate_name="code",
+                        arguments={"reason": "stagnation_guard"},
+                        is_error=True,
+                        content="non-terminal code loop detected",
+                    )
+                )
+                terminated = True
+                result = ""
+            if event_sink is not None:
+                for rec in observation:
+                    event_sink(
+                        {
+                            "type": "tool_result",
+                            "turn_id": current_turn_id,
+                            "gate": rec.gate_name,
+                            "arguments": rec.arguments,
+                            "is_error": rec.is_error,
+                            "result": rec.result,
+                            "content": rec.content,
+                        }
+                    )
 
             # Fail fast when a turn only emits unavailable-gate errors.
             # This avoids spinning through max_turns with no actionable progress.
@@ -698,8 +850,22 @@ class Cantrip:
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             )
+            provider_ms = usage.get("provider_latency_ms")
+            if provider_ms is not None:
+                try:
+                    turn.metadata["provider_latency_ms"] = int(provider_ms)
+                except Exception:  # noqa: BLE001
+                    pass
             self.loom.append_turn(thread, turn)
             last_turn_id_for_entity = turn.id
+            if event_sink is not None:
+                event_sink(
+                    {
+                        "type": "step_complete",
+                        "turn_id": current_turn_id,
+                        "sequence": sequence,
+                    }
+                )
 
             if terminated:
                 thread.terminated = True
@@ -707,10 +873,12 @@ class Cantrip:
                 break
 
         if not thread.terminated:
+            was_cancelled = bool(thread.__dict__.get("cancelled"))
             if thread.turns:
                 thread.turns[-1].truncated = True
                 thread.turns[-1].metadata = dict(thread.turns[-1].metadata)
-                thread.turns[-1].metadata["truncation_reason"] = "max_turns"
+                if not was_cancelled:
+                    thread.turns[-1].metadata["truncation_reason"] = "max_turns"
             thread.truncated = True
         if self.circle.medium == "browser" and runtime is not None:
             try:
@@ -720,6 +888,14 @@ class Cantrip:
         self._truncate_active_children_for_parent(thread)
 
         self.loom.update_thread(thread)
+        if event_sink is not None:
+            event_sink(
+                {
+                    "type": "final_response",
+                    "thread_id": thread.id,
+                    "result": thread.result,
+                }
+            )
         return thread.result, thread
 
     def cast(
@@ -747,35 +923,16 @@ class Cantrip:
         depth: int | None = None,
     ):
         """Yield a simple event stream for one cast."""
-        result, thread = self._cast_internal(
+        stream_events: list[dict[str, Any]] = []
+        self._cast_internal(
             intent=intent,
             crystal_override=crystal_override,
             parent_turn_id=parent_turn_id,
             depth=depth,
+            event_sink=stream_events.append,
         )
-        for turn in thread.turns:
-            yield {"type": "step_start", "turn_id": turn.id, "sequence": turn.sequence}
-            if turn.utterance.get("content"):
-                yield {
-                    "type": "text",
-                    "turn_id": turn.id,
-                    "content": turn.utterance["content"],
-                }
-            for rec in turn.observation:
-                yield {
-                    "type": "tool_result",
-                    "turn_id": turn.id,
-                    "gate": rec.gate_name,
-                    "is_error": rec.is_error,
-                    "result": rec.result,
-                    "content": rec.content,
-                }
-            yield {
-                "type": "step_complete",
-                "turn_id": turn.id,
-                "sequence": turn.sequence,
-            }
-        yield {"type": "final_response", "thread_id": thread.id, "result": result}
+        for event in stream_events:
+            yield event
 
     def cast_with_thread(
         self,
@@ -785,6 +942,8 @@ class Cantrip:
         parent_turn_id: str | None = None,
         depth: int | None = None,
         seed_turns: list[Turn] | None = None,
+        event_sink: Callable[[dict[str, Any]], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> tuple[Any, Thread]:
         """Public helper for protocol adapters that need thread metadata."""
         return self._cast_internal(
@@ -793,6 +952,8 @@ class Cantrip:
             parent_turn_id=parent_turn_id,
             depth=depth,
             seed_turns=seed_turns,
+            event_sink=event_sink,
+            cancel_check=cancel_check,
         )
 
     def fork(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any
 
 try:
@@ -26,16 +27,20 @@ class OpenAICompatCrystal(Crystal):
         model: str,
         base_url: str | None = None,
         api_key: str | None = None,
-        timeout_s: float = 60.0,
+        timeout_s: float | None = 60.0,
         extra: dict[str, Any] | None = None,
     ) -> None:
         self.model = model
-        self.base_url = (base_url or os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
+        self.base_url = (
+            base_url or os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1"
+        ).rstrip("/")
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.timeout_s = timeout_s
         self.extra = extra or {}
         if requests is None:
-            raise CantripError("requests dependency is required for OpenAICompatCrystal")
+            raise CantripError(
+                "requests dependency is required for OpenAICompatCrystal"
+            )
 
     def query(self, messages, tools, tool_choice):
         payload = {
@@ -60,12 +65,18 @@ class OpenAICompatCrystal(Crystal):
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        resp = requests.post(
-            f"{self.base_url}/chat/completions",
-            headers=headers,
-            data=json.dumps(payload),
-            timeout=self.timeout_s,
-        )
+        started = time.perf_counter()
+        try:
+            resp = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                data=json.dumps(payload),
+                timeout=self.timeout_s,
+            )
+        except requests.exceptions.Timeout as e:
+            raise CantripError(f"provider_timeout:{e}") from e
+        except requests.exceptions.RequestException as e:
+            raise CantripError(f"provider_transport_error:{e}") from e
         if resp.status_code >= 400:
             try:
                 msg = resp.json().get("error", {}).get("message", resp.text)
@@ -96,11 +107,13 @@ class OpenAICompatCrystal(Crystal):
             )
 
         usage = data.get("usage") or {}
+        provider_latency_ms = max(1, int((time.perf_counter() - started) * 1000))
         return CrystalResponse(
             content=content,
             tool_calls=tool_calls,
             usage={
                 "prompt_tokens": int(usage.get("prompt_tokens", 0)),
                 "completion_tokens": int(usage.get("completion_tokens", 0)),
+                "provider_latency_ms": provider_latency_ms,
             },
         )

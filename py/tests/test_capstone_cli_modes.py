@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -64,7 +65,14 @@ def test_capstone_acp_stdio_mode_handles_prompt_roundtrip() -> None:
     assert init["id"] == 1
     assert init["result"]["capabilities"]["session/prompt"] is True
 
-    new_sess = send({"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {}})
+    new_sess = send(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/new",
+            "params": {"cwd": str(ROOT), "mcpServers": []},
+        }
+    )
     sid = new_sess["result"]["sessionId"]
 
     proc.stdin.write(
@@ -83,16 +91,129 @@ def test_capstone_acp_stdio_mode_handles_prompt_roundtrip() -> None:
     )
     proc.stdin.flush()
 
-    update_chunk = json.loads(proc.stdout.readline().strip())
-    update_done = json.loads(proc.stdout.readline().strip())
-    prompt_resp = json.loads(proc.stdout.readline().strip())
+    frames: list[dict] = []
+    while True:
+        line = proc.stdout.readline().strip()
+        if not line:
+            continue
+        frame = json.loads(line)
+        frames.append(frame)
+        if frame.get("id") == 3:
+            break
     proc.terminate()
 
-    assert update_chunk["method"] == "session/update"
-    assert update_chunk["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
-    assert update_done["method"] == "session/update"
-    assert update_done["params"]["update"]["sessionUpdate"] == "agent_message"
+    updates = [f for f in frames if f.get("method") == "session/update"]
+    prompt_resp = [f for f in frames if f.get("id") == 3][0]
+    assert any(
+        u["params"]["update"]["sessionUpdate"] == "agent_thought_chunk"
+        and u["params"]["update"]["content"]["text"].startswith("progress: steps=")
+        for u in updates
+    )
+    assert any(
+        u["params"]["update"]["sessionUpdate"] == "tool_call"
+        and u["params"]["update"]["status"] == "in_progress"
+        for u in updates
+    )
+    assert any(
+        u["params"]["update"]["sessionUpdate"] == "tool_call_update"
+        and u["params"]["update"]["status"] in {"completed", "failed"}
+        for u in updates
+    )
+    assert any(
+        u["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+        and u["params"]["update"]["content"]["text"] == "fake-ok"
+        for u in updates
+    )
+    assert any(
+        u["params"]["update"]["sessionUpdate"]
+        in {"agent_message", "agent_message_chunk"}
+        and u["params"]["update"]["content"]["text"] == "fake-ok"
+        for u in updates
+    )
     assert prompt_resp["id"] == 3
+    assert prompt_resp["result"]["output"][0]["text"] == "fake-ok"
+
+
+def test_capstone_acp_stdio_sdk_transport_roundtrip() -> None:
+    env = os.environ.copy()
+    env["CANTRIP_ACP_TRANSPORT"] = "sdk"
+    proc = subprocess.Popen(
+        [
+            _python_exe(),
+            str(CAPSTONE),
+            "--fake",
+            "--repo-root",
+            str(ROOT),
+            "--acp-stdio",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    assert proc.stdin is not None
+    assert proc.stdout is not None
+
+    def send(obj: dict) -> dict:
+        proc.stdin.write(json.dumps(obj) + "\n")
+        proc.stdin.flush()
+        return json.loads(proc.stdout.readline().strip())
+
+    init = send(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": 1},
+        }
+    )
+    assert init["id"] == 1
+    assert init["result"]["capabilities"]["session/prompt"] is True
+
+    sid = send(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/new",
+            "params": {"cwd": str(ROOT), "mcpServers": []},
+        }
+    )["result"]["sessionId"]
+    proc.stdin.write(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": sid,
+                    "prompt": [{"type": "text", "text": "hi"}],
+                },
+            }
+        )
+        + "\n"
+    )
+    proc.stdin.flush()
+
+    frames: list[dict] = []
+    while True:
+        line = proc.stdout.readline().strip()
+        if not line:
+            continue
+        frame = json.loads(line)
+        frames.append(frame)
+        if frame.get("id") == 3:
+            break
+    proc.terminate()
+
+    updates = [f for f in frames if f.get("method") == "session/update"]
+    prompt_resp = [f for f in frames if f.get("id") == 3][0]
+    assert any(u["params"]["update"]["sessionUpdate"] == "tool_call" for u in updates)
+    assert any(
+        u["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+        and u["params"]["update"]["content"]["text"] == "fake-ok"
+        for u in updates
+    )
+    assert prompt_resp["result"]["stopReason"] == "end_turn"
     assert prompt_resp["result"]["output"][0]["text"] == "fake-ok"
 
 

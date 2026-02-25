@@ -30,3 +30,15 @@ def test_builders_load_absolute_dotenv_path(tmp_path, monkeypatch) -> None:
 
     build_cantrip_from_env(repo_root=repo_root, fake=True, dotenv=str(dotenv_path))
     assert os.environ.get("CANTRIP_BUILDER_SENTINEL_ABS") == "from_abs_path"
+
+
+def test_builders_support_disabling_provider_timeout(monkeypatch, tmp_path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    monkeypatch.setenv("CANTRIP_OPENAI_MODEL", "gpt-test")
+    monkeypatch.setenv("CANTRIP_OPENAI_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("CANTRIP_OPENAI_TIMEOUT_S", "0")
+
+    cantrip = build_cantrip_from_env(repo_root=repo_root, fake=False, dotenv=".env")
+    assert cantrip.crystal.timeout_s is None
