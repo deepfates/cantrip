@@ -1,0 +1,11 @@
+{
+  "name": "bad_prompt_missing_text",
+  "params_fragment": {
+    "prompt": {
+      "content": [
+        {"type": "image", "url": "https://example.invalid/x.png"}
+      ]
+    }
+  },
+  "expect": "bad_prompt"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "content_input_text_block",
+  "params_fragment": {
+    "prompt": {
+      "content": [
+        {"type": "input_text", "text": "hola"}
+      ]
+    }
+  },
+  "expect": "ok"
+}
