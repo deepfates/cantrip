@@ -10,7 +10,17 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Explicitly tracked uncovered MUST rules from SPEC.md.
 # This list should only shrink as executable coverage expands.
+<<<<<<< HEAD
 EXPECTED_UNCOVERED_MUST_RULES: set[str] = set()
+=======
+EXPECTED_UNCOVERED_MUST_RULES: set[str] = {
+    "ENTITY-3",
+    "ENTITY-6",
+    "CIRCLE-11",
+    "WARD-1",
+    "LOOM-6",
+}
+>>>>>>> monorepo/main
 
 
 def _must_rule_ids_from_spec() -> set[str]:

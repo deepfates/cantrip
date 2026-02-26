@@ -9,6 +9,10 @@
             [cantrip.gates-test]
             [cantrip.loom-test]
             [cantrip.medium-test]
+<<<<<<< HEAD
+=======
+            [cantrip.openai-test]
+>>>>>>> monorepo/main
             [cantrip.redaction-test]
             [cantrip.runtime-test]))
 
@@ -22,6 +26,10 @@
                                           'cantrip.gates-test
                                           'cantrip.loom-test
                                           'cantrip.medium-test
+<<<<<<< HEAD
+=======
+                                          'cantrip.openai-test
+>>>>>>> monorepo/main
                                           'cantrip.redaction-test
                                           'cantrip.runtime-test)]
     (System/exit (if (zero? (+ fail error)) 0 1))))

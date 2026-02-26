@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+<<<<<<< HEAD
     "./crystal": "./src/crystal/index.ts",
     "./entity": "./src/entity/index.ts",
     "./circle": "./src/circle/index.ts",
@@ -14,6 +15,13 @@
     "./entity/acp": "./src/entity/acp/index.ts",
     "./loom": "./src/loom/index.ts",
     "./cantrip": "./src/cantrip/index.ts"
+=======
+    "./llm": "./src/llm/index.ts",
+    "./agent": "./src/agent/index.ts",
+    "./tools": "./src/tools/index.ts",
+    "./tokens": "./src/tokens/index.ts",
+    "./acp": "./src/acp/index.ts"
+>>>>>>> monorepo/main
   },
   "scripts": {
     "test": "bun test",

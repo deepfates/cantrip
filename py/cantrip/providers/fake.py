@@ -24,7 +24,11 @@ class FakeCrystal(Crystal):
         self._lock = threading.Lock()
 
     def _next_raw(self) -> dict:
+<<<<<<< HEAD
         if self.provider == "mock_openai" and self.raw_response:
+=======
+        if self.provider == "mock_openai" and self.raw_response and not self.responses:
+>>>>>>> monorepo/main
             return copy.deepcopy(self.raw_response)
         if self.index >= len(self.responses):
             return {"content": ""}
@@ -49,7 +53,32 @@ class FakeCrystal(Crystal):
                 f"provider_error:{err.get('status')}:{err.get('message')}"
             )
 
+<<<<<<< HEAD
         if self.provider == "mock_openai" and self.raw_response:
+=======
+        # Handle tool_result response type (validates tool call ID linkage)
+        if "tool_result" in raw:
+            tool_result = raw["tool_result"]
+            tool_call_id = tool_result.get("tool_call_id")
+            # Check if there's a matching tool call in the messages
+            has_match = False
+            for msg in messages:
+                if msg.get("role") == "assistant":
+                    for tc in (msg.get("tool_calls") or []):
+                        tc_id = tc.get("id") if isinstance(tc, dict) else None
+                        if tc_id == tool_call_id:
+                            has_match = True
+                            break
+            if not has_match:
+                raise CantripError("tool result without matching tool call")
+            return CrystalResponse(
+                content=tool_result.get("content"),
+                tool_calls=None,
+                usage=raw.get("usage"),
+            )
+
+        if self.provider == "mock_openai" and self.raw_response and "choices" in raw:
+>>>>>>> monorepo/main
             choice = raw["choices"][0]
             msg = choice["message"]
             usage = raw.get("usage", {})

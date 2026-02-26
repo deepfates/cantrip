@@ -1,7 +1,11 @@
 /**
  * Benchmark: OOLONG-style Semantic Classification
  *
+<<<<<<< HEAD
  * Faithful to the OOLONG trec_coarse benchmark:
+=======
+ * Faithful to the RLM paper's OOLONG trec_coarse benchmark:
+>>>>>>> monorepo/main
  * entries are questions with IMPLICIT semantic categories.
  * The model must READ each question to classify it — context.filter() can't solve this.
  *
@@ -12,10 +16,17 @@
  * Requires OPENAI_API_KEY in .env (skips gracefully if missing).
  */
 import { describe, test, expect } from "bun:test";
+<<<<<<< HEAD
 import { ChatOpenAI } from "../../src/crystal/providers/openai/chat";
 import { generateOolongDataset } from "./generators";
 import {
   runJsSandboxEval,
+=======
+import { ChatOpenAI } from "../../src/llm/openai/chat";
+import { generateOolongDataset } from "./generators";
+import {
+  runRlmEval,
+>>>>>>> monorepo/main
   runInContextEval,
   checkAnswerOolong,
   printMultiRunTable,
@@ -64,20 +75,31 @@ describe("OOLONG Semantic Classification (real LLM)", () => {
         for (let run = 0; run < NUM_RUNS; run++) {
           const tag = NUM_RUNS > 1 ? ` [${run + 1}/${NUM_RUNS}]` : "";
 
+<<<<<<< HEAD
           // JS-sandbox depth=0
           tasks.push({
             label: `JS-sandbox(d=0) @ ${entryCount}${tag}`,
+=======
+          // RLM depth=0
+          tasks.push({
+            label: `RLM(d=0) @ ${entryCount}${tag}`,
+>>>>>>> monorepo/main
             entryCount,
             expected,
             targetLabel,
             run: () =>
+<<<<<<< HEAD
               runJsSandboxEval({
+=======
+              runRlmEval({
+>>>>>>> monorepo/main
                 llm: new ChatOpenAI({ model: modelName, temperature: 0 }),
                 task: `oolong-d0-${entryCount}`,
                 query,
                 expected,
                 context,
                 maxDepth: 0,
+<<<<<<< HEAD
                 approach: "js-sandbox-d0",
               }),
           });
@@ -86,18 +108,36 @@ describe("OOLONG Semantic Classification (real LLM)", () => {
           if (entryCount <= DEPTH1_MAX) {
             tasks.push({
               label: `JS-sandbox(d=1) @ ${entryCount}${tag}`,
+=======
+                approach: "rlm-depth0",
+              }),
+          });
+
+          // RLM depth=1 (small scales only)
+          if (entryCount <= DEPTH1_MAX) {
+            tasks.push({
+              label: `RLM(d=1) @ ${entryCount}${tag}`,
+>>>>>>> monorepo/main
               entryCount,
               expected,
               targetLabel,
               run: () =>
+<<<<<<< HEAD
                 runJsSandboxEval({
+=======
+                runRlmEval({
+>>>>>>> monorepo/main
                   llm: new ChatOpenAI({ model: modelName, temperature: 0 }),
                   task: `oolong-d1-${entryCount}`,
                   query,
                   expected,
                   context,
                   maxDepth: 1,
+<<<<<<< HEAD
                   approach: "js-sandbox-d1",
+=======
+                  approach: "rlm-depth1",
+>>>>>>> monorepo/main
                 }),
             });
           }
@@ -161,6 +201,7 @@ describe("OOLONG Semantic Classification (real LLM)", () => {
         );
       }
 
+<<<<<<< HEAD
       // Sanity: JS-sandbox-d0 should achieve non-trivial accuracy on average
       // (lenient threshold since OOLONG is the most variable benchmark)
       const sandboxD0Results = results.filter((r) => r.approach === "js-sandbox-d0");
@@ -169,6 +210,16 @@ describe("OOLONG Semantic Classification (real LLM)", () => {
           sandboxD0Results.reduce((s, r) => s + r.accuracy, 0) /
           sandboxD0Results.length;
         expect(sandboxD0Avg).toBeGreaterThan(0.3);
+=======
+      // Sanity: RLM-d0 should achieve non-trivial accuracy on average
+      // (lenient threshold since OOLONG is the most variable benchmark)
+      const rlmD0Results = results.filter((r) => r.approach === "rlm-depth0");
+      if (rlmD0Results.length > 0) {
+        const rlmD0Avg =
+          rlmD0Results.reduce((s, r) => s + r.accuracy, 0) /
+          rlmD0Results.length;
+        expect(rlmD0Avg).toBeGreaterThan(0.3);
+>>>>>>> monorepo/main
       }
     },
     // Total timeout: generous but bounded

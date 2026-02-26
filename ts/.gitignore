@@ -7,5 +7,8 @@ node_modules/
 tmp/
 repomix-output.xml
 tests/evals/results/
+<<<<<<< HEAD
 .cantrip/
 prototypes/
+=======
+>>>>>>> monorepo/main

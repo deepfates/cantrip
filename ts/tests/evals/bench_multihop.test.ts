@@ -5,20 +5,36 @@
  * from separate documents buried among distractors.
  *
  * Four approaches compared:
+<<<<<<< HEAD
  * - JS-sandbox (depth=0): no sub-delegation
  * - JS-sandbox (depth=1): with sub-delegation
  * - Entity+JS: full output
  * - Entity+JS-meta: metadata-only output (fair control)
+=======
+ * - RLM (depth=0): no sub-delegation
+ * - RLM (depth=1): with sub-delegation
+ * - Agent+JS: full output
+ * - Agent+JS-meta: metadata-only output (fair control)
+>>>>>>> monorepo/main
  *
  * Requires OPENAI_API_KEY in .env (skips gracefully if missing).
  */
 import { describe, test, expect } from "bun:test";
+<<<<<<< HEAD
 import { ChatOpenAI } from "../../src/crystal/providers/openai/chat";
 import { generateMultihopDocuments } from "./generators";
 import {
   runJsSandboxEval,
   runEntityWithJsEval,
   runEntityMetaJsEval,
+=======
+import { ChatOpenAI } from "../../src/llm/openai/chat";
+import { generateMultihopDocuments } from "./generators";
+import {
+  runRlmEval,
+  runAgentWithJsEval,
+  runAgentMetaJsEval,
+>>>>>>> monorepo/main
   runInContextEval,
   printComparisonTable,
   type EvalResult,
@@ -42,15 +58,22 @@ describe("Multi-hop Benchmark (real LLM)", () => {
     const { documents, targetCity, expectedAnswer } = dataset;
     const query = `What is the favorite color of the person who lives in ${targetCity}? The data is split across multiple documents — one document has the person's city, another has their color. You need to find the name first by city, then find the color by name. Return only the color.`;
 
+<<<<<<< HEAD
     it(`JS-sandbox (depth=0) @ ${distractorCount}`, async () => {
       const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
       const result = await runJsSandboxEval({
+=======
+    it(`RLM (depth=0) @ ${distractorCount}`, async () => {
+      const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
+      const result = await runRlmEval({
+>>>>>>> monorepo/main
         llm,
         task: `mh-d0-${distractorCount}`,
         query,
         expected: expectedAnswer,
         context: documents,
         maxDepth: 0,
+<<<<<<< HEAD
         approach: "js-sandbox-d0",
       });
       allResults.push(result);
@@ -62,12 +85,26 @@ describe("Multi-hop Benchmark (real LLM)", () => {
     it(`JS-sandbox (depth=1) @ ${distractorCount}`, async () => {
       const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
       const result = await runJsSandboxEval({
+=======
+        approach: "rlm-depth0",
+      });
+      allResults.push(result);
+      console.log(
+        `  RLM(d=0) @ ${distractorCount}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
+      );
+    }, 120_000);
+
+    it(`RLM (depth=1) @ ${distractorCount}`, async () => {
+      const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
+      const result = await runRlmEval({
+>>>>>>> monorepo/main
         llm,
         task: `mh-d1-${distractorCount}`,
         query,
         expected: expectedAnswer,
         context: documents,
         maxDepth: 1,
+<<<<<<< HEAD
         approach: "js-sandbox-d1",
       });
       allResults.push(result);
@@ -79,6 +116,19 @@ describe("Multi-hop Benchmark (real LLM)", () => {
     it(`Entity+JS @ ${distractorCount}`, async () => {
       const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
       const result = await runEntityWithJsEval({
+=======
+        approach: "rlm-depth1",
+      });
+      allResults.push(result);
+      console.log(
+        `  RLM(d=1) @ ${distractorCount}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
+      );
+    }, 120_000);
+
+    it(`Agent+JS @ ${distractorCount}`, async () => {
+      const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
+      const result = await runAgentWithJsEval({
+>>>>>>> monorepo/main
         llm,
         task: `mh-${distractorCount}`,
         query,
@@ -87,6 +137,7 @@ describe("Multi-hop Benchmark (real LLM)", () => {
       });
       allResults.push(result);
       console.log(
+<<<<<<< HEAD
         `  Entity+JS @ ${distractorCount}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
       );
     }, 120_000);
@@ -94,6 +145,15 @@ describe("Multi-hop Benchmark (real LLM)", () => {
     it(`Entity+JS-meta @ ${distractorCount}`, async () => {
       const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
       const result = await runEntityMetaJsEval({
+=======
+        `  Agent+JS @ ${distractorCount}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
+      );
+    }, 120_000);
+
+    it(`Agent+JS-meta @ ${distractorCount}`, async () => {
+      const llm = new ChatOpenAI({ model: modelName, temperature: 0 });
+      const result = await runAgentMetaJsEval({
+>>>>>>> monorepo/main
         llm,
         task: `mh-${distractorCount}`,
         query,
@@ -102,7 +162,11 @@ describe("Multi-hop Benchmark (real LLM)", () => {
       });
       allResults.push(result);
       console.log(
+<<<<<<< HEAD
         `  Entity+JS-meta @ ${distractorCount}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
+=======
+        `  Agent+JS-meta @ ${distractorCount}: acc=${result.accuracy} answer="${result.answer.slice(0, 40)}" total=${result.metrics.total_tokens}`,
+>>>>>>> monorepo/main
       );
     }, 120_000);
 
@@ -134,10 +198,18 @@ describe("Multi-hop Benchmark (real LLM)", () => {
       console.log(`  ${approach}: ${correct}/${results.length} correct`);
     }
 
+<<<<<<< HEAD
     // Sanity: JS-sandbox should link facts correctly at most scales
     const sandboxResults = allResults.filter((r) => r.approach.startsWith("js-sandbox"));
     const sandboxAccuracy =
       sandboxResults.reduce((s, r) => s + r.accuracy, 0) / sandboxResults.length;
     expect(sandboxAccuracy).toBeGreaterThan(0.5);
+=======
+    // Sanity: RLM should link facts correctly at most scales
+    const rlmResults = allResults.filter((r) => r.approach.startsWith("rlm"));
+    const rlmAccuracy =
+      rlmResults.reduce((s, r) => s + r.accuracy, 0) / rlmResults.length;
+    expect(rlmAccuracy).toBeGreaterThan(0.5);
+>>>>>>> monorepo/main
   });
 });

@@ -1,16 +1,26 @@
 /**
  * Evaluation harness for real LLM benchmarks.
  *
+<<<<<<< HEAD
  * Runs the same task against JS-sandbox and Entity+JS baselines with real LLMs,
  * collecting actual token usage from the API.
  *
  * Addresses fairness concerns from code review:
  * - Three baselines: JS-sandbox, Entity+JS (full output), Entity+JS (metadata-only)
  * - Prompt parity: Entity baselines get equivalent prompt quality to JS-sandbox
+=======
+ * Runs the same task against RLM and Agent+JS baselines with real LLMs,
+ * collecting actual token usage from the API.
+ *
+ * Addresses fairness concerns from code review:
+ * - Three baselines: RLM, Agent+JS (full output), Agent+JS (metadata-only)
+ * - Prompt parity: Agent baselines get equivalent prompt quality to RLM
+>>>>>>> monorepo/main
  * - Both use require_done_tool: true for symmetric termination
  * - Context preview provided to all approaches
  * - Cached tokens tracked separately
  */
+<<<<<<< HEAD
 import { Entity } from "../../src/cantrip/entity";
 import { cantrip } from "../../src/cantrip/cantrip";
 import { Circle } from "../../src/circle/circle";
@@ -106,6 +116,17 @@ const js = gate(
     dependencies: { ctx: getJsContext },
   },
 );
+=======
+import { Agent } from "../../src/agent/service";
+import { analyzeContext, createRlmAgent } from "../../src/rlm/service";
+import { JsContext, getJsContext } from "../../src/tools/builtin/js_context";
+import { js } from "../../src/tools/builtin/js";
+import { done } from "../../src/tools/builtin/default";
+import { tool } from "../../src/tools/decorator";
+import { z } from "zod";
+import { UsageTracker } from "../../src/tokens/usage";
+import type { BaseChatModel } from "../../src/llm/base";
+>>>>>>> monorepo/main
 
 // --- Result Types ---
 
@@ -188,11 +209,19 @@ function formatMetadata(output: string): string {
 }
 
 /**
+<<<<<<< HEAD
  * JS tool that returns metadata-only output, identical to the JS sandbox approach
  * but using the standard sync JsContext (not async). This isolates the
  * metadata-vs-full-output variable from the sandbox implementation.
  */
 const js_meta = gate(
+=======
+ * JS tool that returns metadata-only output, identical to RLM's js_rlm tool
+ * but using the standard sync JsContext (not async). This isolates the
+ * metadata-vs-full-output variable from the sandbox implementation.
+ */
+const js_meta = tool(
+>>>>>>> monorepo/main
   "Execute JavaScript in the persistent sandbox. Results are returned as metadata summaries, not full output. Use console.log() to inspect values.",
   async ({ code, timeout_ms }: { code: string; timeout_ms?: number }, deps) => {
     const ctx = deps.ctx as JsContext;
@@ -216,9 +245,15 @@ const js_meta = gate(
   },
 );
 
+<<<<<<< HEAD
 // --- Entity System Prompt (parity with JS-sandbox prompt) ---
 
 function getEntitySystemPrompt(
+=======
+// --- Agent System Prompt (parity with RLM prompt) ---
+
+function getAgentSystemPrompt(
+>>>>>>> monorepo/main
   meta: { type: string; length: number; preview: string },
   metadataOnly: boolean,
 ): string {
@@ -300,10 +335,17 @@ Think step by step carefully, plan, and execute this plan immediately — do not
 // --- Eval Runners ---
 
 /**
+<<<<<<< HEAD
  * Run a task using the JS-sandbox approach.
  * Context lives in the async sandbox; LLM only sees metadata.
  */
 export async function runJsSandboxEval(options: {
+=======
+ * Run a task using the RLM approach.
+ * Context lives in the async sandbox; LLM only sees metadata.
+ */
+export async function runRlmEval(options: {
+>>>>>>> monorepo/main
   llm: BaseChatModel;
   task: string;
   query: string;
@@ -319,13 +361,18 @@ export async function runJsSandboxEval(options: {
     expected,
     context,
     maxDepth = 1,
+<<<<<<< HEAD
     approach = "js-sandbox",
+=======
+    approach = "rlm",
+>>>>>>> monorepo/main
   } = options;
   const usage = new UsageTracker();
   const contextStr =
     typeof context === "string" ? context : JSON.stringify(context);
 
   const start = Date.now();
+<<<<<<< HEAD
   const medium = js({ state: { context } });
   const gates = [done_for_medium()];
   const entityGate = call_entity({ max_depth: maxDepth, depth: 0, parent_context: context });
@@ -344,15 +391,30 @@ export async function runJsSandboxEval(options: {
 
   await medium.init(gates, entity.dependency_overrides);
   const sandbox = getJsMediumSandbox(medium)!;
+=======
+  const { agent, sandbox } = await createRlmAgent({
+    llm,
+    context,
+    usage,
+    maxDepth,
+  });
+>>>>>>> monorepo/main
 
   let answer: string;
   const EVAL_TIMEOUT_MS = 240_000; // 4 minutes hard wall-clock limit
   try {
     answer = await Promise.race([
+<<<<<<< HEAD
       entity.cast(query),
       new Promise<string>((_, reject) =>
         setTimeout(
           () => reject(new Error("JS-sandbox eval timeout")),
+=======
+      agent.query(query),
+      new Promise<string>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("RLM eval timeout")),
+>>>>>>> monorepo/main
           EVAL_TIMEOUT_MS,
         ),
       ),
@@ -380,11 +442,19 @@ export async function runJsSandboxEval(options: {
 }
 
 /**
+<<<<<<< HEAD
  * Run a task using an Entity with the JS tool (full output).
  * Context is pre-loaded into a JsContext sandbox.
  * Uses prompt parity with JS-sandbox and require_done_tool for symmetric termination.
  */
 export async function runEntityWithJsEval(options: {
+=======
+ * Run a task using a standard Agent with the JS tool (full output).
+ * Context is pre-loaded into a JsContext sandbox.
+ * Uses prompt parity with RLM and require_done_tool for symmetric termination.
+ */
+export async function runAgentWithJsEval(options: {
+>>>>>>> monorepo/main
   llm: BaseChatModel;
   task: string;
   query: string;
@@ -403,6 +473,7 @@ export async function runEntityWithJsEval(options: {
   overrides.set(getJsContext, () => jsCtx);
 
   const meta = analyzeContext(context);
+<<<<<<< HEAD
   const systemPrompt = getEntitySystemPrompt(meta, false);
 
   const start = Date.now();
@@ -420,11 +491,28 @@ export async function runEntityWithJsEval(options: {
     circle,
     dependency_overrides: overrides,
     usage_tracker: usage,
+=======
+  const systemPrompt = getAgentSystemPrompt(meta, false);
+
+  const start = Date.now();
+  const agent = new Agent({
+    llm,
+    tools: [js, done],
+    system_prompt: systemPrompt,
+    dependency_overrides: overrides,
+    usage_tracker: usage,
+    max_iterations: 20,
+    require_done_tool: true,
+>>>>>>> monorepo/main
   });
 
   let answer: string;
   try {
+<<<<<<< HEAD
     answer = await entity.cast(query);
+=======
+    answer = await agent.query(query);
+>>>>>>> monorepo/main
   } finally {
     jsCtx.dispose();
   }
@@ -434,7 +522,11 @@ export async function runEntityWithJsEval(options: {
   const accuracy = checkAnswer(answer, expected);
 
   return {
+<<<<<<< HEAD
     approach: "entity+js",
+=======
+    approach: "agent+js",
+>>>>>>> monorepo/main
     task,
     context_size: contextStr.length,
     accuracy,
@@ -446,11 +538,19 @@ export async function runEntityWithJsEval(options: {
 }
 
 /**
+<<<<<<< HEAD
  * Run a task using an Entity with metadata-only JS tool output.
  * This is the fairest comparison to JS-sandbox: same metadata policy, same prompt,
  * but using the standard Entity loop (not the sandbox's submit_answer).
  */
 export async function runEntityMetaJsEval(options: {
+=======
+ * Run a task using a standard Agent with metadata-only JS tool output.
+ * This is the fairest comparison to RLM: same metadata policy, same prompt,
+ * but using the standard Agent loop (not RLM's sandbox/submit_answer).
+ */
+export async function runAgentMetaJsEval(options: {
+>>>>>>> monorepo/main
   llm: BaseChatModel;
   task: string;
   query: string;
@@ -469,6 +569,7 @@ export async function runEntityMetaJsEval(options: {
   overrides.set(getJsContext, () => jsCtx);
 
   const meta = analyzeContext(context);
+<<<<<<< HEAD
   const systemPrompt = getEntitySystemPrompt(meta, true);
 
   const start = Date.now();
@@ -486,11 +587,28 @@ export async function runEntityMetaJsEval(options: {
     circle,
     dependency_overrides: overrides,
     usage_tracker: usage,
+=======
+  const systemPrompt = getAgentSystemPrompt(meta, true);
+
+  const start = Date.now();
+  const agent = new Agent({
+    llm,
+    tools: [js_meta, done],
+    system_prompt: systemPrompt,
+    dependency_overrides: overrides,
+    usage_tracker: usage,
+    max_iterations: 20,
+    require_done_tool: true,
+>>>>>>> monorepo/main
   });
 
   let answer: string;
   try {
+<<<<<<< HEAD
     answer = await entity.cast(query);
+=======
+    answer = await agent.query(query);
+>>>>>>> monorepo/main
   } finally {
     jsCtx.dispose();
   }
@@ -500,7 +618,11 @@ export async function runEntityMetaJsEval(options: {
   const accuracy = checkAnswer(answer, expected);
 
   return {
+<<<<<<< HEAD
     approach: "entity+js-meta",
+=======
+    approach: "agent+js-meta",
+>>>>>>> monorepo/main
     task,
     context_size: contextStr.length,
     accuracy,
@@ -513,7 +635,11 @@ export async function runEntityMetaJsEval(options: {
 
 /**
  * Run a task by stuffing the full context into the LLM prompt. No tools, no sandbox.
+<<<<<<< HEAD
  * Single query() call — the simplest possible baseline.
+=======
+ * Single ainvoke() call — the simplest possible baseline.
+>>>>>>> monorepo/main
  */
 export async function runInContextEval(options: {
   llm: BaseChatModel;
@@ -530,7 +656,11 @@ export async function runInContextEval(options: {
   const start = Date.now();
   let answer: string;
   try {
+<<<<<<< HEAD
     const res = await llm.query([
+=======
+    const res = await llm.ainvoke([
+>>>>>>> monorepo/main
       {
         role: "user",
         content: `${query}\n\nHere is the full data:\n\n${contextStr}`,

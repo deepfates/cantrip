@@ -93,9 +93,12 @@ class Cantrip:
         msgs: list[dict[str, Any]] = []
         if thread.call.system_prompt is not None:
             msgs.append({"role": "system", "content": thread.call.system_prompt})
+<<<<<<< HEAD
         msgs.append(
             {"role": "system", "content": self._capability_message(self.circle)}
         )
+=======
+>>>>>>> monorepo/main
         msgs.append({"role": "user", "content": thread.intent})
 
         for t in thread.turns:
@@ -207,7 +210,11 @@ class Cantrip:
                         gate_name=gate_name,
                         arguments=args,
                         is_error=True,
+<<<<<<< HEAD
                         content="done requires non-empty answer",
+=======
+                        content="missing required argument: answer",
+>>>>>>> monorepo/main
                     )
                 answer_text = str(answer).strip()
                 if not answer_text:
@@ -215,7 +222,11 @@ class Cantrip:
                         gate_name=gate_name,
                         arguments=args,
                         is_error=True,
+<<<<<<< HEAD
                         content="done requires non-empty answer",
+=======
+                        content="missing required argument: answer",
+>>>>>>> monorepo/main
                     )
                 normalized_answer = answer_text if isinstance(answer, str) else answer
                 return GateCallRecord(
@@ -435,6 +446,47 @@ class Cantrip:
                     tool_choice=self.call.tool_choice,
                     extra=copy.deepcopy(self.call.extra),
                 )
+<<<<<<< HEAD
+=======
+                # Create a delegation pre-turn in the shared loom so that
+                # the loom order is: parent-pre -> child -> parent-post.
+                # This turn is added to loom.store.turns but NOT to thread.turns
+                # to avoid disrupting the parent thread's turn indexing.
+                delegation_turn_id = str(uuid.uuid4())
+                delegation_turn = Turn(
+                    id=delegation_turn_id,
+                    entity_id=thread.entity_id,
+                    sequence=len(thread.turns) + 1,
+                    parent_id=(
+                        thread.turns[-1].id if thread.turns else None
+                    ),
+                    utterance={"content": None, "tool_calls": []},
+                    observation=[
+                        GateCallRecord(
+                            gate_name="call_entity",
+                            arguments={"intent": req.get("intent")},
+                            result=None,
+                        )
+                    ],
+                    terminated=False,
+                    truncated=False,
+                    metadata={
+                        "tokens_prompt": 0,
+                        "tokens_completion": 0,
+                        "duration_ms": 0,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "delegation": True,
+                    },
+                )
+                # Append only to loom store (not to thread.turns)
+                self.loom.store.turns.append(delegation_turn)
+                # Track delegation on the thread so _cast_internal can
+                # adjust sequence and parent_id for the continuation turn.
+                if not hasattr(thread, '_delegation_turns'):
+                    thread._delegation_turns = []
+                thread._delegation_turns.append(delegation_turn)
+
+>>>>>>> monorepo/main
                 child = Cantrip(
                     crystal=child_crystal,
                     circle=child_circle,
@@ -449,7 +501,11 @@ class Cantrip:
                 res, ch_thread = child._cast_internal(
                     intent=req.get("intent"),
                     crystal_override=child_crystal,
+<<<<<<< HEAD
                     parent_turn_id=parent_turn_id,
+=======
+                    parent_turn_id=delegation_turn_id,
+>>>>>>> monorepo/main
                     depth=max((depth or 0) - 1, 0),
                 )
                 had_error = any(
@@ -461,6 +517,17 @@ class Cantrip:
                     or (had_error and res in (None, ""))
                 ):
                     raise CantripError("child failed")
+<<<<<<< HEAD
+=======
+
+                # Update the delegation pre-turn with the actual result
+                if delegation_turn.observation:
+                    delegation_turn.observation[0] = GateCallRecord(
+                        gate_name="call_entity",
+                        arguments={"intent": req.get("intent")},
+                        result=res,
+                    )
+>>>>>>> monorepo/main
                 return GateCallRecord(gate_name=gate_name, arguments=req, result=res)
 
             if gate_name == "call_entity_batch":
@@ -834,11 +901,31 @@ class Cantrip:
             thread.cumulative_usage["completion_tokens"] += c
             thread.cumulative_usage["total_tokens"] += p + c
 
+<<<<<<< HEAD
             turn = Turn(
                 id=current_turn_id,
                 entity_id=entity_id,
                 sequence=sequence,
                 parent_id=last_turn_id_for_entity,
+=======
+            # Adjust sequence and parent_id if delegation pre-turns were
+            # injected into the loom during this response's gate execution.
+            delegation_turns = getattr(thread, '_delegation_turns', None)
+            if delegation_turns:
+                delegation_count = len(delegation_turns)
+                adjusted_sequence = sequence + delegation_count
+                adjusted_parent_id = delegation_turns[-1].id
+                thread._delegation_turns = []
+            else:
+                adjusted_sequence = sequence
+                adjusted_parent_id = last_turn_id_for_entity
+
+            turn = Turn(
+                id=current_turn_id,
+                entity_id=entity_id,
+                sequence=adjusted_sequence,
+                parent_id=adjusted_parent_id,
+>>>>>>> monorepo/main
                 utterance=utterance,
                 observation=observation,
                 terminated=terminated,
