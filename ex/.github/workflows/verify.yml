@@ -1,0 +1,29 @@
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Elixir + Erlang
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.19.5'
+          otp-version: '28.0'
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Verify
+        run: mix verify
+
+      - name: Signer policy checks
+        run: ./scripts/check_signer_policy.sh

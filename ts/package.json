@@ -1,0 +1,31 @@
+{
+  "name": "cantrip",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./llm": "./src/llm/index.ts",
+    "./agent": "./src/agent/index.ts",
+    "./tools": "./src/tools/index.ts",
+    "./tokens": "./src/tokens/index.ts",
+    "./acp": "./src/acp/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "lint": "bun -e 'console.log(\"ok\")'"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.14.1",
+    "@jitl/quickjs-ng-wasmfile-release-asyncify": "^0.31.0",
+    "@jitl/quickjs-ng-wasmfile-release-sync": "^0.31.0",
+    "@sebastianwessel/quickjs": "^3.0.0",
+    "quickjs-emscripten-core": "^0.29.0",
+    "taiko": "^1.4.7",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.6",
+    "@types/node": "^22.10.7"
+  }
+}

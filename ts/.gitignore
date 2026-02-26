@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+.tmp_cache/
+.DS_Store
+node_modules/
+tmp/
+repomix-output.xml
+tests/evals/results/

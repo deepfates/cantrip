@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["bun-types", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "cantrip/*": ["src/*"],
+    },
+  },
+  "include": ["src", "examples", "tests"],
+}
