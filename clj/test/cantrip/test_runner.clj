@@ -9,6 +9,7 @@
             [cantrip.gates-test]
             [cantrip.loom-test]
             [cantrip.medium-test]
+            [cantrip.openai-test]
             [cantrip.redaction-test]
             [cantrip.runtime-test]))
 
@@ -22,6 +23,7 @@
                                           'cantrip.gates-test
                                           'cantrip.loom-test
                                           'cantrip.medium-test
+                                          'cantrip.openai-test
                                           'cantrip.redaction-test
                                           'cantrip.runtime-test)]
     (System/exit (if (zero? (+ fail error)) 0 1))))

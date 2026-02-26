@@ -42,7 +42,12 @@ def test_subprocess_python_executor_blocks_delegation_gate_calls() -> None:
         ex.execute("call_entity({'intent':'x'})", call_gate=lambda _n, _a: None)
 
 
-def test_mini_code_executor_rejects_legacy_call_agent_alias() -> None:
+def test_mini_code_executor_accepts_call_agent_alias() -> None:
+    """call_agent is accepted as an alias for call_entity."""
     ex = MiniCodeExecutor()
-    with pytest.raises(NameError, match="call_agent"):
-        ex.execute("call_agent({intent:'x'})", call_gate=lambda _n, _a: None)
+    calls = []
+    def call_gate(name, args):
+        calls.append((name, args))
+        return GateCallRecord(gate_name=name, arguments=args, result="ok")
+    ex.execute("call_agent({intent:'x'})", call_gate=call_gate)
+    assert calls and calls[0][0] == "call_entity"

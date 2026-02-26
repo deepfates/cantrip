@@ -234,11 +234,11 @@ def test_acp_server_reports_error_when_done_answer_is_empty() -> None:
     assert payload["result"] is None
     assert len(tool_results) == 1
     assert tool_results[0]["is_error"] is True
-    assert tool_results[0]["content"] == "done requires non-empty answer"
+    assert tool_results[0]["content"] == "missing required argument: answer"
     assert payload["assistant_text"].startswith(
         "No final answer produced before max_turns."
     )
-    assert "Last error: done requires non-empty answer" in payload["assistant_text"]
+    assert "Last error: missing required argument: answer" in payload["assistant_text"]
     assert payload["stop_reason"] == "max_turn_requests"
 
 

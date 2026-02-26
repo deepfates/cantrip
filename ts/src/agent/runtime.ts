@@ -331,6 +331,18 @@ export async function runAgentLoop(options: {
       continue;
     }
 
+    // Check for duplicate tool call IDs
+    if (response.tool_calls && response.tool_calls.length > 1) {
+      const ids = response.tool_calls.map((tc) => tc.id);
+      const seen = new Set<string>();
+      for (const id of ids) {
+        if (seen.has(id)) {
+          throw new Error(`duplicate tool call ID: ${id}`);
+        }
+        seen.add(id);
+      }
+    }
+
     for (const toolCall of response.tool_calls ?? []) {
       try {
         const toolResult = await executeToolCall({

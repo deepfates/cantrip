@@ -63,7 +63,7 @@ export class Agent {
   readonly entity_id: string;
   llm: BaseChatModel;
   tools: ToolLike[];
-  system_prompt: string | null;
+  readonly system_prompt: string | null;
   max_iterations: number;
   tool_choice: ToolChoice;
   compaction: CompactionConfig | null;
