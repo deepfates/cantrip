@@ -1,0 +1,7 @@
+{
+  "name": "root_content_string",
+  "params_fragment": {
+    "content": "hola"
+  },
+  "expect": "ok"
+}

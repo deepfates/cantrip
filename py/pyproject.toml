@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cantrip-py"
+version = "0.2.0"
+description = "Cantrip spec implementation"
+requires-python = ">=3.11"
+dependencies = [
+  "agent-client-protocol>=0.8.1",
+  "PyYAML>=6.0",
+  "requests>=2.31",
+]
+
+[project.scripts]
+cantrip = "cantrip.cli:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+browser = [
+  "playwright>=1.48",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

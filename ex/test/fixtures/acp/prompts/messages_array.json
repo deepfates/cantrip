@@ -1,0 +1,12 @@
+{
+  "name": "messages_array",
+  "params_fragment": {
+    "prompt": {
+      "messages": [
+        {"role": "system", "content": "ignore"},
+        {"role": "user", "content": [{"type": "input_text", "text": "hola"}]}
+      ]
+    }
+  },
+  "expect": "ok"
+}

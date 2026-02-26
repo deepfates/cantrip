@@ -1,0 +1,10 @@
+{
+  "name": "cancel_propagation",
+  "scenario": "cancel_propagation",
+  "expect": {
+    "result": null,
+    "truncated": true,
+    "truncation_reason": "parent_terminated",
+    "has_child_truncated_parent_terminated": true
+  }
+}

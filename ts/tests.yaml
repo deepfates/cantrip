@@ -12,6 +12,7 @@
 # This makes the tests reproducible without API keys.
 
 ---
+
 # =============================================================================
 # Chapter 1: The Loop — Cantrip, Intent, Entity
 # =============================================================================
@@ -43,7 +44,7 @@
     - cast: { intent: "second task" }
   expect:
     results: ["first", "second"]
-    entities: 2 # two independent entities produced
+    entities: 2  # two independent entities produced
 
 - rule: CANTRIP-3
   name: cantrip validates circle has done gate and truncation ward
@@ -229,8 +230,8 @@
       intent: "test context growth"
   expect:
     crystal_invocations:
-      - message_count: 1 # just the user message (intent)
-      - message_count: 3 # user + assistant + tool result
+      - message_count: 1   # just the user message (intent)
+      - message_count: 3   # user + assistant + tool result
 
 - rule: LOOP-6
   name: text-only response terminates when done not required
@@ -271,28 +272,6 @@
     result: "42"
     turns: 3
 
-- rule: LOOP-7
-  name: malformed done call does not terminate
-  setup:
-    crystal:
-      responses:
-        # Missing required done argument on first turn
-        - tool_calls: [{ gate: "done", args: {} }]
-        # Then continue and terminate correctly
-        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
-    circle:
-      gates: [done]
-      wards: [{ max_turns: 10 }]
-  action:
-    cast:
-      intent: "test malformed done"
-  expect:
-    turns: 2
-    result: "ok"
-    turn_1_observation:
-      is_error: true
-      content_contains: "missing required"
-
 # =============================================================================
 # Chapter 2: The Crystal
 # =============================================================================
@@ -305,7 +284,7 @@
       responses:
         - tool_calls: [{ gate: "echo", args: { text: "call 1" } }]
         - tool_calls: [{ gate: "done", args: { answer: "done" } }]
-      stateless: true # implementation must verify no state leaks
+      stateless: true  # implementation must verify no state leaks
     circle:
       gates: [done, echo]
       wards: [{ max_turns: 10 }]
@@ -419,26 +398,6 @@
     usage:
       prompt_tokens: 10
       completion_tokens: 5
-
-- rule: CRYSTAL-7
-  name: provider tool result messages require matching tool call IDs
-  setup:
-    crystal:
-      provider: "mock_openai"
-      responses:
-        - tool_calls:
-            - { id: "call_1", gate: "echo", args: { text: "a" } }
-        - tool_result:
-            tool_call_id: "call_2" # mismatched ID
-            content: "result"
-    circle:
-      gates: [done, echo]
-      wards: [{ max_turns: 10 }]
-  action:
-    cast:
-      intent: "test tool call/result linkage"
-  expect:
-    error: "tool result without matching tool call"
 
 # =============================================================================
 # Chapter 3: The Call
@@ -574,7 +533,7 @@
       responses:
         - content: "hi"
     circle:
-      gates: [] # no done gate
+      gates: []  # no done gate
       wards: [{ max_turns: 10 }]
   action:
     construct_cantrip: true
@@ -609,7 +568,7 @@
     # Turn 2's context includes the slow_gate result — it waited
     crystal_invocations:
       - {} # turn 1
-      - messages_include: "completed" # turn 2 sees the result
+      - messages_include: "completed"  # turn 2 sees the result
 
 - rule: CIRCLE-4
   name: gate results visible in context
@@ -628,7 +587,7 @@
   expect:
     crystal_invocations:
       - {} # turn 1
-      - messages_include: "visible result" # entity sees its gate result
+      - messages_include: "visible result"  # entity sees its gate result
 
 - rule: CIRCLE-5
   name: gate errors returned as observations
@@ -666,7 +625,7 @@
       gates: [done, fetch]
       wards:
         - { max_turns: 10 }
-        - { remove_gate: "fetch" } # ward removes fetch
+        - { remove_gate: "fetch" }  # ward removes fetch
   action:
     cast:
       intent: "test ward enforcement"
@@ -753,28 +712,12 @@
     turn_1_observation:
       content: "hello world"
 
-- rule: CIRCLE-12
-  name: circle declares one canonical medium
-  setup:
-    crystal:
-      responses:
-        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
-    circle:
-      medium: code
-      circle_type: tool # conflicting medium declarations
-      gates: [done]
-      wards: [{ max_turns: 10 }]
-  action:
-    construct_cantrip: true
-  expect:
-    error: "circle must declare exactly one medium"
-
 # =============================================================================
 # Chapter 5: Composition
 # =============================================================================
 
-- rule: COMP-1
-  name: child circle is subset of parent
+- rule: COMP-1a
+  name: delegation — child circle is subset of parent
   setup:
     crystal:
       type: code_circle
@@ -786,7 +729,7 @@
             });
     circle:
       type: code
-      gates: [done, call_agent] # no fetch
+      gates: [done, call_agent]  # no fetch
       wards: [{ max_turns: 10 }, { max_depth: 1 }]
   action:
     cast:
@@ -795,6 +738,14 @@
     turn_1_observation:
       is_error: true
       content_contains: "cannot grant gate"
+
+- rule: COMP-1b
+  name: construction — child circle governed by host registry, not parent
+  notes: |
+    Host-mediated construction (cantrip()/cast() inside a code medium) allows
+    the entity to construct children with mediums/gates the parent doesn't have,
+    as long as the host authorized them in the capability registry.
+    This is tested empirically via the Familiar (example 16).
 
 - rule: COMP-2
   name: call_agent blocks parent until child completes
@@ -949,7 +900,7 @@
     loom:
       turns:
         - { entity_id: parent, sequence: 1 }
-        - { entity_id: child, sequence: 1, parent_id: "turns[0].id" }
+        - { entity_id: child, sequence: 1, parent_id: turns[0].id }
         - { entity_id: parent, sequence: 2 }
 
 - rule: COMP-7
@@ -1073,9 +1024,9 @@
     loom:
       turns:
         - id: not_null
-          parent_id: null # root turn
+          parent_id: null  # root turn
         - id: not_null
-          parent_id: "turns[0].id" # references previous turn
+          parent_id: turns[0].id  # references previous turn
 
 - rule: LOOM-3
   name: loom is append-only
@@ -1137,7 +1088,7 @@
       intent: "test forking"
     then:
       fork:
-        from_turn: 1 # fork after turn 1 (the "A" turn)
+        from_turn: 1  # fork after turn 1 (the "A" turn)
         crystal: fork_crystal
         intent: "continue from fork"
   expect:
@@ -1146,7 +1097,7 @@
       turns: 3
       result: "original"
     thread_1:
-      turns: 2 # turn 1 (shared) + forked turn
+      turns: 2  # turn 1 (shared) + forked turn
       result: "forked"
       # Forked crystal received context including turn 1 but not turns 2-3
     fork_crystal_invocations:
@@ -1173,7 +1124,7 @@
       intent: "test folding preserves history"
   expect:
     loom:
-      turn_count: 5 # all turns still in loom
+      turn_count: 5  # all turns still in loom
     # Even though folding compressed the working context,
     # the full loom has all 5 turns
 
@@ -1225,14 +1176,14 @@
       intent: "test child in loom"
   expect:
     loom:
-      turn_count: 3 # parent turn 1, child turn 1, parent turn 2
+      turn_count: 3  # parent turn 1, child turn 1, parent turn 2
       turns:
         - entity_id: parent
           parent_id: null
         - entity_id: child
-          parent_id: "turns[0].id" # child's root references parent turn
+          parent_id: turns[0].id  # child's root references parent turn
         - entity_id: parent
-          parent_id: "turns[0].id" # parent continues from its own turn
+          parent_id: turns[0].id  # parent continues from its own turn
 
 - rule: LOOM-9
   name: turns record token usage and timing
@@ -1275,10 +1226,9 @@
   expect:
     thread:
       length: 3
-      turns:
-        - { utterance: not_null, observation: not_null }
-        - { utterance: not_null, observation: not_null }
-        - { utterance: not_null, observation: not_null, terminated: true }
+      - { utterance: not_null, observation: not_null }
+      - { utterance: not_null, observation: not_null }
+      - { utterance: not_null, observation: not_null, terminated: true }
 
 # =============================================================================
 # Chapter 7: Production
@@ -1295,8 +1245,8 @@
   setup:
     crystal:
       responses:
-        - error: { status: 429, message: "rate limited" } # first attempt fails
-        - tool_calls: [{ gate: "done", args: { answer: "ok" } }] # retry succeeds
+        - error: { status: 429, message: "rate limited" }  # first attempt fails
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]   # retry succeeds
       retry_behavior: true
     circle:
       gates: [done]
@@ -1308,7 +1258,7 @@
     cast:
       intent: "test retry"
   expect:
-    turns: 1 # one turn, not two
+    turns: 1  # one turn, not two
     result: "ok"
     loom:
       turn_count: 1
@@ -1392,72 +1342,3 @@
     loom:
       turns:
         - observation_contains: "very large content here..."
-
-- rule: PROD-6
-  name: ACP supports initialize and session prompt flow
-  setup:
-    crystal:
-      responses:
-        - tool_calls: [{ gate: "done", args: { answer: "hi" } }]
-    circle:
-      gates: [done]
-      wards: [{ max_turns: 10 }]
-  action:
-    acp_exchange:
-      - { id: "1", method: "initialize", params: { protocolVersion: 1 } }
-      - { id: "2", method: "session/new", params: {} }
-      - { id: "3", method: "session/prompt", params: { prompt: "say hi" } }
-  expect:
-    acp_responses:
-      - { id: "1", has_result: true }
-      - { id: "2", result_contains: "session" }
-      - { id: "3", result_contains: "hi" }
-
-- rule: PROD-7
-  name: protocol session preserves conversational continuity
-  setup:
-    crystal:
-      responses:
-        - content: "first"
-        - content: "second"
-      record_inputs: true
-    circle:
-      gates: [done]
-      wards: [{ max_turns: 10 }]
-  action:
-    acp_exchange:
-      - { id: "1", method: "initialize", params: { protocolVersion: 1 } }
-      - { id: "2", method: "session/new", params: {} }
-      - { id: "3", method: "session/prompt", params: { prompt: "hello" } }
-      - {
-          id: "4",
-          method: "session/prompt",
-          params: { prompt: "what did I just say?" },
-        }
-  expect:
-    crystal_invocations:
-      - {} # first prompt
-      - messages_include: "hello" # follow-up prompt sees prior session context
-
-- rule: PROD-8
-  name: secrets are redacted from logs and default loom exports
-  setup:
-    crystal:
-      responses:
-        - content: "using key sk-proj-very-secret"
-    circle:
-      gates: [done]
-      wards: [{ max_turns: 10 }]
-  action:
-    cast:
-      intent: "test redaction"
-    then:
-      export_loom: { format: jsonl, redaction: default }
-  expect:
-    logs_exclude: "sk-proj-very-secret"
-    loom_export_exclude: "sk-proj-very-secret"
-
-- rule: PROD-9
-  name: stdio adapter documents healthy idle state and debug mode
-  # UX/documentation-oriented production requirement
-  skip: true

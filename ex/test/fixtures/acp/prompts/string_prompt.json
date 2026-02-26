@@ -1,0 +1,7 @@
+{
+  "name": "string_prompt",
+  "params_fragment": {
+    "prompt": "hola"
+  },
+  "expect": "ok"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "recursive_delegation",
+  "scenario": "recursive_delegation",
+  "expect": {
+    "result": "deepest",
+    "terminated": true,
+    "min_turns": 3,
+    "min_unique_entities": 3,
+    "has_child_parent_link": true
+  }
+}

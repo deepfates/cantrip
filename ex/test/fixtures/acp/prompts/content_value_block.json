@@ -1,0 +1,11 @@
+{
+  "name": "content_value_block",
+  "params_fragment": {
+    "prompt": {
+      "content": [
+        {"type": "text", "value": "hola"}
+      ]
+    }
+  },
+  "expect": "ok"
+}
