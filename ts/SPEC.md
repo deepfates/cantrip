@@ -497,7 +497,6 @@ In a code circle, there is a more interesting option. The entity can access prio
 
 Both designs are valid. A circle that presents full message history is conformant. A circle that stores state as program variables the entity accesses through code is also conformant. The spec does not mandate one approach over the other. What matters is that the call and intent are always present, and that the entity can perceive the consequences of its prior actions — however the circle chooses to make those consequences available.
 
-<<<<<<< HEAD
 #### The three message layers
 
 Every query the circle assembles for the crystal has three layers, in this order:

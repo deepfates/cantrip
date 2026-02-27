@@ -59,14 +59,11 @@ EXPECT_KEYS = {
     "thread_1",
     "fork_crystal_invocations",
     "child_crystal_invocations",
-<<<<<<< HEAD
-=======
     # ACP protocol keys
     "acp_responses",
     # Secrets redaction keys
     "logs_exclude",
     "loom_export_exclude",
->>>>>>> monorepo/main
 }
 
 LOOM_KEYS = {"turn_count", "call", "turns"}
@@ -107,16 +104,6 @@ def build_context(case: dict[str, Any]) -> dict[str, Any]:
         crystals["crystal"] = main_crystal
 
     circle_cfg = setup.get("circle", {})
-<<<<<<< HEAD
-=======
-
-    # Detect conflicting medium declarations (CIRCLE-12)
-    medium_value = circle_cfg.get("medium")
-    circle_type_value = circle_cfg.get("circle_type")
-    if medium_value is not None and circle_type_value is not None and medium_value != circle_type_value:
-        raise CantripError("circle must declare exactly one medium")
-
->>>>>>> monorepo/main
     circle = Circle(
         gates=circle_cfg.get("gates", []),
         wards=circle_cfg.get("wards", []),
@@ -127,17 +114,10 @@ def build_context(case: dict[str, Any]) -> dict[str, Any]:
 
     call_cfg = setup.get("call", {})
     call = Call(
-<<<<<<< HEAD
         system_prompt=call_cfg.get("system_prompt"),
         temperature=call_cfg.get("temperature"),
         require_done_tool=bool(call_cfg.get("require_done_tool", False)),
         tool_choice=call_cfg.get("tool_choice"),
-=======
-        system_prompt=call_cfg.get("system_prompt") if call_cfg else None,
-        temperature=call_cfg.get("temperature") if call_cfg else None,
-        require_done_tool=bool(call_cfg.get("require_done_tool", False)) if call_cfg else False,
-        tool_choice=call_cfg.get("tool_choice") if call_cfg else None,
->>>>>>> monorepo/main
     )
 
     cantrip = Cantrip(
@@ -181,11 +161,6 @@ def execute_actions(ctx: dict[str, Any], action: Any) -> None:
         if act.get("construct_cantrip"):
             continue
 
-<<<<<<< HEAD
-        raise AssertionError(f"unsupported action: {act}")
-
-
-=======
         if "acp_exchange" in act:
             _execute_acp_exchange(ctx, act["acp_exchange"])
             continue
@@ -247,7 +222,7 @@ def _execute_acp_exchange(ctx: dict[str, Any], messages: list[dict[str, Any]]) -
         ctx["_acp_crystal"] = crystal
 
 
->>>>>>> monorepo/main
+
 def execute_then(ctx: dict[str, Any], then_cfg: dict[str, Any]) -> None:
     if "mutate_call" in then_cfg:
         mut = then_cfg["mutate_call"]
@@ -284,8 +259,6 @@ def execute_then(ctx: dict[str, Any], then_cfg: dict[str, Any]) -> None:
         _idx = int(then_cfg["extract_thread"])
         ctx["extracted_thread"] = ctx["cantrip"].loom.extract_thread(ctx["last_thread"])
 
-<<<<<<< HEAD
-=======
     if "export_loom" in then_cfg:
         import json
         export_cfg = then_cfg["export_loom"]
@@ -318,7 +291,7 @@ def _redact_secrets(text: str) -> str:
     text = _re.sub(r'sk-[A-Za-z0-9_-]{20,}', '[REDACTED]', text)
     return text
 
->>>>>>> monorepo/main
+
 
 def assert_contains_message(
     invocations: list[dict[str, Any]], index: int, text: str, negate: bool = False
@@ -345,15 +318,9 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
     if ctx.get("last_error") is not None:
         raise ctx["last_error"]
 
-<<<<<<< HEAD
     thread = ctx["last_thread"]
     cantrip = ctx["cantrip"]
     crystal = ctx["crystals"]["crystal"]
-=======
-    thread = ctx.get("last_thread")
-    cantrip = ctx["cantrip"]
-    crystal = ctx["crystals"].get("crystal")
->>>>>>> monorepo/main
 
     if "result" in expect:
         assert ctx["results"][-1] == expect["result"]
@@ -552,8 +519,6 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
         th = ctx["extracted_thread"]
         assert len(th) == int(expect["thread"]["length"])
 
-<<<<<<< HEAD
-=======
     if "acp_responses" in expect:
         acp_responses = ctx.get("acp_responses", [])
         for i, expected_resp in enumerate(expect["acp_responses"]):
@@ -581,26 +546,18 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
         if loom_export:
             assert secret not in loom_export, f"secret '{secret}' found in loom export"
 
->>>>>>> monorepo/main
+
 
 @pytest.mark.parametrize(
     "case", CASES, ids=[f"{c['rule']}::{c['name']}" for c in CASES]
 )
 def test_case(case: dict[str, Any]) -> None:
     if case.get("skip"):
-<<<<<<< HEAD
         raise AssertionError(
             f"skipped conformance case is forbidden: {case.get('rule')}::{case.get('name')}"
         )
     if not case.get("action") and not case.get("expect"):
         raise AssertionError(
-=======
-        pytest.skip(
-            f"skipped by spec: {case.get('rule')}::{case.get('name')}"
-        )
-    if not case.get("action") and not case.get("expect"):
-        pytest.skip(
->>>>>>> monorepo/main
             f"non-executable conformance case: {case.get('rule')}::{case.get('name')}"
         )
 
@@ -611,13 +568,10 @@ def test_case(case: dict[str, Any]) -> None:
         execute_actions(ctx, action)
         if isinstance(action, dict) and "then" in action:
             execute_then(ctx, action["then"])
-<<<<<<< HEAD
-=======
         if isinstance(action, list):
             for act in action:
                 if isinstance(act, dict) and "then" in act:
                     execute_then(ctx, act["then"])
->>>>>>> monorepo/main
     except Exception as e:  # noqa: BLE001
         if ctx is None:
             ctx = {"last_error": e}

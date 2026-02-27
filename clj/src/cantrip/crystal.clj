@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-(ns cantrip.crystal)
-=======
 (ns cantrip.crystal
   (:require [clojure.string :as str])
   (:import [java.net URI]
@@ -10,7 +7,6 @@
 ;; ---------------------------------------------------------------------------
 ;; Shared validation helpers
 ;; ---------------------------------------------------------------------------
->>>>>>> monorepo/main
 
 (defn- tool-call-ids [tool-calls]
   (map :id tool-calls))
@@ -62,8 +58,6 @@
       (update :tool-calls #(mapv normalize-tool-call (or % [])))
       (update :tool-results #(vec (or % [])))))
 
-<<<<<<< HEAD
-=======
 (defn- validate-and-normalize [response tool-choice previous-tool-call-ids]
   (-> (normalize-response response)
       ensure-required-shape!
@@ -75,7 +69,6 @@
 ;; Fake provider (existing behaviour)
 ;; ---------------------------------------------------------------------------
 
->>>>>>> monorepo/main
 (defn- record-invocation!
   [crystal invocation]
   (when (and (:record-inputs crystal)
@@ -88,14 +81,8 @@
     (max 0 (dec (count @(:invocations crystal))))
     turn-index))
 
-<<<<<<< HEAD
-(defn query
-  "Queries the configured crystal. For now supports deterministic fake responses."
-  [crystal {:keys [turn-index messages tools tool-choice previous-tool-call-ids]}]
-=======
 (defn- query-fake
   [crystal {:keys [turn-index messages tools tool-choice]}]
->>>>>>> monorepo/main
   (record-invocation! crystal {:messages (vec messages)
                                :tools (vec tools)
                                :tool-choice tool-choice})
@@ -103,19 +90,6 @@
         responses (:responses crystal)
         response (or (get responses idx)
                      (when (seq responses) (last responses))
-<<<<<<< HEAD
-                     {})
-        _ (when-let [err (:error response)]
-            (throw (ex-info (or (:message err) "crystal provider error")
-                            {:status (:status err)
-                             :provider-error err})))
-        normalized (normalize-response response)]
-    (-> normalized
-        ensure-required-shape!
-        (update :tool-calls #(do (ensure-tool-calls-have-ids! %) %))
-        (ensure-tool-choice-required! tool-choice)
-        (ensure-tool-result-linkage! previous-tool-call-ids))))
-=======
                      {})]
     (when-let [err (:error response)]
       (throw (ex-info (or (:message err) "crystal provider error")
@@ -470,4 +444,3 @@
                        (throw (ex-info (str "unknown crystal provider: " provider)
                                        {:provider provider})))]
     (validate-and-normalize raw-response tool-choice previous-tool-call-ids)))
->>>>>>> monorepo/main

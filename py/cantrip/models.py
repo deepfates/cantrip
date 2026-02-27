@@ -35,38 +35,18 @@ class Circle:
 
     def __post_init__(self) -> None:
         self._gates: dict[str, Gate] = {}
-<<<<<<< HEAD
         for g in self.gates:
             if isinstance(g, str):
                 self._gates[g] = Gate(name=g)
             else:
                 self._gates[g["name"]] = Gate(
                     name=g["name"],
-=======
-        # Map call_agent -> call_entity aliases
-        _GATE_ALIASES = {
-            "call_agent": "call_entity",
-            "call_agent_batch": "call_entity_batch",
-        }
-        for g in self.gates:
-            if isinstance(g, str):
-                canonical = _GATE_ALIASES.get(g, g)
-                self._gates[canonical] = Gate(name=canonical)
-            else:
-                canonical_name = _GATE_ALIASES.get(g["name"], g["name"])
-                self._gates[canonical_name] = Gate(
-                    name=canonical_name,
->>>>>>> monorepo/main
                     parameters=g.get("parameters"),
                     behavior=g.get("behavior"),
                     delay_ms=g.get("delay_ms"),
                     result=g.get("result"),
                     error=g.get("error"),
-<<<<<<< HEAD
                     depends=g.get("depends"),
-=======
-                    depends=g.get("depends") or g.get("dependencies"),
->>>>>>> monorepo/main
                     ephemeral=bool(g.get("ephemeral", False)),
                 )
 

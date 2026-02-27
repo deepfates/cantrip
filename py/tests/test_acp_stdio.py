@@ -423,11 +423,7 @@ def test_router_session_prompt_uses_max_turn_stop_reason_when_truncated() -> Non
         "No final answer produced before max_turns."
     )
     assert (
-<<<<<<< HEAD
         "Last error: done requires non-empty answer"
-=======
-        "Last error: missing required argument: answer"
->>>>>>> monorepo/main
         in resp["result"]["output"][0]["text"]
     )
     assert resp["result"]["_meta"]["error"]["type"] == "non_terminal_outcome"

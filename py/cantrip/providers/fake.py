@@ -24,11 +24,7 @@ class FakeCrystal(Crystal):
         self._lock = threading.Lock()
 
     def _next_raw(self) -> dict:
-<<<<<<< HEAD
-        if self.provider == "mock_openai" and self.raw_response:
-=======
         if self.provider == "mock_openai" and self.raw_response and not self.responses:
->>>>>>> monorepo/main
             return copy.deepcopy(self.raw_response)
         if self.index >= len(self.responses):
             return {"content": ""}
@@ -53,9 +49,6 @@ class FakeCrystal(Crystal):
                 f"provider_error:{err.get('status')}:{err.get('message')}"
             )
 
-<<<<<<< HEAD
-        if self.provider == "mock_openai" and self.raw_response:
-=======
         # Handle tool_result response type (validates tool call ID linkage)
         if "tool_result" in raw:
             tool_result = raw["tool_result"]
@@ -78,7 +71,6 @@ class FakeCrystal(Crystal):
             )
 
         if self.provider == "mock_openai" and self.raw_response and "choices" in raw:
->>>>>>> monorepo/main
             choice = raw["choices"][0]
             msg = choice["message"]
             usage = raw.get("usage", {})

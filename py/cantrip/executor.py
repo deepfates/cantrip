@@ -56,7 +56,6 @@ class MiniCodeExecutor(CodeExecutor):
             arr_name = expr[: -len('.join(",")')]
             return ",".join(str(x) for x in self.env.get(arr_name, []))
 
-<<<<<<< HEAD
         if expr.startswith("call_entity_batch("):
             inner = expr[len("call_entity_batch(") : -1]
             reqs = json.loads(self._js_to_json(inner))
@@ -64,17 +63,6 @@ class MiniCodeExecutor(CodeExecutor):
 
         if expr.startswith("call_entity("):
             inner = expr[len("call_entity(") : -1]
-=======
-        if expr.startswith("call_entity_batch(") or expr.startswith("call_agent_batch("):
-            prefix = "call_agent_batch(" if expr.startswith("call_agent_batch(") else "call_entity_batch("
-            inner = expr[len(prefix) : -1]
-            reqs = json.loads(self._js_to_json(inner))
-            return call_gate("call_entity_batch", reqs)
-
-        if expr.startswith("call_entity(") or expr.startswith("call_agent("):
-            prefix = "call_agent(" if expr.startswith("call_agent(") else "call_entity("
-            inner = expr[len(prefix) : -1]
->>>>>>> monorepo/main
             req = json.loads(self._js_to_json(inner))
             return call_gate("call_entity", req)
 

@@ -273,55 +273,6 @@
       (number? gt) (and (number? actual) (> actual gt))
       :else (= actual expected*))))
 
-<<<<<<< HEAD
-(defn- check-turn-spec [turns idx spec]
-  (let [turn (nth turns idx nil)
-        metadata (:metadata turn)]
-    (and
-     (some? turn)
-     (if (contains? spec :sequence)
-       (= (:sequence spec) (:sequence turn))
-       true)
-     (if (contains? spec :id)
-       (value-matches? (:id turn) (:id spec) turns)
-       true)
-     (if (contains? spec :parent-id)
-       (value-matches? (:parent-id turn) (:parent-id spec) turns)
-       true)
-     (if (contains? spec :terminated)
-       (= (:terminated spec) (:terminated turn))
-       true)
-     (if (contains? spec :truncated)
-       (= (:truncated spec) (:truncated turn))
-       true)
-     (if-let [reward (:reward spec)]
-       (= reward (:reward turn))
-       true)
-     (if-let [gate-calls (:gate-calls spec)]
-       (= gate-calls (mapv :gate (:observation turn)))
-       true)
-     (if-let [obs-fragment (:observation-contains spec)]
-       (some #(str/includes? (str (:result %)) obs-fragment)
-             (:observation turn))
-       true)
-     (if-let [utterance (:utterance spec)]
-       (value-matches? (:utterance turn) utterance turns)
-       true)
-     (if-let [observation (:observation spec)]
-       (value-matches? (:observation turn) observation turns)
-       true)
-     (if-let [meta-spec (:metadata spec)]
-       (every? (fn [[k expected]]
-                 (let [actual (or (get metadata k)
-                                  (case k
-                                    :tokens-prompt (:tokens_prompt metadata)
-                                    :tokens-completion (:tokens_completion metadata)
-                                    :duration-ms (:duration_ms metadata)
-                                    nil))]
-                   (value-matches? actual expected turns)))
-               meta-spec)
-       true))))
-=======
 (defn- check-turn-spec
   "Checks a single turn against its spec. Returns [pass? updated-entity-symbols]
    when called with entity-symbols, or just pass? for backward compat."
@@ -387,7 +338,6 @@
                  meta-spec)
          true))
       updated-symbols])))
->>>>>>> monorepo/main
 
 (defn- action-steps [action]
   (cond
@@ -764,18 +714,12 @@
                 (= len (count thread))
                 true)
               (if-let [turn-specs (:turns thread-expect)]
-<<<<<<< HEAD
-                (every? true? (map-indexed (fn [idx spec]
-                                             (check-turn-spec thread idx spec))
-                                           turn-specs))
-=======
                 (let [result (reduce (fn [[all-pass? syms] [idx spec]]
                                        (let [[pass? syms'] (check-turn-spec thread idx spec syms)]
                                          [(and all-pass? pass?) syms']))
                                      [true {}]
                                      (map-indexed vector turn-specs))]
                   (first result))
->>>>>>> monorepo/main
                 true))))
          true)
        (if-let [loom-expect (:loom expect)]
@@ -791,19 +735,12 @@
                       call-spec)
               true)
             (if-let [turn-specs (:turns loom-expect)]
-<<<<<<< HEAD
-              (every? true?
-                      (map-indexed (fn [idx spec]
-                                     (check-turn-spec loom-turns idx spec))
-                                   turn-specs))
-=======
               (let [result (reduce (fn [[all-pass? syms] [idx spec]]
                                      (let [[pass? syms'] (check-turn-spec loom-turns idx spec syms)]
                                        [(and all-pass? pass?) syms']))
                                    [true {}]
                                    (map-indexed vector turn-specs))]
                 (first result))
->>>>>>> monorepo/main
               true)))
          true)
        (if-let [threads (:threads expect)]
