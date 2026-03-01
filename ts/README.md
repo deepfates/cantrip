@@ -72,7 +72,7 @@ const result = await spell.cast("What is 2 + 3?");
 console.log(result); // "5"
 ```
 
-Each `cast` creates a fresh entity — the cantrip is a reusable recipe. No medium specified here: the circle uses **conversation** by default, where gates appear as tool calls in natural language. Add a medium to upgrade the entity's action space — see [Mediums](#mediums) below.
+Each `cast` creates a fresh entity — the cantrip is a reusable script. No medium specified here: the circle uses **conversation** by default, where gates appear as tool calls in natural language. Add a medium to upgrade the entity's action space — see [Mediums](#mediums) below.
 
 ---
 

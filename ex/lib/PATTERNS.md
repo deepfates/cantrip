@@ -50,7 +50,7 @@ CLI default is real crystal mode from env; scripted mode exists for deterministi
 - *Productionization*: treat each gate like a regular service function — unit tests can call `gate.execute` without a crystal. Enforce circle invariants during configuration loading so a malformed circle never reaches runtime. Surface resolved wards in telemetry so operators know what limits apply per cast.
 
 ### 2. Provider-agnostic crystals (Example 06)
-- *Intent*: follow the spec's language-neutrality by modeling the crystal as a pluggable provider. The recipe (`cantrip` call + circle) does not change when swapping Anthropic ↔ OpenAI ↔ Gemini.
+- *Intent*: follow the spec's language-neutrality by modeling the crystal as a pluggable provider. The script (`cantrip` call + circle) does not change when swapping Anthropic ↔ OpenAI ↔ Gemini.
 - *Productionization*: define crystals in configuration (`crystal: "openai/gpt-5-mini"`) so deployments can swap providers at runtime. Maintain a validation step that checks API keys and limits before casting.
 
 ### 3. Medium physics (Examples 07–09)
