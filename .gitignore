@@ -6,3 +6,5 @@
 .lsp/
 _investigation/
 SPEC.md.bak
+.uv-cache
+.venv_check
