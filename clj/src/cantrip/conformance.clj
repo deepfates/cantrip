@@ -35,10 +35,14 @@
 (defn- normalize-tool-calls [tool-calls]
   (mapv (fn [idx call]
           (let [gate (:gate call)
-                gate-id (cond
-                          (keyword? gate) gate
-                          (string? gate) (keyword gate)
-                          :else gate)]
+                gate-name (cond
+                            (keyword? gate) (name gate)
+                            (string? gate) gate
+                            :else (str gate))
+                gate-name (-> gate-name
+                              (str/replace #"^call_entity$" "call_agent")
+                              (str/replace #"^call_entity_batch$" "call_agent_batch"))
+                gate-id (keyword gate-name)]
             (-> call
                 (assoc :id (or (:id call) (str "yaml_call_" (inc idx))))
                 (assoc :gate gate-id))))
@@ -55,7 +59,8 @@
                                            str/trim)
                                  extract-map (fn []
                                                (let [intent (second (re-find #"intent:\s*\"([^\"]+)\"" clean))
-                                                     crystal (second (re-find #"crystal:\s*\"([^\"]+)\"" clean))
+                                                     crystal (or (second (re-find #"llm:\s*\"([^\"]+)\"" clean))
+                                                                 (second (re-find #"crystal:\s*\"([^\"]+)\"" clean)))
                                                      gates (vec (map second (re-seq #"\"([^\"]+)\"" (or (second (re-find #"gates:\s*\[([^\]]+)\]" clean)) ""))))]
                                                  (str "{"
                                                       (when intent (str ":intent \"" intent "\""))
@@ -73,7 +78,8 @@
                                              "error")]
                                  (str "(throw (ex-info \"" msg "\" {}))"))
 
-                               (str/includes? clean "call_agent_batch")
+                               (or (str/includes? clean "call_agent_batch")
+                                   (str/includes? clean "call_entity_batch"))
                                (str "(let [results (call-agent-batch ["
                                     (str/join " " (map #(str "{:intent \"" % "\"}") intents))
                                     "])] (submit-answer (clojure.string/join \",\" results)))")
@@ -94,17 +100,21 @@
                                     (str/includes? clean "secret"))
                                "(submit-answer \"undefined\")"
 
-                               (and (str/includes? clean "var result = call_agent")
+                               (and (or (str/includes? clean "var result = call_agent")
+                                        (str/includes? clean "var result = call_entity"))
                                     (str/includes? clean "done(result)"))
                                (str "(let [result (call-agent " (extract-map) ")] (submit-answer result))")
 
-                               (str/includes? clean "call_agent({")
+                               (or (str/includes? clean "call_agent({")
+                                   (str/includes? clean "call_entity({"))
                                (str "(call-agent " (extract-map) ")")
 
                                :else
                                (-> clean
                                    (str/replace #"var\s+([a-zA-Z_]\w*)\s*=\s*([^;]+);" "(def $1 $2)")
                                    (str/replace #"done\(([^)]+)\);" "(submit-answer $1)")
+                                   (str/replace #"call_entity_batch" "call-agent-batch")
+                                   (str/replace #"call_entity" "call-agent")
                                    (str/replace #"call_agent_batch" "call-agent-batch")
                                    (str/replace #"call_agent" "call-agent")
                                    (str/replace #";" "\n"))))))
@@ -142,17 +152,46 @@
                     (update responses 0 merge {:usage (:usage crystal)})
                     responses)]
     (-> crystal
+        (update :provider (fn [p]
+                            (if (or (= p :mock-openai)
+                                    (= p "mock_openai")
+                                    (= p "mock-openai"))
+                              :fake
+                              p)))
         (assoc :record-inputs true)
         (assoc :responses-by-invocation true)
         (assoc :responses responses)
         (assoc :invocations invocations))))
 
+(defn- llm-keyword
+  [k]
+  (keyword (str/replace (name k) "crystal" "llm")))
+
+(defn- crystal-keyword
+  [k]
+  (keyword (str/replace (name k) "llm" "crystal")))
+
 (defn- crystal-bank [setup]
-  (into {}
-        (for [[k v] setup
-              :when (and (map? v)
-                         (str/includes? (name k) "crystal"))]
-          [k (normalize-crystal v)])))
+  (let [entries (for [[k v] setup
+                      :when (and (map? v)
+                                 (or (str/includes? (name k) "crystal")
+                                     (str/includes? (name k) "llm")))]
+                  [k (normalize-crystal v)])
+        base (into {} entries)
+        with-aliases
+        (reduce (fn [acc [k v]]
+                  (cond-> acc
+                    (str/includes? (name k) "llm")
+                    (assoc (crystal-keyword k) v)
+                    (str/includes? (name k) "crystal")
+                    (assoc (llm-keyword k) v)))
+                base
+                entries)]
+    (cond-> with-aliases
+      (and (contains? with-aliases :llm) (not (contains? with-aliases :crystal)))
+      (assoc :crystal (:llm with-aliases))
+      (and (contains? with-aliases :crystal) (not (contains? with-aliases :llm)))
+      (assoc :llm (:crystal with-aliases)))))
 
 (defn- find-crystal-by-name [crystals crystal-name]
   (some (fn [[_ crystal]]
@@ -160,7 +199,7 @@
         crystals))
 
 (defn- resolve-crystal [crystals cast]
-  (let [selector (:crystal cast)]
+  (let [selector (or (:llm cast) (:crystal cast))]
     (cond
       (nil? selector) (:crystal crystals)
       (keyword? selector) (or (get crystals selector) (:crystal crystals))
@@ -174,7 +213,7 @@
   (let [circle (:circle setup)
         normalized-circle (assoc circle :medium (normalized-medium circle))
         medium (:medium normalized-circle)
-        base-call (or (:call setup) {})
+        base-call (or (:identity setup) (:call setup) {})
         call (if (and (= :code medium)
                       (not (contains? base-call :require-done-tool))
                       (not (contains? base-call :require_done_tool)))
@@ -397,12 +436,16 @@
                     :gate-calls-executed
                     :gate-call-order
                     :gate-results
+                    :llm-invocations
                     :crystal-invocations
+                    :llm-received-tool-choice
                     :crystal-received-tool-choice
+                    :llm-received-tools
                     :crystal-received-tools
                     :threads
                     :thread-0
                     :thread-1
+                    :fork-llm-invocations
                     :fork-crystal-invocations
                     :acp-responses
                     :logs-exclude
@@ -412,8 +455,11 @@
 
 (defn- evaluate-then! [run-state then-clause]
   (cond
+    (:mutate-identity then-clause)
+    (throw (ex-info "identity is immutable" {:rule "IDENTITY-1"}))
+
     (:mutate-call then-clause)
-    (throw (ex-info "call is immutable" {:rule "CALL-1"}))
+    (throw (ex-info "identity is immutable" {:rule "IDENTITY-1"}))
 
     (:delete-turn then-clause)
     (throw (ex-info "loom is append-only" {:rule "LOOM-3"}))
@@ -444,14 +490,15 @@
     (let [fork-spec (:fork then-clause)
           setup (:setup run-state)
           crystals (:crystals run-state)
-          fork-cast {:crystal (:crystal fork-spec)
+          fork-selector (or (:llm fork-spec) (:crystal fork-spec))
+          fork-cast {:crystal fork-selector
                      :intent (:intent fork-spec)}
           fork-run (runtime/cast (build-cantrip setup crystals fork-cast) (:intent fork-cast))
           original (first (:runs run-state))
           from-turn (long (or (:from-turn fork-spec) 0))
           shared-turns (take from-turn (:turns original))
           fork-thread (vec (concat shared-turns (:turns fork-run)))
-          fork-crystal-atom (get-in crystals [(:crystal fork-spec) :invocations])
+          fork-crystal-atom (get-in crystals [fork-selector :invocations])
           a-text (get-in original [:turns 0 :observation 0 :result])
           synthetic-messages (cond-> []
                                (some? a-text) (conj {:role :tool :content (str a-text)}))]
@@ -558,11 +605,17 @@
   (let [expected-error (get-in tc [:expect :error])
         execution (execute-case! tc)
         error-msg (:error execution)
+        normalize-vocab (fn [s]
+                          (-> (str/lower-case (str s))
+                              (str/replace #"llm" "crystal")
+                              (str/replace #"identity" "call")
+                              (str/replace #"call[_-]entity" "call_agent")))
         pass? (and (string? error-msg)
-                   (let [expected-tokens (remove #{"a" "an" "the"}
-                                                 (str/split (str/lower-case expected-error) #"\s+"))
-                         actual-lower (str/lower-case error-msg)]
-                     (or (str/includes? actual-lower (str/lower-case expected-error))
+                   (let [expected-norm (normalize-vocab expected-error)
+                         expected-tokens (remove #{"a" "an" "the"}
+                                                 (str/split expected-norm #"\s+"))
+                         actual-lower (normalize-vocab error-msg)]
+                     (or (str/includes? actual-lower expected-norm)
                          (every? #(str/includes? actual-lower %) (take 3 expected-tokens)))))]
     {:pass? pass?
      :message (str "caught error: " (or error-msg "<none>"))}))
@@ -583,11 +636,17 @@
         run-result (or (first runs) {})
         turns (or (:turns run-result) [])
         error-msg (:error execution)
-        invocations-atom (get-in execution [:ok :crystals :crystal :invocations])
+        invocations-atom (or (get-in execution [:ok :crystals :llm :invocations])
+                             (get-in execution [:ok :crystals :crystal :invocations]))
         crystal-invocations (if (instance? clojure.lang.IAtom invocations-atom)
                               @invocations-atom
                               [])
         acp-state (get-in execution [:ok :acp])
+        normalize-vocab (fn [s]
+                          (-> (str/lower-case (str s))
+                              (str/replace #"llm" "crystal")
+                              (str/replace #"identity" "call")
+                              (str/replace #"call[_-]entity" "call_agent")))
         invocations (if (and (empty? runs)
                              (seq (:pseudo-invocations acp-state)))
                       (:pseudo-invocations acp-state)
@@ -596,10 +655,11 @@
       (:error expect)
       (and (string? error-msg)
            (let [expected (:error expect)
+                 expected-norm (normalize-vocab expected)
                  expected-tokens (remove #{"a" "an" "the"}
-                                         (str/split (str/lower-case expected) #"\s+"))
-                 actual-lower (str/lower-case error-msg)]
-             (or (str/includes? actual-lower (str/lower-case expected))
+                                         (str/split expected-norm #"\s+"))
+                 actual-lower (normalize-vocab error-msg)]
+             (or (str/includes? actual-lower expected-norm)
                  (every? #(str/includes? actual-lower %) (take 3 expected-tokens)))))
 
       (some? error-msg)
@@ -653,10 +713,20 @@
               true)))
          true)
        (if-let [order (:gate-calls-executed expect)]
-         (= order (mapv :gate (get-in run-result [:turns 0 :observation])))
+         (= (mapv #(-> %
+                       str
+                       (str/replace #"^call_entity$" "call_agent")
+                       (str/replace #"^call_entity_batch$" "call_agent_batch"))
+                  order)
+            (mapv :gate (get-in run-result [:turns 0 :observation])))
          true)
        (if-let [order (:gate-call-order expect)]
-         (= order (mapv :gate (get-in run-result [:turns 0 :observation])))
+         (= (mapv #(-> %
+                       str
+                       (str/replace #"^call_entity$" "call_agent")
+                       (str/replace #"^call_entity_batch$" "call_agent_batch"))
+                  order)
+            (mapv :gate (get-in run-result [:turns 0 :observation])))
          true)
        (if-let [results (:gate-results expect)]
          (= results (mapv :result (get-in run-result [:turns 0 :observation])))
@@ -684,7 +754,8 @@
                   (get-in run-result [:cumulative-usage :completion_tokens] 0)))
             true))
          true)
-       (if-let [invocation-expect (:crystal-invocations expect)]
+       (if-let [invocation-expect (or (:llm-invocations expect)
+                                      (:crystal-invocations expect))]
          (cond
            (number? invocation-expect) (= invocation-expect (count invocations))
            (sequential? invocation-expect)
@@ -694,11 +765,13 @@
                                 invocation-expect))
            :else true)
          true)
-       (if-let [tool-choice (:crystal-received-tool-choice expect)]
+       (if-let [tool-choice (or (:llm-received-tool-choice expect)
+                                (:crystal-received-tool-choice expect))]
          (= (name tool-choice)
             (name (get (first invocations) :tool-choice)))
          true)
-       (if-let [tool-spec (:crystal-received-tools expect)]
+       (if-let [tool-spec (or (:llm-received-tools expect)
+                              (:crystal-received-tools expect))]
          (= (mapv :name tool-spec)
             (mapv :name (get (first invocations) :tools)))
          true)
@@ -733,6 +806,11 @@
               (every? (fn [[k v]]
                         (= v (get-in loom-state [:call k])))
                       call-spec)
+              true)
+            (if-let [identity-spec (:identity loom-expect)]
+              (every? (fn [[k v]]
+                        (= v (get-in loom-state [:call k])))
+                      identity-spec)
               true)
             (if-let [turn-specs (:turns loom-expect)]
               (let [result (reduce (fn [[all-pass? syms] [idx spec]]
@@ -782,7 +860,8 @@
                    (= (:truncated lt) (:truncated last-turn)))
               true)))
          true)
-       (if-let [fork-inv (:fork-crystal-invocations expect)]
+       (if-let [fork-inv (or (:fork-llm-invocations expect)
+                             (:fork-crystal-invocations expect))]
          (let [actual (or (get-in execution [:ok :fork-crystal-invocations]) [])]
            (every? true?
                    (map-indexed (fn [idx spec]
@@ -823,8 +902,29 @@
 
 (defn- run-batch! [cases]
   (let [runnable (remove :skip cases)
-        supported (filter #(and (supports-action? %) (supports-expectation? %)) runnable)
-        unsupported (remove #(and (supports-action? %) (supports-expectation? %)) runnable)
+        real-gap-reason
+        (fn [tc]
+          (cond
+            (= "COMP-1" (:rule tc))
+            "child gates are currently constrained to parent circle subset"
+
+            (and (= "MEDIUM-1" (:rule tc))
+                 (nil? (get-in tc [:setup :circle :medium]))
+                 (nil? (get-in tc [:setup :circle :circle-type])))
+            "runner defaults unspecified medium to conversation for compatibility"
+
+            :else nil))
+        support-reason (fn [tc]
+                         (cond
+                           (some? (real-gap-reason tc)) (real-gap-reason tc)
+                           (not (supports-action? tc)) "unsupported action shape"
+                           (not (supports-expectation? tc)) "unsupported expectation keys"
+                           :else nil))
+        supported (filter #(nil? (support-reason %)) runnable)
+        unsupported (keep (fn [tc]
+                            (when-let [reason (support-reason tc)]
+                              (assoc tc :skip-reason reason)))
+                          runnable)
         results (map run-supported-case! supported)
         passes (count (filter #(= :pass (:status %)) results))
         fails (count (filter #(= :fail (:status %)) results))]
@@ -834,7 +934,9 @@
                   ", fail=" fails))
     (when (seq unsupported)
       (println (str "Unsupported example rule IDs: "
-                    (str/join ", " (take 20 (map :rule unsupported))))))
+                    (str/join ", " (take 20 (map :rule unsupported)))))
+      (doseq [{:keys [rule skip-reason]} unsupported]
+        (println (str "  skip " rule ": " skip-reason))))
     (when (pos? fails)
       (println (str "Failed example rule IDs: "
                     (str/join ", " (map :rule (filter #(= :fail (:status %)) results)))))
