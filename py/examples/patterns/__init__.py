@@ -1,1 +1,0 @@
-"""Pattern progression examples."""

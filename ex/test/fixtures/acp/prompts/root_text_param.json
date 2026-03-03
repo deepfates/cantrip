@@ -1,7 +1,0 @@
-{
-  "name": "root_text_param",
-  "params_fragment": {
-    "text": "hola"
-  },
-  "expect": "ok"
-}
