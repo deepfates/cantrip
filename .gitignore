@@ -2,3 +2,7 @@
 .DS_Store
 .cantrip/
 .claude/
+.clj-kondo/
+.lsp/
+_investigation/
+SPEC.md.bak
