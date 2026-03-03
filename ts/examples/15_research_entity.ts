@@ -36,7 +36,7 @@ const useGemini = args.includes("--gemini");
 const memoryIdx = args.indexOf("--memory");
 const memoryWindow = memoryIdx >= 0 ? parseInt(args[memoryIdx + 1], 10) : 0;
 
-function pickCrystal(): BaseChatModel {
+function pickLlm(): BaseChatModel {
   if (useOpenai) return new ChatOpenAI({ model: "gpt-5-mini" });
   if (useGemini) return new ChatGoogle({ model: "gemini-3-flash-prevew" });
   return new ChatAnthropic({ model: "claude-sonnet-4-5" });
@@ -53,7 +53,7 @@ export async function main() {
   if (memoryWindow > 0) console.log(`Memory window: ${memoryWindow} messages`);
 
   serveCantripACP(async ({ params, sessionId, connection }) => {
-    const crystal = pickCrystal();
+    const llm = pickLlm();
 
     // Launch browser
     const browserContext = await BrowserContext.create({
@@ -85,7 +85,7 @@ export async function main() {
 
     // The entity auto-prepends capability docs from the circle.
     const spell = cantrip({
-      llm: crystal,
+      llm: llm,
       identity:
         "Research entity with browser automation and recursive delegation. " +
         "Use code to explore data, browse the web, and delegate sub-intents via call_entity. " +

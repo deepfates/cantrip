@@ -11,7 +11,7 @@ except Exception:  # pragma: no cover
     requests = None
 
 from cantrip.errors import CantripError
-from cantrip.models import CrystalResponse, ToolCall
+from cantrip.models import LLMResponse, ToolCall
 from cantrip.providers.base import LLM
 
 
@@ -108,7 +108,7 @@ class OpenAICompatLLM(LLM):
 
         usage = data.get("usage") or {}
         provider_latency_ms = max(1, int((time.perf_counter() - started) * 1000))
-        return CrystalResponse(
+        return LLMResponse(
             content=content,
             tool_calls=tool_calls,
             usage={
@@ -117,6 +117,3 @@ class OpenAICompatLLM(LLM):
                 "provider_latency_ms": provider_latency_ms,
             },
         )
-
-
-OpenAICompatCrystal = OpenAICompatLLM

@@ -32,7 +32,7 @@ function makeCircle(gates: BoundGate[] = [doneGate], wards = [ward]) {
 
 describe("INTENT-1: casting without intent is invalid", () => {
   test("INTENT-1: cast with null intent throws", async () => {
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -54,7 +54,7 @@ describe("INTENT-1: casting without intent is invalid", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -63,7 +63,7 @@ describe("INTENT-1: casting without intent is invalid", () => {
   });
 
   test("INTENT-1: cast with empty string intent throws", async () => {
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -73,7 +73,7 @@ describe("INTENT-1: casting without intent is invalid", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -85,9 +85,9 @@ describe("INTENT-1: casting without intent is invalid", () => {
 // ── INTENT-2: intent appears as first user message ─────────────────
 
 describe("INTENT-2: intent appears as first user message", () => {
-  test("INTENT-2: crystal receives system prompt then user intent", async () => {
+  test("INTENT-2: llm receives system prompt then user intent", async () => {
     const messagesPerCall: any[][] = [];
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -110,7 +110,7 @@ describe("INTENT-2: intent appears as first user message", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "You are helpful" },
       circle: makeCircle(),
     });

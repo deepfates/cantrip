@@ -57,10 +57,10 @@ describe("CANTRIP-1: cantrip requires llm, identity, and circle", () => {
   });
 
   test("CANTRIP-1: throws when identity is missing", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     expect(() =>
       cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: undefined as any,
         circle: makeCircle(),
       }),
@@ -68,10 +68,10 @@ describe("CANTRIP-1: cantrip requires llm, identity, and circle", () => {
   });
 
   test("CANTRIP-1: throws when circle is missing", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     expect(() =>
       cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: { system_prompt: "test" },
         circle: undefined as any,
       }),
@@ -79,9 +79,9 @@ describe("CANTRIP-1: cantrip requires llm, identity, and circle", () => {
   });
 
   test("CANTRIP-1: succeeds with all three present", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -94,7 +94,7 @@ describe("CANTRIP-1: cantrip requires llm, identity, and circle", () => {
 
 describe("CANTRIP-2: cantrip is reusable across intents", () => {
   test("CANTRIP-2: two casts produce independent results", async () => {
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -124,7 +124,7 @@ describe("CANTRIP-2: cantrip is reusable across intents", () => {
     ]);
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "You are helpful" },
       circle: makeCircle(),
     });
@@ -138,7 +138,7 @@ describe("CANTRIP-2: cantrip is reusable across intents", () => {
 
   test("CANTRIP-2: second cast does not see first cast's messages", async () => {
     const messagesPerCall: any[][] = [];
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -161,7 +161,7 @@ describe("CANTRIP-2: cantrip is reusable across intents", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -179,7 +179,7 @@ describe("CANTRIP-2: cantrip is reusable across intents", () => {
 
   test("CANTRIP-2: null system_prompt is valid (minimal cantrip)", async () => {
     const messagesPerCall: any[][] = [];
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -202,7 +202,7 @@ describe("CANTRIP-2: cantrip is reusable across intents", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: null },
       circle: makeCircle(),
     });
@@ -221,14 +221,14 @@ describe("CANTRIP-2: cantrip is reusable across intents", () => {
 
 describe("CANTRIP-3: cantrip validates circle constraints", () => {
   test("CANTRIP-3: throws if circle has no done gate", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     const notDone = gate("Not done", async () => "ok", {
       name: "other",
       schema: { type: "object", properties: {}, additionalProperties: false },
     });
     expect(() =>
       cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: { system_prompt: "test" },
         circle: makeCircle([notDone]),
       }),
@@ -236,10 +236,10 @@ describe("CANTRIP-3: cantrip validates circle constraints", () => {
   });
 
   test("CANTRIP-3: throws if circle has no ward", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     expect(() =>
       cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: { system_prompt: "test" },
         circle: makeCircle([doneGate], []),
       }),

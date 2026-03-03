@@ -90,7 +90,7 @@ class ToolCall:
 
 
 @dataclass
-class CrystalResponse:
+class LLMResponse:
     content: str | None = None
     tool_calls: list[ToolCall] | None = None
     usage: dict[str, int] | None = None

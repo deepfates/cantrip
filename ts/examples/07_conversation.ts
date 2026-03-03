@@ -1,6 +1,6 @@
 // Example 07: Conversation Medium
 // When no medium is specified, the circle uses "conversation" (tool-calling baseline).
-// The crystal sees gates as tool calls in natural language. This is a REPL.
+// The llm sees gates as tool calls in natural language. This is a REPL.
 
 import "./env";
 import {
@@ -24,7 +24,7 @@ export async function main() {
     "Gates cross INTO the circle from outside — filesystem access here.\n",
   );
 
-  const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+  const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
   const ctx = await SandboxContext.create();
 
   const circle = Circle({
@@ -33,7 +33,7 @@ export async function main() {
   });
 
   const entity = cantrip({
-    llm: crystal,
+    llm: llm,
     identity: {
       system_prompt: `Coding assistant. Working dir: ${ctx.working_dir}\nCall done when finished.`,
     },

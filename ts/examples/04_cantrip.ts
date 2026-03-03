@@ -1,5 +1,5 @@
 // Example 04: Cantrip
-// crystal + call + circle = cantrip. Cast it on an intent, an entity arises.
+// llm + call + circle = cantrip. Cast it on an intent, an entity arises.
 // This is the full script — everything before was ingredients.
 
 import "./env";
@@ -17,10 +17,10 @@ const add = gate(
 export async function main() {
   console.log("=== Example 04: Cantrip ===");
   console.log(
-    "A cantrip binds crystal + call + circle. Cast on an intent → entity runs.\n",
+    "A cantrip binds llm + call + circle. Cast on an intent → entity runs.\n",
   );
 
-  const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+  const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
   const circle = Circle({
     gates: [add, done],
@@ -28,7 +28,7 @@ export async function main() {
   });
 
   const spell = cantrip({
-    llm: crystal,
+    llm: llm,
     identity: {
       system_prompt:
         "You are a calculator. Use the add tool, then call done with the result.",

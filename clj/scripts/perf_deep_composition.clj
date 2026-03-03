@@ -1,7 +1,7 @@
 (require '[cantrip.runtime :as runtime])
 
 (defn mk-terminal-child [answer]
-  {:crystal {:provider :fake
+  {:llm {:provider :fake
              :responses [{:tool-calls [{:id "done_1"
                                         :gate :done
                                         :args {:answer answer}}]}]}
@@ -21,11 +21,11 @@
     (if (zero? remaining)
       child
       (recur (dec remaining)
-             {:crystal {:provider :fake
+             {:llm {:provider :fake
                         :responses [{:content (mk-level-code child)}]}
               :call {:require-done-tool true}
               :circle {:medium :code
-                       :gates [:done :call_agent]
+                       :gates [:done :call_entity]
                        :wards [{:max-turns 4} {:max-depth 12}]}}))))
 
 (defn run-once [levels]

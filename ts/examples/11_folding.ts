@@ -57,7 +57,7 @@ export async function main() {
 
   const { toFold, toKeep } = partitionForFolding(thread, config);
   console.log(`Partition: ${toFold.length} turns to fold, ${toKeep.length} to keep.`);
-  console.log("Done. In production, fold() would call a crystal to summarize the folded turns.");
+  console.log("Done. In production, fold() would call a llm to summarize the folded turns.");
 
   return { turnCount, totalTokens, needsFolding, foldCount: toFold.length, keepCount: toKeep.length };
 }

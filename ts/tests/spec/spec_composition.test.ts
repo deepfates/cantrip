@@ -50,7 +50,7 @@ function makeLlm(responses: (() => any)[]) {
 describe("COMP-1a: delegation — child circle is subset of parent", () => {
   test("COMP-1a: parent cantrip delegates to child via gate that runs a nested cantrip", async () => {
     // Create a child cantrip
-    const childCrystal = makeLlm([
+    const childLlm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -67,7 +67,7 @@ describe("COMP-1a: delegation — child circle is subset of parent", () => {
     ]);
 
     const childSpell = cantrip({
-      llm: childCrystal as any,
+      llm: childLlm as any,
       identity: { system_prompt: "child agent" },
       circle: Circle({
         gates: [doneGate],
@@ -94,7 +94,7 @@ describe("COMP-1a: delegation — child circle is subset of parent", () => {
     );
 
     // Parent cantrip that uses call_entity
-    const parentCrystal = makeLlm([
+    const parentLlm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -124,7 +124,7 @@ describe("COMP-1a: delegation — child circle is subset of parent", () => {
     ]);
 
     const parentSpell = cantrip({
-      llm: parentCrystal as any,
+      llm: parentLlm as any,
       identity: { system_prompt: "parent agent" },
       circle: Circle({
         gates: [doneGate, callAgentGate],
@@ -143,7 +143,7 @@ describe("COMP-2: call_entity blocks parent until child completes", () => {
   test("COMP-2: parent waits for child cantrip to complete before continuing", async () => {
     const executionOrder: string[] = [];
 
-    const childCrystal = makeLlm([
+    const childLlm = makeLlm([
       () => {
         executionOrder.push("child_running");
         return {
@@ -163,7 +163,7 @@ describe("COMP-2: call_entity blocks parent until child completes", () => {
     ]);
 
     const childSpell = cantrip({
-      llm: childCrystal as any,
+      llm: childLlm as any,
       identity: { system_prompt: "compute" },
       circle: Circle({
         gates: [doneGate],
@@ -190,7 +190,7 @@ describe("COMP-2: call_entity blocks parent until child completes", () => {
       },
     );
 
-    const parentCrystal = makeLlm([
+    const parentLlm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -220,7 +220,7 @@ describe("COMP-2: call_entity blocks parent until child completes", () => {
     ]);
 
     const parentSpell = cantrip({
-      llm: parentCrystal as any,
+      llm: parentLlm as any,
       identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, callAgentGate],
@@ -245,7 +245,7 @@ describe("COMP-3: call_entity_batch returns results in request order", () => {
   test("COMP-3: batch delegation returns results in order", async () => {
     // Create child cantrips that return different results
     function makeChildCantrip(result: string) {
-      const crystal = makeLlm([
+      const llm = makeLlm([
         () => ({
           content: null,
           tool_calls: [
@@ -262,7 +262,7 @@ describe("COMP-3: call_entity_batch returns results in request order", () => {
       ]);
 
       return cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: { system_prompt: "child" },
         circle: Circle({
           gates: [doneGate],
@@ -298,7 +298,7 @@ describe("COMP-3: call_entity_batch returns results in request order", () => {
       },
     );
 
-    const parentCrystal = makeLlm([
+    const parentLlm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -328,7 +328,7 @@ describe("COMP-3: call_entity_batch returns results in request order", () => {
     ]);
 
     const parentSpell = cantrip({
-      llm: parentCrystal as any,
+      llm: parentLlm as any,
       identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, batchGate],
@@ -347,7 +347,7 @@ describe("COMP-4: child entity has independent context", () => {
   test("COMP-4: child cantrip does not see parent's messages", async () => {
     const childMessagesReceived: any[][] = [];
 
-    const childCrystal = {
+    const childLlm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -370,7 +370,7 @@ describe("COMP-4: child entity has independent context", () => {
     };
 
     const childSpell = cantrip({
-      llm: childCrystal as any,
+      llm: childLlm as any,
       identity: { system_prompt: "child system" },
       circle: Circle({
         gates: [doneGate],
@@ -395,7 +395,7 @@ describe("COMP-4: child entity has independent context", () => {
     );
 
     let parentCallCount = 0;
-    const parentCrystal = {
+    const parentLlm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -433,7 +433,7 @@ describe("COMP-4: child entity has independent context", () => {
     };
 
     const parentSpell = cantrip({
-      llm: parentCrystal as any,
+      llm: parentLlm as any,
       identity: { system_prompt: "parent secret context" },
       circle: Circle({
         gates: [doneGate, callAgentGate],
@@ -494,7 +494,7 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
     );
 
     let callCount = 0;
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -532,7 +532,7 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: Circle({
         gates: [doneGate, callAgentGate],
@@ -571,7 +571,7 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
       );
 
       let called = false;
-      const crystal = {
+      const llm = {
         model: "dummy",
         provider: "dummy",
         name: "dummy",
@@ -609,7 +609,7 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
       };
 
       return cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: { system_prompt: `agent at depth ${depth}` },
         circle: Circle({
           gates: [doneGate, callAgentGate],
@@ -625,19 +625,19 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
   });
 });
 
-// ── COMP-7: child can use different crystal ────────────────────────
+// ── COMP-7: child can use different llm ────────────────────────
 
-describe("COMP-7: child can use different crystal", () => {
-  test("COMP-7: parent and child use different crystals", async () => {
-    const parentCrystalCalls: string[] = [];
-    const childCrystalCalls: string[] = [];
+describe("COMP-7: child can use different llm", () => {
+  test("COMP-7: parent and child use different llms", async () => {
+    const parentLlmCalls: string[] = [];
+    const childLlmCalls: string[] = [];
 
-    const childCrystal = {
+    const childLlm = {
       model: "child-model",
       provider: "child",
       name: "child",
       async query() {
-        childCrystalCalls.push("child invoked");
+        childLlmCalls.push("child invoked");
         return {
           content: null,
           tool_calls: [
@@ -655,8 +655,8 @@ describe("COMP-7: child can use different crystal", () => {
     };
 
     const childSpell = cantrip({
-      llm: childCrystal as any,
-      identity: { system_prompt: "alternate crystal" },
+      llm: childLlm as any,
+      identity: { system_prompt: "alternate llm" },
       circle: Circle({
         gates: [doneGate],
         wards: [{ max_turns: 5, require_done_tool: true }],
@@ -678,12 +678,12 @@ describe("COMP-7: child can use different crystal", () => {
     );
 
     let parentCallCount = 0;
-    const parentCrystal = {
+    const parentLlm = {
       model: "parent-model",
       provider: "parent",
       name: "parent",
       async query() {
-        parentCrystalCalls.push("parent invoked");
+        parentLlmCalls.push("parent invoked");
         parentCallCount++;
         if (parentCallCount === 1) {
           return {
@@ -694,7 +694,7 @@ describe("COMP-7: child can use different crystal", () => {
                 type: "function",
                 function: {
                   name: "call_entity",
-                  arguments: JSON.stringify({ intent: "use different crystal" }),
+                  arguments: JSON.stringify({ intent: "use different llm" }),
                 },
               },
             ],
@@ -717,17 +717,17 @@ describe("COMP-7: child can use different crystal", () => {
     };
 
     const result = await cantrip({
-      llm: parentCrystal as any,
+      llm: parentLlm as any,
       identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
       }),
-    }).cast("test crystal override");
+    }).cast("test llm override");
 
     expect(result).toBe("from alternate");
-    expect(parentCrystalCalls.length).toBeGreaterThan(0);
-    expect(childCrystalCalls.length).toBeGreaterThan(0);
+    expect(parentLlmCalls.length).toBeGreaterThan(0);
+    expect(childLlmCalls.length).toBeGreaterThan(0);
   });
 });
 
@@ -763,7 +763,7 @@ describe("COMP-9: parent termination truncates active children", () => {
     );
 
     let callCount = 0;
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -787,7 +787,7 @@ describe("COMP-9: parent termination truncates active children", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, slowChildGate],
@@ -808,7 +808,7 @@ describe("COMP-9: parent termination truncates active children", () => {
 
 describe("COMP-8: child failure returns error to parent", () => {
   test("COMP-8: child error is caught by parent as gate error", async () => {
-    const childCrystal = {
+    const childLlm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -818,7 +818,7 @@ describe("COMP-8: child failure returns error to parent", () => {
     };
 
     const childSpell = cantrip({
-      llm: childCrystal as any,
+      llm: childLlm as any,
       identity: { system_prompt: "child" },
       circle: Circle({
         gates: [doneGate],
@@ -843,7 +843,7 @@ describe("COMP-8: child failure returns error to parent", () => {
     );
 
     let parentCallCount = 0;
-    const parentCrystal = {
+    const parentLlm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -882,7 +882,7 @@ describe("COMP-8: child failure returns error to parent", () => {
     };
 
     const result = await cantrip({
-      llm: parentCrystal as any,
+      llm: parentLlm as any,
       identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, callAgentGate],
@@ -906,10 +906,10 @@ describe("COMP-2: child blocks parent until complete (real child cantrip)", () =
 
     const callEntityGate = call_entity({ max_depth: 2, depth: 0 });
 
-    // The crystal is shared by parent and child (default SpawnFn reuses parent crystal).
+    // The llm is shared by parent and child (default SpawnFn reuses parent llm).
     // Track call order: parent call_entity → child runs → parent continues.
     let callCount = 0;
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -967,7 +967,7 @@ describe("COMP-2: child blocks parent until complete (real child cantrip)", () =
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, callEntityGate!],
@@ -1008,11 +1008,11 @@ describe("COMP-3: child entity gets own circle with gates and wards", () => {
       },
     });
 
-    // Track what tools the child sees via crystal.query(messages, tool_definitions, tool_choice)
+    // Track what tools the child sees via llm.query(messages, tool_definitions, tool_choice)
     let childToolNames: string[] = [];
     let callCount = 0;
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -1071,7 +1071,7 @@ describe("COMP-3: child entity gets own circle with gates and wards", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "parent with echo" },
       circle: Circle({
         gates: [doneGate, echoGate, callEntityGate!],
@@ -1102,7 +1102,7 @@ describe("LOOM-12: child turns in parent loom", () => {
     const callEntityGate = call_entity({ max_depth: 2, depth: 0 });
 
     let callCount = 0;
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -1160,7 +1160,7 @@ describe("LOOM-12: child turns in parent loom", () => {
     const sharedLoom = new Loom(new MemoryStorage());
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, callEntityGate!],

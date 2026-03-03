@@ -12,7 +12,7 @@ describe("integration: cantrip API", () => {
   it("cast() returns a result", async () => {
     const { cantrip, Circle, ChatAnthropic, done, gate, max_turns } = await import("../../src");
 
-    const crystal = new ChatAnthropic({ model });
+    const llm = new ChatAnthropic({ model });
     const echo = gate("Echo input", async ({ text }: { text: string }) => text, {
       name: "echo",
       params: { text: "string" },
@@ -23,7 +23,7 @@ describe("integration: cantrip API", () => {
     });
 
     const spell = cantrip({
-      llm: crystal,
+      llm: llm,
       identity: { system_prompt: "Call the echo tool with the user's message, then call done with the echoed text." },
       circle,
     });
@@ -36,7 +36,7 @@ describe("integration: cantrip API", () => {
   it("summon() returns an entity, entity.cast() works", async () => {
     const { cantrip, Circle, ChatAnthropic, done, gate, max_turns } = await import("../../src");
 
-    const crystal = new ChatAnthropic({ model });
+    const llm = new ChatAnthropic({ model });
     const echo = gate("Echo input", async ({ text }: { text: string }) => text, {
       name: "echo",
       params: { text: "string" },
@@ -47,7 +47,7 @@ describe("integration: cantrip API", () => {
     });
 
     const entity = cantrip({
-      llm: crystal,
+      llm: llm,
       identity: { system_prompt: "Call the echo tool with the user's message, then call done with the echoed text." },
       circle,
     }).summon();
@@ -68,7 +68,7 @@ describe("integration: cantrip API", () => {
   it("two casts of same cantrip are independent", async () => {
     const { cantrip, Circle, ChatAnthropic, done, gate, max_turns } = await import("../../src");
 
-    const crystal = new ChatAnthropic({ model });
+    const llm = new ChatAnthropic({ model });
 
     let callCount = 0;
     const counter = gate("Increment counter", async () => {
@@ -84,7 +84,7 @@ describe("integration: cantrip API", () => {
     });
 
     const spell = cantrip({
-      llm: crystal,
+      llm: llm,
       identity: { system_prompt: "Call the count tool once, then call done with the result." },
       circle,
     });

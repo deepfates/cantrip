@@ -48,7 +48,7 @@ function makeLlm(responses: (() => any)[]) {
 
 describe("ENTITY-1: entity only created by casting cantrip", () => {
   test("ENTITY-1: cantrip.cast() produces a result (entity ran)", async () => {
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -65,7 +65,7 @@ describe("ENTITY-1: entity only created by casting cantrip", () => {
     ]);
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -75,7 +75,7 @@ describe("ENTITY-1: entity only created by casting cantrip", () => {
   });
 
   test("ENTITY-1: cantrip.summon() produces an entity whose turn() runs the agent", async () => {
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -91,7 +91,7 @@ describe("ENTITY-1: entity only created by casting cantrip", () => {
       }),
     ]);
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -108,7 +108,7 @@ describe("ENTITY-1: entity only created by casting cantrip", () => {
 describe("ENTITY-2: each entity has unique ID", () => {
   test("ENTITY-2: two invocations produce independent entities", async () => {
     const messagesPerCall: any[][] = [];
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -131,7 +131,7 @@ describe("ENTITY-2: each entity has unique ID", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -157,7 +157,7 @@ describe("ENTITY-3: state grows monotonically within a thread", () => {
   test("ENTITY-3: messages array only grows across turns", async () => {
     let callCount = 0;
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -220,7 +220,7 @@ describe("ENTITY-3: state grows monotonically within a thread", () => {
     });
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, echoGate]),
     });
@@ -246,7 +246,7 @@ describe("ENTITY-3: state grows monotonically within a thread", () => {
   test("ENTITY-3: second cast() preserves prior state and grows further", async () => {
     let callCount = 0;
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -269,7 +269,7 @@ describe("ENTITY-3: state grows monotonically within a thread", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -290,7 +290,7 @@ describe("ENTITY-3: state grows monotonically within a thread", () => {
 
 describe("ENTITY-4: entity thread persists after termination", () => {
   test("ENTITY-4: agent history contains structured turns after query completes", async () => {
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -307,7 +307,7 @@ describe("ENTITY-4: entity thread persists after termination", () => {
     ]);
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -333,9 +333,9 @@ describe("ENTITY-4: entity thread persists after termination", () => {
 
 describe("ENTITY-5/6: summon and turn API", () => {
   test("ENTITY-5: summon() creates an entity without running a step", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -346,7 +346,7 @@ describe("ENTITY-5/6: summon and turn API", () => {
   });
 
   test("ENTITY-6: turn() runs one agent loop step and returns result", async () => {
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -363,7 +363,7 @@ describe("ENTITY-5/6: summon and turn API", () => {
     ]);
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });

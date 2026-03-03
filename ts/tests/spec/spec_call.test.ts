@@ -57,7 +57,7 @@ describe("CALL-1: call is immutable after construction", () => {
     // mutating spell.identity DOES affect subsequent casts.
     // TODO: enforce immutability via Object.freeze or defensive copy in cast()
     const messagesPerCall: any[][] = [];
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -80,7 +80,7 @@ describe("CALL-1: call is immutable after construction", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "You are helpful" },
       circle: makeCircle(),
     });
@@ -93,7 +93,7 @@ describe("CALL-1: call is immutable after construction", () => {
 
     await spell.cast("test immutability");
 
-    // Since immutability is NOT enforced, the crystal sees the mutated value
+    // Since immutability is NOT enforced, the llm sees the mutated value
     const systemMsg = messagesPerCall[0][0];
     expect(systemMsg.role).toBe("system");
     expect(systemMsg.content).toBe("You are evil");
@@ -103,11 +103,11 @@ describe("CALL-1: call is immutable after construction", () => {
 // ── CALL-2: system prompt is first message on every invocation ─────
 
 describe("CALL-2: system prompt is first message on every invocation", () => {
-  test("CALL-2: system prompt appears as first message in each crystal call", async () => {
+  test("CALL-2: system prompt appears as first message in each llm call", async () => {
     const messagesPerCall: any[][] = [];
     let callCount = 0;
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -146,7 +146,7 @@ describe("CALL-2: system prompt is first message on every invocation", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "You are a test agent" },
       circle: makeCircle([doneGate, echoGate]),
     });
@@ -165,7 +165,7 @@ describe("CALL-2: system prompt is first message on every invocation", () => {
 
 describe("CALL-3: gate definitions derived from circle", () => {
   test("CALL-3: cantrip derives gate definitions from circle gates", () => {
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -175,7 +175,7 @@ describe("CALL-3: gate definitions derived from circle", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, readGate]),
     });
@@ -205,7 +205,7 @@ describe("CALL-3: gate definitions derived from circle", () => {
 
 describe("CALL-4: call stored as root context in loom", () => {
   test("CALL-4: cantrip stores call info matching construction input", () => {
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -215,7 +215,7 @@ describe("CALL-4: call stored as root context in loom", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "You are a test agent", hyperparameters: { tool_choice: "required" } },
       circle: makeCircle(),
     });
@@ -271,7 +271,7 @@ describe("CALL-5: folding never compresses the system prompt", () => {
     const messagesPerCall: any[][] = [];
     let callCount = 0;
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -310,7 +310,7 @@ describe("CALL-5: folding never compresses the system prompt", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "Never forget this prompt" },
       circle: makeCircle([doneGate, echoGate]),
     });

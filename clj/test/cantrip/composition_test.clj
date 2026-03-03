@@ -3,7 +3,7 @@
             [clojure.test :refer [deftest is]]))
 
 (def parent-cantrip
-  {:crystal {:provider :fake
+  {:llm {:provider :fake
              :responses-by-invocation true
              :responses [{:tool-calls [{:id "p1" :gate :done :args {:answer "parent-1"}}]}
                          {:tool-calls [{:id "p2" :gate :done :args {:answer "parent-2"}}]}]}
@@ -16,7 +16,7 @@
   (let [entity (runtime/invoke parent-cantrip)
         _ (runtime/cast-intent entity "start parent")
         parent-last-id (:id (last @(:turn-history entity)))
-        child-cantrip {:crystal {:provider :fake
+        child-cantrip {:llm {:provider :fake
                                  :responses [{:tool-calls [{:id "c1" :gate :done :args {:answer "child"}}]}]}
                        :call {:system-prompt "child"}
                        :circle {:medium :conversation
@@ -30,7 +30,7 @@
 
 (deftest call-agent-enforces-child-circle-subset
   (let [entity (runtime/invoke parent-cantrip)
-        child-cantrip {:crystal {:provider :fake
+        child-cantrip {:llm {:provider :fake
                                  :responses [{:tool-calls [{:id "c1" :gate :done :args {:answer "child"}}]}]}
                        :call {:system-prompt "child"}
                        :circle {:medium :conversation
@@ -42,7 +42,7 @@
 
 (deftest call-agent-enforces-depth-ward
   (let [entity (runtime/invoke (assoc-in parent-cantrip [:circle :wards] [{:max-turns 3} {:max-depth 0}]))
-        child-cantrip {:crystal {:provider :fake
+        child-cantrip {:llm {:provider :fake
                                  :responses [{:tool-calls [{:id "c1" :gate :done :args {:answer "child"}}]}]}
                        :call {:system-prompt "child"}
                        :circle {:medium :conversation
@@ -54,11 +54,11 @@
 
 (deftest call-agent-batch-preserves-request-order
   (let [entity (runtime/invoke parent-cantrip)
-        child-a {:crystal {:provider :fake
+        child-a {:llm {:provider :fake
                            :responses [{:tool-calls [{:id "a1" :gate :done :args {:answer "a"}}]}]}
                  :call {:system-prompt "a"}
                  :circle {:medium :conversation :gates [:done] :wards [{:max-turns 2}]}}
-        child-b {:crystal {:provider :fake
+        child-b {:llm {:provider :fake
                            :responses [{:tool-calls [{:id "b1" :gate :done :args {:answer "b"}}]}]}
                  :call {:system-prompt "b"}
                  :circle {:medium :conversation :gates [:done] :wards [{:max-turns 2}]}}
@@ -68,7 +68,7 @@
 
 (deftest parent-survives-child-error
   (let [entity (runtime/invoke parent-cantrip)
-        child-cantrip {:crystal {:provider :fake
+        child-cantrip {:llm {:provider :fake
                                  :responses [{:error {:status 500 :message "boom"}}]}
                        :call {:system-prompt "child"}
                        :circle {:medium :conversation :gates [:done] :wards [{:max-turns 2}]}}

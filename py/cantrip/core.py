@@ -2,7 +2,7 @@
 
 from cantrip.errors import CantripError
 from cantrip.loom import Loom
-from cantrip.models import Identity, Circle, CrystalResponse, GateCallRecord, Thread, ToolCall, Turn
+from cantrip.models import Identity, Circle, LLMResponse, GateCallRecord, Thread, ToolCall, Turn
 from cantrip.providers.base import LLM
 from cantrip.providers.fake import FakeLLM
 from cantrip.providers.openai_compat import OpenAICompatLLM
@@ -13,7 +13,7 @@ __all__ = [
     "CantripError",
     "Identity",
     "Circle",
-    "CrystalResponse",
+    "LLMResponse",
     "LLM",
     "FakeLLM",
     "OpenAICompatLLM",

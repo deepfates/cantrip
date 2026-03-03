@@ -4,7 +4,7 @@ from pathlib import Path
 
 from cantrip import Identity, Cantrip, Circle
 from cantrip.errors import CantripError
-from cantrip.models import CrystalResponse, ToolCall
+from cantrip.models import LLMResponse, ToolCall
 from cantrip.loom import Loom, SQLiteLoomStore
 from cantrip.providers.fake import FakeLLM
 
@@ -53,7 +53,7 @@ def test_retry_on_provider_error() -> None:
 
 
 def test_retry_on_provider_timeout() -> None:
-    class _TimeoutThenSuccessCrystal:
+    class _TimeoutThenSuccessLLM:
         def __init__(self) -> None:
             self.calls = 0
 
@@ -61,13 +61,13 @@ def test_retry_on_provider_timeout() -> None:
             self.calls += 1
             if self.calls == 1:
                 raise CantripError("provider_timeout:slow upstream")
-            return CrystalResponse(
+            return LLMResponse(
                 content=None,
                 tool_calls=[ToolCall(id="c1", gate="done", args={"answer": "ok"})],
                 usage={"prompt_tokens": 1, "completion_tokens": 1},
             )
 
-    llm = _TimeoutThenSuccessCrystal()
+    llm = _TimeoutThenSuccessLLM()
     cantrip = Cantrip(
         llm=llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 3}]),

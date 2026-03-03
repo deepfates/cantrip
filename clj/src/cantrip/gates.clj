@@ -23,7 +23,7 @@
     :else []))
 
 (defn gate-tools
-  "Projects gate definitions into crystal tool metadata."
+  "Projects gate definitions into llm tool metadata."
   [gates]
   (cond
     (map? gates) (mapv (fn [[k v]]

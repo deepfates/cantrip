@@ -320,7 +320,7 @@ describe("medium capabilityDocs", () => {
     const { done } = require("../../../src/circle/gate/builtin/done");
 
     const config = {
-      crystals: { sonnet: { model: "mock", provider: "mock", name: "mock", query: async () => ({}) } },
+      llms: { sonnet: { model: "mock", provider: "mock", name: "mock", query: async () => ({}) } },
       mediums: { bash: () => ({}) },
       gates: { done: [done] },
       default_wards: [{ max_turns: 5 }],

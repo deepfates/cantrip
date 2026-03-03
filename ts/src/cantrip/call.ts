@@ -33,7 +33,7 @@ export function renderGateDefinitions(gates: BoundGate[]): GateDefinition[] {
 }
 
 /**
- * Hyperparameters control how the Crystal (LLM) generates responses.
+ * Hyperparameters control how the Llm (LLM) generates responses.
  */
 export type CallHyperparameters = {
   /** How the LLM should choose tools: "auto", "required", "none", or a specific tool name. */

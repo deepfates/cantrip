@@ -4,7 +4,7 @@ import copy
 import threading
 
 from cantrip.errors import CantripError
-from cantrip.models import CrystalResponse, ToolCall
+from cantrip.models import LLMResponse, ToolCall
 from cantrip.providers.base import LLM
 
 
@@ -64,7 +64,7 @@ class FakeLLM(LLM):
                             break
             if not has_match:
                 raise CantripError("tool result without matching tool call")
-            return CrystalResponse(
+            return LLMResponse(
                 content=tool_result.get("content"),
                 tool_calls=None,
                 usage=raw.get("usage"),
@@ -74,7 +74,7 @@ class FakeLLM(LLM):
             choice = raw["choices"][0]
             msg = choice["message"]
             usage = raw.get("usage", {})
-            return CrystalResponse(
+            return LLMResponse(
                 content=msg.get("content"),
                 tool_calls=[],
                 usage={
@@ -99,4 +99,4 @@ class FakeLLM(LLM):
         content = raw.get("content")
         if content is None and raw.get("code") is not None:
             content = raw.get("code")
-        return CrystalResponse(content=content, tool_calls=calls, usage=usage)
+        return LLMResponse(content=content, tool_calls=calls, usage=usage)

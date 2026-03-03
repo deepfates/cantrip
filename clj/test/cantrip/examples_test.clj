@@ -3,7 +3,7 @@
             [clojure.test :refer [deftest is]]))
 
 (deftest example-01-runs
-  (is (= "ok" (:result (examples/example-01-crystal-gate-primitives)))))
+  (is (= "ok" (:result (examples/example-01-llm-gate-primitives)))))
 
 (deftest example-02-runs
   (is (= "ok" (:result (examples/example-02-gate-primitives)))))

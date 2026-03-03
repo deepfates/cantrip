@@ -3,7 +3,7 @@
             [cantrip.acp-test]
             [cantrip.circle-test]
             [cantrip.composition-test]
-            [cantrip.crystal-test]
+            [cantrip.llm-test]
             [cantrip.domain-test]
             [cantrip.examples-test]
             [cantrip.gates-test]
@@ -17,7 +17,7 @@
   (let [{:keys [fail error]} (t/run-tests 'cantrip.acp-test
                                           'cantrip.circle-test
                                           'cantrip.composition-test
-                                          'cantrip.crystal-test
+                                          'cantrip.llm-test
                                           'cantrip.domain-test
                                           'cantrip.examples-test
                                           'cantrip.gates-test

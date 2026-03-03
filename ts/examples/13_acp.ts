@@ -15,7 +15,7 @@ export async function main() {
   console.log("Editors (VS Code, etc.) connect and interact with the entity.");
 
   serveCantripACP(async ({ params }) => {
-    const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+    const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
     const ctx = await SandboxContext.create(params.cwd);
 
     const workspace = {
@@ -31,7 +31,7 @@ export async function main() {
 
     // The entity auto-prepends capability docs from the circle.
     const entity = cantrip({
-      llm: crystal,
+      llm: llm,
       identity: `Coding assistant. Working dir: ${ctx.working_dir}`,
       circle,
       dependency_overrides: new Map([[getSandboxContext, () => ctx]]),

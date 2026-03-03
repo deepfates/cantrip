@@ -3,7 +3,7 @@ defmodule CantripM8RealLlmConfigTest do
 
   setup do
     previous = %{
-      provider: System.get_env("CANTRIP_CRYSTAL_PROVIDER"),
+      provider: System.get_env("CANTRIP_LLM_PROVIDER"),
       model: System.get_env("CANTRIP_MODEL"),
       openai_model: System.get_env("OPENAI_MODEL"),
       api_key: System.get_env("CANTRIP_API_KEY"),
@@ -14,7 +14,7 @@ defmodule CantripM8RealLlmConfigTest do
     }
 
     on_exit(fn ->
-      restore_env("CANTRIP_CRYSTAL_PROVIDER", previous.provider)
+      restore_env("CANTRIP_LLM_PROVIDER", previous.provider)
       restore_env("CANTRIP_MODEL", previous.model)
       restore_env("OPENAI_MODEL", previous.openai_model)
       restore_env("CANTRIP_API_KEY", previous.api_key)
@@ -26,7 +26,7 @@ defmodule CantripM8RealLlmConfigTest do
   end
 
   test "llm_from_env returns openai-compatible llm tuple" do
-    System.put_env("CANTRIP_CRYSTAL_PROVIDER", "openai_compatible")
+    System.put_env("CANTRIP_LLM_PROVIDER", "openai_compatible")
     System.put_env("OPENAI_MODEL", "gpt-5-mini")
     System.put_env("CANTRIP_MODEL", "ignored-by-openai-model")
     System.put_env("OPENAI_API_KEY", "sk-test")
@@ -40,7 +40,7 @@ defmodule CantripM8RealLlmConfigTest do
   end
 
   test "llm_from_env requires CANTRIP_MODEL" do
-    System.put_env("CANTRIP_CRYSTAL_PROVIDER", "openai_compatible")
+    System.put_env("CANTRIP_LLM_PROVIDER", "openai_compatible")
     System.delete_env("CANTRIP_MODEL")
     System.delete_env("OPENAI_MODEL")
     assert {:error, "missing CANTRIP_MODEL or OPENAI_MODEL"} = Cantrip.llm_from_env()

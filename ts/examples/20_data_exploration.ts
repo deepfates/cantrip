@@ -22,7 +22,7 @@ export async function main() {
   console.log("50 sales records injected as a global. Entity explores via code.");
   console.log("The viewport shows [Result: N chars] — data lives in variables.\n");
 
-  const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+  const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
   const circle = Circle({
     medium: vm({ state: { sales: SALES_DATA } }),
@@ -30,7 +30,7 @@ export async function main() {
   });
 
   const spell = cantrip({
-    llm: crystal,
+    llm: llm,
     identity: "You are a data analyst. The `sales` variable contains an array of sales records. Explore it with code — group, filter, aggregate. Use submit_answer() with your findings.",
     circle,
   });

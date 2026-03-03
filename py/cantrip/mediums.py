@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
 from cantrip.errors import CantripError
-from cantrip.models import Circle, CrystalResponse, GateCallRecord
+from cantrip.models import Circle, LLMResponse, GateCallRecord
 
 if TYPE_CHECKING:
     from cantrip.runtime import Cantrip
@@ -24,7 +24,7 @@ class Medium(ABC):
         *,
         cantrip: Cantrip,
         thread,
-        response: CrystalResponse,
+        response: LLMResponse,
         current_turn_id: str,
         circle: Circle,
         depth: int | None,
@@ -52,7 +52,7 @@ class ToolMedium(Medium):
         *,
         cantrip: Cantrip,
         thread,
-        response: CrystalResponse,
+        response: LLMResponse,
         current_turn_id: str,
         circle: Circle,
         depth: int | None,
@@ -111,7 +111,7 @@ class CodeMedium(Medium):
         *,
         cantrip: Cantrip,
         thread,
-        response: CrystalResponse,
+        response: LLMResponse,
         current_turn_id: str,
         circle: Circle,
         depth: int | None,
@@ -261,7 +261,7 @@ class BrowserMedium(ToolMedium):
         *,
         cantrip: Cantrip,
         thread,
-        response: CrystalResponse,
+        response: LLMResponse,
         current_turn_id: str,
         circle: Circle,
         depth: int | None,

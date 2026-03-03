@@ -48,9 +48,9 @@ function makeLlm(responses: (() => any)[]) {
 
 describe("cantrip", () => {
   test("cantrip() returns an object with .cast()", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -58,7 +58,7 @@ describe("cantrip", () => {
     expect(typeof spell.cast).toBe("function");
   });
 
-  test("cantrip() throws if crystal is missing", () => {
+  test("cantrip() throws if llm is missing", () => {
     expect(() =>
       cantrip({
         llm: undefined as any,
@@ -69,10 +69,10 @@ describe("cantrip", () => {
   });
 
   test("cantrip() throws if call is missing", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     expect(() =>
       cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: undefined as any,
         circle: makeCircle(),
       }),
@@ -80,10 +80,10 @@ describe("cantrip", () => {
   });
 
   test("cantrip() throws if circle is missing", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     expect(() =>
       cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: { system_prompt: "test" },
         circle: undefined as any,
       }),
@@ -91,14 +91,14 @@ describe("cantrip", () => {
   });
 
   test("CANTRIP-3: throws if circle has no done gate", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     const noDoneGate = gate("Not done", async () => "ok", {
       name: "other",
       schema: { type: "object", properties: {}, additionalProperties: false },
     });
     expect(() =>
       cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: { system_prompt: "test" },
         circle: makeCircle([noDoneGate]),
       }),
@@ -106,10 +106,10 @@ describe("cantrip", () => {
   });
 
   test("CANTRIP-3: throws if circle has no ward", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     expect(() =>
       cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: { system_prompt: "test" },
         circle: makeCircle([doneGate], []),
       }),
@@ -117,7 +117,7 @@ describe("cantrip", () => {
   });
 
   test("cast() runs the agent loop and returns the done result", async () => {
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -134,7 +134,7 @@ describe("cantrip", () => {
     ]);
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "You are a helper." },
       circle: makeCircle(),
     });
@@ -144,9 +144,9 @@ describe("cantrip", () => {
   });
 
   test("INTENT-1: cast() throws if intent is not provided", async () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -159,7 +159,7 @@ describe("cantrip", () => {
     // Track messages passed to LLM to verify independence
     const messagesPerCall: any[][] = [];
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -184,7 +184,7 @@ describe("cantrip", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "You are a helper." },
       circle: makeCircle(),
     });
@@ -213,9 +213,9 @@ describe("cantrip", () => {
   // ── summon() and cast() ──────────────────────────────────────────
 
   test("summon() returns an entity with .cast()", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -225,7 +225,7 @@ describe("cantrip", () => {
   });
 
   test("cast() runs the agent loop and returns the done result", async () => {
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -242,7 +242,7 @@ describe("cantrip", () => {
     ]);
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "You are a helper." },
       circle: makeCircle(),
     });
@@ -255,7 +255,7 @@ describe("cantrip", () => {
   test("two turns accumulate state (second turn sees first turn context)", async () => {
     const messagesPerCall: any[][] = [];
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -280,7 +280,7 @@ describe("cantrip", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "You are a helper." },
       circle: makeCircle(),
     });
@@ -303,7 +303,7 @@ describe("cantrip", () => {
   test("two summon() calls on same cantrip → independent entities", async () => {
     const messagesPerCall: any[][] = [];
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -328,7 +328,7 @@ describe("cantrip", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "You are a helper." },
       circle: makeCircle(),
     });
@@ -392,7 +392,7 @@ describe("cantrip", () => {
       },
     };
 
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [{
@@ -409,7 +409,7 @@ describe("cantrip", () => {
     });
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle,
     });
@@ -419,9 +419,9 @@ describe("cantrip", () => {
   });
 
   test("entity exposes spec parts (llm, identity, circle)", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -432,7 +432,7 @@ describe("cantrip", () => {
   });
 
   test("call with simple system_prompt derives gate_definitions from circle", async () => {
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -450,7 +450,7 @@ describe("cantrip", () => {
 
     // Providing call as just { system_prompt: "..." } — no gate_definitions or hyperparameters
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "Simple prompt" },
       circle: makeCircle(),
     });

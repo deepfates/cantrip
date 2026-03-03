@@ -53,7 +53,7 @@ describe("Entity loom integration", () => {
     const storage = new MemoryStorage();
     const loom = new Loom(storage);
 
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -70,7 +70,7 @@ describe("Entity loom integration", () => {
     ]);
 
     const entity = new Entity({
-      llm: crystal as any,
+      llm: llm as any,
       identity: {
         system_prompt: "You are a test entity.",
         hyperparameters: { tool_choice: "auto" },
@@ -95,7 +95,7 @@ describe("Entity loom integration", () => {
   });
 
   test("Entity works without loom (no recording)", async () => {
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -112,7 +112,7 @@ describe("Entity loom integration", () => {
     ]);
 
     const entity = new Entity({
-      llm: crystal as any,
+      llm: llm as any,
       identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "auto" },
@@ -130,7 +130,7 @@ describe("Entity loom integration", () => {
     const storage = new MemoryStorage();
     const loom = new Loom(storage);
 
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -147,7 +147,7 @@ describe("Entity loom integration", () => {
     ]);
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
       loom,
@@ -162,7 +162,7 @@ describe("Entity loom integration", () => {
   });
 
   test("Entity uses configurable retry values", async () => {
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -180,7 +180,7 @@ describe("Entity loom integration", () => {
 
     // Just verify it doesn't crash with custom retry config
     const entity = new Entity({
-      llm: crystal as any,
+      llm: llm as any,
       identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "auto" },
@@ -204,7 +204,7 @@ describe("Entity loom integration", () => {
     const loom = new Loom(storage);
 
     let callCount = 0;
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -227,7 +227,7 @@ describe("Entity loom integration", () => {
     };
 
     const entity = new Entity({
-      llm: crystal as any,
+      llm: llm as any,
       identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "auto" },

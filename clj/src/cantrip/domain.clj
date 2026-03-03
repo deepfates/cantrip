@@ -79,7 +79,7 @@
   [cantrip]
   (when-not (map? cantrip)
     (throw (ex-info "cantrip must be a map" {:rule "CANTRIP-1"})))
-  (doseq [k [:crystal :call :circle]]
+  (doseq [k [:llm :call :circle]]
     (when (or (not (contains? cantrip k))
               (nil? (get cantrip k)))
       (throw (ex-info (str "cantrip requires " (name k))

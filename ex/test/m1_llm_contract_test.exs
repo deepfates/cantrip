@@ -3,7 +3,7 @@ defmodule CantripM1LlmContractTest do
 
   alias Cantrip.FakeLLM
 
-  test "CRYSTAL-3 rejects empty llm response" do
+  test "LLM-3 rejects empty llm response" do
     llm = {FakeLLM, FakeLLM.new([%{content: nil, tool_calls: nil}])}
 
     {:ok, cantrip} =
@@ -13,7 +13,7 @@ defmodule CantripM1LlmContractTest do
              Cantrip.llm_query(cantrip, %{messages: [], tools: []})
   end
 
-  test "CRYSTAL-4 rejects duplicate tool identity ids" do
+  test "LLM-4 rejects duplicate tool identity ids" do
     llm =
       {FakeLLM,
        FakeLLM.new([
@@ -32,7 +32,7 @@ defmodule CantripM1LlmContractTest do
              Cantrip.llm_query(cantrip, %{messages: [], tools: []})
   end
 
-  test "CRYSTAL-5 forwards tool_choice in request" do
+  test "LLM-5 forwards tool_choice in request" do
     llm =
       {FakeLLM,
        FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}],
@@ -57,7 +57,7 @@ defmodule CantripM1LlmContractTest do
     assert request.tool_choice == "required"
   end
 
-  test "CRYSTAL-6 normalizes raw provider response shape" do
+  test "LLM-6 normalizes raw provider response shape" do
     llm =
       {FakeLLM,
        FakeLLM.new([

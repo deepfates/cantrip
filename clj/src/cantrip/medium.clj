@@ -33,10 +33,10 @@
   (merge
    (when-let [f (:call-agent-fn dependencies)]
      {'call-agent f
-      'call_agent f})
+      'call_entity f})
    (when-let [f (:call-agent-batch-fn dependencies)]
      {'call-agent-batch f
-      'call_agent_batch f})))
+      'call_entity_batch f})))
 
 (defn- ward-value
   [circle k]
@@ -117,7 +117,7 @@
                                        {:mutation :set-block}))))}))))
 
 (defmulti capability-view
-  "Returns medium capability description for crystal context assembly."
+  "Returns medium capability description for llm context assembly."
   (fn [circle _dependencies] (:medium circle)))
 
 (defmulti execute-utterance

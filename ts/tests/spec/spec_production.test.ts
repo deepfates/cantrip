@@ -67,7 +67,7 @@ function createEntity(opts: {
 describe("PROD-2: retried invocation appears as single turn", () => {
   test("PROD-2: retries on 429 and produces single result", async () => {
     let calls = 0;
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -95,7 +95,7 @@ describe("PROD-2: retried invocation appears as single turn", () => {
     };
 
     const entity = createEntity({
-      llm: crystal as any,
+      llm: llm as any,
       gates: [doneGate],
       system_prompt: "test",
       retry: { max_retries: 3, base_delay: 0, max_delay: 0 },
@@ -108,7 +108,7 @@ describe("PROD-2: retried invocation appears as single turn", () => {
 
   test("PROD-2: retried invocation produces single result (not two)", async () => {
     let calls = 0;
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -136,7 +136,7 @@ describe("PROD-2: retried invocation appears as single turn", () => {
     };
 
     const entity = createEntity({
-      llm: crystal as any,
+      llm: llm as any,
       gates: [doneGate],
       system_prompt: "test",
       retry: { max_retries: 3, base_delay: 0, max_delay: 0 },
@@ -157,7 +157,7 @@ describe("PROD-3: cumulative token tracking", () => {
   test("PROD-3: usage tracker accumulates tokens across turns", async () => {
     let callCount = 0;
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -197,7 +197,7 @@ describe("PROD-3: cumulative token tracking", () => {
     };
 
     const entity = createEntity({
-      llm: crystal as any,
+      llm: llm as any,
       gates: [doneGate, echoGate],
       system_prompt: "test",
     });
@@ -236,7 +236,7 @@ describe("PROD-5: ephemeral gate full result stored in loom", () => {
 
     let callCount = 0;
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -274,7 +274,7 @@ describe("PROD-5: ephemeral gate full result stored in loom", () => {
     };
 
     const entity = createEntity({
-      llm: crystal as any,
+      llm: llm as any,
       gates: [doneGate, ephemeralGate],
       system_prompt: "test",
     });

@@ -245,7 +245,7 @@ describe("Thread derivation", () => {
     expect(thread.state).toBe("active");
   });
 
-  test("threadToMessages converts turns to crystal messages", async () => {
+  test("threadToMessages converts turns to llm messages", async () => {
     await loom.append(
       makeTurn({
         id: "t1",

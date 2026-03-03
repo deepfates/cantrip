@@ -107,7 +107,7 @@ export function shouldFold(
  *
  * @param turnsToFold - The turns being summarized (oldest portion)
  * @param turnsToKeep - The recent turns kept verbatim
- * @param llm - Crystal to generate the summary
+ * @param llm - Llm to generate the summary
  * @param config - Folding configuration
  * @returns FoldResult with the new messages and fold metadata
  */

@@ -2,7 +2,7 @@
  * An Intent is a natural-language instruction that an Entity executes.
  *
  * It is the "what" — the user's goal expressed as a string.
- * The Entity interprets the Intent through its Crystal (LLM),
+ * The Entity interprets the Intent through its Llm (LLM),
  * using the Gates in its Circle to take actions in the world.
  *
  * Examples:

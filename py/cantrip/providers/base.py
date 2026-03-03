@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from cantrip.models import CrystalResponse
+from cantrip.models import LLMResponse
 
 
 class LLM(ABC):
@@ -13,8 +13,5 @@ class LLM(ABC):
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         tool_choice: str | None,
-    ) -> CrystalResponse:
+    ) -> LLMResponse:
         raise NotImplementedError
-
-
-Crystal = LLM

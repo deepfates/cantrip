@@ -19,7 +19,7 @@ from cantrip.code_runner import (
 from cantrip.errors import CantripError
 from cantrip.loom import InMemoryLoomStore, Loom
 from cantrip.mediums import medium_for
-from cantrip.models import Identity, Circle, CrystalResponse, GateCallRecord, Thread, Turn
+from cantrip.models import Identity, Circle, LLMResponse, GateCallRecord, Thread, Turn
 from cantrip.providers.base import LLM
 from cantrip.providers.fake import FakeLLM
 
@@ -549,12 +549,12 @@ class Cantrip:
         tool_choice,
         *,
         cancel_check: Callable[[], bool] | None = None,
-    ) -> CrystalResponse:
+    ) -> LLMResponse:
         max_retries = int(self.retry.get("max_retries", 0))
         retryable = set(self.retry.get("retryable_status_codes", []))
         attempts = 0
 
-        def _query_once() -> CrystalResponse:
+        def _query_once() -> LLMResponse:
             if cancel_check is None:
                 return llm.query(messages, tools, tool_choice)
             result_holder: dict[str, Any] = {}

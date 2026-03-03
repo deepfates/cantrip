@@ -79,14 +79,14 @@ describe("CIRCLE-1: circle must have done gate", () => {
   });
 
   test("CIRCLE-1: cantrip also validates done gate", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     const notDone = gate("Not done", async () => "ok", {
       name: "other",
       schema: { type: "object", properties: {}, additionalProperties: false },
     });
     expect(() =>
       cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: { system_prompt: "test" },
         circle: { gates: [notDone], wards: [{ max_turns: 10, require_done_tool: false }] } as any,
       }),
@@ -125,7 +125,7 @@ describe("CIRCLE-3: gate execution is synchronous from entity perspective", () =
       },
     });
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -164,7 +164,7 @@ describe("CIRCLE-3: gate execution is synchronous from entity perspective", () =
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, slowGate]),
     });
@@ -184,11 +184,11 @@ describe("CIRCLE-3: gate execution is synchronous from entity perspective", () =
 // ── CIRCLE-4: gate results visible in context ──────────────────────
 
 describe("CIRCLE-4: gate results visible in context", () => {
-  test("CIRCLE-4: echo gate result appears in next crystal invocation", async () => {
+  test("CIRCLE-4: echo gate result appears in next llm invocation", async () => {
     const messagesPerCall: any[][] = [];
     let callCount = 0;
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -227,7 +227,7 @@ describe("CIRCLE-4: gate results visible in context", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, echoGate]),
     });
@@ -260,7 +260,7 @@ describe("CIRCLE-5: gate errors returned as observations", () => {
     });
 
     let callCount = 0;
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -298,7 +298,7 @@ describe("CIRCLE-5: gate errors returned as observations", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, failingGate]),
     });
@@ -318,7 +318,7 @@ describe("CIRCLE-5: gate errors returned as observations", () => {
 describe("CIRCLE-6: wards enforced by circle not entity", () => {
   test("CIRCLE-6: max_turns ward truncates entity loop even without done", async () => {
     let callCount = 0;
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -341,7 +341,7 @@ describe("CIRCLE-6: wards enforced by circle not entity", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(
         [doneGate, echoGate],
@@ -391,7 +391,7 @@ describe("CIRCLE-7: multiple gate calls in one utterance executed in order", () 
       },
     });
 
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -424,7 +424,7 @@ describe("CIRCLE-7: multiple gate calls in one utterance executed in order", () 
     ]);
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle([doneTracked, echoTracked]),
     });
@@ -441,7 +441,7 @@ describe("CIRCLE-7: multiple gate calls in one utterance executed in order", () 
 
 describe("CIRCLE-8: done gate returns its argument as the result", () => {
   test("CIRCLE-8: done gate argument becomes cast result", async () => {
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -458,7 +458,7 @@ describe("CIRCLE-8: done gate returns its argument as the result", () => {
     ]);
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -501,7 +501,7 @@ describe("CIRCLE-10: gate dependencies injected at construction", () => {
 
     let callCount = 0;
     const messagesPerCall: any[][] = [];
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -540,7 +540,7 @@ describe("CIRCLE-10: gate dependencies injected at construction", () => {
     };
 
     const entity = new Entity({
-      llm: crystal as any,
+      llm: llm as any,
       identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "auto" },

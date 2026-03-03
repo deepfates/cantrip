@@ -2,7 +2,7 @@ defmodule Cantrip.Test.RealLLMEnv do
   @moduledoc false
 
   def enabled? do
-    env_on?("RUN_REAL_CRYSTAL_TESTS") or autodetect_cantrip_env?()
+    env_on?("RUN_REAL_LLM_TESTS") or autodetect_cantrip_env?()
   end
 
   def delegation_enabled? do

@@ -14,7 +14,7 @@ export async function main() {
   console.log("A parent entity delegates subtasks to child entities via call_entity.");
   console.log("Depth is limited by the ward — no infinite recursion.\n");
 
-  const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+  const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
   // Data to analyze — spread across categories so delegation is natural.
   const data = {
@@ -42,7 +42,7 @@ export async function main() {
 
   // The entity auto-prepends capability docs from the circle.
   const spell = cantrip({
-    llm: crystal,
+    llm: llm,
     identity: "Explore the context variable using code. Use call_entity to delegate sub-intents to child entities. Use submit_answer() when done.",
     circle,
     loom,

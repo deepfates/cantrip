@@ -1,6 +1,6 @@
 (ns cantrip.runtime
   (:refer-clojure :exclude [cast])
-  (:require [cantrip.crystal :as crystal]
+  (:require [cantrip.llm :as llm]
             [cantrip.domain :as domain]
             [cantrip.gates :as gates]
             [cantrip.loom :as loom]
@@ -38,7 +38,7 @@
   (let [{:keys [max-retries retryable-status-codes]} (retry-config cantrip)]
     (loop [attempt 0]
       (let [result (try
-                     {:ok (crystal/query (:crystal cantrip) query-params)}
+                     {:ok (llm/query (:llm cantrip) query-params)}
                      (catch clojure.lang.ExceptionInfo e
                        {:error e}))]
         (if-let [error (:error result)]
@@ -76,18 +76,18 @@
       (> child-max-turns parent-max-turns) "child max-turns must not exceed parent max-turns"
       :else nil)))
 
-(defn- crystal-by-selector
-  [named-crystals selector]
+(defn- llm-by-selector
+  [named-llms selector]
   (let [selector-k (cond
                      (keyword? selector) selector
                      (string? selector) (keyword selector)
                      :else nil)
         by-name (when (string? selector)
-                  (some (fn [[_ crystal]]
-                          (when (= selector (:name crystal))
-                            crystal))
-                        named-crystals))]
-    (or (get named-crystals selector-k)
+                  (some (fn [[_ llm]]
+                          (when (= selector (:name llm))
+                            llm))
+                        named-llms))]
+    (or (get named-llms selector-k)
         by-name)))
 
 (defn- normalize-request-gates
@@ -96,14 +96,14 @@
           (if (string? g) (keyword g) g))
         gates))
 
-(defn- child-crystal-by-depth
-  [named-crystals parent-depth]
+(defn- child-llm-by-depth
+  [named-llms parent-depth]
   (let [child-level (inc (long (or parent-depth 0)))]
-    (or (get named-crystals (keyword (str "child-crystal-l" child-level)))
-        (get named-crystals (keyword (str "child_crystal_l" child-level))))))
+    (or (get named-llms (keyword (str "child-llm-l" child-level)))
+        (get named-llms (keyword (str "child_llm_l" child-level))))))
 
 (def ^:private allowed-call-agent-request-keys
-  #{:intent :cantrip :crystal :gates})
+  #{:intent :cantrip :llm :gates})
 
 (defn- validate-call-agent-request!
   [request]
@@ -126,21 +126,21 @@
 
 (defn- derive-child-cantrip
   [parent-cantrip request dependencies parent-depth]
-  (let [named-crystals (:named-crystals dependencies)
-        default-child-crystal (:default-child-crystal dependencies)
+  (let [named-llms (:named-llms dependencies)
+        default-child-llm (:default-child-llm dependencies)
         requested-gates (:gates request)
-        requested-crystal (:crystal request)
-        depth-derived-crystal (when (and (nil? requested-crystal)
-                                         (nil? default-child-crystal))
-                                (child-crystal-by-depth named-crystals parent-depth))
-        chosen-crystal (or (when requested-crystal
-                             (crystal-by-selector named-crystals requested-crystal))
-                           (when (and (nil? requested-crystal)
-                                      default-child-crystal)
-                             default-child-crystal)
-                           depth-derived-crystal
-                           (:crystal parent-cantrip))]
-    (cond-> (assoc parent-cantrip :crystal chosen-crystal)
+        requested-llm (:llm request)
+        depth-derived-llm (when (and (nil? requested-llm)
+                                         (nil? default-child-llm))
+                                (child-llm-by-depth named-llms parent-depth))
+        chosen-llm (or (when requested-llm
+                             (llm-by-selector named-llms requested-llm))
+                           (when (and (nil? requested-llm)
+                                      default-child-llm)
+                             default-child-llm)
+                           depth-derived-llm
+                           (:llm parent-cantrip))]
+    (cond-> (assoc parent-cantrip :llm chosen-llm)
       (seq requested-gates)
       (assoc-in [:circle :gates] (normalize-request-gates requested-gates)))))
 
@@ -481,7 +481,7 @@
                          (:allow-inline-root-turn? parent-entity))
                   (let [synthetic-parent-turn {:entity-id (:entity-id parent-entity)
                                                :utterance {:content (or (:inline-intent parent-entity) intent)}
-                                               :observation [{:gate "call_agent"
+                                               :observation [{:gate "call_entity"
                                                               :arguments "{}"
                                                               :result "inline composition bridge"}]
                                                :metadata {:tokens_prompt 0

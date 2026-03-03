@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
 PATTERNS = [
     ("examples.patterns.01_primitive_loop", 1),
     ("examples.patterns.02_done_vs_truncated", 2),
-    ("examples.patterns.03_crystal_contract", 3),
+    ("examples.patterns.03_llm_contract", 3),
     ("examples.patterns.04_circle_invariants", 4),
     ("examples.patterns.05_ward_policies", 5),
     ("examples.patterns.06_provider_portability", 6),

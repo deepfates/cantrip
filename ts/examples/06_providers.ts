@@ -1,5 +1,5 @@
 // Example 06: Providers
-// Same cantrip, different crystal. Swap the crystal to use any LLM provider.
+// Same cantrip, different llm. Swap the llm to use any LLM provider.
 // The cantrip script stays the same — only the model changes.
 
 import "./env";
@@ -29,7 +29,7 @@ const add = gate(
 export async function main() {
   console.log("=== Example 06: Providers ===");
   console.log(
-    "The same cantrip works with any crystal. Only the model changes.\n",
+    "The same cantrip works with any llm. Only the model changes.\n",
   );
 
   const circle = Circle({
@@ -41,7 +41,7 @@ export async function main() {
     system_prompt: "You are a calculator. Use add, then call done.",
   };
 
-  const crystals = {
+  const llms = {
     anthropic: () => new ChatAnthropic({ model: "claude-sonnet-4-5" }),
     openai: () => new ChatOpenAI({ model: "gpt-5-mini" }),
     google: () => new ChatGoogle({ model: "gemini-3-flash-preview" }),
@@ -81,15 +81,15 @@ export async function main() {
   };
 
   const useFake = process.env.CANTRIP_FAKE_LLM === "1";
-  const provider = (process.argv[2] as keyof typeof crystals) || "anthropic";
-  const crystal = useFake ? fakeLlm : (crystals[provider]?.() ?? crystals.anthropic());
-  console.log(`Using llm: ${crystal.name} (${crystal.model})`);
+  const provider = (process.argv[2] as keyof typeof llms) || "anthropic";
+  const llm = useFake ? fakeLlm : (llms[provider]?.() ?? llms.anthropic());
+  console.log(`Using llm: ${llm.name} (${llm.model})`);
 
-  const spell = cantrip({ llm: crystal, identity: call, circle });
+  const spell = cantrip({ llm: llm, identity: call, circle });
   const result = await spell.cast("What is 7 + 8?");
   console.log(`Result: ${result}`);
 
-  console.log("\nSwap the llm: crystal, keep everything else.");
+  console.log("\nSwap the llm: llm, keep everything else.");
 
   return String(result);
 }

@@ -10,7 +10,7 @@ export async function main() {
   console.log("The browser medium gives the entity a headless browser to work in.");
   console.log("The entity writes Taiko code to navigate, click, and extract data.\n");
 
-  const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+  const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
   const circle = Circle({
     medium: browser({ headless: true, profile: "full" }),
@@ -18,7 +18,7 @@ export async function main() {
   });
 
   const spell = cantrip({
-    llm: crystal,
+    llm: llm,
     identity: {
       system_prompt: "You control a headless browser via Taiko. Navigate, click, extract data. Use submit_answer(value) to return your final result.",
     },

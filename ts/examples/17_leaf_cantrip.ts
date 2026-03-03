@@ -1,5 +1,5 @@
 // Example 17: Leaf Cantrip
-// Crystal + identity: call, no circle. The simplest possible cantrip — a single LLM call.
+// Llm + identity: call, no circle. The simplest possible cantrip — a single LLM call.
 // No gates, no medium, no wards. Intent in, answer out.
 
 import "./env";
@@ -7,14 +7,14 @@ import { cantrip, Circle, ChatAnthropic, max_turns } from "../src";
 
 export async function main() {
   console.log("=== Example 17: Leaf Cantrip ===");
-  console.log("A leaf cantrip has a minimal circle — just crystal + call + max_turns(1).");
+  console.log("A leaf cantrip has a minimal circle — just llm + call + max_turns(1).");
   console.log("One LLM call. Cheapest possible delegation.\n");
 
-  const crystal = new ChatAnthropic({ model: "claude-haiku-4-5" });
+  const llm = new ChatAnthropic({ model: "claude-haiku-4-5" });
 
   // Minimal circle — no gates, no medium. max_turns(1) = single response.
   const spell = cantrip({
-    llm: crystal,
+    llm: llm,
     identity: "You are a concise summarizer. Respond in one sentence.",
     circle: Circle({ wards: [max_turns(1)] }),
   });

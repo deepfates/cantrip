@@ -36,14 +36,14 @@ function makeCircle(gates: BoundGate[] = [doneGate], wards = [{ max_turns: 10, r
   return Circle({ gates, wards });
 }
 
-// ── CRYSTAL-1: crystal is stateless between invocations ────────────
+// ── LLM-1: llm is stateless between invocations ────────────
 
-describe("CRYSTAL-1: crystal is stateless between invocations", () => {
-  test("CRYSTAL-1: each invocation receives full context, not incremental", async () => {
+describe("LLM-1: llm is stateless between invocations", () => {
+  test("LLM-1: each invocation receives full context, not incremental", async () => {
     const messagesPerCall: any[][] = [];
     let callCount = 0;
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -82,7 +82,7 @@ describe("CRYSTAL-1: crystal is stateless between invocations", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, echoGate]),
     });
@@ -98,14 +98,14 @@ describe("CRYSTAL-1: crystal is stateless between invocations", () => {
   });
 });
 
-// ── CRYSTAL-2: crystal accepts many messages ───────────────────────
+// ── LLM-2: llm accepts many messages ───────────────────────
 
-describe("CRYSTAL-2: crystal accepts many messages", () => {
-  test("CRYSTAL-2: crystal handles 6 turns of accumulated context", async () => {
+describe("LLM-2: llm accepts many messages", () => {
+  test("LLM-2: llm handles 6 turns of accumulated context", async () => {
     let callCount = 0;
     const messagesPerCall: any[][] = [];
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -144,7 +144,7 @@ describe("CRYSTAL-2: crystal accepts many messages", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, echoGate]),
     });
@@ -159,13 +159,13 @@ describe("CRYSTAL-2: crystal accepts many messages", () => {
   });
 });
 
-// ── CRYSTAL-3: crystal must return content or tool_calls ───────────
+// ── LLM-3: llm must return content or tool_calls ───────────
 
-describe("CRYSTAL-3: crystal must return content or tool_calls", () => {
-  test("CRYSTAL-3: empty response with require_done=false returns empty string result", async () => {
-    // When crystal returns neither content nor tool_calls, and done is not required,
+describe("LLM-3: llm must return content or tool_calls", () => {
+  test("LLM-3: empty response with require_done=false returns empty string result", async () => {
+    // When llm returns neither content nor tool_calls, and done is not required,
     // the agent loop should terminate with an empty/summary string result
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -175,7 +175,7 @@ describe("CRYSTAL-3: crystal must return content or tool_calls", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(
         [doneGate],
@@ -191,16 +191,16 @@ describe("CRYSTAL-3: crystal must return content or tool_calls", () => {
   });
 });
 
-// ── CRYSTAL-4: tool calls must have unique IDs ─────────────────────
+// ── LLM-4: tool calls must have unique IDs ─────────────────────
 // TODO: untestable until the framework validates and rejects duplicate
 // tool call IDs. Currently duplicate IDs are silently accepted and both
-// calls are executed, which violates CRYSTAL-4 but isn't enforced.
+// calls are executed, which violates LLM-4 but isn't enforced.
 
-// ── CRYSTAL-5: required tool_choice forces gate use ────────────────
+// ── LLM-5: required tool_choice forces gate use ────────────────
 
-describe("CRYSTAL-5: required tool_choice forces gate use", () => {
-  test("CRYSTAL-5: tool_choice=required is stored in resolved call and passed to entity", async () => {
-    const crystal = {
+describe("LLM-5: required tool_choice forces gate use", () => {
+  test("LLM-5: tool_choice=required is stored in resolved call and passed to entity", async () => {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -222,7 +222,7 @@ describe("CRYSTAL-5: required tool_choice forces gate use", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "required" },
@@ -241,11 +241,11 @@ describe("CRYSTAL-5: required tool_choice forces gate use", () => {
   });
 });
 
-// ── CRYSTAL-6: provider responses normalized ───────────────────────
+// ── LLM-6: provider responses normalized ───────────────────────
 
-describe("CRYSTAL-6: provider responses normalized to crystal contract", () => {
-  test("CRYSTAL-6: crystal response with content returns content as result and tracks usage", async () => {
-    const crystal = {
+describe("LLM-6: provider responses normalized to llm contract", () => {
+  test("LLM-6: llm response with content returns content as result and tracks usage", async () => {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -259,7 +259,7 @@ describe("CRYSTAL-6: provider responses normalized to crystal contract", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(
         [doneGate],
@@ -274,7 +274,7 @@ describe("CRYSTAL-6: provider responses normalized to crystal contract", () => {
     // Content is normalized: returned as-is as the result string
     expect(result).toBe("hello");
 
-    // Usage is captured from the crystal response
+    // Usage is captured from the llm response
     const usage = await entity.get_usage();
     expect(usage.total_prompt_tokens).toBe(10);
     expect(usage.total_completion_tokens).toBe(5);

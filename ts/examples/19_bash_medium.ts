@@ -11,7 +11,7 @@ export async function main() {
   console.log("The entity works inside a bash shell as its primary medium.");
   console.log("Shell commands are the thinking substrate.\n");
 
-  const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+  const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
   const circle = Circle({
     medium: bash({ cwd: process.cwd() }),
@@ -19,7 +19,7 @@ export async function main() {
   });
 
   const spell = cantrip({
-    llm: crystal,
+    llm: llm,
     identity: "You work in a bash shell. Use shell commands to explore and answer questions. Use submit_answer <result> when done.",
     circle,
   });

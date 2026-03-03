@@ -16,7 +16,7 @@ export async function main() {
   console.log("A parent entity delegates subtasks to children via call_entity_batch.");
   console.log("Children run in parallel, each with independent context.\n");
 
-  const crystal = new ChatOpenAI({ model: "gpt-5-mini" });
+  const llm = new ChatOpenAI({ model: "gpt-5-mini" });
 
   // Data to analyze — three documents, each best handled by a focused child.
   const data = {
@@ -42,7 +42,7 @@ export async function main() {
   const loom = new Loom(new MemoryStorage());
 
   const spell = cantrip({
-    llm: crystal,
+    llm: llm,
     identity: "Analyze documents by delegating to child entities. Use call_entity_batch to process documents in parallel. Synthesize the results into a coherent summary. Use submit_answer() when done.",
     circle,
     loom,

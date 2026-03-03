@@ -3,9 +3,9 @@
             [cantrip.domain :as domain]))
 
 (deftest validate-cantrip-core-shape
-  (testing "CANTRIP-1 requires crystal, call, and circle"
+  (testing "CANTRIP-1 requires llm, call, and circle"
     (is (thrown-with-msg? clojure.lang.ExceptionInfo
-                          #"cantrip requires crystal"
+                          #"cantrip requires llm"
                           (domain/validate-cantrip!
                            {:call {} :circle {:medium :conversation
                                               :gates [:done]
@@ -16,7 +16,7 @@
     (is (thrown-with-msg? clojure.lang.ExceptionInfo
                           #"done gate"
                           (domain/validate-cantrip!
-                           {:crystal {}
+                           {:llm {}
                             :call {}
                             :circle {:medium :conversation
                                      :gates [:echo]
@@ -26,7 +26,7 @@
     (is (thrown-with-msg? clojure.lang.ExceptionInfo
                           #"truncation ward"
                           (domain/validate-cantrip!
-                           {:crystal {}
+                           {:llm {}
                             :call {}
                             :circle {:medium :conversation
                                      :gates [:done]
@@ -36,7 +36,7 @@
     (is (thrown-with-msg? clojure.lang.ExceptionInfo
                           #"exactly one medium"
                           (domain/validate-cantrip!
-                           {:crystal {}
+                           {:llm {}
                             :call {}
                             :circle {:medium :code
                                      :circle-type :tool
@@ -57,7 +57,7 @@
     (is (thrown-with-msg? clojure.lang.ExceptionInfo
                           #"max-batch-size must be a positive integer"
                           (domain/validate-cantrip!
-                           {:crystal {}
+                           {:llm {}
                             :call {}
                             :circle {:medium :conversation
                                      :gates [:done]
@@ -65,7 +65,7 @@
     (is (thrown-with-msg? clojure.lang.ExceptionInfo
                           #"max-eval-ms must be a positive integer"
                           (domain/validate-cantrip!
-                           {:crystal {}
+                           {:llm {}
                             :call {}
                             :circle {:medium :code
                                      :gates [:done]
@@ -73,7 +73,7 @@
     (is (thrown-with-msg? clojure.lang.ExceptionInfo
                           #"allow-require must be boolean"
                           (domain/validate-cantrip!
-                           {:crystal {}
+                           {:llm {}
                             :call {}
                             :circle {:medium :code
                                      :gates [:done]

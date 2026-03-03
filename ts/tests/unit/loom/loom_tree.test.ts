@@ -288,7 +288,7 @@ describe("Loom tree: child entities record into parent loom", () => {
     });
 
     // Create a child entity that records into the parent's loom
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [{
@@ -303,7 +303,7 @@ describe("Loom tree: child entities record into parent loom", () => {
     ]);
 
     const childEntity = new Entity({
-      llm: crystal as any,
+      llm: llm as any,
       identity: {
         system_prompt: "child system prompt",
         hyperparameters: { tool_choice: "auto" },
@@ -349,7 +349,7 @@ describe("Loom tree: child entities record into parent loom", () => {
     const storage = new MemoryStorage();
     const loom = new Loom(storage);
 
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [{
@@ -364,7 +364,7 @@ describe("Loom tree: child entities record into parent loom", () => {
     ]);
 
     const entity = new Entity({
-      llm: crystal as any,
+      llm: llm as any,
       identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "auto" },
@@ -394,7 +394,7 @@ describe("Loom tree: child entities record into parent loom", () => {
   test("backward compat: child without parent loom creates its own", async () => {
     // This verifies existing behavior: when no loom is passed,
     // the entity creates its own ephemeral loom.
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [{
@@ -410,7 +410,7 @@ describe("Loom tree: child entities record into parent loom", () => {
 
     // Entity without a loom — should work fine (no recording)
     const entity = new Entity({
-      llm: crystal as any,
+      llm: llm as any,
       identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "auto" },
@@ -455,7 +455,7 @@ describe("Loom tree: child entities record into parent loom", () => {
       },
     });
 
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [{
@@ -470,7 +470,7 @@ describe("Loom tree: child entities record into parent loom", () => {
     ]);
 
     const entity = new Entity({
-      llm: crystal as any,
+      llm: llm as any,
       identity: {
         system_prompt: "child prompt",
         hyperparameters: { tool_choice: "auto" },

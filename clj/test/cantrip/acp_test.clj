@@ -3,7 +3,7 @@
             [cantrip.protocol.acp :as acp]))
 
 (def acp-cantrip
-  {:crystal {:provider :fake
+  {:llm {:provider :fake
              :responses [{:content "ok"}]}
    :call {:system-prompt "test"}
    :circle {:medium :conversation
@@ -48,7 +48,7 @@
     (is (= ["first" "second"] (get-in r4 [:sessions sid :history])))))
 
 (deftest acp-output-redacts-secrets
-  (let [cantrip {:crystal {:provider :fake
+  (let [cantrip {:llm {:provider :fake
                            :responses [{:content "token sk-proj-secret"}]}
                  :call {:system-prompt "test"}
                  :circle {:medium :conversation
@@ -67,7 +67,7 @@
 
 (deftest session-uses-persistent-invoked-entity
   (let [invocations (atom [])
-        cantrip {:crystal {:provider :fake
+        cantrip {:llm {:provider :fake
                            :record-inputs true
                            :invocations invocations
                            :responses [{:tool-calls [{:id "call_1"

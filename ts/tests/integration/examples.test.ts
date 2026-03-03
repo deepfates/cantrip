@@ -46,8 +46,8 @@ describe("examples", () => {
 
   // ── LLM examples (Anthropic): skip without API key ─────────────
 
-  test.skipIf(!hasAnthropicKey)("01_crystal: raw model call returns content", async () => {
-    const { main } = await import("../../examples/01_crystal");
+  test.skipIf(!hasAnthropicKey)("01_llm: raw model call returns content", async () => {
+    const { main } = await import("../../examples/01_llm");
     const result = await main();
     expect(typeof result).toBe("string");
     expect(result).toContain("4");

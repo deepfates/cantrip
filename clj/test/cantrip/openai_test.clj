@@ -1,6 +1,6 @@
 (ns cantrip.openai-test
   (:require [clojure.test :refer [deftest is testing]]
-            [cantrip.crystal :as crystal]))
+            [cantrip.llm :as llm]))
 
 ;; ---------------------------------------------------------------------------
 ;; Unit tests (always run, no API key needed)
@@ -11,7 +11,7 @@
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo
          #"API key is required"
-         (crystal/query {:provider :openai
+         (llm/query {:provider :openai
                          :model "gpt-4o-mini"
                          :api-key nil}
                         {:turn-index 0
@@ -24,8 +24,8 @@
   (testing "throws on unknown provider keyword"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo
-         #"unknown crystal provider"
-         (crystal/query {:provider :llama-local}
+         #"unknown llm provider"
+         (llm/query {:provider :llama-local}
                         {:turn-index 0
                          :messages [{:role :user :content "hi"}]
                          :tools []
@@ -34,7 +34,7 @@
 
 (deftest fake-provider-still-works
   (testing "existing fake provider is not broken"
-    (let [resp (crystal/query {:provider :fake
+    (let [resp (llm/query {:provider :fake
                                :responses [{:content "hello from fake"}]}
                               {:turn-index 0
                                :messages []
@@ -51,7 +51,7 @@
   (let [api-key (System/getenv "OPENAI_API_KEY")]
     (when (and api-key (pos? (count api-key)))
       (testing "can make a real completion request"
-        (let [resp (crystal/query {:provider :openai
+        (let [resp (llm/query {:provider :openai
                                    :model "gpt-4o-mini"
                                    :api-key api-key}
                                   {:turn-index 0
@@ -68,7 +68,7 @@
   (let [api-key (System/getenv "OPENAI_API_KEY")]
     (when (and api-key (pos? (count api-key)))
       (testing "can invoke tools via OpenAI function calling"
-        (let [resp (crystal/query {:provider :openai
+        (let [resp (llm/query {:provider :openai
                                    :model "gpt-4o-mini"
                                    :api-key api-key}
                                   {:turn-index 0

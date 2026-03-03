@@ -4,7 +4,7 @@
             [cantrip.runtime :as runtime]))
 
 (def valid-cantrip
-  {:crystal {:provider :fake}
+  {:llm {:provider :fake}
    :call {:system-prompt "test"}
    :circle {:medium :conversation
             :gates [:done]
@@ -21,7 +21,7 @@
 
 (deftest cast-terminates-on-successful-done
   (let [cantrip (assoc valid-cantrip
-                       :crystal {:provider :fake
+                       :llm {:provider :fake
                                  :responses [{:tool-calls [{:id "call_1"
                                                             :gate :done
                                                             :args {:answer "ok"}}]}]})
@@ -32,7 +32,7 @@
 
 (deftest malformed-done-does-not-terminate
   (let [cantrip (assoc valid-cantrip
-                       :crystal {:provider :fake
+                       :llm {:provider :fake
                                  :responses [{:tool-calls [{:id "call_1"
                                                             :gate :done
                                                             :args {}}]}
@@ -48,7 +48,7 @@
 
 (deftest text-only-termination-default
   (let [cantrip (assoc valid-cantrip
-                       :crystal {:provider :fake
+                       :llm {:provider :fake
                                  :responses [{:content "plain response"}]})
         result (runtime/cast cantrip "hello")]
     (is (= :terminated (:status result)))
@@ -59,7 +59,7 @@
   (let [cantrip (-> valid-cantrip
                     (assoc :call {:system-prompt "test"
                                   :require-done-tool true})
-                    (assoc :crystal {:provider :fake
+                    (assoc :llm {:provider :fake
                                      :responses [{:content "thinking"}
                                                  {:tool-calls [{:id "call_1"
                                                                 :gate :done
@@ -73,7 +73,7 @@
   (let [cantrip (-> valid-cantrip
                     (assoc :call {:system-prompt "test"
                                   :require-done-tool true})
-                    (assoc :crystal {:provider :fake
+                    (assoc :llm {:provider :fake
                                      :responses [{:content "a"}
                                                  {:content "b"}
                                                  {:content "c"}]}))
@@ -82,9 +82,9 @@
     (is (nil? (:result result)))
     (is (= 2 (count (:turns result))))))
 
-(deftest cast-builds-call-context-for-crystal
+(deftest cast-builds-call-context-for-llm
   (let [invocations (atom [])
-        cantrip {:crystal {:provider :fake
+        cantrip {:llm {:provider :fake
                            :record-inputs true
                            :invocations invocations
                            :responses [{:tool-calls [{:id "call_1"
@@ -109,7 +109,7 @@
 
 (deftest cast-derives-tools-from-circle-gates
   (let [invocations (atom [])
-        cantrip {:crystal {:provider :fake
+        cantrip {:llm {:provider :fake
                            :record-inputs true
                            :invocations invocations
                            :responses [{:tool-calls [{:id "call_1"
@@ -129,7 +129,7 @@
 (deftest invoke-cast-intent-persists-turn-history
   (let [invocations (atom [])
         entity (runtime/invoke
-                {:crystal {:provider :fake
+                {:llm {:provider :fake
                            :record-inputs true
                            :invocations invocations
                            :responses [{:tool-calls [{:id "call_1"
@@ -151,7 +151,7 @@
     (is (= 4 (count (-> @invocations second :messages))))))
 
 (deftest cast-tracks-usage-and-turn-metadata
-  (let [cantrip {:crystal {:provider :fake
+  (let [cantrip {:llm {:provider :fake
                            :responses [{:tool-calls [{:id "call_1"
                                                       :gate :echo
                                                       :args {:text "1"}}]
@@ -180,7 +180,7 @@
 
 (deftest cast-retries-retryable-provider-errors-in-single-turn
   (let [invocations (atom [])
-        cantrip {:crystal {:provider :fake
+        cantrip {:llm {:provider :fake
                            :record-inputs true
                            :responses-by-invocation true
                            :invocations invocations
@@ -203,7 +203,7 @@
 (deftest folding-limits-context-with-summary-message
   (let [invocations (atom [])
         entity (runtime/invoke
-                {:crystal {:provider :fake
+                {:llm {:provider :fake
                            :record-inputs true
                            :responses-by-invocation true
                            :invocations invocations
@@ -225,7 +225,7 @@
 
 (deftest ephemeral-observations-compact-older-turn-messages
   (let [invocations (atom [])
-        cantrip {:crystal {:provider :fake
+        cantrip {:llm {:provider :fake
                            :record-inputs true
                            :invocations invocations
                            :responses [{:tool-calls [{:id "call_1" :gate :echo :args {:text "one"}}]}
@@ -245,7 +245,7 @@
     (is (= "one" first-turn-observation))))
 
 (deftest code-medium-call-agent-binding-invokes-child-runtime
-  (let [child-cantrip {:crystal {:provider :fake
+  (let [child-cantrip {:llm {:provider :fake
                                  :responses [{:tool-calls [{:id "c1"
                                                             :gate :done
                                                             :args {:answer "child-ok"}}]}]}
@@ -256,11 +256,11 @@
         code (str "(submit-answer (call-agent {:cantrip "
                   (pr-str child-cantrip)
                   " :intent \"child\"}))")
-        cantrip {:crystal {:provider :fake
+        cantrip {:llm {:provider :fake
                            :responses [{:content code}]}
                  :call {:require-done-tool true}
                  :circle {:medium :code
-                          :gates [:done :call_agent]
+                          :gates [:done :call_entity]
                           :wards [{:max-turns 3} {:max-depth 1}]}}
         result (runtime/cast cantrip "compose via code")]
     (is (= :terminated (:status result)))
@@ -276,7 +276,7 @@
 (deftest call-agent-batch-enforces-vector-and-max-size
   (let [entity (runtime/invoke (assoc-in valid-cantrip [:circle :wards]
                                          [{:max-turns 2} {:max-batch-size 1}]))
-        child {:cantrip {:crystal {:provider :fake
+        child {:cantrip {:llm {:provider :fake
                                    :responses [{:tool-calls [{:id "c1" :gate :done :args {:answer "ok"}}]}]}
                          :call {}
                          :circle {:medium :conversation :gates [:done] :wards [{:max-turns 1}]}}

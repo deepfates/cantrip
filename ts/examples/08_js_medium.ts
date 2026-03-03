@@ -10,7 +10,7 @@ export async function main() {
   console.log("The JS medium gives the entity a QuickJS sandbox to work in.");
   console.log("Data is injected as globals; the entity explores it with code.\n");
 
-  const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+  const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
   const data = {
     items: [
@@ -28,7 +28,7 @@ export async function main() {
   // The entity auto-prepends capability docs from the circle.
   // This call string is pure strategy.
   const spell = cantrip({
-    llm: crystal,
+    llm: llm,
     identity: "Explore the context variable using the js tool. Use submit_answer() when you have a final answer.",
     circle,
   });

@@ -11,7 +11,7 @@ export async function main() {
   console.log("The vm medium gives the entity a node:vm sandbox.");
   console.log("Full ES2024. Async/await. No serialization boundary.\n");
 
-  const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+  const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
   const data = {
     users: [
@@ -27,7 +27,7 @@ export async function main() {
   });
 
   const spell = cantrip({
-    llm: crystal,
+    llm: llm,
     identity: "Explore the context variable using code. Use submit_answer() when done.",
     circle,
   });

@@ -54,8 +54,8 @@ function makeLlm(responses: (() => any)[]) {
 // ── LOOP-1: turns alternate between entity and circle ──────────────
 
 describe("LOOP-1: turns alternate between entity and circle", () => {
-  test("LOOP-1: entity invokes llm: crystal, circle processes gate calls, loop terminates", async () => {
-    const crystal = makeLlm([
+  test("LOOP-1: entity invokes llm: llm, circle processes gate calls, loop terminates", async () => {
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -72,7 +72,7 @@ describe("LOOP-1: turns alternate between entity and circle", () => {
     ]);
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
@@ -86,10 +86,10 @@ describe("LOOP-1: turns alternate between entity and circle", () => {
 
 describe("LOOP-2: cantrip without truncation ward is invalid", () => {
   test("LOOP-2: throws if circle has no wards", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     expect(() =>
       cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: { system_prompt: "test" },
         circle: { gates: [doneGate], wards: [] } as any,
       }),
@@ -97,14 +97,14 @@ describe("LOOP-2: cantrip without truncation ward is invalid", () => {
   });
 
   test("LOOP-2: cantrip with require_done but no done gate throws via CANTRIP-3", () => {
-    const crystal = makeLlm([]);
+    const llm = makeLlm([]);
     const notDone = gate("Other", async () => "ok", {
       name: "other",
       schema: { type: "object", properties: {}, additionalProperties: false },
     });
     expect(() =>
       cantrip({
-        llm: crystal as any,
+        llm: llm as any,
         identity: { system_prompt: "test" },
         circle: { gates: [notDone], wards: [{ max_turns: 10, require_done_tool: true }] } as any,
       }),
@@ -144,7 +144,7 @@ describe("LOOP-3: done gate stops the loop immediately", () => {
       },
     });
 
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: null,
         tool_calls: [
@@ -177,7 +177,7 @@ describe("LOOP-3: done gate stops the loop immediately", () => {
     ]);
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle([doneTracked, echoTracked]),
     });
@@ -195,7 +195,7 @@ describe("LOOP-3: done gate stops the loop immediately", () => {
 describe("LOOP-4: max turns ward truncates the loop", () => {
   test("LOOP-4: loop stops after max_turns and result indicates truncation", async () => {
     let callCount = 0;
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -218,7 +218,7 @@ describe("LOOP-4: max turns ward truncates the loop", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(
         [doneGate, echoGate],
@@ -239,11 +239,11 @@ describe("LOOP-4: max turns ward truncates the loop", () => {
 // ── LOOP-5: entity receives all prior turns as context ─────────────
 
 describe("LOOP-5: entity receives all prior turns as context", () => {
-  test("LOOP-5: crystal invocations accumulate messages", async () => {
+  test("LOOP-5: llm invocations accumulate messages", async () => {
     const messagesPerCall: any[][] = [];
     let callCount = 0;
 
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -282,7 +282,7 @@ describe("LOOP-5: entity receives all prior turns as context", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, echoGate]),
     });
@@ -300,7 +300,7 @@ describe("LOOP-5: entity receives all prior turns as context", () => {
 
 describe("LOOP-6: text-only response behavior", () => {
   test("LOOP-6: text-only response terminates when done not required", async () => {
-    const crystal = makeLlm([
+    const llm = makeLlm([
       () => ({
         content: "The answer is 42",
         tool_calls: [],
@@ -308,7 +308,7 @@ describe("LOOP-6: text-only response behavior", () => {
     ]);
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(
         [doneGate],
@@ -322,7 +322,7 @@ describe("LOOP-6: text-only response behavior", () => {
 
   test("LOOP-6: text-only response continues when done required", async () => {
     let callCount = 0;
-    const crystal = {
+    const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
@@ -348,7 +348,7 @@ describe("LOOP-6: text-only response behavior", () => {
     };
 
     const spell = cantrip({
-      llm: crystal as any,
+      llm: llm as any,
       identity: { system_prompt: "test" },
       circle: makeCircle(
         [doneGate],

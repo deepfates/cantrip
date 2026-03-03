@@ -63,14 +63,14 @@ defmodule Cantrip do
   Required env:
   - `CANTRIP_MODEL` (or provider-specific: `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL`)
   Optional env:
-  - `CANTRIP_CRYSTAL_PROVIDER` (default: `openai_compatible`)
+  - `CANTRIP_LLM_PROVIDER` (default: `openai_compatible`)
   - `CANTRIP_API_KEY` (or provider-specific: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`)
   - `CANTRIP_BASE_URL` (or provider-specific variants)
   - `CANTRIP_TIMEOUT_MS` (default: `30000`)
 
   Provider-specific env vars take precedence over `CANTRIP_*` generics,
   so you can have all three API keys set simultaneously and switch via
-  `CANTRIP_CRYSTAL_PROVIDER`.
+  `CANTRIP_LLM_PROVIDER`.
   """
   @spec new_from_env(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
   def new_from_env(attrs \\ %{}) do
@@ -83,7 +83,7 @@ defmodule Cantrip do
 
   @spec llm_from_env() :: {:ok, {module(), map()}} | {:error, String.t()}
   def llm_from_env do
-    provider = System.get_env("CANTRIP_CRYSTAL_PROVIDER", "openai_compatible")
+    provider = System.get_env("CANTRIP_LLM_PROVIDER", "openai_compatible")
 
     case provider do
       "openai_compatible" ->

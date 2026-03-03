@@ -14,7 +14,7 @@ export async function main() {
   console.log("JS medium + filesystem gates = a coding agent that writes and runs code.");
   console.log("The entity works IN a QuickJS sandbox; fs gates cross in as host functions.");
 
-  const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+  const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
   const fsCtx = await SandboxContext.create();
 
   const workspace = {
@@ -30,7 +30,7 @@ export async function main() {
 
   // The entity auto-prepends capability docs from the circle.
   const entity = cantrip({
-    llm: crystal,
+    llm: llm,
     identity: `Coding agent with filesystem access. Working dir: ${fsCtx.working_dir}`,
     circle,
     dependency_overrides: new Map([[getSandboxContext, () => fsCtx]]),

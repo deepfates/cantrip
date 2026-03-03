@@ -149,7 +149,7 @@ Each cast() invokes an LLM — be cost-aware. Here are the patterns:
   }));
   const summaries = await cast_batch(handles);  // all N run in parallel, returns string[]
 
-**Available crystals:** Any model ID — "anthropic/claude-haiku-4.5", "anthropic/claude-sonnet-4-5", etc.
+**Available llms:** Any model ID — "anthropic/claude-haiku-4.5", "anthropic/claude-sonnet-4-5", etc.
 **Available mediums:** "bash", "js", "vm", "browser".
 **Gate sets:** "done". Handle is consumed on cast — create a new cantrip for each task.
 ${
@@ -197,7 +197,7 @@ export async function main(intent?: string) {
 
     serveCantripACP(async ({ params, sessionId, connection }) => {
       const repoRoot = params.cwd ?? process.cwd();
-      const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+      const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
       const { loom, loomPath } = createLoom(repoRoot);
       await loom.load();
 
@@ -236,7 +236,7 @@ export async function main(intent?: string) {
       });
 
       const entity = new Entity({
-        llm: crystal,
+        llm: llm,
         identity: {
           system_prompt: SYSTEM_PROMPT(repoRoot, loomPath),
           hyperparameters: { tool_choice: "auto" },
@@ -272,7 +272,7 @@ export async function main(intent?: string) {
 
   // ── REPL / single-shot ───────────────────────────────────────────
   const repoRoot = process.cwd();
-  const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+  const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
   // Use ephemeral loom when called programmatically (tests), persistent otherwise
   const ephemeral = !!intent;
@@ -315,7 +315,7 @@ export async function main(intent?: string) {
   });
 
   const entity = new Entity({
-    llm: crystal,
+    llm: llm,
     identity: {
       system_prompt: SYSTEM_PROMPT(repoRoot, loomPath),
       hyperparameters: { tool_choice: "auto" },
