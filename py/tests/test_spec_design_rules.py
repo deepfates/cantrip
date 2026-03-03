@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from cantrip import Cantrip, Circle, FakeCrystal
+from cantrip import Cantrip, Circle, FakeLLM
 from cantrip.acp_server import CantripACPServer
 from cantrip.adapters import cast_via_acp, cast_via_cli, cast_via_http
 from cantrip.cli_runner import run_cli
@@ -11,7 +11,7 @@ from cantrip.http_router import CantripHTTPRouter
 
 def _build_tool_cantrip() -> Cantrip:
     return Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "record_inputs": True,
                 "responses": [
@@ -25,7 +25,7 @@ def _build_tool_cantrip() -> Cantrip:
 
 def _build_code_cantrip() -> Cantrip:
     return Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "record_inputs": True,
                 "responses": [
@@ -38,7 +38,7 @@ def _build_code_cantrip() -> Cantrip:
 
 
 def _snapshot_first_query(cantrip: Cantrip) -> dict[str, object]:
-    inv = cantrip.crystal.invocations[0]
+    inv = cantrip.llm.invocations[0]
     return {
         "tool_choice": inv["tool_choice"],
         "tools": [t["name"] for t in inv["tools"]],

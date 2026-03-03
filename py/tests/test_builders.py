@@ -41,4 +41,4 @@ def test_builders_support_disabling_provider_timeout(monkeypatch, tmp_path) -> N
     monkeypatch.setenv("CANTRIP_OPENAI_TIMEOUT_S", "0")
 
     cantrip = build_cantrip_from_env(repo_root=repo_root, fake=False, dotenv=".env")
-    assert cantrip.crystal.timeout_s is None
+    assert cantrip.llm.timeout_s is None

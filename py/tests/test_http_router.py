@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from cantrip import Cantrip, Circle, FakeCrystal
+from cantrip import Cantrip, Circle, FakeLLM
 from cantrip.http_router import CantripHTTPRouter
 
 
 def _build_tool_cantrip() -> Cantrip:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "record_inputs": True,
             "responses": [
@@ -14,13 +14,13 @@ def _build_tool_cantrip() -> Cantrip:
         }
     )
     return Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 3}]),
     )
 
 
 def _build_code_cantrip() -> Cantrip:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "record_inputs": True,
             "responses": [
@@ -29,13 +29,13 @@ def _build_code_cantrip() -> Cantrip:
         }
     )
     return Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 3}], medium="code"),
     )
 
 
 def _snapshot_invocation(cantrip: Cantrip):
-    inv = cantrip.crystal.invocations[0]
+    inv = cantrip.llm.invocations[0]
     return {
         "tool_choice": inv["tool_choice"],
         "tools": [t["name"] for t in inv["tools"]],

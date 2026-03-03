@@ -5,12 +5,15 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class Call:
+class Identity:
     system_prompt: str | None = None
     temperature: float | None = None
     require_done_tool: bool = False
     tool_choice: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
+
+
+Call = Identity
 
 
 @dataclass
@@ -46,7 +49,7 @@ class Circle:
                     delay_ms=g.get("delay_ms"),
                     result=g.get("result"),
                     error=g.get("error"),
-                    depends=g.get("depends"),
+                    depends=g.get("depends", g.get("dependencies")),
                     ephemeral=bool(g.get("ephemeral", False)),
                 )
 
@@ -122,7 +125,7 @@ class Thread:
     id: str
     entity_id: str
     intent: str
-    call: Call
+    call: Identity
     turns: list[Turn] = field(default_factory=list)
     result: Any = None
     terminated: bool = False

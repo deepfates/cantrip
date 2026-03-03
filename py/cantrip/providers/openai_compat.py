@@ -12,10 +12,10 @@ except Exception:  # pragma: no cover
 
 from cantrip.errors import CantripError
 from cantrip.models import CrystalResponse, ToolCall
-from cantrip.providers.base import Crystal
+from cantrip.providers.base import LLM
 
 
-class OpenAICompatCrystal(Crystal):
+class OpenAICompatLLM(LLM):
     """OpenAI-compatible chat completions client.
 
     Works with OpenAI, Ollama, vLLM and other compatible servers.
@@ -39,7 +39,7 @@ class OpenAICompatCrystal(Crystal):
         self.extra = extra or {}
         if requests is None:
             raise CantripError(
-                "requests dependency is required for OpenAICompatCrystal"
+                "requests dependency is required for OpenAICompatLLM"
             )
 
     def query(self, messages, tools, tool_choice):
@@ -117,3 +117,6 @@ class OpenAICompatCrystal(Crystal):
                 "provider_latency_ms": provider_latency_ms,
             },
         )
+
+
+OpenAICompatCrystal = OpenAICompatLLM

@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from cantrip import (
-    Call,
+    Identity,
     Cantrip,
     Circle,
-    FakeCrystal,
+    FakeLLM,
     InMemoryLoomStore,
     Loom,
     SQLiteLoomStore,
@@ -22,14 +22,14 @@ def mk_basic_cantrip(
     medium="tool",
     filesystem=None,
 ):
-    crystal = FakeCrystal({"responses": responses})
+    llm = FakeLLM({"responses": responses})
     circle = Circle(
         gates=gates or ["done"],
         wards=wards or [{"max_turns": 5}],
         medium=medium,
         filesystem=filesystem,
     )
-    return Cantrip(crystal=crystal, circle=circle, call=call or Call())
+    return Cantrip(llm=llm, circle=circle, call=call or Identity())
 
 
 def mk_sqlite_loom(tmp_dir: Path) -> Loom:

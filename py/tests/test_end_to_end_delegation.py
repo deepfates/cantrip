@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cantrip import Call, Cantrip, Circle, FakeCrystal
+from cantrip import Identity, Cantrip, Circle, FakeLLM
 
 
 def test_end_to_end_delegated_repo_workflow(tmp_path) -> None:
@@ -8,7 +8,7 @@ def test_end_to_end_delegated_repo_workflow(tmp_path) -> None:
     sample = repo_root / "sample.txt"
     sample.write_text("delegation-e2e-ok", encoding="utf-8")
 
-    parent = FakeCrystal(
+    parent = FakeLLM(
         {
             "responses": [
                 {
@@ -17,7 +17,7 @@ def test_end_to_end_delegated_repo_workflow(tmp_path) -> None:
                         "intent: 'child-inspect',"
                         "medium: 'tool',"
                         "gates: ['done','repo_files','repo_read'],"
-                        "crystal: 'child'"
+                        "llm: 'child'"
                         "});"
                         "done(r);"
                     )
@@ -25,7 +25,7 @@ def test_end_to_end_delegated_repo_workflow(tmp_path) -> None:
             ]
         }
     )
-    child = FakeCrystal(
+    child = FakeLLM(
         {
             "responses": [
                 {
@@ -40,8 +40,8 @@ def test_end_to_end_delegated_repo_workflow(tmp_path) -> None:
     )
 
     cantrip = Cantrip(
-        crystal=parent,
-        crystals={"child": child},
+        llm=parent,
+        llms={"child": child},
         circle=Circle(
             medium="code",
             gates=[
@@ -53,7 +53,7 @@ def test_end_to_end_delegated_repo_workflow(tmp_path) -> None:
             wards=[{"max_turns": 4}, {"max_depth": 2}],
             depends={"code": {"runner": "mini"}},
         ),
-        call=Call(require_done_tool=True, tool_choice="required"),
+        call=Identity(require_done_tool=True, tool_choice="required"),
     )
 
     result, parent_thread = cantrip.cast_with_thread("delegate now")

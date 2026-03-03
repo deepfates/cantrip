@@ -4,9 +4,9 @@ import os
 from pathlib import Path
 
 from cantrip.env import load_dotenv_if_present
-from cantrip.models import Call, Circle
-from cantrip.providers.fake import FakeCrystal
-from cantrip.providers.openai_compat import OpenAICompatCrystal
+from cantrip.models import Identity, Circle
+from cantrip.providers.fake import FakeLLM
+from cantrip.providers.openai_compat import OpenAICompatLLM
 from cantrip.runtime import Cantrip
 
 
@@ -54,7 +54,7 @@ def _build_real_cantrip(
     timeout_raw = float(os.getenv("CANTRIP_OPENAI_TIMEOUT_S", "60"))
     timeout_s = timeout_raw if timeout_raw > 0 else None
 
-    crystal = OpenAICompatCrystal(
+    llm = OpenAICompatLLM(
         model=model,
         base_url=base_url,
         api_key=os.getenv("CANTRIP_OPENAI_API_KEY", ""),
@@ -113,12 +113,12 @@ def _build_real_cantrip(
             "for delegation. Prefer a single concise answer."
         )
 
-    call = Call(
+    call = Identity(
         system_prompt=system_prompt,
         tool_choice="required" if medium == "code" else None,
         require_done_tool=(medium == "code"),
     )
-    return Cantrip(crystal=crystal, circle=circle, call=call)
+    return Cantrip(llm=llm, circle=circle, call=call)
 
 
 def _build_fake_cantrip(
@@ -131,7 +131,7 @@ def _build_fake_cantrip(
     if medium not in {"text", "code", "browser"}:
         medium = "code"
 
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "responses": [
                 {
@@ -173,7 +173,7 @@ def _build_fake_cantrip(
         ],
         wards=[{"max_turns": 8}],
     )
-    return Cantrip(crystal=crystal, circle=circle)
+    return Cantrip(llm=llm, circle=circle)
 
 
 def build_cantrip_from_env(

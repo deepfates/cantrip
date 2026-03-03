@@ -4,12 +4,12 @@ import json
 from io import StringIO
 
 import cantrip.acp_server as acp_server_mod
-from cantrip import Cantrip, Circle, FakeCrystal
+from cantrip import Cantrip, Circle, FakeLLM
 from cantrip.acp_stdio import ACPStdioRouter, serve_stdio, serve_stdio_once
 
 
 def _build_cantrip() -> Cantrip:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "record_inputs": True,
             "responses": [
@@ -18,7 +18,7 @@ def _build_cantrip() -> Cantrip:
         }
     )
     return Cantrip(
-        crystal=crystal, circle=Circle(gates=["done"], wards=[{"max_turns": 3}])
+        llm=llm, circle=Circle(gates=["done"], wards=[{"max_turns": 3}])
     )
 
 
@@ -251,7 +251,7 @@ def test_serve_stdio_once_returns_parse_error_for_invalid_json() -> None:
 
 
 def test_router_golden_wire_and_session_prompt_continuity() -> None:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "record_inputs": True,
             "responses": [
@@ -261,7 +261,7 @@ def test_router_golden_wire_and_session_prompt_continuity() -> None:
         }
     )
     cantrip = Cantrip(
-        crystal=crystal, circle=Circle(gates=["done"], wards=[{"max_turns": 3}])
+        llm=llm, circle=Circle(gates=["done"], wards=[{"max_turns": 3}])
     )
     router = ACPStdioRouter(cantrip)
 
@@ -302,7 +302,7 @@ def test_router_golden_wire_and_session_prompt_continuity() -> None:
         "agent_message",
     ]
 
-    second_messages = crystal.invocations[1]["messages"]
+    second_messages = llm.invocations[1]["messages"]
     user_messages = [m["content"] for m in second_messages if m["role"] == "user"]
     assert any("User: first" in m for m in user_messages)
     assert any("User: second" in m for m in user_messages)
@@ -311,7 +311,7 @@ def test_router_golden_wire_and_session_prompt_continuity() -> None:
 def test_serve_stdio_golden_wire_continuity_across_multiple_requests(
     monkeypatch,
 ) -> None:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "record_inputs": True,
             "responses": [
@@ -321,7 +321,7 @@ def test_serve_stdio_golden_wire_continuity_across_multiple_requests(
         }
     )
     cantrip = Cantrip(
-        crystal=crystal, circle=Circle(gates=["done"], wards=[{"max_turns": 3}])
+        llm=llm, circle=Circle(gates=["done"], wards=[{"max_turns": 3}])
     )
     sid = "00000000-0000-0000-0000-000000000111"
     monkeypatch.setattr(acp_server_mod.uuid, "uuid4", lambda: sid)
@@ -355,7 +355,7 @@ def test_serve_stdio_golden_wire_continuity_across_multiple_requests(
     assert final_responses[0]["result"]["output"][0]["text"] == "one"
     assert final_responses[1]["result"]["output"][0]["text"] == "two"
 
-    second_messages = crystal.invocations[1]["messages"]
+    second_messages = llm.invocations[1]["messages"]
     user_messages = [m["content"] for m in second_messages if m["role"] == "user"]
     assert any("User: first" in m for m in user_messages)
     assert any("User: second" in m for m in user_messages)
@@ -363,7 +363,7 @@ def test_serve_stdio_golden_wire_continuity_across_multiple_requests(
 
 def test_router_session_prompt_uses_fallback_text_when_cast_result_is_none() -> None:
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "responses": [
                     {"tool_calls": [{"gate": "code", "args": {"source": "x"}}]},
@@ -399,7 +399,7 @@ def test_router_session_prompt_uses_fallback_text_when_cast_result_is_none() -> 
 
 def test_router_session_prompt_uses_max_turn_stop_reason_when_truncated() -> None:
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "responses": [
                     {"code": "done('   ');"},

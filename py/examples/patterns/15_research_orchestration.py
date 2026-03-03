@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from cantrip import Cantrip, Circle, FakeCrystal
+from cantrip import Cantrip, Circle, FakeLLM
 
 
 def run():
-    parent = FakeCrystal(
+    parent = FakeLLM(
         {
             "responses": [
                 {
@@ -13,7 +13,7 @@ def run():
             ]
         }
     )
-    child = FakeCrystal(
+    child = FakeLLM(
         {
             "responses": [
                 {"code": "done('collect-ok');"},
@@ -22,8 +22,8 @@ def run():
         }
     )
     c = Cantrip(
-        crystal=parent,
-        child_crystal=child,
+        llm=parent,
+        child_llm=child,
         circle=Circle(
             gates=["done", "call_entity"],
             wards=[{"max_turns": 6}, {"max_depth": 1}],

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from cantrip import Call, Cantrip, Circle
+from cantrip import Identity, Cantrip, Circle
 from cantrip.errors import CantripError
 from cantrip.models import CrystalResponse, ToolCall
 from cantrip.loom import Loom, SQLiteLoomStore
-from cantrip.providers.fake import FakeCrystal
+from cantrip.providers.fake import FakeLLM
 
 
 def test_sqlite_loom_persists_turns(tmp_path: Path) -> None:
@@ -14,13 +14,13 @@ def test_sqlite_loom_persists_turns(tmp_path: Path) -> None:
     store = SQLiteLoomStore(db)
     loom = Loom(store=store)
 
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {"responses": [{"tool_calls": [{"gate": "done", "args": {"answer": "ok"}}]}]}
     )
     cantrip = Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 3}]),
-        call=Call(system_prompt="persist"),
+        call=Identity(system_prompt="persist"),
         loom=loom,
     )
 
@@ -35,7 +35,7 @@ def test_sqlite_loom_persists_turns(tmp_path: Path) -> None:
 
 
 def test_retry_on_provider_error() -> None:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "responses": [
                 {"error": {"status": 429, "message": "rate limited"}},
@@ -44,12 +44,12 @@ def test_retry_on_provider_error() -> None:
         }
     )
     cantrip = Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 3}]),
         retry={"max_retries": 2, "retryable_status_codes": [429]},
     )
     assert cantrip.cast("x") == "ok"
-    assert len(crystal.invocations) == 2
+    assert len(llm.invocations) == 2
 
 
 def test_retry_on_provider_timeout() -> None:
@@ -67,18 +67,18 @@ def test_retry_on_provider_timeout() -> None:
                 usage={"prompt_tokens": 1, "completion_tokens": 1},
             )
 
-    crystal = _TimeoutThenSuccessCrystal()
+    llm = _TimeoutThenSuccessCrystal()
     cantrip = Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 3}]),
         retry={"max_retries": 1},
     )
     assert cantrip.cast("x") == "ok"
-    assert crystal.calls == 2
+    assert llm.calls == 2
 
 
 def test_loom_thread_lookup_and_fork() -> None:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "responses": [
                 {"tool_calls": [{"gate": "echo", "args": {"text": "A"}}]},
@@ -86,11 +86,11 @@ def test_loom_thread_lookup_and_fork() -> None:
             ]
         }
     )
-    fork_crystal = FakeCrystal(
+    fork_llm = FakeLLM(
         {"responses": [{"tool_calls": [{"gate": "done", "args": {"answer": "fork"}}]}]}
     )
     cantrip = Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(gates=["done", "echo"], wards=[{"max_turns": 5}]),
     )
     result, thread = cantrip._cast_internal(intent="root")
@@ -99,7 +99,7 @@ def test_loom_thread_lookup_and_fork() -> None:
     assert len(cantrip.loom.list_threads()) >= 1
 
     fork_result, fork_thread = cantrip.fork(
-        thread, from_turn=0, crystal=fork_crystal, intent="fork intent"
+        thread, from_turn=0, llm=fork_llm, intent="fork intent"
     )
     assert fork_result == "fork"
     assert len(fork_thread.turns) >= 2

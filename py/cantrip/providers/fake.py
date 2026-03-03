@@ -5,11 +5,11 @@ import threading
 
 from cantrip.errors import CantripError
 from cantrip.models import CrystalResponse, ToolCall
-from cantrip.providers.base import Crystal
+from cantrip.providers.base import LLM
 
 
-class FakeCrystal(Crystal):
-    """Deterministic crystal used for tests and local simulation."""
+class FakeLLM(LLM):
+    """Deterministic llm used for tests and local simulation."""
 
     def __init__(self, spec: dict | None = None):
         spec = spec or {}

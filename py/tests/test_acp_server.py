@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from cantrip import Cantrip, Circle, FakeCrystal
+from cantrip import Cantrip, Circle, FakeLLM
 from cantrip.acp_server import CantripACPServer
-from cantrip.models import Call, Thread
+from cantrip.models import Identity, Thread
 
 
 def _build_tool_cantrip() -> Cantrip:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "record_inputs": True,
             "responses": [
@@ -16,13 +16,13 @@ def _build_tool_cantrip() -> Cantrip:
         }
     )
     return Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(gates=["done", "echo"], wards=[{"max_turns": 4}]),
     )
 
 
 def _build_code_cantrip() -> Cantrip:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "record_inputs": True,
             "responses": [
@@ -32,13 +32,13 @@ def _build_code_cantrip() -> Cantrip:
         }
     )
     return Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 4}], medium="code"),
     )
 
 
 def _snapshot_invocation(cantrip: Cantrip):
-    inv = cantrip.crystal.invocations[0]
+    inv = cantrip.llm.invocations[0]
     return {
         "tool_choice": inv["tool_choice"],
         "tools": [t["name"] for t in inv["tools"]],
@@ -112,7 +112,7 @@ def test_acp_server_event_sequence_invariants() -> None:
 
 def test_acp_server_preserves_session_history_in_followup_prompt() -> None:
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "record_inputs": True,
                 "responses": [
@@ -131,7 +131,7 @@ def test_acp_server_preserves_session_history_in_followup_prompt() -> None:
 
     assert first["result"] == "first-ok"
     assert second["result"] == "second-ok"
-    second_messages = cantrip.crystal.invocations[1]["messages"]
+    second_messages = cantrip.llm.invocations[1]["messages"]
     user_messages = [
         m.get("content", "") for m in second_messages if m.get("role") == "user"
     ]
@@ -141,7 +141,7 @@ def test_acp_server_preserves_session_history_in_followup_prompt() -> None:
 
 def test_acp_server_events_include_only_new_turns_per_cast() -> None:
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "responses": [
                     {"tool_calls": [{"gate": "done", "args": {"answer": "first-ok"}}]},
@@ -166,7 +166,7 @@ def test_acp_server_events_include_only_new_turns_per_cast() -> None:
 
 def test_acp_server_provides_fallback_assistant_text_when_result_is_none() -> None:
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "responses": [
                     {"tool_calls": [{"gate": "code", "args": {"source": "x"}}]},
@@ -189,7 +189,7 @@ def test_acp_server_provides_fallback_assistant_text_when_result_is_none() -> No
 
 def test_acp_server_stops_after_unavailable_gate_turn_instead_of_spinning() -> None:
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "responses": [
                     {"tool_calls": [{"gate": "code", "args": {"source": "x"}}]},
@@ -216,7 +216,7 @@ def test_acp_server_stops_after_unavailable_gate_turn_instead_of_spinning() -> N
 
 def test_acp_server_reports_error_when_done_answer_is_empty() -> None:
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "responses": [
                     {"code": "done('   ');"},
@@ -268,7 +268,7 @@ def test_acp_server_maps_cancelled_thread_to_cancelled_stop_reason() -> None:
             id="t-cancelled",
             entity_id="e",
             intent=intent,
-            call=Call(),
+            call=Identity(),
             turns=[],
         )
         thread.truncated = True
@@ -284,7 +284,7 @@ def test_acp_server_maps_cancelled_thread_to_cancelled_stop_reason() -> None:
 
 def test_acp_server_fails_fast_on_stagnant_code_loop() -> None:
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "responses": [
                     {"code": "x = 1"},
@@ -296,7 +296,7 @@ def test_acp_server_fails_fast_on_stagnant_code_loop() -> None:
             }
         ),
         circle=Circle(gates=["done"], wards=[{"max_turns": 8}], medium="code"),
-        call=Call(require_done_tool=True, tool_choice="required"),
+        call=Identity(require_done_tool=True, tool_choice="required"),
     )
     server = CantripACPServer(cantrip)
     sid = server.create_session()

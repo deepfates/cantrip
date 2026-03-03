@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from cantrip import Cantrip, Circle, FakeCrystal
+from cantrip import Cantrip, Circle, FakeLLM
 
 
 def test_cast_stream_emits_final_response_event() -> None:
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "responses": [
                     {"tool_calls": [{"gate": "done", "args": {"answer": "ok"}}]}
@@ -22,7 +22,7 @@ def test_cast_stream_emits_final_response_event() -> None:
 
 def test_cast_stream_contains_step_and_tool_result_events() -> None:
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "responses": [
                     {"tool_calls": [{"gate": "echo", "args": {"text": "hello"}}]},

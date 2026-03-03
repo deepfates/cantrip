@@ -6,7 +6,7 @@ from typing import Any
 from cantrip.models import CrystalResponse
 
 
-class Crystal(ABC):
+class LLM(ABC):
     @abstractmethod
     def query(
         self,
@@ -15,3 +15,6 @@ class Crystal(ABC):
         tool_choice: str | None,
     ) -> CrystalResponse:
         raise NotImplementedError
+
+
+Crystal = LLM

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cantrip import Cantrip, Circle, FakeCrystal
+from cantrip import Cantrip, Circle, FakeLLM
 from cantrip.executor import CodeExecResult
 
 
@@ -12,7 +12,7 @@ class _StaticDoneExecutor:
 
 def test_cantrip_uses_injected_executor_for_code_medium() -> None:
     cantrip = Cantrip(
-        crystal=FakeCrystal({"responses": [{"content": "ignored"}]}),
+        llm=FakeLLM({"responses": [{"content": "ignored"}]}),
         circle=Circle(gates=["done"], wards=[{"max_turns": 2}], medium="code"),
         medium_depends={"code": {"executor": _StaticDoneExecutor()}},
     )

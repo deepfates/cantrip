@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import time
 
-from cantrip import Cantrip, Circle, FakeCrystal
+from cantrip import Cantrip, Circle, FakeLLM
 
 
 def test_code_circle_projects_single_code_tool_and_required_choice() -> None:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "record_inputs": True,
             "responses": [
@@ -15,31 +15,31 @@ def test_code_circle_projects_single_code_tool_and_required_choice() -> None:
         }
     )
     cantrip = Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(
             gates=["done", "echo"], wards=[{"max_turns": 3}], medium="code"
         ),
     )
     assert cantrip.cast("run code") == "ok"
 
-    inv = crystal.invocations[0]
+    inv = llm.invocations[0]
     assert inv["tool_choice"] == "required"
     assert [t["name"] for t in inv["tools"]] == ["code"]
     assert inv["tools"][0]["parameters"]["required"] == ["code"]
 
 
 def test_call_entity_gate_name_supported_in_code_circle() -> None:
-    parent = FakeCrystal(
+    parent = FakeLLM(
         {
             "responses": [
                 {"code": "var r = call_entity({intent: 'child'}); done(r);"},
             ]
         }
     )
-    child = FakeCrystal({"responses": [{"code": "done('child-ok');"}]})
+    child = FakeLLM({"responses": [{"code": "done('child-ok');"}]})
     cantrip = Cantrip(
-        crystal=parent,
-        child_crystal=child,
+        llm=parent,
+        child_llm=child,
         circle=Circle(
             gates=["done", "call_entity"],
             wards=[{"max_turns": 5}, {"max_depth": 1}],
@@ -50,7 +50,7 @@ def test_call_entity_gate_name_supported_in_code_circle() -> None:
 
 
 def test_call_entity_batch_runs_children_concurrently() -> None:
-    parent = FakeCrystal(
+    parent = FakeLLM(
         {
             "responses": [
                 {
@@ -62,7 +62,7 @@ def test_call_entity_batch_runs_children_concurrently() -> None:
             ]
         }
     )
-    child = FakeCrystal(
+    child = FakeLLM(
         {
             "responses": [
                 {
@@ -87,8 +87,8 @@ def test_call_entity_batch_runs_children_concurrently() -> None:
         }
     )
     cantrip = Cantrip(
-        crystal=parent,
-        child_crystal=child,
+        llm=parent,
+        child_llm=child,
         circle=Circle(
             gates=[
                 "done",
@@ -110,7 +110,7 @@ def test_call_entity_batch_runs_children_concurrently() -> None:
 
 
 def test_code_circle_accepts_code_function_tool_calls() -> None:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "responses": [
                 {"tool_calls": [{"gate": "code", "args": {"code": "done('ok');"}}]},
@@ -118,14 +118,14 @@ def test_code_circle_accepts_code_function_tool_calls() -> None:
         }
     )
     cantrip = Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 3}], medium="code"),
     )
     assert cantrip.cast("run") == "ok"
 
 
 def test_code_circle_records_error_for_empty_code_tool_call() -> None:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "responses": [
                 {"tool_calls": [{"gate": "code", "args": {}}]},
@@ -133,7 +133,7 @@ def test_code_circle_records_error_for_empty_code_tool_call() -> None:
         }
     )
     cantrip = Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 1}], medium="code"),
     )
     result, thread = cantrip.cast_with_thread("run")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cantrip import Cantrip, Circle, FakeCrystal
+from cantrip import Cantrip, Circle, FakeLLM
 
 
 class _FakeBrowserSession:
@@ -27,7 +27,7 @@ class _FakeBrowserDriver:
 def test_browser_medium_processes_browser_tool_calls() -> None:
     driver = _FakeBrowserDriver()
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "responses": [
                     {
@@ -60,7 +60,7 @@ def test_browser_medium_processes_browser_tool_calls() -> None:
 def test_browser_medium_closes_runtime_when_browser_action_errors() -> None:
     driver = _FakeBrowserDriver()
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "responses": [
                     {

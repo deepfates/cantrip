@@ -7,22 +7,24 @@ from cantrip.errors import CantripError
 from cantrip.executor import MiniCodeExecutor, SubprocessPythonExecutor
 from cantrip.http_router import CantripHTTPRouter
 from cantrip.loom import InMemoryLoomStore, Loom, SQLiteLoomStore
-from cantrip.models import Call, Circle
-from cantrip.providers.fake import FakeCrystal
-from cantrip.providers.openai_compat import OpenAICompatCrystal
+from cantrip.models import Identity, Circle
+from cantrip.providers.base import LLM
+from cantrip.providers.fake import FakeLLM
+from cantrip.providers.openai_compat import OpenAICompatLLM
 from cantrip.runtime import Cantrip
 
 __all__ = [
     "Cantrip",
     "CantripError",
-    "Call",
+    "Identity",
     "Circle",
-    "FakeCrystal",
+    "LLM",
+    "FakeLLM",
     "Loom",
     "MiniCodeExecutor",
     "InMemoryLoomStore",
     "SQLiteLoomStore",
-    "OpenAICompatCrystal",
+    "OpenAICompatLLM",
     "SubprocessPythonExecutor",
     "cast_via_acp",
     "cast_via_cli",

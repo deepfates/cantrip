@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import argparse
 
-from cantrip import Cantrip, Circle, FakeCrystal
+from cantrip import Cantrip, Circle, FakeLLM
 from cantrip.cli import cmd_repl
 
 
 def test_cmd_repl_prints_assistant_text_fallback(monkeypatch, capsys) -> None:
     cantrip = Cantrip(
-        crystal=FakeCrystal(
+        llm=FakeLLM(
             {
                 "responses": [
                     {"tool_calls": [{"gate": "code", "args": {"source": "x"}}]},

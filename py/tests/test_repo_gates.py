@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from cantrip import Cantrip, Circle, FakeCrystal
+from cantrip import Cantrip, Circle, FakeLLM
 
 
 def test_repo_files_lists_files_under_root(tmp_path: Path) -> None:
@@ -10,7 +10,7 @@ def test_repo_files_lists_files_under_root(tmp_path: Path) -> None:
     (tmp_path / "dir").mkdir()
     (tmp_path / "dir" / "b.py").write_text("print('x')\n")
 
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "responses": [
                 {
@@ -23,7 +23,7 @@ def test_repo_files_lists_files_under_root(tmp_path: Path) -> None:
         }
     )
     cantrip = Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(
             gates=[
                 "done",
@@ -40,7 +40,7 @@ def test_repo_files_lists_files_under_root(tmp_path: Path) -> None:
 
 def test_repo_read_reads_file(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("hello repo\n")
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "responses": [
                 {
@@ -53,7 +53,7 @@ def test_repo_read_reads_file(tmp_path: Path) -> None:
         }
     )
     cantrip = Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(
             gates=[
                 "done",
@@ -67,7 +67,7 @@ def test_repo_read_reads_file(tmp_path: Path) -> None:
 
 
 def test_repo_read_blocks_path_escape(tmp_path: Path) -> None:
-    crystal = FakeCrystal(
+    llm = FakeLLM(
         {
             "responses": [
                 {
@@ -80,7 +80,7 @@ def test_repo_read_blocks_path_escape(tmp_path: Path) -> None:
         }
     )
     cantrip = Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(
             gates=[
                 "done",

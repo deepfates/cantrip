@@ -175,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dotenv", default=".env", help="Dotenv file to load.")
     parser.add_argument(
-        "--fake", action="store_true", help="Use FakeCrystal (offline mode)."
+        "--fake", action="store_true", help="Use FakeLLM (offline mode)."
     )
     parser.add_argument(
         "--with-events",

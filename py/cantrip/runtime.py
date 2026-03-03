@@ -19,37 +19,37 @@ from cantrip.code_runner import (
 from cantrip.errors import CantripError
 from cantrip.loom import InMemoryLoomStore, Loom
 from cantrip.mediums import medium_for
-from cantrip.models import Call, Circle, CrystalResponse, GateCallRecord, Thread, Turn
-from cantrip.providers.base import Crystal
-from cantrip.providers.fake import FakeCrystal
+from cantrip.models import Identity, Circle, CrystalResponse, GateCallRecord, Thread, Turn
+from cantrip.providers.base import LLM
+from cantrip.providers.fake import FakeLLM
 
 
 class Cantrip:
     def __init__(
         self,
-        crystal: Crystal,
+        llm: LLM,
         circle: Circle,
-        call: Call | None = None,
+        call: Identity | None = None,
         *,
         folding: dict[str, Any] | None = None,
         retry: dict[str, Any] | None = None,
-        crystals: dict[str, Crystal] | None = None,
-        child_crystal: Crystal | None = None,
+        llms: dict[str, LLM] | None = None,
+        child_llm: LLM | None = None,
         loom: Loom | None = None,
         medium_depends: dict[str, Any] | None = None,
     ) -> None:
-        if crystal is None:
-            raise CantripError("cantrip requires a crystal")
+        if llm is None:
+            raise CantripError("cantrip requires an llm")
         if circle is None:
             raise CantripError("cantrip requires a circle")
-        self.crystal = crystal
+        self.llm = llm
         self.circle = circle
-        self.call = call or Call()
+        self.call = call or Identity()
         self.folding = folding or {}
         self.retry = retry or {}
         self.loom = loom or Loom()
-        self.crystals = crystals or {}
-        self.child_crystal = child_crystal
+        self.llms = llms or {}
+        self.child_llm = child_llm
         self.medium_depends = medium_depends or {}
 
         if self.call.require_done_tool and "done" not in self.circle._gates:
@@ -247,7 +247,14 @@ class Cantrip:
                 )
 
             if gate_name == "read":
-                root = (gate.depends or {}).get("root", "/")
+                gate_depends = gate.depends or {}
+                circle_depends = circle.depends or {}
+                root = (
+                    gate_depends.get("root")
+                    or circle_depends.get("root")
+                    or (circle_depends.get("filesystem") or {}).get("root")
+                    or "/"
+                )
                 path = str(args.get("path"))
                 full = str(Path(root) / path)
                 data = ""
@@ -317,7 +324,7 @@ class Cantrip:
                     "intent",
                     "gates",
                     "wards",
-                    "crystal",
+                    "llm",
                     "require_done_tool",
                     "medium",
                     "depends",
@@ -325,11 +332,6 @@ class Cantrip:
                 for k in req.keys():
                     if k not in allowed_req_keys:
                         raise CantripError(f"unknown call_entity arg: {k}")
-                requested_gates = req.get("gates")
-                if requested_gates:
-                    parent_g = set(circle.available_gates().keys())
-                    if not set(requested_gates).issubset(parent_g):
-                        raise CantripError("cannot grant gate")
 
                 requested_wards = req.get("wards") or []
                 if not isinstance(requested_wards, list):
@@ -375,8 +377,18 @@ class Cantrip:
                     for gate_to_remove in sorted(removed_gates)
                 )
 
+                available_parent_gates = circle.available_gates()
+                if isinstance(req.get("gates"), list) and req.get("gates"):
+                    gate_names = list(dict.fromkeys([*req["gates"], "done"]))
+                else:
+                    gate_names = list(available_parent_gates.keys())
+
                 child_gates = []
-                for name, parent_gate in circle.available_gates().items():
+                for name in gate_names:
+                    parent_gate = available_parent_gates.get(name)
+                    if parent_gate is None:
+                        child_gates.append({"name": name})
+                        continue
                     child_gates.append(
                         {
                             "name": name,
@@ -408,26 +420,26 @@ class Cantrip:
                     filesystem=circle.filesystem,
                 )
 
-                child_name = req.get("crystal")
+                child_name = req.get("llm")
                 if child_name:
-                    child_crystal = self.crystals.get(child_name)
+                    child_llm = self.llms.get(child_name)
                 elif (
                     depth is not None
                     and depth >= 2
-                    and "child_crystal_l1" in self.crystals
+                    and "child_llm_l1" in self.llms
                 ):
-                    child_crystal = self.crystals["child_crystal_l1"]
+                    child_llm = self.llms["child_llm_l1"]
                 elif (
                     depth is not None
                     and depth == 1
-                    and "child_crystal_l2" in self.crystals
+                    and "child_llm_l2" in self.llms
                 ):
-                    child_crystal = self.crystals["child_crystal_l2"]
+                    child_llm = self.llms["child_llm_l2"]
                 else:
-                    child_crystal = self.child_crystal
+                    child_llm = self.child_llm
 
-                child_crystal = child_crystal or self.crystal
-                child_call = Call(
+                child_llm = child_llm or self.llm
+                child_call = Identity(
                     system_prompt=self.call.system_prompt,
                     temperature=self.call.temperature,
                     require_done_tool=self.call.require_done_tool
@@ -436,19 +448,19 @@ class Cantrip:
                     extra=copy.deepcopy(self.call.extra),
                 )
                 child = Cantrip(
-                    crystal=child_crystal,
+                    llm=child_llm,
                     circle=child_circle,
                     call=child_call,
                     folding=self.folding,
                     retry=self.retry,
-                    crystals=self.crystals,
-                    child_crystal=self.child_crystal,
+                    llms=self.llms,
+                    child_llm=self.child_llm,
                     loom=self.loom,
                     medium_depends=self.medium_depends,
                 )
                 res, ch_thread = child._cast_internal(
                     intent=req.get("intent"),
-                    crystal_override=child_crystal,
+                    llm_override=child_llm,
                     parent_turn_id=parent_turn_id,
                     depth=max((depth or 0) - 1, 0),
                 )
@@ -469,14 +481,14 @@ class Cantrip:
                 if len(args) > 50:
                     raise CantripError("batch too large")
 
-                created_fake_crystals: list[str] = []
-                if isinstance(self.child_crystal, FakeCrystal):
-                    base_spec = copy.deepcopy(self.child_crystal.spec)
-                    base_responses = copy.deepcopy(self.child_crystal.responses)
+                created_fake_llms: list[str] = []
+                if isinstance(self.child_llm, FakeLLM):
+                    base_spec = copy.deepcopy(self.child_llm.spec)
+                    base_responses = copy.deepcopy(self.child_llm.responses)
                     for i, req in enumerate(args):
                         if not isinstance(req, dict):
                             continue
-                        if req.get("crystal"):
+                        if req.get("llm"):
                             continue
                         spec_i = copy.deepcopy(base_spec)
                         if i < len(base_responses):
@@ -484,9 +496,9 @@ class Cantrip:
                         else:
                             spec_i["responses"] = [{"content": ""}]
                         key = f"__batch_fake_child_{id(thread)}_{i}"
-                        self.crystals[key] = FakeCrystal(spec_i)
-                        req["crystal"] = key
-                        created_fake_crystals.append(key)
+                        self.llms[key] = FakeLLM(spec_i)
+                        req["llm"] = key
+                        created_fake_llms.append(key)
 
                 def run_child(req: dict[str, Any]) -> GateCallRecord:
                     return self._execute_gate(
@@ -515,8 +527,8 @@ class Cantrip:
                                 raise CantripError(rec.content)
                             out.append(rec.result)
                 finally:
-                    for key in created_fake_crystals:
-                        self.crystals.pop(key, None)
+                    for key in created_fake_llms:
+                        self.llms.pop(key, None)
                 return GateCallRecord(
                     gate_name=gate_name, arguments={"batch": args}, result=out
                 )
@@ -531,7 +543,7 @@ class Cantrip:
 
     def _query_with_retry(
         self,
-        crystal: Crystal,
+        llm: LLM,
         messages,
         tools,
         tool_choice,
@@ -544,13 +556,13 @@ class Cantrip:
 
         def _query_once() -> CrystalResponse:
             if cancel_check is None:
-                return crystal.query(messages, tools, tool_choice)
+                return llm.query(messages, tools, tool_choice)
             result_holder: dict[str, Any] = {}
             error_holder: dict[str, BaseException] = {}
 
             def _worker() -> None:
                 try:
-                    result_holder["response"] = crystal.query(
+                    result_holder["response"] = llm.query(
                         messages, tools, tool_choice
                     )
                 except BaseException as e:  # noqa: BLE001
@@ -622,7 +634,7 @@ class Cantrip:
         self,
         *,
         intent: str,
-        crystal_override: Crystal | None = None,
+        llm_override: LLM | None = None,
         parent_turn_id: str | None = None,
         depth: int | None = None,
         seed_turns: list[Turn] | None = None,
@@ -632,7 +644,7 @@ class Cantrip:
         if not intent:
             raise CantripError("intent is required")
 
-        crystal = crystal_override or self.crystal
+        llm = llm_override or self.llm
         entity_id = str(uuid.uuid4())
         thread = Thread(
             id=str(uuid.uuid4()), entity_id=entity_id, intent=intent, call=self.call
@@ -716,7 +728,7 @@ class Cantrip:
 
             try:
                 response = self._query_with_retry(
-                    crystal,
+                    llm,
                     messages,
                     tools,
                     tool_choice,
@@ -735,7 +747,7 @@ class Cantrip:
             if response.content is None and (
                 response.tool_calls is None or len(response.tool_calls) == 0
             ):
-                raise CantripError("crystal returned neither content nor tool_calls")
+                raise CantripError("llm returned neither content nor tool_calls")
 
             observation: list[GateCallRecord] = []
             terminated = False
@@ -902,13 +914,13 @@ class Cantrip:
         self,
         intent: str,
         *,
-        crystal_override: Crystal | None = None,
+        llm_override: LLM | None = None,
         parent_turn_id: str | None = None,
         depth: int | None = None,
     ) -> Any:
         result, _thread = self._cast_internal(
             intent=intent,
-            crystal_override=crystal_override,
+            llm_override=llm_override,
             parent_turn_id=parent_turn_id,
             depth=depth,
         )
@@ -918,7 +930,7 @@ class Cantrip:
         self,
         intent: str,
         *,
-        crystal_override: Crystal | None = None,
+        llm_override: LLM | None = None,
         parent_turn_id: str | None = None,
         depth: int | None = None,
     ):
@@ -926,7 +938,7 @@ class Cantrip:
         stream_events: list[dict[str, Any]] = []
         self._cast_internal(
             intent=intent,
-            crystal_override=crystal_override,
+            llm_override=llm_override,
             parent_turn_id=parent_turn_id,
             depth=depth,
             event_sink=stream_events.append,
@@ -938,7 +950,7 @@ class Cantrip:
         self,
         intent: str,
         *,
-        crystal_override: Crystal | None = None,
+        llm_override: LLM | None = None,
         parent_turn_id: str | None = None,
         depth: int | None = None,
         seed_turns: list[Turn] | None = None,
@@ -948,7 +960,7 @@ class Cantrip:
         """Public helper for protocol adapters that need thread metadata."""
         return self._cast_internal(
             intent=intent,
-            crystal_override=crystal_override,
+            llm_override=llm_override,
             parent_turn_id=parent_turn_id,
             depth=depth,
             seed_turns=seed_turns,
@@ -957,13 +969,13 @@ class Cantrip:
         )
 
     def fork(
-        self, source_thread: Thread, from_turn: int, crystal: Crystal, intent: str
+        self, source_thread: Thread, from_turn: int, llm: LLM, intent: str
     ) -> tuple[Any, Thread]:
         if from_turn < 0 or from_turn >= len(source_thread.turns):
             raise CantripError("invalid fork point")
 
         prefix = source_thread.turns[: from_turn + 1]
         result, new_thread = self._cast_internal(
-            intent=intent, crystal_override=crystal, seed_turns=prefix
+            intent=intent, llm_override=llm, seed_turns=prefix
         )
         return result, new_thread

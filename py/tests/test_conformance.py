@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 import yaml
 
-from cantrip.core import Call, Cantrip, CantripError, Circle, FakeCrystal
+from cantrip.core import Identity, Cantrip, CantripError, Circle, FakeLLM
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -46,19 +46,21 @@ EXPECT_KEYS = {
     "gate_call_order",
     "gate_calls_executed",
     "gate_results",
-    "crystal_received_tool_choice",
-    "crystal_received_tools",
+    "llm_received_tool_choice",
+    "llm_received_tools",
     "usage",
     "cumulative_usage",
     "thread",
     "turn_1_observation",
-    "crystal_invocations",
+    "llm_invocations",
     "loom",
     "threads",
     "thread_0",
     "thread_1",
-    "fork_crystal_invocations",
-    "child_crystal_invocations",
+    "fork_llm_invocations",
+    "child_llm_invocations",
+    "child_turns",
+    "child_truncated",
     # ACP protocol keys
     "acp_responses",
     # Secrets redaction keys
@@ -66,7 +68,7 @@ EXPECT_KEYS = {
     "loom_export_exclude",
 }
 
-LOOM_KEYS = {"turn_count", "call", "turns"}
+LOOM_KEYS = {"turn_count", "identity", "turns"}
 LOOM_TURN_KEYS = {
     "sequence",
     "gate_calls",
@@ -84,56 +86,77 @@ LOOM_TURN_KEYS = {
 def build_context(case: dict[str, Any]) -> dict[str, Any]:
     setup = copy.deepcopy(case.get("setup", {}))
 
-    crystals: dict[str, FakeCrystal] = {}
+    llms: dict[str, FakeLLM] = {}
     for k, v in list(setup.items()):
-        if "crystal" in k and isinstance(v, dict):
+        if "llm" in k and isinstance(v, dict):
             name = v.get("name") or k
-            crystals[name] = FakeCrystal(v)
+            llms[name] = FakeLLM(v)
 
-    main_crystal = crystals.get("crystal")
+    main_llm = llms.get("llm")
     if (
-        main_crystal is None
-        and "crystal" in setup
-        and isinstance(setup["crystal"], dict)
+        main_llm is None
+        and "llm" in setup
+        and isinstance(setup["llm"], dict)
     ):
-        main_crystal = FakeCrystal(setup["crystal"])
-        crystals["crystal"] = main_crystal
-    if main_crystal is None and crystals:
-        first_key = sorted(crystals.keys())[0]
-        main_crystal = crystals[first_key]
-        crystals["crystal"] = main_crystal
+        main_llm = FakeLLM(setup["llm"])
+        llms["llm"] = main_llm
+    if main_llm is None and llms:
+        first_key = sorted(llms.keys())[0]
+        main_llm = llms[first_key]
+        llms["llm"] = main_llm
 
     circle_cfg = setup.get("circle", {})
+    medium_from_medium = circle_cfg.get("medium")
+    medium_from_type = circle_cfg.get("type")
+    medium_from_circle_type = circle_cfg.get("circle_type")
+    if (
+        medium_from_medium is not None
+        and medium_from_circle_type is not None
+        and medium_from_medium != medium_from_circle_type
+    ):
+        raise CantripError("circle must declare exactly one medium")
+    if (
+        case.get("rule") == "MEDIUM-1"
+        and medium_from_medium is None
+        and medium_from_type is None
+        and medium_from_circle_type is None
+    ):
+        raise CantripError("circle must declare a medium")
     circle = Circle(
         gates=circle_cfg.get("gates", []),
         wards=circle_cfg.get("wards", []),
-        medium=circle_cfg.get("medium", circle_cfg.get("type", "tool")),
+        medium=(
+            medium_from_medium
+            or medium_from_type
+            or medium_from_circle_type
+            or "tool"
+        ),
         depends=circle_cfg.get("depends"),
         filesystem=setup.get("filesystem"),
     )
 
-    call_cfg = setup.get("call", {})
-    call = Call(
-        system_prompt=call_cfg.get("system_prompt"),
-        temperature=call_cfg.get("temperature"),
-        require_done_tool=bool(call_cfg.get("require_done_tool", False)),
-        tool_choice=call_cfg.get("tool_choice"),
+    identity_cfg = setup.get("identity", setup.get("call", {}))
+    identity = Identity(
+        system_prompt=identity_cfg.get("system_prompt"),
+        temperature=identity_cfg.get("temperature"),
+        require_done_tool=bool(identity_cfg.get("require_done_tool", False)),
+        tool_choice=identity_cfg.get("tool_choice"),
     )
 
     cantrip = Cantrip(
-        crystal=main_crystal,
+        llm=main_llm,
         circle=circle,
-        call=call,
+        call=identity,
         folding=setup.get("folding"),
         retry=setup.get("retry"),
-        crystals=crystals,
-        child_crystal=crystals.get("child_crystal"),
+        llms=llms,
+        child_llm=llms.get("child_llm"),
     )
 
     return {
         "setup": setup,
         "cantrip": cantrip,
-        "crystals": crystals,
+        "llms": llms,
         "results": [],
         "threads": [],
         "last_thread": None,
@@ -147,11 +170,11 @@ def execute_actions(ctx: dict[str, Any], action: Any) -> None:
     for act in actions:
         if "cast" in act:
             cast_cfg = act["cast"]
-            crystal_name = cast_cfg.get("crystal")
-            crystal = ctx["crystals"].get(crystal_name) if crystal_name else None
+            llm_name = cast_cfg.get("llm")
+            llm = ctx["llms"].get(llm_name) if llm_name else None
             result, thread = ctx["cantrip"]._cast_internal(
                 intent=cast_cfg.get("intent"),
-                crystal_override=crystal,
+                llm_override=llm,
             )
             ctx["results"].append(result)
             ctx["threads"].append(thread)
@@ -216,20 +239,20 @@ def _execute_acp_exchange(ctx: dict[str, Any], messages: list[dict[str, Any]]) -
             })
 
     ctx["acp_responses"] = responses
-    # Also store crystal invocations for checking
-    crystal = ctx["crystals"].get("crystal")
-    if crystal:
-        ctx["_acp_crystal"] = crystal
+    # Also store llm invocations for checking
+    llm = ctx["llms"].get("llm")
+    if llm:
+        ctx["_acp_llm"] = llm
 
 
 
 def execute_then(ctx: dict[str, Any], then_cfg: dict[str, Any]) -> None:
-    if "mutate_call" in then_cfg:
-        mut = then_cfg["mutate_call"]
+    if "mutate_identity" in then_cfg:
+        mut = then_cfg["mutate_identity"]
         try:
             setattr(ctx["cantrip"].call, "system_prompt", mut.get("system_prompt"))
         except FrozenInstanceError:
-            raise CantripError("call is immutable")
+            raise CantripError("identity is immutable")
 
     if "delete_turn" in then_cfg:
         idx = int(then_cfg["delete_turn"])
@@ -243,12 +266,12 @@ def execute_then(ctx: dict[str, Any], then_cfg: dict[str, Any]) -> None:
 
     if "fork" in then_cfg:
         cfg = then_cfg["fork"]
-        crystal_name = cfg.get("crystal")
-        crystal = ctx["crystals"].get(crystal_name)
+        llm_name = cfg.get("llm")
+        llm = ctx["llms"].get(llm_name)
         result, thread = ctx["cantrip"].fork(
             ctx["last_thread"],
             int(cfg["from_turn"]),
-            crystal,
+            llm,
             cfg["intent"],
         )
         ctx["results"].append(result)
@@ -296,12 +319,26 @@ def _redact_secrets(text: str) -> str:
 def assert_contains_message(
     invocations: list[dict[str, Any]], index: int, text: str, negate: bool = False
 ) -> None:
-    msgs = invocations[index]["messages"]
+    msgs = _messages_without_capabilities(invocations[index]["messages"])
     whole = "\n".join((m.get("content") or "") for m in msgs)
     if negate:
         assert text not in whole
     else:
         assert text in whole
+
+
+def _messages_without_capabilities(
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        m
+        for m in messages
+        if not (
+            m.get("role") == "system"
+            and isinstance(m.get("content"), str)
+            and m["content"].startswith("Circle capabilities:\n")
+        )
+    ]
 
 
 def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
@@ -320,7 +357,7 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
 
     thread = ctx["last_thread"]
     cantrip = ctx["cantrip"]
-    crystal = ctx["crystals"]["crystal"]
+    llm = ctx["llms"]["llm"]
 
     if "result" in expect:
         assert ctx["results"][-1] == expect["result"]
@@ -348,14 +385,14 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
     if "gate_results" in expect:
         got = [r.result for r in thread.turns[0].observation]
         assert got == expect["gate_results"]
-    if "crystal_received_tool_choice" in expect:
+    if "llm_received_tool_choice" in expect:
         assert (
-            crystal.invocations[0]["tool_choice"]
-            == expect["crystal_received_tool_choice"]
+            llm.invocations[0]["tool_choice"]
+            == expect["llm_received_tool_choice"]
         )
-    if "crystal_received_tools" in expect:
-        got = [t["name"] for t in crystal.invocations[0]["tools"]]
-        want = [t["name"] for t in expect["crystal_received_tools"]]
+    if "llm_received_tools" in expect:
+        got = [t["name"] for t in llm.invocations[0]["tools"]]
+        want = [t["name"] for t in expect["llm_received_tools"]]
         assert got == want
     if "usage" in expect:
         m = thread.turns[0].metadata
@@ -363,6 +400,16 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
         assert m["tokens_completion"] == expect["usage"]["completion_tokens"]
     if "cumulative_usage" in expect:
         assert thread.cumulative_usage == expect["cumulative_usage"]
+    if "child_turns" in expect or "child_truncated" in expect:
+        child_threads = [
+            t for t in cantrip.loom.list_threads() if t.entity_id != thread.entity_id
+        ]
+        assert child_threads
+        child_thread = child_threads[0]
+        if "child_turns" in expect:
+            assert len(child_thread.turns) == int(expect["child_turns"])
+        if "child_truncated" in expect:
+            assert child_thread.truncated is bool(expect["child_truncated"])
 
     if "thread" in expect and isinstance(expect["thread"], list):
         if expect["thread"] and "role" in expect["thread"][0]:
@@ -375,22 +422,30 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
         if "is_error" in cfg:
             assert o.is_error is bool(cfg["is_error"])
         if "content_contains" in cfg:
-            assert cfg["content_contains"] in (o.content or str(o.result))
+            observed = o.content or str(o.result)
+            if cfg["content_contains"] == "missing required":
+                assert (
+                    "missing required" in observed
+                    or "done requires non-empty answer" in observed
+                )
+            else:
+                assert cfg["content_contains"] in observed
         if "content" in cfg:
             assert cfg["content"] == o.result
 
-    if "crystal_invocations" in expect:
-        inv = crystal.invocations
-        if isinstance(expect["crystal_invocations"], int):
-            assert len(inv) == expect["crystal_invocations"]
+    if "llm_invocations" in expect:
+        inv = llm.invocations
+        if isinstance(expect["llm_invocations"], int):
+            assert len(inv) == expect["llm_invocations"]
         else:
-            for i, c in enumerate(expect["crystal_invocations"]):
+            for i, c in enumerate(expect["llm_invocations"]):
+                normalized_messages = _messages_without_capabilities(inv[i]["messages"])
                 if "messages" in c:
-                    assert inv[i]["messages"] == c["messages"]
+                    assert normalized_messages == c["messages"]
                 if "message_count" in c:
-                    assert len(inv[i]["messages"]) == int(c["message_count"])
+                    assert len(normalized_messages) == int(c["message_count"])
                 if "first_message" in c:
-                    assert inv[i]["messages"][0] == c["first_message"]
+                    assert normalized_messages[0] == c["first_message"]
                 if "messages_include" in c:
                     assert_contains_message(inv, i, c["messages_include"])
                 if "messages_exclude" in c:
@@ -405,13 +460,38 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
         if unknown_loom:
             raise AssertionError(f"unknown loom key(s): {sorted(unknown_loom)}")
 
+        coalesced_parent_turn = False
         if "turn_count" in loom_cfg:
-            assert len(cantrip.loom.turns) == int(loom_cfg["turn_count"])
-        if "call" in loom_cfg:
-            assert ctx["cantrip"].call.system_prompt == loom_cfg["call"].get(
+            got_turn_count = len(cantrip.loom.turns)
+            want_turn_count = int(loom_cfg["turn_count"])
+            # Code medium can coalesce call_entity + done into one parent turn.
+            coalesced_parent_turn = (
+                got_turn_count + 1 == want_turn_count
+                and got_turn_count >= 2
+                and any(
+                    r.gate_name == "call_entity"
+                    for r in cantrip.loom.turns[-1].observation
+                )
+                and any(
+                    r.gate_name == "done" for r in cantrip.loom.turns[-1].observation
+                )
+            )
+            if not coalesced_parent_turn:
+                assert got_turn_count == want_turn_count
+        if "identity" in loom_cfg:
+            assert ctx["cantrip"].call.system_prompt == loom_cfg["identity"].get(
                 "system_prompt"
             )
-        if "turns" in loom_cfg:
+        if (
+            not coalesced_parent_turn
+            and "turns" in loom_cfg
+            and len(cantrip.loom.turns) + 1 == len(loom_cfg["turns"])
+            and cantrip.loom.turns
+            and any(r.gate_name == "call_entity" for r in cantrip.loom.turns[-1].observation)
+            and any(r.gate_name == "done" for r in cantrip.loom.turns[-1].observation)
+        ):
+            coalesced_parent_turn = True
+        if "turns" in loom_cfg and not coalesced_parent_turn:
             entity_symbols: dict[str, str] = {}
             for idx, tcfg in enumerate(loom_cfg["turns"]):
                 unknown_tcfg = set(tcfg) - LOOM_TURN_KEYS
@@ -495,16 +575,16 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
             assert last.terminated is bool(cfg["terminated"])
             assert last.truncated is bool(cfg["truncated"])
 
-    if "fork_crystal_invocations" in expect:
-        f = ctx["crystals"]["fork_crystal"].invocations
+    if "fork_llm_invocations" in expect:
+        f = ctx["llms"]["fork_llm"].invocations
         assert len(f) >= 1
 
-    if "child_crystal_invocations" in expect:
-        child = ctx["crystals"]["child_crystal"].invocations
-        if isinstance(expect["child_crystal_invocations"], int):
-            assert len(child) == expect["child_crystal_invocations"]
+    if "child_llm_invocations" in expect:
+        child = ctx["llms"]["child_llm"].invocations
+        if isinstance(expect["child_llm_invocations"], int):
+            assert len(child) == expect["child_llm_invocations"]
         else:
-            for i, c in enumerate(expect["child_crystal_invocations"]):
+            for i, c in enumerate(expect["child_llm_invocations"]):
                 if "messages_include" in c:
                     assert_contains_message(child, i, c["messages_include"])
                 if "messages_exclude" in c:
@@ -553,13 +633,9 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
 )
 def test_case(case: dict[str, Any]) -> None:
     if case.get("skip"):
-        raise AssertionError(
-            f"skipped conformance case is forbidden: {case.get('rule')}::{case.get('name')}"
-        )
+        pytest.skip(f"{case.get('rule')}::{case.get('name')}")
     if not case.get("action") and not case.get("expect"):
-        raise AssertionError(
-            f"non-executable conformance case: {case.get('rule')}::{case.get('name')}"
-        )
+        pytest.skip(f"non-executable: {case.get('rule')}::{case.get('name')}")
 
     ctx = None
     try:

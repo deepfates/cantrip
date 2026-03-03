@@ -5,7 +5,7 @@ import json
 import pytest
 
 from cantrip.errors import CantripError
-from cantrip.providers.openai_compat import OpenAICompatCrystal
+from cantrip.providers.openai_compat import OpenAICompatLLM
 
 
 class _Resp:
@@ -44,7 +44,7 @@ def test_openai_compat_normalizes_response(monkeypatch: pytest.MonkeyPatch) -> N
         )
 
     monkeypatch.setattr("cantrip.providers.openai_compat.requests.post", _post)
-    c = OpenAICompatCrystal(
+    c = OpenAICompatLLM(
         model="gpt-test", base_url="https://example.com", api_key="x"
     )
     r = c.query(
@@ -66,7 +66,7 @@ def test_openai_compat_raises_provider_error(monkeypatch: pytest.MonkeyPatch) ->
         return _Resp(429, {"error": {"message": "rate limit"}})
 
     monkeypatch.setattr("cantrip.providers.openai_compat.requests.post", _post)
-    c = OpenAICompatCrystal(
+    c = OpenAICompatLLM(
         model="gpt-test", base_url="https://example.com", api_key="x"
     )
 
@@ -81,7 +81,7 @@ def test_openai_compat_raises_provider_timeout(monkeypatch: pytest.MonkeyPatch) 
         raise mod.requests.exceptions.Timeout("timed out")
 
     monkeypatch.setattr("cantrip.providers.openai_compat.requests.post", _post)
-    c = OpenAICompatCrystal(
+    c = OpenAICompatLLM(
         model="gpt-test", base_url="https://example.com", api_key="x"
     )
 
@@ -98,7 +98,7 @@ def test_openai_compat_raises_provider_transport_error(
         raise mod.requests.exceptions.ConnectionError("conn reset")
 
     monkeypatch.setattr("cantrip.providers.openai_compat.requests.post", _post)
-    c = OpenAICompatCrystal(
+    c = OpenAICompatLLM(
         model="gpt-test", base_url="https://example.com", api_key="x"
     )
 

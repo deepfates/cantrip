@@ -160,10 +160,10 @@ class SQLiteLoomStore(LoomStore):
         ).fetchone()
         if not row:
             return None
-        from cantrip.models import Call
+        from cantrip.models import Identity
 
         call_payload = json.loads(row[3])
-        call = Call(**call_payload)
+        call = Identity(**call_payload)
         thread = Thread(
             id=row[0],
             entity_id=row[1],

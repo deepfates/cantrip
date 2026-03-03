@@ -4,9 +4,9 @@ import os
 
 import pytest
 
-from cantrip import Call, Cantrip, Circle
+from cantrip import Identity, Cantrip, Circle
 from cantrip.env import load_dotenv_if_present
-from cantrip.providers.openai_compat import OpenAICompatCrystal
+from cantrip.providers.openai_compat import OpenAICompatLLM
 
 load_dotenv_if_present()
 
@@ -31,10 +31,10 @@ def test_live_openai_compat_query_text_roundtrip() -> None:
     base_url = _required_env("CANTRIP_OPENAI_BASE_URL")
     api_key = os.getenv("CANTRIP_OPENAI_API_KEY", "")
 
-    crystal = OpenAICompatCrystal(
+    llm = OpenAICompatLLM(
         model=model, base_url=base_url, api_key=api_key, timeout_s=90
     )
-    response = crystal.query(
+    response = llm.query(
         messages=[{"role": "user", "content": "Reply with exactly: cantrip-live-ok"}],
         tools=[],
         tool_choice=None,
@@ -56,13 +56,13 @@ def test_live_cantrip_tool_circle_done_path() -> None:
     base_url = _required_env("CANTRIP_OPENAI_BASE_URL")
     api_key = os.getenv("CANTRIP_OPENAI_API_KEY", "")
 
-    crystal = OpenAICompatCrystal(
+    llm = OpenAICompatLLM(
         model=model, base_url=base_url, api_key=api_key, timeout_s=90
     )
     cantrip = Cantrip(
-        crystal=crystal,
+        llm=llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 4}]),
-        call=Call(
+        call=Identity(
             system_prompt=(
                 "You are a strict test agent. Always finish by calling done with answer='ok'."
             ),

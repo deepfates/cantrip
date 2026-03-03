@@ -1,5 +1,5 @@
-from cantrip.providers.base import Crystal
-from cantrip.providers.fake import FakeCrystal
-from cantrip.providers.openai_compat import OpenAICompatCrystal
+from cantrip.providers.base import LLM
+from cantrip.providers.fake import FakeLLM
+from cantrip.providers.openai_compat import OpenAICompatLLM
 
-__all__ = ["Crystal", "FakeCrystal", "OpenAICompatCrystal"]
+__all__ = ["LLM", "FakeLLM", "OpenAICompatLLM"]

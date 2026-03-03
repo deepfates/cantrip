@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from cantrip import Cantrip, Circle, FakeCrystal
+from cantrip import Cantrip, Circle, FakeLLM
 from cantrip.browser import BrowserDriver
 
 
 def test_call_entity_can_override_child_medium_to_browser() -> None:
-    parent = FakeCrystal(
+    parent = FakeLLM(
         {
             "responses": [
                 {
@@ -17,10 +17,10 @@ def test_call_entity_can_override_child_medium_to_browser() -> None:
             ]
         }
     )
-    child = FakeCrystal({"responses": [{"content": "navigated"}]})
+    child = FakeLLM({"responses": [{"content": "navigated"}]})
     cantrip = Cantrip(
-        crystal=parent,
-        child_crystal=child,
+        llm=parent,
+        child_llm=child,
         circle=Circle(
             gates=["done", "call_entity"],
             wards=[{"max_turns": 4}, {"max_depth": 1}],
@@ -31,7 +31,7 @@ def test_call_entity_can_override_child_medium_to_browser() -> None:
 
 
 def test_call_entity_can_override_child_code_runner_dependency() -> None:
-    parent = FakeCrystal(
+    parent = FakeLLM(
         {
             "responses": [
                 {
@@ -50,10 +50,10 @@ def test_call_entity_can_override_child_code_runner_dependency() -> None:
             ]
         }
     )
-    child = FakeCrystal({"responses": [{"content": "result = 6 * 7"}]})
+    child = FakeLLM({"responses": [{"content": "result = 6 * 7"}]})
     cantrip = Cantrip(
-        crystal=parent,
-        child_crystal=child,
+        llm=parent,
+        child_llm=child,
         circle=Circle(gates=["done", "call_entity"], wards=[{"max_turns": 4}]),
     )
     result, thread = cantrip.cast_with_thread("parent")
@@ -107,7 +107,7 @@ class _NamedBrowserDriver(BrowserDriver):
 
 def test_call_entity_can_override_child_browser_driver_dependency() -> None:
     events: list[str] = []
-    parent = FakeCrystal(
+    parent = FakeLLM(
         {
             "responses": [
                 {
@@ -126,7 +126,7 @@ def test_call_entity_can_override_child_browser_driver_dependency() -> None:
             ]
         }
     )
-    child = FakeCrystal(
+    child = FakeLLM(
         {
             "responses": [
                 {
@@ -142,9 +142,9 @@ def test_call_entity_can_override_child_browser_driver_dependency() -> None:
         }
     )
     cantrip = Cantrip(
-        crystal=parent,
-        child_crystal=child,
-        crystals={"child_crystal": child},
+        llm=parent,
+        child_llm=child,
+        llms={"child_llm": child},
         circle=Circle(gates=["done", "call_entity"], wards=[{"max_turns": 4}]),
         medium_depends={
             "browser": {"session_factory": _NamedBrowserDriver("default", events)}
@@ -159,7 +159,7 @@ def test_call_entity_can_override_child_browser_driver_dependency() -> None:
 
 
 def test_call_entity_batch_supports_mixed_child_medium_options() -> None:
-    parent = FakeCrystal(
+    parent = FakeLLM(
         {
             "responses": [
                 {
@@ -175,7 +175,7 @@ def test_call_entity_batch_supports_mixed_child_medium_options() -> None:
             ]
         }
     )
-    child = FakeCrystal(
+    child = FakeLLM(
         {
             "responses": [
                 {"tool_calls": [{"gate": "done", "args": {"answer": "tool"}}]},
@@ -194,8 +194,8 @@ def test_call_entity_batch_supports_mixed_child_medium_options() -> None:
     )
     events: list[str] = []
     cantrip = Cantrip(
-        crystal=parent,
-        child_crystal=child,
+        llm=parent,
+        child_llm=child,
         circle=Circle(
             gates=["done", "call_entity", "call_entity_batch"],
             wards=[{"max_turns": 4}, {"max_depth": 1}],
@@ -210,7 +210,7 @@ def test_call_entity_batch_supports_mixed_child_medium_options() -> None:
 
 
 def test_call_entity_rejects_legacy_override_keys() -> None:
-    parent = FakeCrystal(
+    parent = FakeLLM(
         {
             "responses": [
                 {
@@ -230,12 +230,12 @@ def test_call_entity_rejects_legacy_override_keys() -> None:
             ]
         }
     )
-    child = FakeCrystal(
+    child = FakeLLM(
         {"responses": [{"tool_calls": [{"gate": "done", "args": {"answer": "child"}}]}]}
     )
     cantrip = Cantrip(
-        crystal=parent,
-        child_crystal=child,
+        llm=parent,
+        child_llm=child,
         circle=Circle(gates=["done", "call_entity"], wards=[{"max_turns": 3}]),
     )
     result, thread = cantrip.cast_with_thread("parent")
@@ -246,7 +246,7 @@ def test_call_entity_rejects_legacy_override_keys() -> None:
 
 
 def test_call_entity_child_uses_circle_depends_over_global_medium_depends() -> None:
-    parent = FakeCrystal(
+    parent = FakeLLM(
         {
             "responses": [
                 {
@@ -262,12 +262,12 @@ def test_call_entity_child_uses_circle_depends_over_global_medium_depends() -> N
         }
     )
     # This payload needs the python subprocess runner; mini runner cannot import.
-    child = FakeCrystal(
+    child = FakeLLM(
         {"responses": [{"content": "import json\nresult = json.dumps({'ok': True})"}]}
     )
     cantrip = Cantrip(
-        crystal=parent,
-        child_crystal=child,
+        llm=parent,
+        child_llm=child,
         circle=Circle(
             gates=["done", "call_entity"],
             wards=[{"max_turns": 3}, {"max_depth": 1}],
@@ -283,7 +283,7 @@ def test_call_entity_child_uses_circle_depends_over_global_medium_depends() -> N
 
 
 def test_call_entity_depends_override_beats_circle_depends_for_child_runtime() -> None:
-    parent = FakeCrystal(
+    parent = FakeLLM(
         {
             "responses": [
                 {
@@ -302,12 +302,12 @@ def test_call_entity_depends_override_beats_circle_depends_for_child_runtime() -
             ]
         }
     )
-    child = FakeCrystal(
+    child = FakeLLM(
         {"responses": [{"content": "import json\nresult = json.dumps({'ok': True})"}]}
     )
     cantrip = Cantrip(
-        crystal=parent,
-        child_crystal=child,
+        llm=parent,
+        child_llm=child,
         circle=Circle(
             gates=["done", "call_entity"],
             wards=[{"max_turns": 3}, {"max_depth": 1}],
