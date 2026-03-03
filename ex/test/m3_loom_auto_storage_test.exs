@@ -1,7 +1,7 @@
 defmodule CantripM3LoomAutoStorageTest do
   use ExUnit.Case, async: false
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
   alias Cantrip.Loom.Storage.Auto, as: AutoStorage
 
   test "auto storage selects available backend and persists turn/reward events" do
@@ -13,15 +13,15 @@ defmodule CantripM3LoomAutoStorageTest do
 
     File.rm(path)
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
        ])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{gates: [:done], wards: [%{max_turns: 10}]},
         loom_storage: {:auto, %{dets_path: path}}
       )

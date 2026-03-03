@@ -2,13 +2,15 @@ defmodule CantripM12ExamplesTest do
   use ExUnit.Case, async: true
 
   alias Cantrip.Examples
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
   setup do
     previous_model = System.get_env("CANTRIP_MODEL")
+    previous_openai_model = System.get_env("OPENAI_MODEL")
 
     on_exit(fn ->
       restore_env("CANTRIP_MODEL", previous_model)
+      restore_env("OPENAI_MODEL", previous_openai_model)
     end)
   end
 
@@ -18,16 +20,16 @@ defmodule CantripM12ExamplesTest do
   end
 
   test "pattern 01 runs minimal done loop" do
-    crystal =
-      {FakeCrystal, FakeCrystal.new([%{tool_calls: [%{gate: "done", args: %{answer: "p01"}}]}])}
+    llm =
+      {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "p01"}}]}])}
 
-    assert {:ok, "p01", _cantrip, _loom, meta} = Examples.run("01", crystal: crystal)
+    assert {:ok, "p01", _cantrip, _loom, meta} = Examples.run("01", llm: llm)
     assert meta.terminated
   end
 
   test "pattern 08 runs code medium snippet" do
-    crystal = {FakeCrystal, FakeCrystal.new([%{code: "done.(42)"}])}
-    assert {:ok, 42, _cantrip, _loom, meta} = Examples.run("08", crystal: crystal)
+    llm = {FakeLLM, FakeLLM.new([%{code: "done.(42)"}])}
+    assert {:ok, 42, _cantrip, _loom, meta} = Examples.run("08", llm: llm)
     assert meta.terminated
   end
 
@@ -73,7 +75,7 @@ defmodule CantripM12ExamplesTest do
 
   test "pattern 11 triggers folding before completion" do
     assert {:ok, "pattern-11:folded", cantrip, _loom, _meta} = Examples.run("11", mode: :scripted)
-    [_first, _second, third | _] = FakeCrystal.invocations(cantrip.crystal_state)
+    [_first, _second, third | _] = FakeLLM.invocations(cantrip.llm_state)
 
     assert Enum.any?(
              third.messages,
@@ -90,12 +92,12 @@ defmodule CantripM12ExamplesTest do
     assert Enum.any?(turn.observation, &(&1.gate == "read" and not &1.is_error))
   end
 
-  test "pattern 06 demonstrates per-call crystal portability via delegation" do
+  test "pattern 06 demonstrates per-call llm portability via delegation" do
     assert {:ok, "pattern-06:openai/gemini", _cantrip, loom, _meta} =
              Examples.run("06", mode: :scripted)
 
     [turn | _] = loom.turns
-    assert Enum.count(turn.observation, &(&1.gate == "call_agent")) == 2
+    assert Enum.count(turn.observation, &(&1.gate == "call_entity")) == 2
   end
 
   test "pattern 15 runs batch delegation with read gate workers" do
@@ -103,7 +105,7 @@ defmodule CantripM12ExamplesTest do
              Examples.run("15", mode: :scripted)
 
     assert Enum.any?(loom.turns, fn t ->
-             Enum.any?(t.observation || [], &(&1.gate == "call_agent_batch"))
+             Enum.any?(t.observation || [], &(&1.gate == "call_entity_batch"))
            end)
 
     assert Enum.any?(loom.turns, fn t ->
@@ -130,23 +132,23 @@ defmodule CantripM12ExamplesTest do
 
   test "pattern 10 supports parallel delegation shape" do
     parent =
-      {FakeCrystal,
-       FakeCrystal.new([
+      {FakeLLM,
+       FakeLLM.new([
          %{
            code:
-             "results = call_agent_batch.([%{intent: \"a\"}, %{intent: \"b\"}])\ndone.(Enum.join(results, \",\"))"
+             "results = call_entity_batch.([%{intent: \"a\"}, %{intent: \"b\"}])\ndone.(Enum.join(results, \",\"))"
          }
        ])}
 
     child =
-      {FakeCrystal,
-       FakeCrystal.new([
+      {FakeLLM,
+       FakeLLM.new([
          %{code: "done.(\"A\")"},
          %{code: "done.(\"B\")"}
        ])}
 
     assert {:ok, "A,B", _cantrip, _loom, _meta} =
-             Examples.run("10", crystal: parent, child_crystal: child)
+             Examples.run("10", llm: parent, child_llm: child)
   end
 
   test "pattern 16 accepts persistent loom storage config" do
@@ -158,18 +160,19 @@ defmodule CantripM12ExamplesTest do
 
     File.rm(path)
 
-    crystal =
-      {FakeCrystal, FakeCrystal.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
+    llm =
+      {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
 
     assert {:ok, "ok", _cantrip, _loom, _meta} =
-             Examples.run("16", crystal: crystal, loom_storage: {:jsonl, path})
+             Examples.run("16", llm: llm, loom_storage: {:jsonl, path})
 
     assert File.exists?(path)
   end
 
-  test "default example mode is real and fails fast when env crystal config is missing" do
+  test "default example mode is real and fails fast when env llm config is missing" do
     System.delete_env("CANTRIP_MODEL")
-    assert {:error, "missing CANTRIP_MODEL"} = Examples.run("01")
+    System.delete_env("OPENAI_MODEL")
+    assert {:error, "missing CANTRIP_MODEL or OPENAI_MODEL"} = Examples.run("01")
   end
 
   defp restore_env(key, nil), do: System.delete_env(key)

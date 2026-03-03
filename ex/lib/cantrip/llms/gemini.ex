@@ -1,11 +1,11 @@
-defmodule Cantrip.Crystals.Gemini do
+defmodule Cantrip.LLMs.Gemini do
   @moduledoc """
-  Google Gemini API crystal adapter.
+  Google Gemini API llm adapter.
 
   Supports Gemini models via the AI Studio `generativelanguage.googleapis.com` endpoint.
   """
 
-  @behaviour Cantrip.Crystal
+  @behaviour Cantrip.LLM
 
   @default_base_url "https://generativelanguage.googleapis.com"
 
@@ -103,11 +103,11 @@ defmodule Cantrip.Crystals.Gemini do
             else: []
 
         fc_parts =
-          Enum.map(tool_calls, fn call ->
+          Enum.map(tool_calls, fn identity ->
             %{
               functionCall: %{
-                name: call[:gate] || call["gate"],
-                args: call[:args] || call["args"] || %{}
+                name: identity[:gate] || identity["gate"],
+                args: identity[:args] || identity["args"] || %{}
               }
             }
           end)

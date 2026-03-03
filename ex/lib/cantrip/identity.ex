@@ -1,6 +1,6 @@
-defmodule Cantrip.Call do
+defmodule Cantrip.Identity do
   @moduledoc """
-  Immutable call configuration (identity + crystal knobs).
+  Immutable identity configuration (identity + llm knobs).
   """
 
   defstruct system_prompt: nil,

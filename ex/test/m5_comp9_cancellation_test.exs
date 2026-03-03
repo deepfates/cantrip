@@ -1,15 +1,15 @@
 defmodule CantripM5Comp9CancellationTest do
   use ExUnit.Case, async: false
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
   test "COMP-9 cast truncates with parent_terminated when cancel_on_parent exits" do
-    crystal =
-      {FakeCrystal, FakeCrystal.new(Enum.map(1..20, fn _ -> %{code: "Process.sleep(30)"} end))}
+    llm =
+      {FakeLLM, FakeLLM.new(Enum.map(1..20, fn _ -> %{code: "Process.sleep(30)"} end))}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           type: :code,
           gates: [:done, :echo],
@@ -40,21 +40,21 @@ defmodule CantripM5Comp9CancellationTest do
            end)
   end
 
-  test "COMP-9 concurrent call_agent_batch children truncate and persist subtree on ancestor death" do
+  test "COMP-9 concurrent call_entity_batch children truncate and persist subtree on ancestor death" do
     parent_code = """
-    c1 = CantripM5Comp9CancellationTest.slow_child_crystal()
-    c2 = CantripM5Comp9CancellationTest.slow_child_crystal()
-    _ = call_agent_batch.([%{intent: "c1", crystal: c1}, %{intent: "c2", crystal: c2}])
+    c1 = CantripM5Comp9CancellationTest.slow_child_llm()
+    c2 = CantripM5Comp9CancellationTest.slow_child_llm()
+    _ = call_entity_batch.([%{intent: "c1", llm: c1}, %{intent: "c2", llm: c2}])
     """
 
-    parent = {FakeCrystal, FakeCrystal.new([%{code: parent_code}])}
+    parent = {FakeLLM, FakeLLM.new([%{code: parent_code}])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: parent,
+        llm: parent,
         circle: %{
           type: :code,
-          gates: [:done, :call_agent, :call_agent_batch],
+          gates: [:done, :call_entity, :call_entity_batch],
           wards: [%{max_turns: 100}, %{max_depth: 1}, %{max_concurrent_children: 8}]
         }
       )
@@ -79,7 +79,7 @@ defmodule CantripM5Comp9CancellationTest do
            end)
   end
 
-  def slow_child_crystal do
-    {FakeCrystal, FakeCrystal.new(Enum.map(1..80, fn _ -> %{code: "Process.sleep(30)"} end))}
+  def slow_child_llm do
+    {FakeLLM, FakeLLM.new(Enum.map(1..80, fn _ -> %{code: "Process.sleep(30)"} end))}
   end
 end

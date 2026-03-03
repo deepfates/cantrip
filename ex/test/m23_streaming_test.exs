@@ -1,18 +1,18 @@
 defmodule CantripM23StreamingTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
   test "cast_stream emits step_start, tool events, and final_response" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{tool_calls: [%{gate: "echo", args: %{text: "hi"}}]},
          %{tool_calls: [%{gate: "done", args: %{answer: "finished"}}]}
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(crystal: crystal, circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]})
 
     {stream, _task} = Cantrip.cast_stream(cantrip, "test streaming")
 
@@ -40,14 +40,14 @@ defmodule CantripM23StreamingTest do
   end
 
   test "cast_stream emits usage events" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(crystal: crystal, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
 
     {stream, _task} = Cantrip.cast_stream(cantrip, "usage test")
 
@@ -57,14 +57,14 @@ defmodule CantripM23StreamingTest do
   end
 
   test "cast_stream emits step_complete with terminated flag" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(crystal: crystal, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
 
     {stream, _task} = Cantrip.cast_stream(cantrip, "completion test")
 

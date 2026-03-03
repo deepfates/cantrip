@@ -1,9 +1,9 @@
-defmodule Cantrip.FakeCrystal do
+defmodule Cantrip.FakeLLM do
   @moduledoc """
-  Deterministic crystal used in tests.
+  Deterministic llm used in tests.
   """
 
-  @behaviour Cantrip.Crystal
+  @behaviour Cantrip.LLM
 
   def new(responses, opts \\ []) when is_list(responses) do
     %{

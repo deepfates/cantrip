@@ -1,27 +1,27 @@
 defmodule CantripM19CodeSandboxTest do
   use ExUnit.Case, async: false
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
-  defp code_cantrip(crystal, opts \\ []) do
+  defp code_cantrip(llm, opts \\ []) do
     wards = Keyword.get(opts, :wards, [%{max_turns: 10}])
 
     Cantrip.new(
-      crystal: crystal,
+      llm: llm,
       circle: %{type: :code, gates: [:done, :echo], wards: wards}
     )
   end
 
   describe "code eval sandbox" do
     test "eval timeout does not hang the entity" do
-      crystal =
-        {FakeCrystal,
-         FakeCrystal.new([
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
            %{code: "Process.sleep(:infinity)"},
            %{code: ~s[done.("recovered")]}
          ])}
 
-      {:ok, cantrip} = code_cantrip(crystal, wards: [%{max_turns: 10}])
+      {:ok, cantrip} = code_cantrip(llm, wards: [%{max_turns: 10}])
 
       assert {:ok, "recovered", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "timeout test")
 
@@ -37,14 +37,14 @@ defmodule CantripM19CodeSandboxTest do
 
     @tag timeout: 60_000
     test "eval crash does not kill the entity server" do
-      crystal =
-        {FakeCrystal,
-         FakeCrystal.new([
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
            %{code: "raise \"boom\""},
            %{code: ~s[done.("survived")]}
          ])}
 
-      {:ok, cantrip} = code_cantrip(crystal)
+      {:ok, cantrip} = code_cantrip(llm)
 
       assert {:ok, "survived", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "crash test")
 
@@ -59,14 +59,14 @@ defmodule CantripM19CodeSandboxTest do
     end
 
     test "parse error does not kill the entity server" do
-      crystal =
-        {FakeCrystal,
-         FakeCrystal.new([
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
            %{code: "if ("},
            %{code: ~s[done.("ok")]}
          ])}
 
-      {:ok, cantrip} = code_cantrip(crystal)
+      {:ok, cantrip} = code_cantrip(llm)
 
       assert {:ok, "ok", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "parse error test")
 
@@ -81,11 +81,11 @@ defmodule CantripM19CodeSandboxTest do
     end
   end
 
-  describe "code-mode feedback reaches the crystal" do
-    test "parse error is visible to crystal as user message" do
-      crystal =
-        {FakeCrystal,
-         FakeCrystal.new(
+  describe "code-mode feedback reaches the llm" do
+    test "parse error is visible to llm as user message" do
+      llm =
+        {FakeLLM,
+         FakeLLM.new(
            [
              %{code: "if ("},
              %{code: ~s[done.("ok")]}
@@ -93,10 +93,10 @@ defmodule CantripM19CodeSandboxTest do
            record_inputs: true
          )}
 
-      {:ok, cantrip} = code_cantrip(crystal)
+      {:ok, cantrip} = code_cantrip(llm)
       {:ok, "ok", next_cantrip, _loom, _meta} = Cantrip.cast(cantrip, "feedback test")
 
-      [_first, second] = FakeCrystal.invocations(next_cantrip.crystal_state)
+      [_first, second] = FakeLLM.invocations(next_cantrip.llm_state)
       user_messages = Enum.filter(second.messages, &(&1.role == :user))
 
       feedback =
@@ -107,10 +107,10 @@ defmodule CantripM19CodeSandboxTest do
       assert feedback, "expected a user message with parse error feedback"
     end
 
-    test "runtime error is visible to crystal as user message" do
-      crystal =
-        {FakeCrystal,
-         FakeCrystal.new(
+    test "runtime error is visible to llm as user message" do
+      llm =
+        {FakeLLM,
+         FakeLLM.new(
            [
              %{code: "raise \"something broke\""},
              %{code: ~s[done.("ok")]}
@@ -118,10 +118,10 @@ defmodule CantripM19CodeSandboxTest do
            record_inputs: true
          )}
 
-      {:ok, cantrip} = code_cantrip(crystal)
+      {:ok, cantrip} = code_cantrip(llm)
       {:ok, "ok", next_cantrip, _loom, _meta} = Cantrip.cast(cantrip, "runtime error test")
 
-      [_first, second] = FakeCrystal.invocations(next_cantrip.crystal_state)
+      [_first, second] = FakeLLM.invocations(next_cantrip.llm_state)
       user_messages = Enum.filter(second.messages, &(&1.role == :user))
 
       feedback =
@@ -133,9 +133,9 @@ defmodule CantripM19CodeSandboxTest do
     end
 
     test "successful eval without done() sends result as feedback" do
-      crystal =
-        {FakeCrystal,
-         FakeCrystal.new(
+      llm =
+        {FakeLLM,
+         FakeLLM.new(
            [
              %{code: "1 + 1"},
              %{code: ~s[done.("ok")]}
@@ -143,10 +143,10 @@ defmodule CantripM19CodeSandboxTest do
            record_inputs: true
          )}
 
-      {:ok, cantrip} = code_cantrip(crystal)
+      {:ok, cantrip} = code_cantrip(llm)
       {:ok, "ok", next_cantrip, _loom, _meta} = Cantrip.cast(cantrip, "result feedback test")
 
-      [_first, second] = FakeCrystal.invocations(next_cantrip.crystal_state)
+      [_first, second] = FakeLLM.invocations(next_cantrip.llm_state)
       user_messages = Enum.filter(second.messages, &(&1.role == :user))
 
       feedback =
@@ -158,9 +158,9 @@ defmodule CantripM19CodeSandboxTest do
     end
 
     test "no role:tool messages in code mode feedback" do
-      crystal =
-        {FakeCrystal,
-         FakeCrystal.new(
+      llm =
+        {FakeLLM,
+         FakeLLM.new(
            [
              %{code: "raise \"err\""},
              %{code: ~s[done.("ok")]}
@@ -168,19 +168,19 @@ defmodule CantripM19CodeSandboxTest do
            record_inputs: true
          )}
 
-      {:ok, cantrip} = code_cantrip(crystal)
+      {:ok, cantrip} = code_cantrip(llm)
       {:ok, "ok", next_cantrip, _loom, _meta} = Cantrip.cast(cantrip, "no tool msg test")
 
-      [_first, second] = FakeCrystal.invocations(next_cantrip.crystal_state)
+      [_first, second] = FakeLLM.invocations(next_cantrip.llm_state)
       tool_messages = Enum.filter(second.messages, &(&1.role == :tool))
 
       assert tool_messages == [], "expected no role:tool messages in code mode"
     end
 
-    test "IO.puts output is captured and fed back to crystal" do
-      crystal =
-        {FakeCrystal,
-         FakeCrystal.new(
+    test "IO.puts output is captured and fed back to llm" do
+      llm =
+        {FakeLLM,
+         FakeLLM.new(
            [
              %{code: ~s[IO.puts("hello from sandbox")]},
              %{code: ~s[done.("ok")]}
@@ -188,7 +188,7 @@ defmodule CantripM19CodeSandboxTest do
            record_inputs: true
          )}
 
-      {:ok, cantrip} = code_cantrip(crystal)
+      {:ok, cantrip} = code_cantrip(llm)
       {:ok, "ok", next_cantrip, loom, _meta} = Cantrip.cast(cantrip, "io capture test")
 
       # stdio observation is in the loom
@@ -201,8 +201,8 @@ defmodule CantripM19CodeSandboxTest do
 
       assert stdio_obs, "expected a stdio observation with captured IO output"
 
-      # feedback reaches the crystal on the next turn
-      [_first, second] = FakeCrystal.invocations(next_cantrip.crystal_state)
+      # feedback reaches the llm on the next turn
+      [_first, second] = FakeLLM.invocations(next_cantrip.llm_state)
       user_messages = Enum.filter(second.messages, &(&1.role == :user))
 
       feedback =
@@ -210,18 +210,18 @@ defmodule CantripM19CodeSandboxTest do
           String.contains?(msg.content, "hello from sandbox")
         end)
 
-      assert feedback, "expected IO output in crystal feedback"
+      assert feedback, "expected IO output in llm feedback"
     end
 
     test "IO.puts does not leak to real stdout" do
-      crystal =
-        {FakeCrystal,
-         FakeCrystal.new([
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
            %{code: ~s[IO.puts("should not appear")]},
            %{code: ~s[done.("ok")]}
          ])}
 
-      {:ok, cantrip} = code_cantrip(crystal)
+      {:ok, cantrip} = code_cantrip(llm)
 
       output =
         ExUnit.CaptureIO.capture_io(fn ->

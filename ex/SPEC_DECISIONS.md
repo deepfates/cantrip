@@ -9,7 +9,7 @@ Scope: `SPEC.md` conflict markers and duplicated section numbering.
 Decision:
 1. Treat `tests.yaml` behavior as canonical where spec branches conflict.
 2. Maintain one Chapter 1 flow with unique section numbers.
-3. Keep both cast and invoke concepts, with cast as single-episode execution and invoke as persistent entity lifecycle.
+3. Keep both cast and summon concepts, with cast as single-episode execution and summon as persistent entity lifecycle.
 
 Rationale: Tests are the executable conformance surface.
 
@@ -17,8 +17,8 @@ Rationale: Tests are the executable conformance surface.
 
 Decision:
 1. Canonical config key: `require_done_tool`.
-2. Canonical delegation gates: `call_agent`, `call_agent_batch`.
-3. `call_entity` and `call_entity_batch` are accepted aliases only at parsing boundaries, normalized internally to `call_agent*`.
+2. Canonical delegation gates: `call_entity`, `call_entity_batch`.
+3. `call_entity` and `call_entity_batch` are accepted aliases only at parsing boundaries, normalized internally to `call_entity*`.
 
 Rationale: Matches current tests and avoids split semantics.
 

@@ -1,22 +1,22 @@
 defmodule CantripM3LoomDetsStorageTest do
   use ExUnit.Case, async: false
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
   alias Cantrip.Loom.Storage.Dets
 
   test "loom writes turn and reward events to dets storage" do
     path = tmp_dets_path()
     File.rm(path)
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
        ])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{gates: [:done], wards: [%{max_turns: 10}]},
         loom_storage: {:dets, path}
       )

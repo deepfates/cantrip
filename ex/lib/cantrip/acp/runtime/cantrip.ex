@@ -8,14 +8,14 @@ defmodule Cantrip.ACP.Runtime.Cantrip do
     cwd = Map.get(params, "cwd")
 
     case Cantrip.new_from_env(
-           call: %{
+           identity: %{
              system_prompt:
                "Return only executable Elixir code. Always finish with done.(\"...\"). No markdown.",
              require_done_tool: true
            },
            circle: %{
              type: :code,
-             gates: [:done, :echo, :call_agent, :call_agent_batch, :compile_and_load],
+             gates: [:done, :echo, :call_entity, :call_entity_batch, :compile_and_load],
              wards: [%{max_turns: 24}, %{max_depth: 2}, %{max_concurrent_children: 4}]
            },
            retry: %{max_retries: 1, retryable_status_codes: [408, 429, 500, 502, 503, 504]}
@@ -27,7 +27,7 @@ defmodule Cantrip.ACP.Runtime.Cantrip do
 
   @impl true
   def prompt(%{cantrip: cantrip, entity_pid: nil} = session, text) when is_binary(text) do
-    case Cantrip.invoke(cantrip, text) do
+    case Cantrip.summon(cantrip, text) do
       {:ok, pid, result, next_cantrip, _loom, _meta} ->
         answer = normalize_answer(result)
         next_session = %{session | cantrip: next_cantrip, entity_pid: pid}

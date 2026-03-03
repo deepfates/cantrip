@@ -1,11 +1,11 @@
-defmodule Cantrip.Crystals.Anthropic do
+defmodule Cantrip.LLMs.Anthropic do
   @moduledoc """
-  Anthropic Messages API crystal adapter.
+  Anthropic Messages API llm adapter.
 
   Supports Claude models via the native `/v1/messages` endpoint.
   """
 
-  @behaviour Cantrip.Crystal
+  @behaviour Cantrip.LLM
 
   @default_base_url "https://api.anthropic.com"
   @api_version "2023-06-01"
@@ -106,12 +106,12 @@ defmodule Cantrip.Crystals.Anthropic do
             else: []
 
         tool_blocks =
-          Enum.map(tool_calls, fn call ->
+          Enum.map(tool_calls, fn identity ->
             %{
               type: "tool_use",
-              id: call[:id] || call["id"],
-              name: call[:gate] || call["gate"],
-              input: call[:args] || call["args"] || %{}
+              id: identity[:id] || identity["id"],
+              name: identity[:gate] || identity["gate"],
+              input: identity[:args] || identity["args"] || %{}
             }
           end)
 
@@ -191,11 +191,11 @@ defmodule Cantrip.Crystals.Anthropic do
     normalized_tool_calls =
       tool_calls
       |> Enum.filter(&(&1["type"] == "tool_use"))
-      |> Enum.map(fn call ->
+      |> Enum.map(fn identity ->
         %{
-          id: call["id"],
-          gate: call["name"],
-          args: call["input"] || %{}
+          id: identity["id"],
+          gate: identity["name"],
+          args: identity["input"] || %{}
         }
       end)
 

@@ -1,7 +1,7 @@
 defmodule CantripM7HotReloadTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
   test "hot-reload gate compiles and reloads allowed module" do
     module_name = "Elixir.Cantrip.HotReloadDemo"
@@ -14,9 +14,9 @@ defmodule CantripM7HotReloadTest do
     end
     """
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{
            tool_calls: [
              %{gate: "compile_and_load", args: %{module: module_name, source: source}},
@@ -27,7 +27,7 @@ defmodule CantripM7HotReloadTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           gates: [:done, :compile_and_load],
           wards: [%{max_turns: 10}, %{allow_compile_modules: [module_name]}]
@@ -56,9 +56,9 @@ defmodule CantripM7HotReloadTest do
     end
     """
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{
            tool_calls: [
              %{gate: "compile_and_load", args: %{module: module_name, source: source}},
@@ -69,7 +69,7 @@ defmodule CantripM7HotReloadTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           gates: [:done, :compile_and_load],
           wards: [%{max_turns: 10}, %{allow_compile_modules: ["Elixir.Cantrip.AllowedOnly"]}]
@@ -98,9 +98,9 @@ defmodule CantripM7HotReloadTest do
     denied_path = Path.join(System.tmp_dir!(), "cantrip_denied/path_denied_reload.ex")
     allowed_root = Path.join(System.tmp_dir!(), "cantrip_allowed")
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{
            tool_calls: [
              %{
@@ -114,7 +114,7 @@ defmodule CantripM7HotReloadTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           gates: [:done, :compile_and_load],
           wards: [
@@ -149,11 +149,11 @@ defmodule CantripM7HotReloadTest do
     done.(Cantrip.HotReloadFromCode.value())
     """
 
-    crystal = {FakeCrystal, FakeCrystal.new([%{code: code}])}
+    llm = {FakeLLM, FakeLLM.new([%{code: code}])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           type: :code,
           gates: [:done, :compile_and_load],
@@ -178,9 +178,9 @@ defmodule CantripM7HotReloadTest do
 
     sha256 = :crypto.hash(:sha256, source) |> Base.encode16(case: :lower)
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{
            tool_calls: [
              %{
@@ -194,7 +194,7 @@ defmodule CantripM7HotReloadTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           gates: [:done, :compile_and_load],
           wards: [
@@ -223,9 +223,9 @@ defmodule CantripM7HotReloadTest do
 
     wrong_sha = :crypto.hash(:sha256, "different source") |> Base.encode16(case: :lower)
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{
            tool_calls: [
              %{
@@ -239,7 +239,7 @@ defmodule CantripM7HotReloadTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           gates: [:done, :compile_and_load],
           wards: [
@@ -272,9 +272,9 @@ defmodule CantripM7HotReloadTest do
     {private_key, public_key_pem} = signer_keypair()
     signature = Base.encode64(:public_key.sign(source, :sha256, private_key))
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{
            tool_calls: [
              %{
@@ -293,7 +293,7 @@ defmodule CantripM7HotReloadTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           gates: [:done, :compile_and_load],
           wards: [
@@ -323,9 +323,9 @@ defmodule CantripM7HotReloadTest do
     {private_key, public_key_pem} = signer_keypair()
     bad_signature = Base.encode64(:public_key.sign("different source", :sha256, private_key))
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{
            tool_calls: [
              %{
@@ -344,7 +344,7 @@ defmodule CantripM7HotReloadTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           gates: [:done, :compile_and_load],
           wards: [

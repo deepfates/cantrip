@@ -5,7 +5,7 @@ defmodule Cantrip.Loom do
 
   alias Cantrip.Loom.Storage.Memory
 
-  defstruct call: nil, turns: [], storage_module: Memory, storage_state: %{}
+  defstruct identity: nil, turns: [], storage_module: Memory, storage_state: %{}
 
   def new(call, opts \\ []) do
     {storage_module, storage_opts} = normalize_storage(Keyword.get(opts, :storage))
@@ -13,14 +13,14 @@ defmodule Cantrip.Loom do
     case storage_module.init(storage_opts) do
       {:ok, storage_state} ->
         %__MODULE__{
-          call: call,
+          identity: call,
           turns: [],
           storage_module: storage_module,
           storage_state: storage_state
         }
 
       {:error, _reason} ->
-        %__MODULE__{call: call, turns: [], storage_module: Memory, storage_state: %{}}
+        %__MODULE__{identity: call, turns: [], storage_module: Memory, storage_state: %{}}
     end
   end
 

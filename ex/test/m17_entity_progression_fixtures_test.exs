@@ -1,7 +1,7 @@
 defmodule CantripM17EntityProgressionFixturesTest do
   use ExUnit.Case, async: false
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
   @fixtures_dir Path.expand("fixtures/progression", __DIR__)
 
@@ -54,7 +54,7 @@ defmodule CantripM17EntityProgressionFixturesTest do
 
     if expect["has_batch_gate_observation"] do
       assert Enum.any?(loom.turns, fn turn ->
-               Enum.any?(turn.observation || [], &(&1.gate == "call_agent_batch"))
+               Enum.any?(turn.observation || [], &(&1.gate == "call_entity_batch"))
              end),
              "fixture=#{name}"
     end
@@ -69,32 +69,32 @@ defmodule CantripM17EntityProgressionFixturesTest do
   end
 
   defp run_scenario("recursive_delegation") do
-    l2 = {FakeCrystal, FakeCrystal.new([%{code: "done.(\"deepest\")"}])}
+    l2 = {FakeLLM, FakeLLM.new([%{code: "done.(\"deepest\")"}])}
 
     l1 =
-      {FakeCrystal,
-       FakeCrystal.new([
+      {FakeLLM,
+       FakeLLM.new([
          %{
            code:
-             "result = call_agent.(%{intent: \"level 2\", crystal: #{inspect(l2)}})\ndone.(result)"
+             "result = call_entity.(%{intent: \"level 2\", llm: #{inspect(l2)}})\ndone.(result)"
          }
        ])}
 
     parent =
-      {FakeCrystal,
-       FakeCrystal.new([
+      {FakeLLM,
+       FakeLLM.new([
          %{
            code:
-             "result = call_agent.(%{intent: \"level 1\", crystal: #{inspect(l1)}})\ndone.(result)"
+             "result = call_entity.(%{intent: \"level 1\", llm: #{inspect(l1)}})\ndone.(result)"
          }
        ])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: parent,
+        llm: parent,
         circle: %{
           type: :code,
-          gates: [:done, :call_agent],
+          gates: [:done, :call_entity],
           wards: [%{max_turns: 10}, %{max_depth: 2}]
         }
       )
@@ -105,19 +105,19 @@ defmodule CantripM17EntityProgressionFixturesTest do
 
   defp run_scenario("cancel_propagation") do
     parent_code = """
-    c1 = CantripM17EntityProgressionFixturesTest.slow_child_crystal()
-    c2 = CantripM17EntityProgressionFixturesTest.slow_child_crystal()
-    _ = call_agent_batch.([%{intent: "c1", crystal: c1}, %{intent: "c2", crystal: c2}])
+    c1 = CantripM17EntityProgressionFixturesTest.slow_child_llm()
+    c2 = CantripM17EntityProgressionFixturesTest.slow_child_llm()
+    _ = call_entity_batch.([%{intent: "c1", llm: c1}, %{intent: "c2", llm: c2}])
     """
 
-    parent = {FakeCrystal, FakeCrystal.new([%{code: parent_code}])}
+    parent = {FakeLLM, FakeLLM.new([%{code: parent_code}])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: parent,
+        llm: parent,
         circle: %{
           type: :code,
-          gates: [:done, :call_agent, :call_agent_batch],
+          gates: [:done, :call_entity, :call_entity_batch],
           wards: [%{max_turns: 100}, %{max_depth: 1}, %{max_concurrent_children: 8}]
         }
       )
@@ -138,17 +138,17 @@ defmodule CantripM17EntityProgressionFixturesTest do
 
   defp run_scenario("batch_order_subtree") do
     parent =
-      {FakeCrystal,
-       FakeCrystal.new([
+      {FakeLLM,
+       FakeLLM.new([
          %{
            code:
-             "results = call_agent_batch.([%{intent: \"a\"}, %{intent: \"b\"}, %{intent: \"c\"}])\ndone.(Enum.join(results, \",\"))"
+             "results = call_entity_batch.([%{intent: \"a\"}, %{intent: \"b\"}, %{intent: \"c\"}])\ndone.(Enum.join(results, \",\"))"
          }
        ])}
 
     child =
-      {FakeCrystal,
-       FakeCrystal.new([
+      {FakeLLM,
+       FakeLLM.new([
          %{code: "done.(\"A\")"},
          %{code: "done.(\"B\")"},
          %{code: "done.(\"C\")"}
@@ -156,11 +156,11 @@ defmodule CantripM17EntityProgressionFixturesTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: parent,
-        child_crystal: child,
+        llm: parent,
+        child_llm: child,
         circle: %{
           type: :code,
-          gates: [:done, :call_agent, :call_agent_batch],
+          gates: [:done, :call_entity, :call_entity_batch],
           wards: [%{max_turns: 10}, %{max_depth: 1}]
         }
       )
@@ -169,7 +169,7 @@ defmodule CantripM17EntityProgressionFixturesTest do
     {result, loom, meta}
   end
 
-  def slow_child_crystal do
-    {FakeCrystal, FakeCrystal.new(Enum.map(1..80, fn _ -> %{code: "Process.sleep(30)"} end))}
+  def slow_child_llm do
+    {FakeLLM, FakeLLM.new(Enum.map(1..80, fn _ -> %{code: "Process.sleep(30)"} end))}
   end
 end

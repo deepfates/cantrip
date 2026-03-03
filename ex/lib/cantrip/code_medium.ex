@@ -4,16 +4,16 @@ defmodule Cantrip.CodeMedium do
 
   The runtime injects a tiny host API into each evaluation:
   - `done/1` terminates the turn and reports the final answer through the circle.
-  - `call_agent/1` synchronously delegates to a child entity and returns its value.
+  - `call_entity/1` synchronously delegates to a child entity and returns its value.
   """
 
   alias Cantrip.Circle
 
   @reserved_bindings [
     :done,
-    :call_agent,
     :call_entity,
-    :call_agent_batch,
+    :call_entity,
+    :call_entity_batch,
     :call_entity_batch,
     :compile_and_load
   ]
@@ -21,8 +21,8 @@ defmodule Cantrip.CodeMedium do
   @type runtime :: %{
           required(:circle) => Circle.t(),
           optional(:execute_gate) => (String.t(), map() -> map()),
-          required(:call_agent) => (map() -> map()),
-          optional(:call_agent_batch) => (list(map()) -> map()),
+          required(:call_entity) => (map() -> map()),
+          optional(:call_entity_batch) => (list(map()) -> map()),
           optional(:compile_and_load) => (map() -> map())
         }
   @type state :: %{optional(:binding) => keyword()}
@@ -79,8 +79,8 @@ defmodule Cantrip.CodeMedium do
       throw({:cantrip_done, answer})
     end
 
-    call_agent_fun = fn opts ->
-      payload = runtime.call_agent.(normalize_opts(opts))
+    call_entity_fun = fn opts ->
+      payload = runtime.call_entity.(normalize_opts(opts))
       push_observation(payload.observation)
       payload.value
     end
@@ -88,25 +88,25 @@ defmodule Cantrip.CodeMedium do
     binding =
       user_binding
       |> Keyword.put(:done, done_fun)
-      |> Keyword.put(:call_agent, call_agent_fun)
-      |> Keyword.put(:call_entity, call_agent_fun)
+      |> Keyword.put(:call_entity, call_entity_fun)
+      |> Keyword.put(:call_entity, call_entity_fun)
       |> put_circle_gate_bindings(runtime)
 
     binding =
-      case Map.get(runtime, :call_agent_batch) do
+      case Map.get(runtime, :call_entity_batch) do
         nil ->
           binding
 
         batch_fun ->
-          call_agent_batch_fun = fn opts ->
+          call_entity_batch_fun = fn opts ->
             payload = batch_fun.(normalize_batch(opts))
             push_observation(payload.observation)
             payload.value
           end
 
           binding
-          |> Keyword.put(:call_agent_batch, call_agent_batch_fun)
-          |> Keyword.put(:call_entity_batch, call_agent_batch_fun)
+          |> Keyword.put(:call_entity_batch, call_entity_batch_fun)
+          |> Keyword.put(:call_entity_batch, call_entity_batch_fun)
       end
 
     case Map.get(runtime, :compile_and_load) do

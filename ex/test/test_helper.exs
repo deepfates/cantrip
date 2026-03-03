@@ -1,4 +1,4 @@
-defmodule Cantrip.Test.RealCrystalEnv do
+defmodule Cantrip.Test.RealLLMEnv do
   @moduledoc false
 
   def enabled? do

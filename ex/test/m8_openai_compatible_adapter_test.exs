@@ -1,7 +1,7 @@
 defmodule CantripM8OpenAICompatibleAdapterTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.Crystals.OpenAICompatible
+  alias Cantrip.LLMs.OpenAICompatible
 
   test "encodes assistant tool_calls and tool_call_id with string content fields" do
     {:ok, server} = start_stub_server(%{"content" => nil, "tool_calls" => []})

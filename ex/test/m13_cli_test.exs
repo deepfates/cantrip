@@ -45,7 +45,7 @@ defmodule CantripM13CliTest do
         assert CLI.run(["example", "list"]) == 0
       end)
 
-    assert output =~ "01  Minimal Crystal + done"
+    assert output =~ "01  Minimal LLM + done"
     assert output =~ "16  Familiar-style persistent loom"
   end
 

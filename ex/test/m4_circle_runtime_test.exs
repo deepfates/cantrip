@@ -1,12 +1,12 @@
 defmodule CantripM4CircleRuntimeTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
-  test "CIRCLE-3/CIRCLE-4 gate result is visible in next crystal invocation" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new(
+  test "CIRCLE-3/CIRCLE-4 gate result is visible in next llm invocation" do
+    llm =
+      {FakeLLM,
+       FakeLLM.new(
          [
            %{tool_calls: [%{gate: "slow_gate", args: %{delay_ms: 10}}]},
            %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
@@ -16,7 +16,7 @@ defmodule CantripM4CircleRuntimeTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           gates: [
             %{name: :done},
@@ -27,21 +27,21 @@ defmodule CantripM4CircleRuntimeTest do
       )
 
     {:ok, "ok", cantrip, _loom, _meta} = Cantrip.cast(cantrip, "sync")
-    [_first, second] = FakeCrystal.invocations(cantrip.crystal_state)
+    [_first, second] = FakeLLM.invocations(cantrip.llm_state)
     assert Enum.any?(second.messages, &String.contains?(to_string(&1.content), "completed"))
   end
 
   test "CIRCLE-5 gate errors are observations and loop can recover" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{tool_calls: [%{gate: "failing_gate", args: %{}}]},
          %{tool_calls: [%{gate: "done", args: %{answer: "recovered"}}]}
        ])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           gates: [
             %{name: :done},
@@ -57,16 +57,16 @@ defmodule CantripM4CircleRuntimeTest do
   end
 
   test "CIRCLE-6 wards enforced by circle not entity" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{tool_calls: [%{gate: "fetch", args: %{url: "http://evil.com"}}]},
          %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
        ])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{gates: [:done, :fetch], wards: [%{max_turns: 10}, %{remove_gate: "fetch"}]}
       )
 
@@ -86,16 +86,16 @@ defmodule CantripM4CircleRuntimeTest do
     File.mkdir_p!(root)
     File.write!(Path.join(root, "test.txt"), "hello world")
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{tool_calls: [%{gate: "read", args: %{path: "test.txt"}}]},
          %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
        ])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           gates: [%{name: :done}, %{name: :read, dependencies: %{root: root}}],
           wards: [%{max_turns: 10}]
@@ -108,16 +108,16 @@ defmodule CantripM4CircleRuntimeTest do
   end
 
   test "CIRCLE-9 code medium preserves state across turns" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{code: "x = 42"},
          %{code: "done.(x)"}
        ])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{type: :code, gates: [:done], wards: [%{max_turns: 10}]}
       )
 
@@ -134,15 +134,15 @@ defmodule CantripM4CircleRuntimeTest do
     File.mkdir_p!(root)
     File.write!(Path.join(root, "snippet.txt"), "beam")
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{code: "text = read.(%{path: \"snippet.txt\"})\ndone.(\"read:\" <> text)"}
        ])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           type: :code,
           gates: [%{name: :done}, %{name: :read, dependencies: %{root: root}}],

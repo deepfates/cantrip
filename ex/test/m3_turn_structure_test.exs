@@ -1,18 +1,18 @@
 defmodule CantripM3TurnStructureTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
   test "LOOM-2 turns have unique ids and linked parent_id chain" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{tool_calls: [%{gate: "echo", args: %{text: "1"}}]},
          %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(crystal: crystal, circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]})
 
     {:ok, "ok", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "structure")
     [t1, t2] = loom.turns
@@ -23,9 +23,9 @@ defmodule CantripM3TurnStructureTest do
   end
 
   test "LOOM-9 turns record usage and timing metadata" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{
            tool_calls: [%{gate: "done", args: %{answer: "ok"}}],
            usage: %{prompt_tokens: 100, completion_tokens: 50}
@@ -33,7 +33,7 @@ defmodule CantripM3TurnStructureTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(crystal: crystal, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
 
     {:ok, "ok", _cantrip, loom, meta} = Cantrip.cast(cantrip, "metadata")
     [turn] = loom.turns

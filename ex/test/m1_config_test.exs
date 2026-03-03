@@ -1,45 +1,45 @@
 defmodule CantripM1ConfigTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
-  test "CANTRIP-1 rejects missing crystal" do
-    assert {:error, "cantrip requires a crystal"} =
+  test "CANTRIP-1 rejects missing llm" do
+    assert {:error, "cantrip requires a llm"} =
              Cantrip.new(circle: %{gates: [:done], wards: [%{max_turns: 10}]})
   end
 
   test "CIRCLE-1 rejects circle without done gate" do
-    crystal = {FakeCrystal, FakeCrystal.new([%{content: "hello"}])}
+    llm = {FakeLLM, FakeLLM.new([%{content: "hello"}])}
 
     assert {:error, "circle must have a done gate"} =
-             Cantrip.new(crystal: crystal, circle: %{gates: [], wards: [%{max_turns: 10}]})
+             Cantrip.new(llm: llm, circle: %{gates: [], wards: [%{max_turns: 10}]})
   end
 
   test "LOOP-2 rejects circle without truncation ward" do
-    crystal = {FakeCrystal, FakeCrystal.new([%{content: "hello"}])}
+    llm = {FakeLLM, FakeLLM.new([%{content: "hello"}])}
 
     assert {:error, "cantrip must have at least one truncation ward"} =
-             Cantrip.new(crystal: crystal, circle: %{gates: [:done], wards: []})
+             Cantrip.new(llm: llm, circle: %{gates: [:done], wards: []})
   end
 
   test "LOOP-2 require_done_tool enforces done gate presence" do
-    crystal = {FakeCrystal, FakeCrystal.new([%{content: "hello"}])}
+    llm = {FakeLLM, FakeLLM.new([%{content: "hello"}])}
 
     assert {:error, "cantrip with require_done must have a done gate"} =
              Cantrip.new(
-               crystal: crystal,
-               call: %{require_done_tool: true},
+               llm: llm,
+               identity: %{require_done_tool: true},
                circle: %{gates: [], wards: [%{max_turns: 10}]}
              )
   end
 
   test "valid m1 cantrip builds with normalized circle tool definitions" do
-    crystal = {FakeCrystal, FakeCrystal.new([%{content: "ok"}], record_inputs: true)}
+    llm = {FakeLLM, FakeLLM.new([%{content: "ok"}], record_inputs: true)}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
-        call: %{system_prompt: "You are helpful", tool_choice: "required"},
+        llm: llm,
+        identity: %{system_prompt: "You are helpful", tool_choice: "required"},
         circle: %{
           gates: [
             %{name: :done, parameters: %{type: :object, properties: %{answer: %{type: :string}}}},
@@ -49,7 +49,7 @@ defmodule CantripM1ConfigTest do
         }
       )
 
-    assert cantrip.call.system_prompt == "You are helpful"
+    assert cantrip.identity.system_prompt == "You are helpful"
 
     assert Enum.map(Cantrip.Circle.tool_definitions(cantrip.circle), & &1.name) == [
              "done",
@@ -58,11 +58,12 @@ defmodule CantripM1ConfigTest do
   end
 
   test "CALL-1 mutation API returns immutable contract error" do
-    crystal = {FakeCrystal, FakeCrystal.new([%{content: "ok"}])}
+    llm = {FakeLLM, FakeLLM.new([%{content: "ok"}])}
 
     {:ok, cantrip} =
-      Cantrip.new(crystal: crystal, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
 
-    assert {:error, "call is immutable"} = Cantrip.mutate_call(cantrip, %{system_prompt: "evil"})
+    assert {:error, "identity is immutable"} =
+             Cantrip.mutate_identity(cantrip, %{system_prompt: "evil"})
   end
 end

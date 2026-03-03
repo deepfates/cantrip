@@ -1,22 +1,22 @@
 defmodule CantripM3LoomMnesiaStorageTest do
   use ExUnit.Case, async: false
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
   alias Cantrip.Loom.Storage.Mnesia, as: MnesiaStorage
 
   test "loom writes turn and reward events to mnesia storage" do
     if Code.ensure_loaded?(:mnesia) do
       table = :"cantrip_loom_test_#{System.unique_integer([:positive])}"
 
-      crystal =
-        {FakeCrystal,
-         FakeCrystal.new([
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
            %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
          ])}
 
       {:ok, cantrip} =
         Cantrip.new(
-          crystal: crystal,
+          llm: llm,
           circle: %{gates: [:done], wards: [%{max_turns: 10}]},
           loom_storage: {:mnesia, %{table: table}}
         )

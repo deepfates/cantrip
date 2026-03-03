@@ -9,8 +9,8 @@ Implemented and green:
 - Cantrip config invariants and cast/fork lifecycle
 - OTP runtime loop (`GenServer` + `DynamicSupervisor`)
 - Conversation and code circles (Elixir code medium on BEAM)
-- Composition gates: `call_agent`, `call_agent_batch`
-- Depth warding, gate subset inheritance, per-call child crystal override
+- Composition gates: `call_entity`, `call_entity_batch`
+- Depth warding, gate subset inheritance, per-call child llm override
 - Loom append-only thread recording with child subtree linkage
 - Production semantics:
   - retry as single-turn (`PROD-2`)
@@ -27,21 +27,21 @@ Implemented and green:
 Core modules:
 
 - `Cantrip`: public API (`new`, `cast`, `fork`) and runtime wiring
-- `Cantrip.Call`: immutable call configuration
+- `Cantrip.Identity`: immutable call configuration
 - `Cantrip.Circle`: gate and ward model + execution semantics
 - `Cantrip.EntityServer`: cast execution owner process
 - `Cantrip.EntitySupervisor`: dynamic cast supervision
 - `Cantrip.Loom`: append-only turn storage
-- `Cantrip.Crystal`: crystal adapter behavior
-- `Cantrip.FakeCrystal`: deterministic scripted crystal for tests
+- `Cantrip.LLM`: llm adapter behavior
+- `Cantrip.FakeLLM`: deterministic scripted llm for tests
 - `Cantrip.CodeMedium`: BEAM-evaluated code medium with persistent bindings
 
 Loop shape:
 
-1. `Cantrip.new/1` validates crystal/call/circle contract.
+1. `Cantrip.new/1` validates llm/call/circle contract.
 2. `Cantrip.cast/2` seeds initial messages with optional system prompt + intent.
 3. Each turn:
-   - query crystal with full message context and tool definitions
+   - query llm with full message context and tool definitions
    - execute returned tool calls in order through the circle
    - append turn record to loom
    - stop on `done` or truncation ward
@@ -154,7 +154,7 @@ mix cantrip.example 08
 # or: cantrip example 08
 ```
 
-By default, examples run against real crystal config from env.
+By default, examples run against real llm config from env.
 
 For deterministic offline scripted demos (mainly for test/dev), run:
 
@@ -222,7 +222,7 @@ Then construct with:
 
 ## Notes for Onboarding
 
-- The runtime threads crystal state through the cantrip value for deterministic fake-crystal tests.
-- Code-circle snippets are Elixir (`done.(...)`, `call_agent.(...)`, `compile_and_load.(...)`).
+- The runtime threads llm state through the cantrip value for deterministic fake-llm tests.
+- Code-circle snippets are Elixir (`done.(...)`, `call_entity.(...)`, `compile_and_load.(...)`).
 - `FakeCrystal` supports `record_inputs: true` to assert context/tool contracts in tests.
 - Current test count: 102 green tests (`mix verify`).

@@ -1,6 +1,6 @@
-defmodule Cantrip.Crystal do
+defmodule Cantrip.LLM do
   @moduledoc """
-  Crystal behaviour and contract validator.
+  LLM behaviour and contract validator.
   """
 
   @type request :: map()
@@ -15,10 +15,10 @@ defmodule Cantrip.Crystal do
   @callback query(state :: term(), request()) ::
               {:ok, response(), term()} | {:error, term(), term()}
 
-  @spec invoke(module(), term(), request()) ::
+  @spec request(module(), term(), request()) ::
           {:ok, map(), term()} | {:error, term(), term()}
-  def invoke(module, state, request) do
-    case module.query(state, request) do
+  def request(module, state, req) do
+    case module.query(state, req) do
       {:ok, response, next_state} ->
         response = normalize(response)
 
@@ -40,7 +40,7 @@ defmodule Cantrip.Crystal do
 
     cond do
       is_nil(content) and is_nil(tool_calls) and is_nil(code) ->
-        {:error, "crystal returned neither content nor tool_calls"}
+        {:error, "llm returned neither content nor tool_calls"}
 
       duplicate_tool_call_ids?(tool_calls || []) ->
         {:error, "duplicate tool call ID"}

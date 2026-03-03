@@ -1,22 +1,22 @@
 defmodule CantripM3LoomStorageTest do
   use ExUnit.Case, async: false
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
   test "loom writes turn events to jsonl storage during cast" do
     path = tmp_jsonl_path()
     File.rm(path)
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{tool_calls: [%{gate: "echo", args: %{text: "a"}}]},
          %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
        ])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]},
         loom_storage: {:jsonl, path}
       )
@@ -36,12 +36,12 @@ defmodule CantripM3LoomStorageTest do
     path = tmp_jsonl_path()
     File.rm(path)
 
-    crystal =
-      {FakeCrystal, FakeCrystal.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
+    llm =
+      {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{gates: [:done], wards: [%{max_turns: 10}]},
         loom_storage: {:jsonl, path}
       )

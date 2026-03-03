@@ -1,23 +1,23 @@
-defmodule CantripM22InvokeTest do
+defmodule CantripM22SummonTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
-  test "ENTITY-5 invoke starts persistent entity that accepts multiple intents" do
-    # Crystal responds to each cast with done
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+  test "ENTITY-5 summon starts persistent entity that accepts multiple intents" do
+    # LLM responds to each cast with done
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{tool_calls: [%{gate: "done", args: %{answer: "first"}}]},
          %{tool_calls: [%{gate: "done", args: %{answer: "second"}}]},
          %{tool_calls: [%{gate: "done", args: %{answer: "third"}}]}
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(crystal: crystal, circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]})
 
-    # First cast via invoke — entity stays alive
-    {:ok, pid, result1, _cantrip1, loom1, _meta1} = Cantrip.invoke(cantrip, "hello")
+    # First cast via summon — entity stays alive
+    {:ok, pid, result1, _cantrip1, loom1, _meta1} = Cantrip.summon(cantrip, "hello")
     assert result1 == "first"
     assert length(loom1.turns) == 1
     assert Process.alive?(pid)
@@ -36,12 +36,12 @@ defmodule CantripM22InvokeTest do
     assert Process.alive?(pid)
   end
 
-  test "ENTITY-5 invoke preserves code_state across casts" do
+  test "ENTITY-5 summon preserves code_state across casts" do
     # First cast: two turns — set x, then done
     # Second cast: one turn — use x from previous cast
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{code: "x = 42"},
          %{code: "done.(Integer.to_string(x))"},
          %{code: "y = x + 1\ndone.(Integer.to_string(y))"}
@@ -49,11 +49,11 @@ defmodule CantripM22InvokeTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{gates: [:done], wards: [%{max_turns: 10}], type: :code}
       )
 
-    {:ok, pid, result1, _cantrip, _loom, _meta} = Cantrip.invoke(cantrip, "set x")
+    {:ok, pid, result1, _cantrip, _loom, _meta} = Cantrip.summon(cantrip, "set x")
     assert result1 == "42"
 
     # Second intent can access x from first cast

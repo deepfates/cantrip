@@ -1,18 +1,18 @@
-defmodule CantripM10RealCrystalEvalTest do
+defmodule CantripM10RealLlmEvalTest do
   use ExUnit.Case, async: false
-  alias Cantrip.Test.RealCrystalEnv
+  alias Cantrip.Test.RealLLMEnv
 
   @moduletag :integration
 
-  test "real crystal recovers from tool error and still completes with done" do
-    if not RealCrystalEnv.enabled?() do
+  test "real llm recovers from tool error and still completes with done" do
+    if not RealLLMEnv.enabled?() do
       :ok
     else
       token = "recover-" <> Integer.to_string(System.unique_integer([:positive]))
 
       {:ok, cantrip} =
         Cantrip.new_from_env(
-          call: %{
+          identity: %{
             system_prompt:
               "You can call tools. First call fail_once exactly once, then call echo with the provided token, then call done with answer equal to that token.",
             tool_choice: "required",
@@ -63,24 +63,24 @@ defmodule CantripM10RealCrystalEvalTest do
   end
 
   @tag timeout: :infinity
-  test "real crystal uses call_agent and integrates child result" do
-    if not RealCrystalEnv.delegation_enabled?() do
+  test "real llm uses call_entity and integrates child result" do
+    if not RealLLMEnv.delegation_enabled?() do
       :ok
     else
       token = "child-" <> Integer.to_string(System.unique_integer([:positive]))
-      child = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: "done.(\"#{token}\")"}])}
+      child = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: "done.(\"#{token}\")"}])}
 
       {:ok, cantrip} =
         Cantrip.new_from_env(
-          child_crystal: child,
-          call: %{
+          child_llm: child,
+          identity: %{
             system_prompt:
-              "Use call_agent exactly once with any intent, then call done with the exact child result string.",
+              "Use call_entity exactly once with any intent, then call done with the exact child result string.",
             require_done_tool: true
           },
           circle: %{
             type: :code,
-            gates: [:done, :call_agent],
+            gates: [:done, :call_entity],
             wards: [%{max_turns: 12}, %{max_depth: 1}]
           }
         )
@@ -92,7 +92,7 @@ defmodule CantripM10RealCrystalEvalTest do
       [turn | _] = loom.turns
 
       assert Enum.any?(turn.observation || [], fn obs ->
-               obs.gate == "call_agent" and not obs.is_error
+               obs.gate == "call_entity" and not obs.is_error
              end)
 
       assert Enum.any?(turn.observation || [], fn obs ->

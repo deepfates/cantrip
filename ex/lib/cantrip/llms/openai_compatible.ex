@@ -1,11 +1,11 @@
-defmodule Cantrip.Crystals.OpenAICompatible do
+defmodule Cantrip.LLMs.OpenAICompatible do
   @moduledoc """
-  OpenAI-compatible crystal adapter.
+  OpenAI-compatible llm adapter.
 
   Supports providers that expose a `/v1/chat/completions` endpoint.
   """
 
-  @behaviour Cantrip.Crystal
+  @behaviour Cantrip.LLM
 
   @impl true
   def query(state, request) do
@@ -99,13 +99,13 @@ defmodule Cantrip.Crystals.OpenAICompatible do
   defp maybe_put_assistant_tool_calls(message, "assistant", tool_calls)
        when is_list(tool_calls) do
     encoded =
-      Enum.map(tool_calls, fn call ->
+      Enum.map(tool_calls, fn identity ->
         %{
-          id: call[:id] || call["id"],
+          id: identity[:id] || identity["id"],
           type: "function",
           function: %{
-            name: call[:gate] || call["gate"],
-            arguments: Jason.encode!(call[:args] || call["args"] || %{})
+            name: identity[:gate] || identity["gate"],
+            arguments: Jason.encode!(identity[:args] || identity["args"] || %{})
           }
         }
       end)
@@ -172,8 +172,8 @@ defmodule Cantrip.Crystals.OpenAICompatible do
     end
   end
 
-  defp normalize_tool_call(call) do
-    args_json = get_in(call, ["function", "arguments"]) || "{}"
+  defp normalize_tool_call(identity) do
+    args_json = get_in(identity, ["function", "arguments"]) || "{}"
 
     args =
       case Jason.decode(args_json) do
@@ -182,8 +182,8 @@ defmodule Cantrip.Crystals.OpenAICompatible do
       end
 
     %{
-      id: call["id"],
-      gate: get_in(call, ["function", "name"]),
+      id: identity["id"],
+      gate: get_in(identity, ["function", "name"]),
       args: args
     }
   end

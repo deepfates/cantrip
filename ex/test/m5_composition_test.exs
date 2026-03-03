@@ -1,21 +1,21 @@
 defmodule CantripM5CompositionTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
   test "COMP-1 child cannot request gates parent does not have" do
     parent =
-      {FakeCrystal,
-       FakeCrystal.new([
-         %{code: "call_agent.(%{intent: \"sub task\", gates: [\"fetch\"]})\ndone.(\"ok\")"}
+      {FakeLLM,
+       FakeLLM.new([
+         %{code: "call_entity.(%{intent: \"sub task\", gates: [\"fetch\"]})\ndone.(\"ok\")"}
        ])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: parent,
+        llm: parent,
         circle: %{
           type: :code,
-          gates: [:done, :call_agent],
+          gates: [:done, :call_entity],
           wards: [%{max_turns: 10}, %{max_depth: 1}]
         }
       )
@@ -58,17 +58,17 @@ defmodule CantripM5CompositionTest do
       assert Cantrip.Circle.max_depth(%Cantrip.Circle{wards: composed}) == 2
     end
 
-    test "child cannot loosen parent's max_turns via call_agent" do
+    test "child cannot loosen parent's max_turns via call_entity" do
       parent =
-        {FakeCrystal,
-         FakeCrystal.new([
-           %{code: ~s[result = call_agent.(%{intent: "sub"})\ndone.(result)]}
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s[result = call_entity.(%{intent: "sub"})\ndone.(result)]}
          ])}
 
       # Child tries many turns — truncated at parent's limit of 5
       child =
-        {FakeCrystal,
-         FakeCrystal.new([
+        {FakeLLM,
+         FakeLLM.new([
            %{code: "x = 1"},
            %{code: "x = 2"},
            %{code: "x = 3"},
@@ -79,11 +79,11 @@ defmodule CantripM5CompositionTest do
 
       {:ok, cantrip} =
         Cantrip.new(
-          crystal: parent,
-          child_crystal: child,
+          llm: parent,
+          child_llm: child,
           circle: %{
             type: :code,
-            gates: [:done, :call_agent],
+            gates: [:done, :call_entity],
             wards: [%{max_turns: 5}, %{max_depth: 1}]
           }
         )
@@ -93,22 +93,22 @@ defmodule CantripM5CompositionTest do
     end
   end
 
-  test "COMP-2 call_agent blocks and returns child result synchronously" do
+  test "COMP-2 call_entity blocks and returns child result synchronously" do
     parent =
-      {FakeCrystal,
-       FakeCrystal.new([
-         %{code: "result = call_agent.(%{intent: \"compute 6*7\"})\ndone.(result)"}
+      {FakeLLM,
+       FakeLLM.new([
+         %{code: "result = call_entity.(%{intent: \"compute 6*7\"})\ndone.(result)"}
        ])}
 
-    child = {FakeCrystal, FakeCrystal.new([%{code: "done.(42)"}])}
+    child = {FakeLLM, FakeLLM.new([%{code: "done.(42)"}])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: parent,
-        child_crystal: child,
+        llm: parent,
+        child_llm: child,
         circle: %{
           type: :code,
-          gates: [:done, :call_agent],
+          gates: [:done, :call_entity],
           wards: [%{max_turns: 10}, %{max_depth: 1}]
         }
       )

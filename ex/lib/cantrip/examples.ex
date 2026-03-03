@@ -3,7 +3,7 @@ defmodule Cantrip.Examples do
   Runnable pattern catalog (01..16) built on top of Cantrip primitives.
   """
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
   @ids Enum.map(1..16, &String.pad_leading(Integer.to_string(&1), 2, "0"))
 
@@ -11,7 +11,7 @@ defmodule Cantrip.Examples do
 
   def catalog do
     [
-      {"01", "Minimal Crystal + done"},
+      {"01", "Minimal LLM + done"},
       {"02", "Gate Primitive Loop"},
       {"03", "Require done tool"},
       {"04", "Truncation ward"},
@@ -43,7 +43,7 @@ defmodule Cantrip.Examples do
   defp build("01", opts) do
     build_basic(
       "Pattern 01: use done to finish with pattern-01:minimal-done",
-      %{gates: [:done], default_crystal: done_crystal("pattern-01:minimal-done")},
+      %{gates: [:done], default_llm: done_llm("pattern-01:minimal-done")},
       opts
     )
   end
@@ -53,8 +53,8 @@ defmodule Cantrip.Examples do
       "Pattern 02: execute echo then done",
       %{
         gates: [:done, :echo],
-        default_crystal:
-          fake_crystal([
+        default_llm:
+          fake_llm([
             %{
               tool_calls: [
                 %{gate: "echo", args: %{text: "loop"}},
@@ -72,9 +72,9 @@ defmodule Cantrip.Examples do
       "Pattern 03: require done tool before termination",
       %{
         gates: [:done],
-        call: %{require_done_tool: true},
-        default_crystal:
-          fake_crystal([
+        identity: %{require_done_tool: true},
+        default_llm:
+          fake_llm([
             %{content: "not done yet"},
             %{tool_calls: [%{gate: "done", args: %{answer: "pattern-03:require-done"}}]}
           ])
@@ -89,8 +89,8 @@ defmodule Cantrip.Examples do
       %{
         gates: [:done, :echo],
         max_turns: 2,
-        default_crystal:
-          fake_crystal([
+        default_llm:
+          fake_llm([
             %{tool_calls: [%{gate: "echo", args: %{text: "turn-1"}}]},
             %{tool_calls: [%{gate: "echo", args: %{text: "turn-2"}}]}
           ])
@@ -104,8 +104,8 @@ defmodule Cantrip.Examples do
       "Pattern 05: stop processing tool calls after done",
       %{
         gates: [:done, :echo],
-        default_crystal:
-          fake_crystal([
+        default_llm:
+          fake_llm([
             %{
               tool_calls: [
                 %{gate: "echo", args: %{text: "before"}},
@@ -123,17 +123,17 @@ defmodule Cantrip.Examples do
     build_basic(
       "Pattern 06: provider portability exercise",
       %{
-        gates: [:done, :call_agent],
+        gates: [:done, :call_entity],
         type: :code,
         max_depth: 1,
-        default_crystal:
-          fake_crystal([
+        default_llm:
+          fake_llm([
             %{
               code: """
-              openai_crystal = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: "done.(\\"openai\\")"}])}
-              gemini_crystal = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: "done.(\\"gemini\\")"}])}
-              left = call_agent.(%{intent: "provider a", gates: ["done"], crystal: openai_crystal})
-              right = call_agent.(%{intent: "provider b", gates: ["done"], crystal: gemini_crystal})
+              openai_llm = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: "done.(\\"openai\\")"}])}
+              gemini_llm = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: "done.(\\"gemini\\")"}])}
+              left = call_entity.(%{intent: "provider a", gates: ["done"], llm: openai_llm})
+              right = call_entity.(%{intent: "provider b", gates: ["done"], llm: gemini_llm})
               done.("pattern-06:" <> left <> "/" <> right)
               """
             }
@@ -148,8 +148,8 @@ defmodule Cantrip.Examples do
       "Pattern 07: conversation medium terminates on assistant content",
       %{
         gates: [:done, :echo],
-        default_crystal:
-          fake_crystal([
+        default_llm:
+          fake_llm([
             %{tool_calls: [%{gate: "echo", args: %{text: "conversation-turn"}}]},
             %{content: "pattern-07:conversation+tool"}
           ])
@@ -164,7 +164,7 @@ defmodule Cantrip.Examples do
       %{
         gates: [:done],
         type: :code,
-        default_crystal: fake_crystal([%{code: "done.(\"pattern-08:code\")"}])
+        default_llm: fake_llm([%{code: "done.(\"pattern-08:code\")"}])
       },
       opts
     )
@@ -176,8 +176,8 @@ defmodule Cantrip.Examples do
       %{
         gates: [:done],
         type: :code,
-        default_crystal:
-          fake_crystal([
+        default_llm:
+          fake_llm([
             %{code: "n = 40"},
             %{code: "n = n + 2\ndone.(\"pattern-09:\" <> Integer.to_string(n))"}
           ])
@@ -188,20 +188,20 @@ defmodule Cantrip.Examples do
 
   defp build("10", opts) do
     build_basic(
-      "Pattern 10: delegate in parallel with call_agent_batch",
+      "Pattern 10: delegate in parallel with call_entity_batch",
       %{
-        gates: [:done, :call_agent, :call_agent_batch],
+        gates: [:done, :call_entity, :call_entity_batch],
         type: :code,
         max_depth: 1,
-        default_crystal:
-          fake_crystal([
+        default_llm:
+          fake_llm([
             %{
               code:
-                "results = call_agent_batch.([%{intent: \"left\"}, %{intent: \"right\"}])\ndone.(\"pattern-10:\" <> Enum.join(results, \"+\"))"
+                "results = call_entity_batch.([%{intent: \"left\"}, %{intent: \"right\"}])\ndone.(\"pattern-10:\" <> Enum.join(results, \"+\"))"
             }
           ]),
-        default_child_crystal:
-          fake_crystal([%{code: "done.(\"parallel\")"}, %{code: "done.(\"delegation\")"}])
+        default_child_llm:
+          fake_llm([%{code: "done.(\"parallel\")"}, %{code: "done.(\"delegation\")"}])
       },
       opts
     )
@@ -213,8 +213,8 @@ defmodule Cantrip.Examples do
       %{
         gates: [:done, :echo],
         folding: %{trigger_after_turns: 2},
-        default_crystal:
-          fake_crystal(
+        default_llm:
+          fake_llm(
             [
               %{tool_calls: [%{gate: "echo", args: %{text: "one"}}]},
               %{tool_calls: [%{gate: "echo", args: %{text: "two"}}]},
@@ -255,7 +255,7 @@ defmodule Cantrip.Examples do
           %{name: :compile_and_load}
         ],
         type: :code,
-        default_crystal: fake_crystal([%{code: code}]),
+        default_llm: fake_llm([%{code: code}]),
         wards: [%{allow_compile_modules: [module_name]}]
       },
       opts
@@ -267,8 +267,8 @@ defmodule Cantrip.Examples do
       "Pattern 13: ACP-ready loop contract (done-required)",
       %{
         gates: [:done, :echo],
-        call: %{require_done_tool: true, tool_choice: "required"},
-        default_crystal: done_crystal("pattern-13:acp-ready")
+        identity: %{require_done_tool: true, tool_choice: "required"},
+        default_llm: done_llm("pattern-13:acp-ready")
       },
       opts
     )
@@ -278,18 +278,18 @@ defmodule Cantrip.Examples do
     build_basic(
       "Pattern 14: recursive delegation bounded by max_depth",
       %{
-        gates: [:done, :call_agent],
+        gates: [:done, :call_entity],
         type: :code,
         max_depth: 2,
-        default_crystal:
-          fake_crystal([
-            %{code: "mid = call_agent.(%{intent: \"mid\"})\ndone.(\"pattern-14:\" <> mid)"}
+        default_llm:
+          fake_llm([
+            %{code: "mid = call_entity.(%{intent: \"mid\"})\ndone.(\"pattern-14:\" <> mid)"}
           ]),
-        default_child_crystal:
-          fake_crystal([
+        default_child_llm:
+          fake_llm([
             %{
               code:
-                "leaf_crystal = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: \"done.(\\\"leaf\\\")\"}])}\nleaf = call_agent.(%{intent: \"leaf\", crystal: leaf_crystal})\ndone.(\"mid:\" <> leaf)"
+                "leaf_llm = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: \"done.(\\\"leaf\\\")\"}])}\nleaf = call_entity.(%{intent: \"leaf\", llm: leaf_llm})\ndone.(\"mid:\" <> leaf)"
             }
           ])
       },
@@ -306,15 +306,15 @@ defmodule Cantrip.Examples do
       "Pattern 15: research-style read gate",
       %{
         type: :code,
-        default_crystal:
-          fake_crystal([
+        default_llm:
+          fake_llm([
             %{
               code: """
-              reader_a = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: "text = read.(%{path: \\"source_a.txt\\"})\\ndone.(text)"}])}
-              reader_b = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: "text = read.(%{path: \\"source_b.txt\\"})\\ndone.(text)"}])}
-              results = call_agent_batch.([
-                %{intent: "read source a", gates: ["done", "read"], crystal: reader_a},
-                %{intent: "read source b", gates: ["done", "read"], crystal: reader_b}
+              reader_a = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: "text = read.(%{path: \\"source_a.txt\\"})\\ndone.(text)"}])}
+              reader_b = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: "text = read.(%{path: \\"source_b.txt\\"})\\ndone.(text)"}])}
+              results = call_entity_batch.([
+                %{intent: "read source a", gates: ["done", "read"], llm: reader_a},
+                %{intent: "read source b", gates: ["done", "read"], llm: reader_b}
               ])
               sorted = Enum.sort(results)
               done.(if sorted == ["alpha", "beta"], do: "pattern-15:research+batch", else: "pattern-15:missing")
@@ -322,11 +322,11 @@ defmodule Cantrip.Examples do
             }
           ]),
         wards: [%{max_depth: 1}],
-        default_child_crystal: fake_crystal([%{code: "done.(\"unused\")"}]),
+        default_child_llm: fake_llm([%{code: "done.(\"unused\")"}]),
         gates: [
           %{name: :done},
           %{name: :read, dependencies: %{root: root}},
-          %{name: :call_agent_batch}
+          %{name: :call_entity_batch}
         ]
       },
       opts
@@ -348,26 +348,26 @@ defmodule Cantrip.Examples do
     build_basic(
       "Pattern 16: familiar-style coordinator with persistent loom",
       %{
-        gates: [:done, :call_agent],
+        gates: [:done, :call_entity],
         type: :code,
         max_depth: 1,
         loom_storage: storage,
-        default_crystal:
-          fake_crystal([
+        default_llm:
+          fake_llm([
             %{
               code: "history = [\"bootstrap\"]"
             },
             %{
               code: """
-              worker = {Cantrip.FakeCrystal, Cantrip.FakeCrystal.new([%{code: "done.(\\"familiar-worker\\")"}])}
-              note = call_agent.(%{intent: "spawn worker", gates: ["done"], crystal: worker})
+              worker = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: "done.(\\"familiar-worker\\")"}])}
+              note = call_entity.(%{intent: "spawn worker", gates: ["done"], llm: worker})
               history = history ++ [note]
               done.("pattern-16:" <> Enum.join(history, "|"))
               """
             },
             %{code: "done.(\"pattern-16:unexpected\")"}
           ]),
-        default_child_crystal: fake_crystal([%{code: "done.(\"familiar-worker\")"}])
+        default_child_llm: fake_llm([%{code: "done.(\"familiar-worker\")"}])
       },
       opts
     )
@@ -376,7 +376,7 @@ defmodule Cantrip.Examples do
   defp build(_, _opts), do: {:error, "unknown pattern id"}
 
   defp build_basic(intent, spec, opts) do
-    with {:ok, crystal, child_crystal} <- resolve_crystals(opts, spec) do
+    with {:ok, llm, child_llm} <- resolve_llms(opts, spec) do
       type = Map.get(spec, :type, :conversation)
       gates = Map.get(spec, :gates, [:done]) |> normalize_done_gate_specs()
       max_turns = Map.get(spec, :max_turns, 12)
@@ -387,14 +387,14 @@ defmodule Cantrip.Examples do
         |> maybe_put_ward(:max_depth, Map.get(spec, :max_depth))
 
       call =
-        Map.get(spec, :call, %{})
+        Map.get(spec, :identity, %{})
         |> Map.put_new(:system_prompt, system_prompt())
         |> maybe_require_done(opts, type)
 
       attrs = %{
-        crystal: crystal,
-        child_crystal: child_crystal,
-        call: call,
+        llm: llm,
+        child_llm: child_llm,
+        identity: call,
         circle: %{type: type, gates: gates, wards: wards},
         folding: Map.get(spec, :folding, %{}),
         loom_storage: Map.get(spec, :loom_storage)
@@ -417,22 +417,22 @@ defmodule Cantrip.Examples do
     end
   end
 
-  defp resolve_crystals(opts, spec) do
-    crystal = Map.get(opts, :crystal)
-    child_crystal = Map.get(opts, :child_crystal)
+  defp resolve_llms(opts, spec) do
+    llm = Map.get(opts, :llm)
+    child_llm = Map.get(opts, :child_llm)
     mode = Map.get(opts, :mode, :real)
 
     cond do
-      crystal != nil ->
-        {:ok, crystal, child_crystal || crystal}
+      llm != nil ->
+        {:ok, llm, child_llm || llm}
 
       mode == :scripted ->
-        default = Map.get(spec, :default_crystal, done_crystal("ok"))
-        {:ok, default, child_crystal || Map.get(spec, :default_child_crystal, default)}
+        default = Map.get(spec, :default_llm, done_llm("ok"))
+        {:ok, default, child_llm || Map.get(spec, :default_child_llm, default)}
 
       true ->
-        case Cantrip.crystal_from_env() do
-          {:ok, real_crystal} -> {:ok, real_crystal, child_crystal || real_crystal}
+        case Cantrip.llm_from_env() do
+          {:ok, real_llm} -> {:ok, real_llm, child_llm || real_llm}
           {:error, reason} -> {:error, reason}
         end
     end
@@ -446,10 +446,10 @@ defmodule Cantrip.Examples do
     end
   end
 
-  defp done_crystal(answer),
-    do: fake_crystal([%{tool_calls: [%{gate: "done", args: %{answer: answer}}]}])
+  defp done_llm(answer),
+    do: fake_llm([%{tool_calls: [%{gate: "done", args: %{answer: answer}}]}])
 
-  defp fake_crystal(responses, opts \\ []), do: {FakeCrystal, FakeCrystal.new(responses, opts)}
+  defp fake_llm(responses, opts \\ []), do: {FakeLLM, FakeLLM.new(responses, opts)}
 
   defp maybe_put_ward(wards, _key, nil), do: wards
   defp maybe_put_ward(wards, key, value), do: wards ++ [%{key => value}]

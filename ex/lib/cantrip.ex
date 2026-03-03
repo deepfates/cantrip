@@ -1,19 +1,19 @@
 defmodule Cantrip do
   @moduledoc """
-  M1 surface: cantrip configuration and crystal contract wiring.
+  M1 surface: cantrip configuration and llm contract wiring.
 
   The runtime loop is intentionally deferred to M2+. In M1 we only validate:
   - cantrip construction invariants
-  - crystal response contract invariants
+  - llm response contract invariants
   """
 
-  alias Cantrip.{Call, Circle, Crystal, EntityServer, Loom}
+  alias Cantrip.{Identity, Circle, LLM, EntityServer, Loom}
 
   defstruct id: nil,
-            crystal_module: nil,
-            crystal_state: nil,
-            child_crystal: nil,
-            call: nil,
+            llm_module: nil,
+            llm_state: nil,
+            child_llm: nil,
+            identity: nil,
             circle: nil,
             loom_storage: nil,
             retry: %{max_retries: 0, retryable_status_codes: []},
@@ -21,10 +21,10 @@ defmodule Cantrip do
 
   @type t :: %__MODULE__{
           id: String.t(),
-          crystal_module: module(),
-          crystal_state: term(),
-          child_crystal: {module(), term()} | nil,
-          call: Call.t(),
+          llm_module: module(),
+          llm_state: term(),
+          child_llm: {module(), term()} | nil,
+          identity: Identity.t(),
           circle: Circle.t(),
           loom_storage: term(),
           retry: map(),
@@ -34,21 +34,21 @@ defmodule Cantrip do
   @spec new(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
   def new(attrs) do
     attrs = Map.new(attrs)
-    crystal = Map.get(attrs, :crystal)
-    call = Call.new(Map.get(attrs, :call, %{}))
+    llm = Map.get(attrs, :llm)
+    identity = Identity.new(Map.get(attrs, :identity, %{}))
     circle = Circle.new(Map.get(attrs, :circle, %{}))
 
-    with :ok <- validate_crystal(crystal),
-         :ok <- validate_circle(circle, call) do
-      {module, state} = crystal
+    with :ok <- validate_llm(llm),
+         :ok <- validate_circle(circle, identity) do
+      {module, state} = llm
 
       {:ok,
        %__MODULE__{
          id: "cantrip_" <> Integer.to_string(System.unique_integer([:positive])),
-         crystal_module: module,
-         crystal_state: state,
-         child_crystal: normalize_child_crystal(Map.get(attrs, :child_crystal), crystal),
-         call: call,
+         llm_module: module,
+         llm_state: state,
+         child_llm: normalize_child_llm(Map.get(attrs, :child_llm), llm),
+         identity: identity,
          circle: circle,
          loom_storage: normalize_loom_storage(Map.get(attrs, :loom_storage)),
          retry: normalize_retry(Map.get(attrs, :retry, %{})),
@@ -58,7 +58,7 @@ defmodule Cantrip do
   end
 
   @doc """
-  Build a cantrip from environment-based crystal configuration.
+  Build a cantrip from environment-based llm configuration.
 
   Required env:
   - `CANTRIP_MODEL` (or provider-specific: `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL`)
@@ -76,13 +76,13 @@ defmodule Cantrip do
   def new_from_env(attrs \\ %{}) do
     attrs = Map.new(attrs)
 
-    with {:ok, crystal} <- crystal_from_env() do
-      new(Map.put(attrs, :crystal, crystal))
+    with {:ok, llm} <- llm_from_env() do
+      new(Map.put(attrs, :llm, llm))
     end
   end
 
-  @spec crystal_from_env() :: {:ok, {module(), map()}} | {:error, String.t()}
-  def crystal_from_env do
+  @spec llm_from_env() :: {:ok, {module(), map()}} | {:error, String.t()}
+  def llm_from_env do
     provider = System.get_env("CANTRIP_CRYSTAL_PROVIDER", "openai_compatible")
 
     case provider do
@@ -93,7 +93,7 @@ defmodule Cantrip do
           {:error, "missing CANTRIP_MODEL or OPENAI_MODEL"}
         else
           {:ok,
-           {Cantrip.Crystals.OpenAICompatible,
+           {Cantrip.LLMs.OpenAICompatible,
             %{
               model: model,
               api_key: env_first(["OPENAI_API_KEY", "CANTRIP_API_KEY"]),
@@ -110,7 +110,7 @@ defmodule Cantrip do
           {:error, "missing CANTRIP_MODEL or ANTHROPIC_MODEL"}
         else
           {:ok,
-           {Cantrip.Crystals.Anthropic,
+           {Cantrip.LLMs.Anthropic,
             %{
               model: model,
               api_key: env_first(["ANTHROPIC_API_KEY", "CANTRIP_API_KEY"]),
@@ -128,7 +128,7 @@ defmodule Cantrip do
           {:error, "missing CANTRIP_MODEL or GEMINI_MODEL"}
         else
           {:ok,
-           {Cantrip.Crystals.Gemini,
+           {Cantrip.LLMs.Gemini,
             %{
               model: model,
               api_key: env_first(["GEMINI_API_KEY", "CANTRIP_API_KEY"]),
@@ -139,7 +139,7 @@ defmodule Cantrip do
         end
 
       _ ->
-        {:error, "unsupported crystal provider: #{provider}"}
+        {:error, "unsupported llm provider: #{provider}"}
     end
   end
 
@@ -154,25 +154,25 @@ defmodule Cantrip do
   end
 
   @doc """
-  Invoke the configured crystal once and validate/normalize the response contract.
-  Returns updated cantrip with advanced crystal state.
+  Invoke the configured llm once and validate/normalize the response contract.
+  Returns updated cantrip with advanced llm state.
   """
-  @spec crystal_query(t(), map()) ::
+  @spec llm_query(t(), map()) ::
           {:ok, map(), t()} | {:error, term(), t()}
-  def crystal_query(%__MODULE__{} = cantrip, request) do
-    case Crystal.invoke(cantrip.crystal_module, cantrip.crystal_state, request) do
+  def llm_query(%__MODULE__{} = cantrip, request) do
+    case LLM.request(cantrip.llm_module, cantrip.llm_state, request) do
       {:ok, response, next_state} ->
-        {:ok, response, %{cantrip | crystal_state: next_state}}
+        {:ok, response, %{cantrip | llm_state: next_state}}
 
       {:error, reason, next_state} ->
-        {:error, reason, %{cantrip | crystal_state: next_state}}
+        {:error, reason, %{cantrip | llm_state: next_state}}
     end
   end
 
   @doc """
   M1 exposes the immutability contract as an explicit error path.
   """
-  def mutate_call(_cantrip, _attrs), do: {:error, "call is immutable"}
+  def mutate_identity(_cantrip, _attrs), do: {:error, "identity is immutable"}
 
   def delete_turn(_cantrip, loom, turn_index), do: Loom.delete_turn(loom, turn_index)
 
@@ -190,9 +190,9 @@ defmodule Cantrip do
   Returns `{:ok, pid, result, cantrip, loom, meta}` after the first cast completes.
   The entity remains alive — send additional intents with `send_intent/2`.
   """
-  @spec invoke(t(), String.t()) ::
+  @spec summon(t(), String.t()) ::
           {:ok, pid(), term(), t(), Loom.t(), map()} | {:error, term(), t()}
-  def invoke(%__MODULE__{} = cantrip, intent) when is_binary(intent) do
+  def summon(%__MODULE__{} = cantrip, intent) when is_binary(intent) do
     spec = {EntityServer, cantrip: cantrip, intent: intent}
 
     with {:ok, pid} <- DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec) do
@@ -294,10 +294,10 @@ defmodule Cantrip do
   def fork(%__MODULE__{} = cantrip, %Loom{} = loom, from_turn, opts) do
     opts = Map.new(opts)
     intent = Map.fetch!(opts, :intent)
-    crystal = Map.get(opts, :crystal, {cantrip.crystal_module, cantrip.crystal_state})
+    llm = Map.get(opts, :llm, {cantrip.llm_module, cantrip.llm_state})
 
     prefix_turns = Enum.take(loom.turns, from_turn)
-    prefix_messages = messages_from_turns(prefix_turns, cantrip.call)
+    prefix_messages = messages_from_turns(prefix_turns, cantrip.identity)
     fork_messages = prefix_messages ++ [%{role: :user, content: intent}]
     fork_loom = %{loom | turns: prefix_turns}
 
@@ -310,15 +310,15 @@ defmodule Cantrip do
 
     {:ok, forked_cantrip} =
       new(
-        crystal: crystal,
-        call: Map.from_struct(cantrip.call),
+        llm: llm,
+        identity: Map.from_struct(cantrip.identity),
         circle: %{
           gates: Map.values(cantrip.circle.gates),
           wards: cantrip.circle.wards,
           type: cantrip.circle.type
         },
         loom_storage: cantrip.loom_storage,
-        child_crystal: cantrip.child_crystal,
+        child_llm: cantrip.child_llm,
         retry: cantrip.retry,
         folding: cantrip.folding
       )
@@ -370,9 +370,9 @@ defmodule Cantrip do
     end)
   end
 
-  defp validate_crystal(nil), do: {:error, "cantrip requires a crystal"}
-  defp validate_crystal({module, _state}) when is_atom(module), do: :ok
-  defp validate_crystal(_), do: {:error, "invalid crystal"}
+  defp validate_llm(nil), do: {:error, "cantrip requires a llm"}
+  defp validate_llm({module, _state}) when is_atom(module), do: :ok
+  defp validate_llm(_), do: {:error, "invalid llm"}
 
   defp validate_circle(circle, call) do
     cond do
@@ -401,12 +401,12 @@ defmodule Cantrip do
     }
   end
 
-  defp normalize_child_crystal(nil, crystal), do: crystal
+  defp normalize_child_llm(nil, llm), do: llm
 
-  defp normalize_child_crystal({module, state}, _crystal) when is_atom(module),
+  defp normalize_child_llm({module, state}, _llm) when is_atom(module),
     do: {module, state}
 
-  defp normalize_child_crystal(_, crystal), do: crystal
+  defp normalize_child_llm(_, llm), do: llm
 
   defp normalize_loom_storage(nil), do: nil
   defp normalize_loom_storage(storage), do: storage

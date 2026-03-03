@@ -3,7 +3,7 @@ defmodule Cantrip.EntityServer do
   GenServer owning one cast execution.
   """
 
-  alias Cantrip.{Circle, CodeMedium, Crystal, Loom}
+  alias Cantrip.{Circle, CodeMedium, LLM, Loom}
 
   use GenServer, restart: :temporary
 
@@ -40,9 +40,9 @@ defmodule Cantrip.EntityServer do
     entity_id = "ent_" <> Integer.to_string(System.unique_integer([:positive]))
 
     messages =
-      Keyword.get(opts, :messages, initial_messages(cantrip.call, cantrip.circle, intent))
+      Keyword.get(opts, :messages, initial_messages(cantrip.identity, cantrip.circle, intent))
 
-    loom = Keyword.get(opts, :loom, Loom.new(cantrip.call, storage: cantrip.loom_storage))
+    loom = Keyword.get(opts, :loom, Loom.new(cantrip.identity, storage: cantrip.loom_storage))
     turns = Keyword.get(opts, :turns, 0)
     depth = Keyword.get(opts, :depth, 0)
     code_state = Keyword.get(opts, :code_state, %{})
@@ -114,26 +114,26 @@ defmodule Cantrip.EntityServer do
       started_at = System.monotonic_time(:millisecond)
       messages = fold_messages(state.messages, state.turns, state.cantrip)
 
-      {tools, tool_choice_override, _cap} = Circle.crystal_view(state.cantrip.circle)
+      {tools, tool_choice_override, _cap} = Circle.tool_view(state.cantrip.circle)
 
       request = %{
         messages: messages,
         tools: tools,
-        tool_choice: tool_choice_override || state.cantrip.call.tool_choice
+        tool_choice: tool_choice_override || state.cantrip.identity.tool_choice
       }
 
       emit_event(state, {:message_start, %{turn: state.turns + 1}})
 
       case invoke_with_retry(state.cantrip, request) do
-        {:error, reason, next_crystal_state} ->
-          message = "crystal error: #{inspect(reason)}"
+        {:error, reason, next_llm_state} ->
+          message = "llm error: #{inspect(reason)}"
 
           loom =
             Loom.append_turn(state.loom, %{
               entity_id: state.entity_id,
               utterance: %{content: nil, tool_calls: []},
-              observation: [%{gate: "crystal", result: message, is_error: true}],
-              gate_calls: ["crystal"],
+              observation: [%{gate: "llm", result: message, is_error: true}],
+              gate_calls: ["llm"],
               terminated: true,
               truncated: false,
               metadata: %{
@@ -154,12 +154,12 @@ defmodule Cantrip.EntityServer do
           {message,
            %{
              state
-             | cantrip: %{state.cantrip | crystal_state: next_crystal_state},
+             | cantrip: %{state.cantrip | llm_state: next_llm_state},
                loom: loom,
                turns: state.turns + 1
            }, meta}
 
-        {:ok, response, next_crystal_state} ->
+        {:ok, response, next_llm_state} ->
           duration_ms = max(System.monotonic_time(:millisecond) - started_at, 1)
 
           emit_event(
@@ -183,7 +183,7 @@ defmodule Cantrip.EntityServer do
           end
 
           execute_turn(
-            %{state | cantrip: %{state.cantrip | crystal_state: next_crystal_state}},
+            %{state | cantrip: %{state.cantrip | llm_state: next_llm_state}},
             response,
             duration_ms
           )
@@ -208,7 +208,7 @@ defmodule Cantrip.EntityServer do
     {utterance, observation, result, by_done, next_code_state} =
       case state.cantrip.circle.type do
         :code ->
-          # Extract code from tool call args (crystalView) or from content (FakeCrystal/legacy)
+          # Extract code from tool call args (tool_view) or from content (FakeLLM/legacy)
           code = code || extract_code_from_tool_call(tool_calls)
 
           if is_binary(code) do
@@ -217,8 +217,8 @@ defmodule Cantrip.EntityServer do
               execute_gate: fn gate, args ->
                 Circle.execute_gate(state.cantrip.circle, gate, args)
               end,
-              call_agent: fn opts -> execute_call_agent(state, opts) end,
-              call_agent_batch: fn opts -> execute_call_agent_batch(state, opts) end,
+              call_entity: fn opts -> execute_call_entity(state, opts) end,
+              call_entity_batch: fn opts -> execute_call_entity_batch(state, opts) end,
               compile_and_load: fn opts -> execute_compile_and_load(state, opts) end
             }
 
@@ -252,7 +252,7 @@ defmodule Cantrip.EntityServer do
         by_done ->
           true
 
-        tool_calls == [] and is_binary(content) and not state.cantrip.call.require_done_tool ->
+        tool_calls == [] and is_binary(content) and not state.cantrip.identity.require_done_tool ->
           true
 
         true ->
@@ -359,26 +359,26 @@ defmodule Cantrip.EntityServer do
 
   defp eval_code_sandboxed(code, code_state, runtime) do
     timeout = Circle.code_eval_timeout_ms(runtime.circle)
-    saved_child_crystal = Map.get(code_state, :child_crystal)
+    saved_child_llm = Map.get(code_state, :child_llm)
 
     task =
       Task.async(fn ->
         {:ok, capture_pid} = StringIO.open("")
         Process.group_leader(self(), capture_pid)
 
-        if saved_child_crystal, do: Process.put(:cantrip_child_crystal, saved_child_crystal)
+        if saved_child_llm, do: Process.put(:cantrip_child_llm, saved_child_llm)
         result = CodeMedium.eval(code, code_state, runtime)
-        child_crystal = Process.get(:cantrip_child_crystal)
+        child_llm = Process.get(:cantrip_child_llm)
         {_, captured_output} = StringIO.contents(capture_pid)
         StringIO.close(capture_pid)
-        {result, child_crystal, captured_output}
+        {result, child_llm, captured_output}
       end)
 
     case Task.yield(task, timeout) do
-      {:ok, {{next_state, obs, result, terminated}, child_crystal, captured_output}} ->
+      {:ok, {{next_state, obs, result, terminated}, child_llm, captured_output}} ->
         next_state =
-          if child_crystal,
-            do: Map.put(next_state, :child_crystal, child_crystal),
+          if child_llm,
+            do: Map.put(next_state, :child_llm, child_llm),
             else: next_state
 
         obs = maybe_append_stdio(obs, captured_output)
@@ -458,7 +458,7 @@ defmodule Cantrip.EntityServer do
   end
 
   defp initial_messages(call, circle, intent) do
-    {_tools, _tc, capability_text} = Circle.crystal_view(circle)
+    {_tools, _tc, capability_text} = Circle.tool_view(circle)
 
     system =
       if call.system_prompt,
@@ -473,7 +473,7 @@ defmodule Cantrip.EntityServer do
     system ++ capability ++ [%{role: :user, content: intent}]
   end
 
-  defp execute_call_agent(state, opts) do
+  defp execute_call_entity(state, opts) do
     requested = opts[:gates] || opts["gates"] || Circle.gate_names(state.cantrip.circle)
     requested = Enum.map(requested, &to_string/1)
     parent_gates = MapSet.new(Circle.gate_names(state.cantrip.circle))
@@ -486,7 +486,7 @@ defmodule Cantrip.EntityServer do
         %{
           value: "cannot grant gate: #{denied_gate}",
           observation: %{
-            gate: "call_agent",
+            gate: "call_entity",
             result: "cannot grant gate: #{denied_gate}",
             is_error: true
           }
@@ -500,7 +500,7 @@ defmodule Cantrip.EntityServer do
     if is_integer(max_depth) and state.depth >= max_depth do
       %{
         value: "max_depth exceeded",
-        observation: %{gate: "call_agent", result: "max_depth exceeded", is_error: true}
+        observation: %{gate: "call_entity", result: "max_depth exceeded", is_error: true}
       }
     else
       child_intent = opts[:intent] || opts["intent"] || ""
@@ -508,12 +508,12 @@ defmodule Cantrip.EntityServer do
       composed_wards = Circle.compose_wards(state.cantrip.circle.wards, child_wards)
       child_circle = Circle.subset(state.cantrip.circle, requested_gates)
       child_circle = %{child_circle | wards: composed_wards}
-      {child_module, child_state} = choose_child_crystal(state, opts)
+      {child_module, child_state} = choose_child_llm(state, opts)
 
       child_cantrip = %{
         state.cantrip
-        | crystal_module: child_module,
-          crystal_state: child_state,
+        | llm_module: child_module,
+          llm_state: child_state,
           circle: child_circle
       }
 
@@ -524,12 +524,12 @@ defmodule Cantrip.EntityServer do
              cancel_on_parent: cancel_on_parent
            ) do
         {:ok, value, next_cantrip, child_loom, _meta} ->
-          remember_child_crystal(next_cantrip)
+          remember_child_llm(next_cantrip)
 
           %{
             value: value,
             observation: %{
-              gate: "call_agent",
+              gate: "call_entity",
               result: value,
               is_error: false,
               child_turns: child_loom.turns
@@ -537,34 +537,34 @@ defmodule Cantrip.EntityServer do
           }
 
         {:error, reason, next_cantrip} ->
-          remember_child_crystal(next_cantrip)
+          remember_child_llm(next_cantrip)
 
           %{
             value: inspect(reason),
-            observation: %{gate: "call_agent", result: inspect(reason), is_error: true}
+            observation: %{gate: "call_entity", result: inspect(reason), is_error: true}
           }
       end
     end
   end
 
-  defp default_child_crystal(state),
-    do: {state.cantrip.crystal_module, state.cantrip.crystal_state}
+  defp default_child_llm(state),
+    do: {state.cantrip.llm_module, state.cantrip.llm_state}
 
-  defp current_child_crystal(state) do
-    Process.get(:cantrip_child_crystal) ||
-      state.cantrip.child_crystal ||
-      default_child_crystal(state)
+  defp current_child_llm(state) do
+    Process.get(:cantrip_child_llm) ||
+      state.cantrip.child_llm ||
+      default_child_llm(state)
   end
 
-  defp choose_child_crystal(state, opts) do
-    case opts[:crystal] || opts["crystal"] do
+  defp choose_child_llm(state, opts) do
+    case opts[:llm] || opts["llm"] do
       {module, child_state} when is_atom(module) -> {module, child_state}
-      _ -> current_child_crystal(state)
+      _ -> current_child_llm(state)
     end
   end
 
-  defp remember_child_crystal(next_cantrip) do
-    Process.put(:cantrip_child_crystal, {next_cantrip.crystal_module, next_cantrip.crystal_state})
+  defp remember_child_llm(next_cantrip) do
+    Process.put(:cantrip_child_llm, {next_cantrip.llm_module, next_cantrip.llm_state})
   end
 
   defp execute_compile_and_load(state, opts) do
@@ -572,19 +572,19 @@ defmodule Cantrip.EntityServer do
     %{value: observation.result, observation: observation}
   end
 
-  defp execute_call_agent_batch(state, opts_list) when is_list(opts_list) do
+  defp execute_call_entity_batch(state, opts_list) when is_list(opts_list) do
     max_batch = Circle.max_batch_size(state.cantrip.circle)
     max_concurrency = Circle.max_concurrent_children(state.cantrip.circle)
 
     if length(opts_list) > max_batch do
       msg = "batch too large: #{length(opts_list)} > #{max_batch}"
-      %{value: msg, observation: %{gate: "call_agent_batch", result: msg, is_error: true}}
+      %{value: msg, observation: %{gate: "call_entity_batch", result: msg, is_error: true}}
     else
       payloads =
-        if Enum.all?(opts_list, &(Map.has_key?(&1, :crystal) or Map.has_key?(&1, "crystal"))) do
+        if Enum.all?(opts_list, &(Map.has_key?(&1, :llm) or Map.has_key?(&1, "llm"))) do
           opts_list
           |> Task.async_stream(
-            fn opts -> execute_call_agent(state, opts) end,
+            fn opts -> execute_call_entity(state, opts) end,
             ordered: true,
             max_concurrency: max_concurrency,
             timeout: 30_000
@@ -598,11 +598,11 @@ defmodule Cantrip.EntityServer do
 
               %{
                 value: message,
-                observation: %{gate: "call_agent", result: message, is_error: true}
+                observation: %{gate: "call_entity", result: message, is_error: true}
               }
           end)
         else
-          Enum.map(opts_list, &execute_call_agent(state, &1))
+          Enum.map(opts_list, &execute_call_entity(state, &1))
         end
 
       values = Enum.map(payloads, & &1.value)
@@ -612,7 +612,7 @@ defmodule Cantrip.EntityServer do
       %{
         value: values,
         observation: %{
-          gate: "call_agent_batch",
+          gate: "call_entity_batch",
           result: values,
           is_error: has_error,
           child_turns: child_turns
@@ -621,22 +621,22 @@ defmodule Cantrip.EntityServer do
     end
   end
 
-  defp execute_call_agent_batch(_state, _opts_list) do
-    %{value: [], observation: %{gate: "call_agent_batch", result: [], is_error: true}}
+  defp execute_call_entity_batch(_state, _opts_list) do
+    %{value: [], observation: %{gate: "call_entity_batch", result: [], is_error: true}}
   end
 
   defp invoke_with_retry(cantrip, request) do
     do_invoke_with_retry(
-      cantrip.crystal_module,
-      cantrip.crystal_state,
+      cantrip.llm_module,
+      cantrip.llm_state,
       request,
       cantrip.retry,
       0
     )
   end
 
-  defp do_invoke_with_retry(module, crystal_state, request, retry, attempts) do
-    case Crystal.invoke(module, crystal_state, request) do
+  defp do_invoke_with_retry(module, llm_state, request, retry, attempts) do
+    case LLM.request(module, llm_state, request) do
       {:ok, response, next_state} ->
         {:ok, response, next_state}
 

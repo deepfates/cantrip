@@ -83,8 +83,8 @@ defmodule Cantrip.Circle do
   - Code circles: single "elixir" tool with tool_choice "required", plus a capability
     presentation describing the available host functions.
   """
-  @spec crystal_view(t()) :: {list(map()), String.t() | nil, String.t() | nil}
-  def crystal_view(%__MODULE__{type: :code} = circle) do
+  @spec tool_view(t()) :: {list(map()), String.t() | nil, String.t() | nil}
+  def tool_view(%__MODULE__{type: :code} = circle) do
     tools = [
       %{
         name: "elixir",
@@ -102,7 +102,7 @@ defmodule Cantrip.Circle do
     {tools, "required", capability_text}
   end
 
-  def crystal_view(%__MODULE__{} = circle) do
+  def tool_view(%__MODULE__{} = circle) do
     {tool_definitions(circle), nil, nil}
   end
 
@@ -133,17 +133,11 @@ defmodule Cantrip.Circle do
   defp format_gate_description("echo"),
     do: "- echo.(opts) — echo text back"
 
-  defp format_gate_description("call_agent"),
-    do: "- call_agent.(opts) — delegate to a child entity; opts must include :intent"
-
-  defp format_gate_description("call_agent_batch"),
-    do: "- call_agent_batch.(list) — delegate to multiple child entities in parallel"
-
   defp format_gate_description("call_entity"),
-    do: "- call_entity.(opts) — alias for call_agent"
+    do: "- call_entity.(opts) — delegate to a child entity; opts must include :intent"
 
   defp format_gate_description("call_entity_batch"),
-    do: "- call_entity_batch.(list) — alias for call_agent_batch"
+    do: "- call_entity_batch.(list) — delegate to multiple child entities in parallel"
 
   defp format_gate_description("compile_and_load"),
     do: "- compile_and_load.(opts) — compile and load an Elixir module"
@@ -152,7 +146,7 @@ defmodule Cantrip.Circle do
     do: "- read.(opts) — read a file; opts must include :path"
 
   defp format_gate_description(name),
-    do: "- #{name}.(opts) — invoke the #{name} gate"
+    do: "- #{name}.(opts) — summon the #{name} gate"
 
   @spec execute_gate(t(), String.t(), map()) :: %{
           gate: String.t(),
@@ -554,7 +548,7 @@ defmodule Cantrip.Circle do
     end)
   end
 
-  defp canonical_gate_name("call_entity"), do: "call_agent"
-  defp canonical_gate_name("call_entity_batch"), do: "call_agent_batch"
+  defp canonical_gate_name("call_entity"), do: "call_entity"
+  defp canonical_gate_name("call_entity_batch"), do: "call_entity_batch"
   defp canonical_gate_name(name), do: name
 end

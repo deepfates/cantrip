@@ -1,18 +1,18 @@
-defmodule CantripM9RealCrystalIntegrationTest do
+defmodule CantripM9RealLlmIntegrationTest do
   use ExUnit.Case, async: false
-  alias Cantrip.Test.RealCrystalEnv
+  alias Cantrip.Test.RealLLMEnv
 
   @moduletag :integration
 
-  test "real crystal performs a meaningful tool loop (echo then done)" do
-    if not RealCrystalEnv.enabled?() do
+  test "real llm performs a meaningful tool loop (echo then done)" do
+    if not RealLLMEnv.enabled?() do
       :ok
     else
       token = "integration-ok-" <> Integer.to_string(System.unique_integer([:positive]))
 
       {:ok, cantrip} =
         Cantrip.new_from_env(
-          call: %{
+          identity: %{
             system_prompt:
               "Use tools only. First call echo with text exactly as requested. Then call done with the same text as answer.",
             tool_choice: "required",

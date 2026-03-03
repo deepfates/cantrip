@@ -1,7 +1,7 @@
 defmodule CantripM20AnthropicAdapterTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.Crystals.Anthropic
+  alias Cantrip.LLMs.Anthropic
 
   test "sends system prompt as top-level field, not in messages" do
     {:ok, server} = start_stub_server(text_response("hello"))

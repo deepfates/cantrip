@@ -1,19 +1,19 @@
 defmodule CantripM6ProductionTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.FakeCrystal
+  alias Cantrip.FakeLLM
 
   test "PROD-2 retried invocation appears as single turn" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{error: %{status: 429, message: "rate limited"}},
          %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
        ])}
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{gates: [:done], wards: [%{max_turns: 10}]},
         retry: %{max_retries: 3, retryable_status_codes: [429], backoff_base_ms: 1}
       )
@@ -23,9 +23,9 @@ defmodule CantripM6ProductionTest do
   end
 
   test "PROD-2 retry uses exponential backoff" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{error: %{status: 429, message: "rate limited"}},
          %{error: %{status: 429, message: "rate limited"}},
          %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
@@ -33,7 +33,7 @@ defmodule CantripM6ProductionTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{gates: [:done], wards: [%{max_turns: 10}]},
         retry: %{max_retries: 3, retryable_status_codes: [429], backoff_base_ms: 50}
       )
@@ -47,9 +47,9 @@ defmodule CantripM6ProductionTest do
   end
 
   test "PROD-3 cumulative token tracking" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new([
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
          %{
            tool_calls: [%{gate: "echo", args: %{text: "1"}}],
            usage: %{prompt_tokens: 100, completion_tokens: 50}
@@ -62,7 +62,7 @@ defmodule CantripM6ProductionTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]}
       )
 
@@ -76,9 +76,9 @@ defmodule CantripM6ProductionTest do
   end
 
   test "PROD-4 folding triggers automatically and preserves loom" do
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new(
+    llm =
+      {FakeLLM,
+       FakeLLM.new(
          [
            %{tool_calls: [%{gate: "echo", args: %{text: "1"}}]},
            %{tool_calls: [%{gate: "echo", args: %{text: "2"}}]},
@@ -92,7 +92,7 @@ defmodule CantripM6ProductionTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]},
         folding: %{trigger_after_turns: 3}
       )
@@ -100,7 +100,7 @@ defmodule CantripM6ProductionTest do
     assert {:ok, "ok", cantrip, loom, _meta} = Cantrip.cast(cantrip, "fold")
     assert length(loom.turns) == 6
 
-    invocations = FakeCrystal.invocations(cantrip.crystal_state)
+    invocations = FakeLLM.invocations(cantrip.llm_state)
     [_, _, _, fourth, fifth | _] = invocations
     assert length(fifth.messages) <= length(fourth.messages)
   end
@@ -108,9 +108,9 @@ defmodule CantripM6ProductionTest do
   test "PROD-5 ephemeral gate results are redacted from context but kept in loom" do
     payload = "very large content here..."
 
-    crystal =
-      {FakeCrystal,
-       FakeCrystal.new(
+    llm =
+      {FakeLLM,
+       FakeLLM.new(
          [
            %{tool_calls: [%{gate: "read_ephemeral", args: %{path: "big.txt"}}]},
            %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
@@ -120,7 +120,7 @@ defmodule CantripM6ProductionTest do
 
     {:ok, cantrip} =
       Cantrip.new(
-        crystal: crystal,
+        llm: llm,
         circle: %{
           gates: [
             %{name: :done},
@@ -132,7 +132,7 @@ defmodule CantripM6ProductionTest do
 
     assert {:ok, "ok", cantrip, loom, _meta} = Cantrip.cast(cantrip, "ephemeral")
 
-    [_first, second] = FakeCrystal.invocations(cantrip.crystal_state)
+    [_first, second] = FakeLLM.invocations(cantrip.llm_state)
     refute Enum.any?(second.messages, &String.contains?(to_string(&1.content), payload))
 
     assert Enum.any?(

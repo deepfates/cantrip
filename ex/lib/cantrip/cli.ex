@@ -213,7 +213,7 @@ defmodule Cantrip.CLI do
     """
     usage: cantrip example <id|list> [--fake] [--real] [--json]
 
-    --fake   Use deterministic scripted crystal
+    --fake   Use deterministic scripted llm
     --real   Force real mode (default)
     --json   Print machine-readable JSON output
     """
@@ -223,7 +223,7 @@ defmodule Cantrip.CLI do
     """
     usage: cantrip repl [--prompt "text"] [--json] [--no-input]
 
-    Runs a strict code-mode REPL using CANTRIP_* env crystal config.
+    Runs a strict code-mode REPL using CANTRIP_* env llm config.
     --prompt    Run single prompt and exit
     --json      Print machine-readable JSON output for one-shot mode
     --no-input  Initialize and exit (useful for smoke checks)

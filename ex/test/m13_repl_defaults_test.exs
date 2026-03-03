@@ -4,7 +4,7 @@ defmodule CantripM13ReplDefaultsTest do
   test "strict repl defaults set require_done_tool and code circle gates" do
     attrs = Cantrip.REPL.default_cantrip_attrs()
 
-    assert attrs.call.require_done_tool == true
+    assert attrs.identity.require_done_tool == true
     assert attrs.circle.type == :code
     assert :done in attrs.circle.gates
     assert :compile_and_load in attrs.circle.gates

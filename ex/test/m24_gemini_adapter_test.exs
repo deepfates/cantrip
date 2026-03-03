@@ -1,7 +1,7 @@
 defmodule CantripM24GeminiAdapterTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.Crystals.Gemini
+  alias Cantrip.LLMs.Gemini
 
   test "sends system instruction as top-level field, not in contents" do
     {:ok, server} = start_stub_server(text_response("hello"))

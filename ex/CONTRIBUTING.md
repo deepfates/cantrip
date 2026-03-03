@@ -19,9 +19,9 @@ This project follows strict spec-driven development. These rules are mandatory.
 ### 3) Elixir/OTP Idiom First
 
 1. Runtime logic should be process-oriented (`GenServer`, `DynamicSupervisor`) with explicit ownership.
-2. Use behaviours for boundary abstractions (e.g. crystal, medium, storage adapters).
+2. Use behaviours for boundary abstractions (e.g. llm, medium, storage adapters).
 3. Avoid ad-hoc evaluator shortcuts in core runtime paths.
-4. Code-circle snippets are Elixir executed on the BEAM (`done.(...)`, `call_agent.(...)`), not JS.
+4. Code-circle snippets are Elixir executed on the BEAM (`done.(...)`, `call_entity.(...)`), not JS.
 5. Error policy is explicit: expected operational failures become observations; unexpected bugs should crash and be supervised.
 
 ### 4) Slice Discipline
@@ -44,6 +44,6 @@ This project follows strict spec-driven development. These rules are mandatory.
 ## Quality Gates
 
 1. `mix verify`
-2. Real crystal integration is opt-in and should be exercised whenever provider env is configured.
+2. Real llm integration is opt-in and should be exercised whenever provider env is configured.
 3. Conformance behavior must remain aligned with `tests.yaml`.
 4. Run `./scripts/check_signer_policy.sh` before merge when `compile_and_load` policy or signer config changes.
