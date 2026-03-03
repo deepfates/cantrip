@@ -28,8 +28,8 @@ export async function main() {
   // The entity auto-prepends capability docs from the circle.
   // This call string is pure strategy.
   const spell = cantrip({
-    crystal,
-    call: "Explore the context variable using the js tool. Use submit_answer() when you have a final answer.",
+    llm: crystal,
+    identity: "Explore the context variable using the js tool. Use submit_answer() when you have a final answer.",
     circle,
   });
 

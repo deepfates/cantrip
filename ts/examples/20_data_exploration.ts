@@ -30,8 +30,8 @@ export async function main() {
   });
 
   const spell = cantrip({
-    crystal,
-    call: "You are a data analyst. The `sales` variable contains an array of sales records. Explore it with code — group, filter, aggregate. Use submit_answer() with your findings.",
+    llm: crystal,
+    identity: "You are a data analyst. The `sales` variable contains an array of sales records. Explore it with code — group, filter, aggregate. Use submit_answer() with your findings.",
     circle,
   });
 

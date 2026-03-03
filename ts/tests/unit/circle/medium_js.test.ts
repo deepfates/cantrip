@@ -5,7 +5,7 @@ import type { Circle as CircleType } from "../../../src/circle/circle";
 import { max_turns, require_done } from "../../../src/circle/ward";
 import { js, getJsMediumSandbox } from "../../../src/circle/medium/js";
 import { done_for_medium } from "../../../src/circle/gate/builtin/done";
-import type { AssistantMessage } from "../../../src/crystal/messages";
+import type { AssistantMessage } from "../../../src/llm/messages";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -55,12 +55,12 @@ describe("Circle with JS medium", () => {
     expect(circle.hasMedium).toBe(true);
   });
 
-  test("crystalView returns js tool with required tool_choice", () => {
+  test("toolView returns js tool with required tool_choice", () => {
     circle = Circle({
       medium: js(),
       wards: [max_turns(10)],
     });
-    const view = circle.crystalView();
+    const view = circle.toolView();
     expect(view.tool_definitions).toHaveLength(1);
     expect(view.tool_definitions[0].name).toBe("js");
     expect(view.tool_choice).toEqual({ type: "tool", name: "js" });
@@ -104,11 +104,11 @@ describe("Circle with JS medium", () => {
       wards: [max_turns(10)],
     });
 
-    // First call: set a variable
+    // First identity: set a variable
     const r1 = await circle.execute(makeJsToolCall("var total = context.reduce(function(a,b){return a+b}, 0)"), {});
     expect(r1.done).toBeUndefined();
 
-    // Second call: use the variable and submit
+    // Second identity: use the variable and submit
     const r2 = await circle.execute(makeJsToolCall("submit_answer(String(total))"), {});
     expect(r2.done).toBe("6");
   });

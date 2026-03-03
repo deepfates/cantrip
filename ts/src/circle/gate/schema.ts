@@ -1,4 +1,4 @@
-import type { JsonSchema } from "../../crystal/crystal";
+import type { JsonSchema } from "../../llm/base";
 
 export type GateSchemaFieldOptions = {
   optional?: boolean;

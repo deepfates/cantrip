@@ -42,8 +42,8 @@ export async function main() {
 
   // The entity auto-prepends capability docs from the circle.
   const spell = cantrip({
-    crystal,
-    call: "Explore the context variable using code. Use call_entity to delegate sub-intents to child entities. Use submit_answer() when done.",
+    llm: crystal,
+    identity: "Explore the context variable using code. Use call_entity to delegate sub-intents to child entities. Use submit_answer() when done.",
     circle,
     loom,
   });

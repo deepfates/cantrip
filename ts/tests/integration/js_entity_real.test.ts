@@ -1,7 +1,7 @@
 // Tests real LLM integration with JS medium sandbox (context isolation,
 // data extraction) using cantrip() composition.
 import { describe, expect, test } from "bun:test";
-import { ChatOpenAI } from "../../src/crystal/providers/openai/chat";
+import { ChatOpenAI } from "../../src/llm/openai/chat";
 import { loadEnv } from "../helpers/env";
 import { cantrip } from "../../src/cantrip/cantrip";
 import { Circle } from "../../src/circle/circle";
@@ -47,7 +47,7 @@ describe("JS entity: real integration", () => {
       "Filler text. ".repeat(2000) + needle + " More filler. ".repeat(2000);
 
     const circle = createTestCircle(context);
-    const spell = cantrip({ crystal: llm, call: CALL_STRATEGY, circle });
+    const spell = cantrip({ llm: llm, identity: CALL_STRATEGY, circle });
 
     try {
       const result = await spell.cast(
@@ -73,7 +73,7 @@ describe("JS entity: real integration", () => {
     };
 
     const circle = createTestCircle(context);
-    const spell = cantrip({ crystal: llm, call: CALL_STRATEGY, circle });
+    const spell = cantrip({ llm: llm, identity: CALL_STRATEGY, circle });
 
     try {
       const result = await spell.cast(

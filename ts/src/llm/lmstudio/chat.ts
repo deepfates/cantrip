@@ -1,4 +1,7 @@
 import { ChatOpenAILike, type ChatOpenAILikeOptions } from "../openai/like";
+import type { AnyMessage } from "../messages";
+import type { ToolChoice, ToolDefinition } from "../base";
+import type { ChatInvokeCompletion } from "../views";
 
 export type ChatLMStudioOptions = ChatOpenAILikeOptions & {
   /**
@@ -12,6 +15,15 @@ export type ChatLMStudioOptions = ChatOpenAILikeOptions & {
  * It often doesn't require an API key, so we disable the requirement by default.
  */
 export class ChatLMStudio extends ChatOpenAILike {
+  async query(
+    messages: AnyMessage[],
+    tools?: ToolDefinition[] | null,
+    tool_choice?: ToolChoice | null,
+    extra?: Record<string, unknown>,
+  ): Promise<ChatInvokeCompletion> {
+    return this.ainvoke(messages, tools, tool_choice, extra);
+  }
+
   constructor(options: ChatLMStudioOptions) {
     super({
       ...options,
@@ -22,4 +34,3 @@ export class ChatLMStudio extends ChatOpenAILike {
     });
   }
 }
-

@@ -54,7 +54,7 @@ function makeLlm(responses: (() => any)[]) {
 // ── LOOP-1: turns alternate between entity and circle ──────────────
 
 describe("LOOP-1: turns alternate between entity and circle", () => {
-  test("LOOP-1: entity invokes crystal, circle processes gate calls, loop terminates", async () => {
+  test("LOOP-1: entity invokes llm: crystal, circle processes gate calls, loop terminates", async () => {
     const crystal = makeLlm([
       () => ({
         content: null,
@@ -72,8 +72,8 @@ describe("LOOP-1: turns alternate between entity and circle", () => {
     ]);
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
 
@@ -89,8 +89,8 @@ describe("LOOP-2: cantrip without truncation ward is invalid", () => {
     const crystal = makeLlm([]);
     expect(() =>
       cantrip({
-        crystal: crystal as any,
-        call: { system_prompt: "test" },
+        llm: crystal as any,
+        identity: { system_prompt: "test" },
         circle: { gates: [doneGate], wards: [] } as any,
       }),
     ).toThrow(/ward/i);
@@ -104,8 +104,8 @@ describe("LOOP-2: cantrip without truncation ward is invalid", () => {
     });
     expect(() =>
       cantrip({
-        crystal: crystal as any,
-        call: { system_prompt: "test" },
+        llm: crystal as any,
+        identity: { system_prompt: "test" },
         circle: { gates: [notDone], wards: [{ max_turns: 10, require_done_tool: true }] } as any,
       }),
     ).toThrow(/done/i);
@@ -177,8 +177,8 @@ describe("LOOP-3: done gate stops the loop immediately", () => {
     ]);
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle([doneTracked, echoTracked]),
     });
 
@@ -218,8 +218,8 @@ describe("LOOP-4: max turns ward truncates the loop", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(
         [doneGate, echoGate],
         [{ max_turns: 2, require_done_tool: false }],
@@ -282,8 +282,8 @@ describe("LOOP-5: entity receives all prior turns as context", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, echoGate]),
     });
 
@@ -308,8 +308,8 @@ describe("LOOP-6: text-only response behavior", () => {
     ]);
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(
         [doneGate],
         [{ max_turns: 10, require_done_tool: false }],
@@ -348,8 +348,8 @@ describe("LOOP-6: text-only response behavior", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(
         [doneGate],
         [{ max_turns: 10, require_done_tool: true }],

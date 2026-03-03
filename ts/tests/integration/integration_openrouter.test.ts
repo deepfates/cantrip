@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatOpenRouter } from "../../src/crystal/providers/openrouter/chat";
-import type { GateDefinition } from "../../src/crystal/crystal";
+import { ChatOpenRouter } from "../../src/llm/openrouter/chat";
+import type { GateDefinition } from "../../src/llm/base";
 import { loadEnv } from "../helpers/env";
 
 loadEnv();

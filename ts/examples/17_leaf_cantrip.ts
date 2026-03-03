@@ -1,5 +1,5 @@
 // Example 17: Leaf Cantrip
-// Crystal + call, no circle. The simplest possible cantrip — a single LLM call.
+// Crystal + identity: call, no circle. The simplest possible cantrip — a single LLM call.
 // No gates, no medium, no wards. Intent in, answer out.
 
 import "./env";
@@ -14,8 +14,8 @@ export async function main() {
 
   // Minimal circle — no gates, no medium. max_turns(1) = single response.
   const spell = cantrip({
-    crystal,
-    call: "You are a concise summarizer. Respond in one sentence.",
+    llm: crystal,
+    identity: "You are a concise summarizer. Respond in one sentence.",
     circle: Circle({ wards: [max_turns(1)] }),
   });
 

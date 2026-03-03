@@ -30,11 +30,11 @@ export async function main() {
 
   // The entity auto-prepends capability docs from the circle.
   const entity = cantrip({
-    crystal,
-    call: `Coding agent with filesystem access. Working dir: ${fsCtx.working_dir}`,
+    llm: crystal,
+    identity: `Coding agent with filesystem access. Working dir: ${fsCtx.working_dir}`,
     circle,
     dependency_overrides: new Map([[getSandboxContext, () => fsCtx]]),
-  }).invoke();
+  }).summon();
 
   await runRepl({
     entity,

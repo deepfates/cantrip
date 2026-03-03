@@ -261,6 +261,15 @@ export class ChatGoogle implements BaseChatModel {
     return cleaned;
   }
 
+  async query(
+    messages: AnyMessage[],
+    tools?: ToolDefinition[] | null,
+    tool_choice?: ToolChoice | null,
+    extra?: Record<string, unknown>,
+  ): Promise<ChatInvokeCompletion> {
+    return this.ainvoke(messages, tools, tool_choice, extra);
+  }
+
   async ainvoke(
     messages: AnyMessage[],
     tools?: ToolDefinition[] | null,

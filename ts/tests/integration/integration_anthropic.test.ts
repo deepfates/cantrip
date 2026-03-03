@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatAnthropic } from "../../src/crystal/providers/anthropic/chat";
-import type { GateDefinition } from "../../src/crystal/crystal";
+import { ChatAnthropic } from "../../src/llm/anthropic/chat";
+import type { GateDefinition } from "../../src/llm/base";
 import { loadEnv } from "../helpers/env";
 
 loadEnv();

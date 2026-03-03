@@ -6,9 +6,9 @@
  */
 import { describe, expect, test, afterEach } from "bun:test";
 import { JsAsyncContext } from "../../../src/circle/medium/js/async_context";
-import type { BaseChatModel } from "../../../src/crystal/crystal";
-import type { AnyMessage } from "../../../src/crystal/messages";
-import type { ChatInvokeCompletion } from "../../../src/crystal/views";
+import type { BaseChatModel } from "../../../src/llm/base";
+import type { AnyMessage } from "../../../src/llm/messages";
+import type { ChatInvokeCompletion } from "../../../src/llm/views";
 import { cantrip } from "../../../src/cantrip/cantrip";
 import { Circle } from "../../../src/circle/circle";
 import { js, getJsMediumSandbox } from "../../../src/circle/medium/js";
@@ -93,12 +93,12 @@ async function createTestAgent(opts: {
   overrides.set(spawnBinding, (): SpawnFn => richSpawn);
 
   const spell = cantrip({
-    crystal: opts.llm,
-    call: "Explore the context using code. Use submit_answer() to provide your final answer.",
+    llm: opts.llm,
+    identity: "Explore the context using code. Use submit_answer() to provide your final answer.",
     circle,
     dependency_overrides: overrides,
   });
-  const entity = spell.invoke();
+  const entity = spell.summon();
 
   await medium.init(gates, entity.dependency_overrides);
   const sandbox = getJsMediumSandbox(medium)!;
@@ -351,7 +351,7 @@ describe("JS medium schema", () => {
   test("all properties are in required (OpenAI strict schema compliance)", () => {
     const { js } = require("../../../src/circle/medium/js");
     const medium = js();
-    const { tool_definitions } = medium.crystalView();
+    const { tool_definitions } = medium.toolView();
     const jsTool = tool_definitions.find((t: any) => t.name === "js");
     expect(jsTool).toBeDefined();
     expect(jsTool!.parameters.required).toContain("code");
@@ -405,7 +405,7 @@ describe("call_entity_batch input validation", () => {
 
   test("rejects batch tasks with missing query", async () => {
     const mockLlm = new MockLlm([
-      // First call: the agent emits sandbox code with a malformed batch
+      // First identity: the agent emits sandbox code with a malformed batch
       (_msgs) => ({
         content: "Batching",
         tool_calls: [

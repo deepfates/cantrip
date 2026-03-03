@@ -1,5 +1,5 @@
-import type { ToolChoice, GateDefinition } from "../../crystal/crystal";
-import type { AssistantMessage, ToolMessage } from "../../crystal/messages";
+import type { ToolChoice, GateDefinition } from "../../llm/base";
+import type { AssistantMessage, ToolMessage } from "../../llm/messages";
 import type { BoundGate } from "../gate/gate";
 import type { DependencyOverrides } from "../gate/depends";
 import type { TurnEvent } from "../../entity/events";
@@ -32,7 +32,7 @@ const DEFAULT_MAX_OUTPUT_CHARS = 9500;
  * Creates a browser medium — a Taiko browser session that the entity works in.
  *
  * Gates are projected into the browser as available commands alongside Taiko.
- * The crystal sees a single `browser` tool with tool_choice: "required".
+ * The llm sees a single `browser` tool with tool_choice: "required".
  * Termination is via `submit_answer(value)` gate projected into the session.
  */
 export function browser(opts?: BrowserMediumOptions): Medium {
@@ -75,7 +75,7 @@ export function browser(opts?: BrowserMediumOptions): Medium {
       initialized = true;
     },
 
-    crystalView(): {
+    toolView(): {
       tool_definitions: GateDefinition[];
       tool_choice: ToolChoice;
     } {

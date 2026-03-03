@@ -6,7 +6,7 @@ import { max_turns } from "../../../src/circle/ward";
 import { vm } from "../../../src/circle/medium/vm";
 import { done_for_medium } from "../../../src/circle/gate/builtin/done";
 import { gate } from "../../../src/circle/gate/decorator";
-import type { AssistantMessage } from "../../../src/crystal/messages";
+import type { AssistantMessage } from "../../../src/llm/messages";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -47,12 +47,12 @@ describe("Circle with VM medium", () => {
     expect(circle.gates[0].name).toBe("done");
   });
 
-  test("crystalView returns vm tool with required tool_choice", () => {
+  test("toolView returns vm tool with required tool_choice", () => {
     circle = Circle({
       medium: vm(),
       wards: [max_turns(10)],
     });
-    const view = circle.crystalView();
+    const view = circle.toolView();
     expect(view.tool_definitions).toHaveLength(1);
     expect(view.tool_definitions[0].name).toBe("vm");
     expect(view.tool_choice).toEqual({ type: "tool", name: "vm" });
@@ -95,11 +95,11 @@ describe("Circle with VM medium", () => {
       wards: [max_turns(10)],
     });
 
-    // First call: set a variable with var (sync path — persists at context level)
+    // First identity: set a variable with var (sync path — persists at context level)
     const r1 = await circle.execute(makeVmToolCall("var total = context.reduce((a, b) => a + b, 0)"), {});
     expect(r1.done).toBeUndefined();
 
-    // Second call: var persists, use it
+    // Second identity: var persists, use it
     const r2 = await circle.execute(makeVmToolCall("total"), {});
     expect(r2.messages[0].content).toContain("6");
   });
@@ -111,11 +111,11 @@ describe("Circle with VM medium", () => {
       wards: [max_turns(10)],
     });
 
-    // First call: async path — must use globalThis for persistence
+    // First identity: async path — must use globalThis for persistence
     const r1 = await circle.execute(makeVmToolCall("globalThis.total = await Promise.resolve(context.reduce((a, b) => a + b, 0))"), {});
     expect(r1.done).toBeUndefined();
 
-    // Second call: globalThis persists
+    // Second identity: globalThis persists
     const r2 = await circle.execute(makeVmToolCall("await submit_answer(String(globalThis.total))"), {});
     expect(r2.done).toBe("6");
   });

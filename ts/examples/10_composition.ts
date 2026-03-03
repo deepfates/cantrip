@@ -42,8 +42,8 @@ export async function main() {
   const loom = new Loom(new MemoryStorage());
 
   const spell = cantrip({
-    crystal,
-    call: "Analyze documents by delegating to child entities. Use call_entity_batch to process documents in parallel. Synthesize the results into a coherent summary. Use submit_answer() when done.",
+    llm: crystal,
+    identity: "Analyze documents by delegating to child entities. Use call_entity_batch to process documents in parallel. Synthesize the results into a coherent summary. Use submit_answer() when done.",
     circle,
     loom,
   });

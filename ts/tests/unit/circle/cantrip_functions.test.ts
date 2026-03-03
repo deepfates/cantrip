@@ -5,7 +5,7 @@ import {
   CantripHandleStore,
 } from "../../../src/circle/gate/builtin/cantrip";
 import type { CantripMediumConfig } from "../../../src/circle/gate/builtin/cantrip";
-import type { GateDefinition, ToolChoice } from "../../../src/crystal/crystal";
+import type { GateDefinition, ToolChoice } from "../../../src/llm/base";
 import type { Medium } from "../../../src/circle/medium";
 import { done } from "../../../src/circle/gate/builtin/done";
 import { buildCapabilityDocs } from "../../../src/circle/circle";
@@ -15,7 +15,7 @@ class TestMedium implements Medium {
   disposed = false;
   constructor(public readonly name: string) {}
   async init(): Promise<void> {}
-  crystalView(): { tool_definitions: GateDefinition[]; tool_choice: ToolChoice } {
+  toolView(): { tool_definitions: GateDefinition[]; tool_choice: ToolChoice } {
     return { tool_definitions: [], tool_choice: "auto" };
   }
   async execute(): Promise<CircleExecuteResult> {
@@ -97,7 +97,7 @@ describe("cantripGates — isomorphic API", () => {
   test("cantrip() without circle creates a leaf handle", async () => {
     const { gates, overrides } = setup();
     const gate = gateByName(gates, "cantrip");
-    const handle = await gate.execute({ crystal: "anthropic/claude-3.5-haiku", call: "You are helpful" }, overrides);
+    const handle = await gate.execute({ llm: "anthropic/claude-3.5-haiku", identity: "You are helpful" }, overrides);
     expect(Number(handle)).toBeGreaterThan(0);
   });
 
@@ -105,8 +105,8 @@ describe("cantripGates — isomorphic API", () => {
     const { gates, overrides, createdMediums } = setup();
     const gate = gateByName(gates, "cantrip");
     const handle = await gate.execute({
-      crystal: "anthropic/claude-3.5-haiku",
-      call: "Run commands",
+      llm: "anthropic/claude-3.5-haiku",
+      identity: "Run commands",
       circle: {
         medium: "bash",
         gates: ["basic"],
@@ -118,26 +118,26 @@ describe("cantripGates — isomorphic API", () => {
     expect(createdMediums[0].name).toBe("bash");
   });
 
-  test("cantrip() rejects empty crystal name", async () => {
+  test("cantrip() rejects empty llm name", async () => {
     const { gates, overrides } = setup();
     await expect(
-      gateByName(gates, "cantrip").execute({ crystal: "", call: "test" }, overrides),
-    ).rejects.toThrow(/requires a crystal/);
+      gateByName(gates, "cantrip").execute({ llm: "", identity: "test" }, overrides),
+    ).rejects.toThrow(/requires an llm/);
   });
 
-  test("cantrip() rejects empty call", async () => {
+  test("cantrip() rejects empty identity", async () => {
     const { gates, overrides } = setup();
     await expect(
-      gateByName(gates, "cantrip").execute({ crystal: "anthropic/claude-3.5-haiku", call: "" }, overrides),
-    ).rejects.toThrow(/requires a call/);
+      gateByName(gates, "cantrip").execute({ llm: "anthropic/claude-3.5-haiku", identity: "" }, overrides),
+    ).rejects.toThrow(/requires an identity/);
   });
 
   test("cantrip() rejects unknown medium name", async () => {
     const { gates, overrides } = setup();
     await expect(
       gateByName(gates, "cantrip").execute({
-        crystal: "anthropic/claude-3.5-haiku",
-        call: "test",
+        llm: "anthropic/claude-3.5-haiku",
+        identity: "test",
         circle: { medium: "nonexistent" },
       }, overrides),
     ).rejects.toThrow(/Unknown medium/);
@@ -147,8 +147,8 @@ describe("cantripGates — isomorphic API", () => {
     const { gates, overrides } = setup();
     await expect(
       gateByName(gates, "cantrip").execute({
-        crystal: "anthropic/claude-3.5-haiku",
-        call: "test",
+        llm: "anthropic/claude-3.5-haiku",
+        identity: "test",
         circle: { gates: ["nonexistent"], wards: [{ max_turns: 3 }] },
       }, overrides),
     ).rejects.toThrow(/Unknown gate set/);
@@ -161,8 +161,8 @@ describe("cantripGates — isomorphic API", () => {
     const { gates, overrides } = cantripGates(config);
     await expect(
       gateByName(gates, "cantrip").execute({
-        crystal: "anthropic/claude-3.5-haiku",
-        call: "test",
+        llm: "anthropic/claude-3.5-haiku",
+        identity: "test",
         circle: { wards: [] },
       }, overrides),
     ).rejects.toThrow(/at least one ward/);
@@ -174,7 +174,7 @@ describe("cantripGates — isomorphic API", () => {
     const { gates, overrides } = setup();
     const cantripHandle = Number(
       await gateByName(gates, "cantrip").execute(
-        { crystal: "anthropic/claude-3.5-haiku", call: "test" },
+        { llm: "anthropic/claude-3.5-haiku", identity: "test" },
         overrides,
       ),
     );
@@ -199,7 +199,7 @@ describe("cantripGates — isomorphic API", () => {
     const { gates, overrides } = setup();
     const cantripHandle = Number(
       await gateByName(gates, "cantrip").execute(
-        { crystal: "anthropic/claude-3.5-haiku", call: "test" },
+        { llm: "anthropic/claude-3.5-haiku", identity: "test" },
         overrides,
       ),
     );
@@ -214,8 +214,8 @@ describe("cantripGates — isomorphic API", () => {
     const { gates, overrides, createdMediums } = setup();
     const cantripHandle = Number(
       await gateByName(gates, "cantrip").execute({
-        crystal: "anthropic/claude-3.5-haiku",
-        call: "test",
+        llm: "anthropic/claude-3.5-haiku",
+        identity: "test",
         circle: { medium: "js", gates: ["basic"] },
       }, overrides),
     );

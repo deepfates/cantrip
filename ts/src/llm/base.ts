@@ -10,15 +10,32 @@ export type ToolDefinition = {
   strict?: boolean;
 };
 
-export type ToolChoice = "auto" | "required" | "none" | string;
+export type GateDefinition = ToolDefinition;
+
+export type ToolChoice = "auto" | "required" | "none" | string | { type: string; name: string };
+export type ModelResponse = ChatInvokeCompletion;
 
 export interface BaseChatModel {
   model: string;
   provider: string;
   name: string;
+  /** Context window size in tokens. Used by folding to determine when to compress. */
+  context_window?: number;
+  query?(
+    messages: AnyMessage[],
+    tools?: GateDefinition[] | null,
+    tool_choice?: ToolChoice | null,
+    extra?: Record<string, unknown>
+  ): Promise<ChatInvokeCompletion>;
   ainvoke(
     messages: AnyMessage[],
-    tools?: ToolDefinition[] | null,
+    tools?: GateDefinition[] | null,
+    tool_choice?: ToolChoice | null,
+    extra?: Record<string, unknown>
+  ): Promise<ChatInvokeCompletion>;
+  query?(
+    messages: AnyMessage[],
+    tools?: GateDefinition[] | null,
     tool_choice?: ToolChoice | null,
     extra?: Record<string, unknown>
   ): Promise<ChatInvokeCompletion>;

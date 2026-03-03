@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatOpenAI } from "../../src/crystal/providers/openai/chat";
-import type { GateDefinition } from "../../src/crystal/crystal";
+import { ChatOpenAI } from "../../src/llm/openai/chat";
+import type { GateDefinition } from "../../src/llm/base";
 import { loadEnv } from "../helpers/env";
 
 loadEnv();

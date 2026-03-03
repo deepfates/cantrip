@@ -1,18 +1,16 @@
 // Tests progress event callbacks for sub-agent spawning and batching
-// using cantrip() composition.
+// using direct Entity construction.
 import { describe, expect, test, afterEach } from "bun:test";
-import { JsAsyncContext } from "../../../src/circle/medium/js/async_context";
-import type { BaseChatModel } from "../../../src/crystal/crystal";
-import type { AnyMessage } from "../../../src/crystal/messages";
-import type { ChatInvokeCompletion } from "../../../src/crystal/views";
+import type { BaseChatModel } from "../../../src/llm/base";
+import type { AnyMessage } from "../../../src/llm/messages";
+import type { ChatInvokeCompletion } from "../../../src/llm/views";
 import type { ProgressEvent, ProgressCallback } from "../../../src/entity/progress";
-import { cantrip } from "../../../src/cantrip/cantrip";
 import { Circle } from "../../../src/circle/circle";
-import { js, getJsMediumSandbox } from "../../../src/circle/medium/js";
+import { js } from "../../../src/circle/medium/js";
 import { max_turns, require_done } from "../../../src/circle/ward";
 import { call_entity, call_entity_batch, progressBinding } from "../../../src/circle/gate/builtin/call_entity_gate";
 import { done_for_medium } from "../../../src/circle/gate/builtin/done";
-import type { Entity } from "../../../src/cantrip/entity";
+import { Entity } from "../../../src/cantrip/entity";
 
 /**
  * Local helper for progress tests.
@@ -22,7 +20,7 @@ async function createTestAgent(opts: {
   context: unknown;
   maxDepth?: number;
   onProgress?: ProgressCallback;
-}): Promise<{ entity: Entity; sandbox: JsAsyncContext }> {
+}): Promise<{ entity: Entity }> {
   const medium = js({ state: { context: opts.context } });
   const gates = [done_for_medium()];
   const entityGate = call_entity({ max_depth: opts.maxDepth ?? 2, depth: 0, parent_context: opts.context });
@@ -36,21 +34,17 @@ async function createTestAgent(opts: {
   }
 
   const circle = Circle({ medium, gates, wards: [max_turns(20), require_done()] });
-  const spell = cantrip({
-    crystal: opts.llm,
-    call: "Explore the context using code. Use submit_answer() to provide your final answer.",
+  const entity = new Entity({
+    llm: opts.llm,
+    identity: {
+      system_prompt: "Explore the context using code. Use submit_answer() to provide your final answer.",
+      hyperparameters: { tool_choice: "auto" },
+      gate_definitions: gates.map((g) => g.definition),
+    },
     circle,
     dependency_overrides: depOverrides.size > 0 ? depOverrides : null,
   });
-  const entity = spell.invoke();
-
-  // Merge entity's auto-populated bindings with user-provided overrides
-  const mergedOverrides = new Map<any, any>(entity.dependency_overrides instanceof Map ? entity.dependency_overrides : []);
-  for (const [k, v] of depOverrides) mergedOverrides.set(k, v);
-  await medium.init(gates, mergedOverrides);
-  const sandbox = getJsMediumSandbox(medium)!;
-
-  return { entity, sandbox };
+  return { entity };
 }
 
 class MockLlm implements BaseChatModel {
@@ -79,12 +73,12 @@ class MockLlm implements BaseChatModel {
 }
 
 describe("Entity progress events", () => {
-  let activeSandbox: JsAsyncContext | null = null;
+  let activeEntity: Entity | null = null;
 
-  afterEach(() => {
-    if (activeSandbox) {
-      activeSandbox.dispose();
-      activeSandbox = null;
+  afterEach(async () => {
+    if (activeEntity) {
+      await activeEntity.dispose();
+      activeEntity = null;
     }
   });
 
@@ -132,13 +126,13 @@ describe("Entity progress events", () => {
       },
     ]);
 
-    const { entity, sandbox } = await createTestAgent({
+    const { entity } = await createTestAgent({
       llm: mockLlm,
       context: {},
       maxDepth: 1,
       onProgress: (e) => events.push(e),
     });
-    activeSandbox = sandbox;
+    activeEntity = entity;
 
     await entity.cast("Start");
 
@@ -194,13 +188,13 @@ describe("Entity progress events", () => {
       },
     ]);
 
-    const { entity, sandbox } = await createTestAgent({
+    const { entity } = await createTestAgent({
       llm: mockLlm,
       context: {},
       maxDepth: 1,
       onProgress: (e) => events.push(e),
     });
-    activeSandbox = sandbox;
+    activeEntity = entity;
 
     await entity.cast("Start");
 
@@ -265,13 +259,13 @@ describe("Entity progress events", () => {
       },
     ]);
 
-    const { entity, sandbox } = await createTestAgent({
+    const { entity } = await createTestAgent({
       llm: mockLlm,
       context: {},
       maxDepth: 1,
       // No onProgress — progressBinding defaults to null, no crash
     });
-    activeSandbox = sandbox;
+    activeEntity = entity;
 
     const result = await entity.cast("Go");
     expect(result).toBe("child result");

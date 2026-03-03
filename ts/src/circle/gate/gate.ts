@@ -1,4 +1,4 @@
-import type { GateDefinition } from "../../crystal/crystal";
+import type { GateDefinition } from "../../llm/base";
 import type { DependencyOverrides } from "./depends";
 import type { GateContent } from "./decorator";
 

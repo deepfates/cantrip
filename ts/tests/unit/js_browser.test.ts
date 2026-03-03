@@ -1,9 +1,9 @@
 import { describe, expect, test, afterEach } from "bun:test";
 import { JsAsyncContext } from "../../src/circle/medium/js/async_context";
 import { HandleTable, describeArg } from "../../src/circle/medium/js_browser";
-import type { BaseChatModel } from "../../src/crystal/crystal";
-import type { AnyMessage } from "../../src/crystal/messages";
-import type { ChatInvokeCompletion } from "../../src/crystal/views";
+import type { BaseChatModel } from "../../src/llm/base";
+import type { AnyMessage } from "../../src/llm/messages";
+import type { ChatInvokeCompletion } from "../../src/llm/views";
 import type { BrowserContext } from "../../src/circle/medium/browser/context";
 import { cantrip } from "../../src/cantrip/cantrip";
 import { Circle } from "../../src/circle/circle";
@@ -35,11 +35,11 @@ async function createTestAgent(opts: {
   const circle = Circle({ medium, gates, wards: [max_turns(20), require_done()] });
 
   const spell = cantrip({
-    crystal: opts.llm,
-    call: "Explore the context using code. Use submit_answer() to provide your final answer.",
+    llm: opts.llm,
+    identity: "Explore the context using code. Use submit_answer() to provide your final answer.",
     circle,
   });
-  const entity = spell.invoke();
+  const entity = spell.summon();
 
   await medium.init(gates, entity.dependency_overrides);
   const sandbox = getJsMediumSandbox(medium)!;
@@ -531,9 +531,9 @@ describe("JS browser handle pattern", () => {
     const browserCtx = mockBrowserContext();
 
     const mockLlm = new MockLlm([
-      // First call: try to click with a fake handle
+      // First identity: try to click with a fake handle
       jsResponse('click({__h: 999, kind: "taiko_handle", desc: "fake"});'),
-      // Second call: LLM recovers after error
+      // Second identity: LLM recovers after error
       jsResponse('submit_answer("recovered");', "tc2"),
     ]);
 
@@ -1263,9 +1263,9 @@ describe("JS browser edge cases", () => {
     const browserCtx = mockBrowserContext();
 
     const mockLlm = new MockLlm([
-      // First call: create a selector and store it
+      // First identity: create a selector and store it
       jsResponse('var btn = button("Submit");'),
-      // Second call: use the stored selector
+      // Second identity: use the stored selector
       (msgs: any) => ({
         content: "using stored selector",
         tool_calls: [

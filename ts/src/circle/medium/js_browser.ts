@@ -16,7 +16,7 @@ export type JsBrowserMediumOptions = JsMediumOptions & {
  * Additionally, Taiko browser functions (click, goto, text, etc.) are registered
  * during init, and the HandleTable is owned by the medium.
  *
- * The crystal sees the same single `js` tool with tool_choice: "required".
+ * The llm sees the same single `js` tool with tool_choice: "required".
  */
 export function jsBrowser(opts: JsBrowserMediumOptions): Medium {
   const { browserContext, ...jsOpts } = opts;
@@ -35,8 +35,8 @@ export function jsBrowser(opts: JsBrowserMediumOptions): Medium {
       await registerBrowserFunctions(sandbox, browserContext);
     },
 
-    crystalView() {
-      return inner.crystalView();
+    toolView() {
+      return inner.toolView();
     },
 
     async execute(utterance, options) {

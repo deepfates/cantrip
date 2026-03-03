@@ -1,6 +1,6 @@
-import type { BaseChatModel, GateDefinition } from "../crystal/crystal";
-import type { AnyMessage } from "../crystal/messages";
-import type { ChatInvokeCompletion } from "../crystal/views";
+import type { BaseChatModel, GateDefinition } from "../llm/base";
+import type { AnyMessage } from "../llm/messages";
+import type { ChatInvokeCompletion } from "../llm/views";
 import {
   fold,
   shouldFold,

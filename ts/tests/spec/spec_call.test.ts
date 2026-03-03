@@ -54,7 +54,7 @@ describe("CALL-1: call is immutable after construction", () => {
   test("CALL-1: mutation of call object after construction is visible to cast", async () => {
     // NOTE: The framework does NOT currently enforce immutability — the call
     // object is a plain JS object. This test documents the actual behavior:
-    // mutating spell.call DOES affect subsequent casts.
+    // mutating spell.identity DOES affect subsequent casts.
     // TODO: enforce immutability via Object.freeze or defensive copy in cast()
     const messagesPerCall: any[][] = [];
     const crystal = {
@@ -80,16 +80,16 @@ describe("CALL-1: call is immutable after construction", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "You are helpful" },
+      llm: crystal as any,
+      identity: { system_prompt: "You are helpful" },
       circle: makeCircle(),
     });
 
     // Verify the original value is stored
-    expect(spell.call.system_prompt).toBe("You are helpful");
+    expect(spell.identity.system_prompt).toBe("You are helpful");
 
     // Mutate after construction
-    (spell.call as any).system_prompt = "You are evil";
+    (spell.identity as any).system_prompt = "You are evil";
 
     await spell.cast("test immutability");
 
@@ -146,8 +146,8 @@ describe("CALL-2: system prompt is first message on every invocation", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "You are a test agent" },
+      llm: crystal as any,
+      identity: { system_prompt: "You are a test agent" },
       circle: makeCircle([doneGate, echoGate]),
     });
 
@@ -175,14 +175,14 @@ describe("CALL-3: gate definitions derived from circle", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, readGate]),
     });
 
     // The resolved call should have gate definitions for both gates
-    expect(spell.call.gate_definitions.length).toBe(2);
-    const names = spell.call.gate_definitions.map((g: any) => g.name);
+    expect(spell.identity.gate_definitions.length).toBe(2);
+    const names = spell.identity.gate_definitions.map((g: any) => g.name);
     expect(names).toContain("done");
     expect(names).toContain("read");
   });
@@ -215,17 +215,17 @@ describe("CALL-4: call stored as root context in loom", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "You are a test agent", hyperparameters: { tool_choice: "required" } },
+      llm: crystal as any,
+      identity: { system_prompt: "You are a test agent", hyperparameters: { tool_choice: "required" } },
       circle: makeCircle(),
     });
 
     // Verify stored values match what was passed to cantrip()
-    expect(spell.call.system_prompt).toBe("You are a test agent");
-    expect(spell.call.hyperparameters.tool_choice).toBe("required");
+    expect(spell.identity.system_prompt).toBe("You are a test agent");
+    expect(spell.identity.hyperparameters.tool_choice).toBe("required");
     // Gate definitions derived from the circle's gates (done gate)
-    expect(spell.call.gate_definitions.length).toBe(1);
-    expect(spell.call.gate_definitions[0].name).toBe("done");
+    expect(spell.identity.gate_definitions.length).toBe(1);
+    expect(spell.identity.gate_definitions[0].name).toBe("done");
   });
 
   test("CALL-4: loom records call root when used with Agent", async () => {
@@ -310,8 +310,8 @@ describe("CALL-5: folding never compresses the system prompt", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "Never forget this prompt" },
+      llm: crystal as any,
+      identity: { system_prompt: "Never forget this prompt" },
       circle: makeCircle([doneGate, echoGate]),
     });
 

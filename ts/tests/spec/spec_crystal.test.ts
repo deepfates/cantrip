@@ -82,8 +82,8 @@ describe("CRYSTAL-1: crystal is stateless between invocations", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, echoGate]),
     });
 
@@ -144,8 +144,8 @@ describe("CRYSTAL-2: crystal accepts many messages", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, echoGate]),
     });
 
@@ -175,8 +175,8 @@ describe("CRYSTAL-3: crystal must return content or tool_calls", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(
         [doneGate],
         [{ max_turns: 1, require_done_tool: false }],
@@ -222,8 +222,8 @@ describe("CRYSTAL-5: required tool_choice forces gate use", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: {
+      llm: crystal as any,
+      identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "required" },
       },
@@ -234,7 +234,7 @@ describe("CRYSTAL-5: required tool_choice forces gate use", () => {
     });
 
     // Verify the resolved call stores tool_choice=required
-    expect(spell.call.hyperparameters.tool_choice).toBe("required");
+    expect(spell.identity.hyperparameters.tool_choice).toBe("required");
 
     const result = await spell.cast("test required");
     expect(result).toBe("ok");
@@ -259,16 +259,16 @@ describe("CRYSTAL-6: provider responses normalized to crystal contract", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(
         [doneGate],
         [{ max_turns: 10, require_done_tool: false }],
       ),
     });
 
-    // Use invoke() so we can inspect the agent for usage tracking
-    const entity = spell.invoke();
+    // Use summon() so we can inspect the agent for usage tracking
+    const entity = spell.summon();
     const result = await entity.cast("test normalization");
 
     // Content is normalized: returned as-is as the result string

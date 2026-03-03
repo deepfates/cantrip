@@ -23,8 +23,8 @@ describe("integration: cantrip API", () => {
     });
 
     const spell = cantrip({
-      crystal,
-      call: { system_prompt: "Call the echo tool with the user's message, then call done with the echoed text." },
+      llm: crystal,
+      identity: { system_prompt: "Call the echo tool with the user's message, then call done with the echoed text." },
       circle,
     });
 
@@ -33,7 +33,7 @@ describe("integration: cantrip API", () => {
     expect(typeof result).toBe("string");
   }, 30_000);
 
-  it("invoke() returns an entity, entity.cast() works", async () => {
+  it("summon() returns an entity, entity.cast() works", async () => {
     const { cantrip, Circle, ChatAnthropic, done, gate, max_turns } = await import("../../src");
 
     const crystal = new ChatAnthropic({ model });
@@ -47,10 +47,10 @@ describe("integration: cantrip API", () => {
     });
 
     const entity = cantrip({
-      crystal,
-      call: { system_prompt: "Call the echo tool with the user's message, then call done with the echoed text." },
+      llm: crystal,
+      identity: { system_prompt: "Call the echo tool with the user's message, then call done with the echoed text." },
       circle,
-    }).invoke();
+    }).summon();
 
     expect(entity).toBeTruthy();
     expect(typeof entity.cast).toBe("function");
@@ -84,8 +84,8 @@ describe("integration: cantrip API", () => {
     });
 
     const spell = cantrip({
-      crystal,
-      call: { system_prompt: "Call the count tool once, then call done with the result." },
+      llm: crystal,
+      identity: { system_prompt: "Call the count tool once, then call done with the result." },
       circle,
     });
 

@@ -33,13 +33,13 @@ export async function main() {
   });
 
   const entity = cantrip({
-    crystal,
-    call: {
+    llm: crystal,
+    identity: {
       system_prompt: `Coding assistant. Working dir: ${ctx.working_dir}\nCall done when finished.`,
     },
     circle,
     dependency_overrides: new Map([[getSandboxContext, () => ctx]]),
-  }).invoke();
+  }).summon();
 
   await runRepl({
     entity,

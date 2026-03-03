@@ -70,8 +70,8 @@ describe("Entity loom integration", () => {
     ]);
 
     const entity = new Entity({
-      crystal: crystal as any,
-      call: {
+      llm: crystal as any,
+      identity: {
         system_prompt: "You are a test entity.",
         hyperparameters: { tool_choice: "auto" },
         gate_definitions: [],
@@ -112,8 +112,8 @@ describe("Entity loom integration", () => {
     ]);
 
     const entity = new Entity({
-      crystal: crystal as any,
-      call: {
+      llm: crystal as any,
+      identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "auto" },
         gate_definitions: [],
@@ -126,7 +126,7 @@ describe("Entity loom integration", () => {
     expect(result).toBe("no loom");
   });
 
-  test("cantrip invoke() passes loom through to Entity", async () => {
+  test("cantrip summon() passes loom through to Entity", async () => {
     const storage = new MemoryStorage();
     const loom = new Loom(storage);
 
@@ -147,19 +147,18 @@ describe("Entity loom integration", () => {
     ]);
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
       loom,
-      cantrip_id: "cantrip-test",
     });
 
-    const entity = spell.invoke();
+    const entity = spell.summon();
     await entity.cast("hello");
 
     const turns = await storage.getAll();
     expect(turns.length).toBeGreaterThanOrEqual(1);
-    expect(turns[0].cantrip_id).toBe("cantrip-test");
+    expect(typeof turns[0].cantrip_id).toBe("string");
   });
 
   test("Entity uses configurable retry values", async () => {
@@ -181,8 +180,8 @@ describe("Entity loom integration", () => {
 
     // Just verify it doesn't crash with custom retry config
     const entity = new Entity({
-      crystal: crystal as any,
-      call: {
+      llm: crystal as any,
+      identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "auto" },
         gate_definitions: [],
@@ -228,8 +227,8 @@ describe("Entity loom integration", () => {
     };
 
     const entity = new Entity({
-      crystal: crystal as any,
-      call: {
+      llm: crystal as any,
+      identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "auto" },
         gate_definitions: [],

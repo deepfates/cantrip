@@ -1,7 +1,7 @@
 import { cantrip } from "../../../cantrip/cantrip";
-import type { BaseChatModel } from "../../../crystal/crystal";
-import { completionText } from "../../../crystal/views";
-import { ChatOpenRouter } from "../../../crystal/providers/openrouter/chat";
+import type { BaseChatModel } from "../../../llm/base";
+import { completionText } from "../../../llm/views";
+import { ChatOpenRouter } from "../../../llm/openrouter/chat";
 import { Circle } from "../../circle";
 import type { BoundGate } from "../gate";
 import type { Medium } from "../../medium";
@@ -31,8 +31,8 @@ export type CantripMediumConfig = {
 // ── Handle Store ─────────────────────────────────────────────────────
 
 type CantripRecord =
-  | { kind: "full"; crystal: BaseChatModel; call: string; circle: ReturnType<typeof Circle> }
-  | { kind: "leaf"; crystal: BaseChatModel; call: string };
+  | { kind: "full"; llm: BaseChatModel; identity: string; circle: ReturnType<typeof Circle> }
+  | { kind: "leaf"; llm: BaseChatModel; identity: string };
 
 export class CantripHandleStore {
   private nextId = 1;
@@ -112,6 +112,18 @@ function truncateResult(output: string): string {
   return output.slice(0, MAX_RESULT_CHARS) + "\n[truncated]";
 }
 
+async function invokeModel(
+  llm: BaseChatModel,
+  messages: any[],
+  tools?: any[] | null,
+  tool_choice?: any,
+) {
+  if (typeof llm.query === "function") {
+    return llm.query(messages, tools, tool_choice);
+  }
+  return llm.ainvoke(messages, tools, tool_choice);
+}
+
 function resolveGateSets(
   names: string[],
   registry?: Record<string, BoundGate[]>,
@@ -154,9 +166,6 @@ function cloneWard(ward: Ward): Ward {
     cloned.require_done_tool = ward.require_done_tool;
   }
   if (ward.max_depth !== undefined) cloned.max_depth = ward.max_depth;
-  if (ward.exclude_gates) {
-    cloned.exclude_gates = [...ward.exclude_gates];
-  }
   return cloned;
 }
 
@@ -187,17 +196,6 @@ function normalizeWard(raw: unknown): Ward {
     }
     ward.max_depth = value;
   }
-  if (src.exclude_gates !== undefined) {
-    if (!Array.isArray(src.exclude_gates)) {
-      throw new Error("ward.exclude_gates must be an array of strings");
-    }
-    ward.exclude_gates = src.exclude_gates.map((g) => {
-      if (typeof g !== "string" || !g) {
-        throw new Error("ward.exclude_gates must contain strings");
-      }
-      return g;
-    });
-  }
 
   return ward;
 }
@@ -210,7 +208,7 @@ const SECTION = "CANTRIP CONSTRUCTION";
  * cantrip(config) — create a cantrip and return a handle.
  *
  * This is the same cantrip() function application developers use, projected
- * into the medium so entity code matches the real API. Crystal is any
+ * into the medium so entity code matches the real API. LLM is any
  * OpenRouter model ID string. Mediums are referenced by name from the
  * host-configured registry.
  *
@@ -218,8 +216,8 @@ const SECTION = "CANTRIP CONSTRUCTION";
  * Without circle: creates a leaf cantrip (single LLM call, no entity loop).
  */
 const cantripCreateGate = rawGate<{
-  crystal: string;
-  call: string;
+  llm: string;
+  identity: string;
   circle?: {
     medium?: string;
     medium_opts?: Record<string, unknown>;
@@ -233,8 +231,8 @@ const cantripCreateGate = rawGate<{
     parameters: {
       type: "object",
       properties: {
-        crystal: { type: "string", description: "Model name (any OpenRouter model ID, e.g. \"anthropic/claude-3.5-haiku\")." },
-        call: { type: "string", description: "System prompt for the child entity." },
+        llm: { type: "string", description: "Model name (any OpenRouter model ID, e.g. \"anthropic/claude-3.5-haiku\")." },
+        identity: { type: "string", description: "System prompt for the child entity." },
         circle: {
           type: "object",
           description: "Circle config. Omit for a leaf cantrip (single LLM call).",
@@ -255,23 +253,23 @@ const cantripCreateGate = rawGate<{
           additionalProperties: false,
         },
       },
-      required: ["crystal", "call"],
+      required: ["llm", "identity"],
       additionalProperties: false,
     },
   },
-  async ({ crystal: crystalName, call, circle: circleConfig }, deps) => {
+  async ({ llm: llmName, identity, circle: circleConfig }, deps) => {
     const handles = deps.handles as CantripHandleStore;
     const config = deps.config as CantripMediumConfig;
 
-    if (!crystalName) throw new Error("cantrip() requires a crystal (model name)");
-    if (!call) throw new Error("cantrip() requires a call (system prompt)");
+    if (!llmName) throw new Error("cantrip() requires an llm (model name)");
+    if (!identity) throw new Error("cantrip() requires an identity (system prompt)");
 
-    // Entity picks any model by name — we create an OpenRouter crystal on the fly.
-    const crystal = new ChatOpenRouter({ model: crystalName });
+    // Entity picks any model by name — create an OpenRouter llm on the fly.
+    const llm = new ChatOpenRouter({ model: llmName });
 
     // Leaf cantrip — no circle, single LLM call
     if (!circleConfig) {
-      return handles.create({ kind: "leaf", crystal, call });
+      return handles.create({ kind: "leaf", llm, identity });
     }
 
     // Full cantrip — construct medium, circle, the works
@@ -300,7 +298,7 @@ const cantripCreateGate = rawGate<{
         gates: gateSets,
         wards,
       });
-      return handles.create({ kind: "full", crystal, call, circle });
+      return handles.create({ kind: "full", llm, identity, circle });
     } catch (err) {
       if (medium) {
         try { await medium.dispose(); } catch { /* original error has context */ }
@@ -312,7 +310,7 @@ const cantripCreateGate = rawGate<{
 );
 cantripCreateGate.docs = {
   sandbox_name: "cantrip",
-  signature: "cantrip({ crystal, call, circle? }): handle",
+  signature: "cantrip({ llm, identity, circle? }): handle",
   description: "Create a cantrip. With circle: full entity run. Without: single LLM call.",
   section: SECTION,
 };
@@ -321,7 +319,7 @@ cantripCreateGate.docs = {
  * cast(cantrip, intent) — cast a cantrip and return the result.
  *
  * For full cantrips: runs the entity loop, returns the answer, auto-disposes.
- * For leaf cantrips: makes one LLM call (crystal + call + intent), returns the text.
+ * For leaf cantrips: makes one LLM call (llm + identity + intent), returns the text.
  *
  * The handle is consumed — you can't cast the same cantrip twice.
  * (Just like the real API: cantrip().cast() creates a fresh run each time.)
@@ -353,9 +351,10 @@ const cantripCastGate = rawGate<{ cantrip: number; intent: string }>(
     // ── Leaf cantrip: single LLM call, no entity loop ──
     if (record.kind === "leaf") {
       handles.remove(cantripHandle);
-      const response = await record.crystal.query(
+      const response = await invokeModel(
+        record.llm,
         [
-          { role: "system", content: record.call },
+          { role: "system", content: record.identity },
           { role: "user", content: intent },
         ],
         null, // no tools
@@ -369,11 +368,10 @@ const cantripCastGate = rawGate<{ cantrip: number; intent: string }>(
     }
 
     const child = cantrip({
-      crystal: record.crystal,
-      call: record.call,
+      llm: record.llm,
+      identity: record.identity,
       circle: record.circle,
       loom: sharedLoom,
-      dependency_overrides: config.dependency_overrides,
     });
 
     try {
@@ -534,9 +532,10 @@ function makeCastBatchGate(): BoundGate {
               // ── Leaf cantrip ──
               if (record.kind === "leaf") {
                 handles.remove(cantripHandle);
-                const response = await record.crystal.query(
+                const response = await invokeModel(
+                  record.llm,
                   [
-                    { role: "system", content: record.call },
+                    { role: "system", content: record.identity },
                     { role: "user", content: intent },
                   ],
                   null,
@@ -546,11 +545,10 @@ function makeCastBatchGate(): BoundGate {
 
               // ── Full cantrip ──
               const child = cantrip({
-                crystal: record.crystal,
-                call: record.call,
+                llm: record.llm,
+                identity: record.identity,
                 circle: record.circle,
                 loom: sharedLoom,
-                dependency_overrides: config.dependency_overrides,
               });
 
               const result = await child.cast(intent);

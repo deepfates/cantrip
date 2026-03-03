@@ -1,5 +1,5 @@
-import type { JsonSchema } from "../../crystal/crystal";
-import type { ContentPartImage, ContentPartText } from "../../crystal/messages";
+import type { JsonSchema } from "../../llm/base";
+import type { ContentPartImage, ContentPartText } from "../../llm/messages";
 import { Depends, type DependencyOverrides } from "./depends";
 
 export type GateContent = string | Array<ContentPartText | ContentPartImage>;

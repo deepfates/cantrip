@@ -45,8 +45,8 @@ function createEntity(opts: {
     wards: opts.wards ?? [{ max_turns: 10, require_done_tool: true }],
   });
   return new Entity({
-    crystal: opts.llm,
-    call: {
+    llm: opts.llm,
+    identity: {
       system_prompt: opts.system_prompt ?? null,
       hyperparameters: { tool_choice: "auto" },
       gate_definitions: [],

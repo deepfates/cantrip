@@ -1,4 +1,7 @@
 import { ChatOpenAILike, type ChatOpenAILikeOptions } from "../openai/like";
+import type { AnyMessage } from "../messages";
+import type { ToolChoice, ToolDefinition } from "../base";
+import type { ChatInvokeCompletion } from "../views";
 
 export type ChatOpenRouterOptions = ChatOpenAILikeOptions & {
   /**
@@ -19,6 +22,15 @@ export type ChatOpenRouterOptions = ChatOpenAILikeOptions & {
  * OpenRouter exposes an OpenAI-compatible API with a few header conventions.
  */
 export class ChatOpenRouter extends ChatOpenAILike {
+  async query(
+    messages: AnyMessage[],
+    tools?: ToolDefinition[] | null,
+    tool_choice?: ToolChoice | null,
+    extra?: Record<string, unknown>,
+  ): Promise<ChatInvokeCompletion> {
+    return this.ainvoke(messages, tools, tool_choice, extra);
+  }
+
   constructor(options: ChatOpenRouterOptions) {
     const wantAttribution = options.attribution_headers ?? true;
     const http_referer =

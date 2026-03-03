@@ -21,8 +21,8 @@ import { call_entity, call_entity_batch } from "../../src/circle/gate/builtin/ca
 import { done, done_for_medium } from "../../src/circle/gate/builtin/done";
 import { gate } from "../../src/circle/gate/decorator";
 import { z } from "zod";
-import { UsageTracker } from "../../src/crystal/tokens/usage";
-import type { BaseChatModel } from "../../src/crystal/crystal";
+import { UsageTracker } from "../../src/llm/tokens/usage";
+import type { BaseChatModel } from "../../src/llm/base";
 
 // --- Inline helpers ---
 
@@ -335,12 +335,12 @@ export async function runJsSandboxEval(options: {
 
   const circle = Circle({ medium, gates, wards: [max_turns(20), require_done()] });
   const spell = cantrip({
-    crystal: llm,
-    call: "Explore the context using code. Use submit_answer() to provide your final answer.",
+    llm: llm,
+    identity: "Explore the context using code. Use submit_answer() to provide your final answer.",
     circle,
     usage_tracker: usage,
   });
-  const entity = spell.invoke();
+  const entity = spell.summon();
 
   await medium.init(gates, entity.dependency_overrides);
   const sandbox = getJsMediumSandbox(medium)!;
@@ -411,8 +411,8 @@ export async function runEntityWithJsEval(options: {
     wards: [{ max_turns: 20, require_done_tool: true }],
   });
   const entity = new Entity({
-    crystal: llm,
-    call: {
+    llm: llm,
+    identity: {
       system_prompt: systemPrompt,
       hyperparameters: { tool_choice: "auto" },
       gate_definitions: [],
@@ -477,8 +477,8 @@ export async function runEntityMetaJsEval(options: {
     wards: [{ max_turns: 20, require_done_tool: true }],
   });
   const entity = new Entity({
-    crystal: llm,
-    call: {
+    llm: llm,
+    identity: {
       system_prompt: systemPrompt,
       hyperparameters: { tool_choice: "auto" },
       gate_definitions: [],

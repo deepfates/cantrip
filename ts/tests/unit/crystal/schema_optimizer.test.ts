@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { SchemaOptimizer } from "../../../src/crystal/schema";
+import { SchemaOptimizer } from "../../../src/llm/schema";
 
 describe("SchemaOptimizer", () => {
   test("flattens $ref and enforces additionalProperties false", () => {

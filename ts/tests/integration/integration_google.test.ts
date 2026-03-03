@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatGoogle } from "../../src/crystal/providers/google/chat";
-import type { GateDefinition } from "../../src/crystal/crystal";
+import { ChatGoogle } from "../../src/llm/google/chat";
+import type { GateDefinition } from "../../src/llm/base";
 import { loadEnv } from "../helpers/env";
 
 loadEnv();

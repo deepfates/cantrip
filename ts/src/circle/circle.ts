@@ -1,6 +1,6 @@
-import type { ToolChoice, GateDefinition } from "../crystal/crystal";
-import type { AssistantMessage, ToolMessage } from "../crystal/messages";
-import { extractToolMessageText } from "../crystal/messages";
+import type { ToolChoice, GateDefinition } from "../llm/base";
+import type { AssistantMessage, ToolMessage } from "../llm/messages";
+import { extractToolMessageText } from "../llm/messages";
 import type { BoundGate } from "./gate/gate";
 import type { DependencyOverrides } from "./gate/depends";
 import type { Ward } from "./ward";
@@ -53,8 +53,8 @@ export interface Circle {
   /** True when the circle has a medium that handles termination (e.g., submit_answer in JS). */
   hasMedium?: boolean;
 
-  /** What the crystal needs to see — tool definitions and tool_choice. */
-  crystalView(toolChoice?: ToolChoice): {
+  /** What the llm needs to see — tool definitions and tool_choice. */
+  toolView(toolChoice?: ToolChoice): {
     tool_definitions: GateDefinition[];
     tool_choice: ToolChoice;
   };
@@ -118,7 +118,7 @@ export function buildCapabilityDocs(gates: BoundGate[]): string {
  * CIRCLE-2: Must have at least one ward with max_turns > 0.
  *
  * When no medium: returns a ToolCallingCircle that dispatches tool_calls to gates.
- * When medium present: delegates crystalView/execute/dispose to the medium.
+ * When medium present: delegates toolView/execute/dispose to the medium.
  */
 export function Circle(opts: {
   medium?: Medium;
@@ -128,12 +128,12 @@ export function Circle(opts: {
   const gates = opts.gates ?? [];
   const hasMedium = !!opts.medium;
 
-  // Auto-inject done gate when not provided
+  // CIRCLE-1: done gate is required unless a medium handles termination.
   if (!gates.some((g) => g.name === "done")) {
     if (hasMedium) {
       gates.push(done_for_medium());
     } else {
-      gates.push(done);
+      throw new Error("Circle must have a done gate");
     }
   }
   if (opts.wards.length === 0) {
@@ -149,15 +149,8 @@ export function Circle(opts: {
     const medium = opts.medium;
     let initPromise: Promise<void> | null = null;
 
-    // Apply gate exclusions from wards for the medium path too
-    const excludedSet = new Set(resolved.exclude_gates);
-    const filteredGates =
-      excludedSet.size > 0
-        ? gates.filter((g) => !excludedSet.has(g.name))
-        : gates;
-
     return {
-      gates: filteredGates,
+      gates,
       wards: opts.wards,
       hasMedium: true,
 
@@ -166,22 +159,22 @@ export function Circle(opts: {
         if (medium.capabilityDocs) {
           parts.push(medium.capabilityDocs());
         }
-        const gateDocs = buildCapabilityDocs(filteredGates);
+        const gateDocs = buildCapabilityDocs(gates);
         if (gateDocs) {
           parts.push(gateDocs);
         }
         return parts.join("\n\n");
       },
 
-      crystalView(_toolChoice?: ToolChoice) {
-        return medium.crystalView();
+      toolView(_toolChoice?: ToolChoice) {
+        return medium.toolView();
       },
 
       async execute(utterance, options) {
         // Lazy init on first execute
         if (!initPromise) {
           initPromise = medium.init(
-            filteredGates,
+            gates,
             options.dependency_overrides,
           );
         }
@@ -204,33 +197,26 @@ export function Circle(opts: {
 
   // No medium: tool-calling circle (original behavior)
 
-  // Apply gate exclusions from wards
-  const excludedSet = new Set(resolved.exclude_gates);
-  const filteredGates =
-    excludedSet.size > 0
-      ? gates.filter((g) => !excludedSet.has(g.name))
-      : gates;
-
   // Build tool_map once
   const tool_map = new Map<string, BoundGate>();
-  for (const gate of filteredGates) {
+  for (const gate of gates) {
     tool_map.set(gate.name, gate);
   }
 
   // Build tool_definitions once
-  const tool_definitions: GateDefinition[] = filteredGates.map(
+  const tool_definitions: GateDefinition[] = gates.map(
     (g) => g.definition,
   );
 
   return {
-    gates: filteredGates,
+    gates,
     wards: opts.wards,
 
     capabilityDocs() {
-      return buildCapabilityDocs(filteredGates);
+      return buildCapabilityDocs(gates);
     },
 
-    crystalView(toolChoice?: ToolChoice) {
+    toolView(toolChoice?: ToolChoice) {
       return {
         tool_definitions,
         tool_choice: toolChoice ?? "auto",

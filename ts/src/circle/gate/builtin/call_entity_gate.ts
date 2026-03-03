@@ -14,12 +14,20 @@ export type SpawnFn = (query: string, context: unknown) => Promise<string>;
  * Framework-owned Depends instances.
  * The Entity auto-populates these via dependency_overrides at construction time.
  */
+function defaultCurrentTurnIdProvider(): () => string | null {
+  throw new Error("currentTurnId binding must be provided by entity");
+}
+
+function defaultSpawnProvider(): SpawnFn {
+  throw new Error("spawn binding must be provided by entity");
+}
+
 export const currentTurnIdBinding = new Depends<() => string | null>(
-  () => { throw new Error("currentTurnId binding must be provided by entity"); },
+  defaultCurrentTurnIdProvider,
 );
 
 export const spawnBinding = new Depends<SpawnFn>(
-  () => { throw new Error("spawn binding must be provided by entity"); },
+  defaultSpawnProvider,
 );
 
 export const progressBinding = new Depends<ProgressCallback | null>(

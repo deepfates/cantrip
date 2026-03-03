@@ -260,7 +260,7 @@ describe("llm_batch input validation", () => {
 
   test("rejects batch tasks with missing query", async () => {
     const mockLlm = new MockLlm([
-      // First call: the agent emits sandbox code with a malformed batch
+      // First identity: the agent emits sandbox code with a malformed batch
       (_msgs) => ({
         content: "Batching",
         tool_calls: [

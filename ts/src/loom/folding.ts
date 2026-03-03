@@ -10,8 +10,8 @@
  * node. The original turns remain in the loom. This is a view transformation.
  */
 
-import type { BaseChatModel } from "../crystal/crystal";
-import type { AnyMessage } from "../crystal/messages";
+import type { BaseChatModel } from "../llm/base";
+import type { AnyMessage } from "../llm/messages";
 import type { Turn } from "./turn";
 import type { Thread } from "./thread";
 
@@ -19,7 +19,7 @@ import type { Thread } from "./thread";
 export type FoldingConfig = {
   /** Folding is enabled. Defaults to true. */
   enabled: boolean;
-  /** Trigger when context exceeds this ratio of the crystal's window. Default 0.8. */
+  /** Trigger when context exceeds this ratio of the llm's window. Default 0.8. */
   threshold_ratio: number;
   /** Prompt used to generate the fold summary. */
   summary_prompt: string;
@@ -101,7 +101,7 @@ export function shouldFold(
 /**
  * Perform non-destructive folding on a thread.
  *
- * This calls the crystal to summarize the older turns, then returns
+ * This calls the llm to summarize the older turns, then returns
  * a new message array with the summary replacing the folded range.
  * The original turns remain in the loom untouched.
  *
@@ -139,7 +139,9 @@ export async function fold(
   }
   summaryInput.push({ role: "user", content: config.summary_prompt } as AnyMessage);
 
-  const response = await llm.query(summaryInput);
+  const response = typeof llm.query === "function"
+    ? await llm.query(summaryInput)
+    : await llm.ainvoke(summaryInput);
   const summary = extractSummary(response.content ?? "");
 
   const fromSeq = turnsToFold[0].sequence;

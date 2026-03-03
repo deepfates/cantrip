@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { Entity } from "../../../src/cantrip/entity";
-import { cantrip } from "../../../src/cantrip/cantrip";
 import { TaskComplete } from "../../../src/entity/errors";
 import { gate } from "../../../src/circle/gate/decorator";
 import { Loom, MemoryStorage } from "../../../src/loom";
@@ -304,8 +303,8 @@ describe("Loom tree: child entities record into parent loom", () => {
     ]);
 
     const childEntity = new Entity({
-      crystal: crystal as any,
-      call: {
+      llm: crystal as any,
+      identity: {
         system_prompt: "child system prompt",
         hyperparameters: { tool_choice: "auto" },
         gate_definitions: [],
@@ -365,8 +364,8 @@ describe("Loom tree: child entities record into parent loom", () => {
     ]);
 
     const entity = new Entity({
-      crystal: crystal as any,
-      call: {
+      llm: crystal as any,
+      identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "auto" },
         gate_definitions: [],
@@ -411,8 +410,8 @@ describe("Loom tree: child entities record into parent loom", () => {
 
     // Entity without a loom — should work fine (no recording)
     const entity = new Entity({
-      crystal: crystal as any,
-      call: {
+      llm: crystal as any,
+      identity: {
         system_prompt: "test",
         hyperparameters: { tool_choice: "auto" },
         gate_definitions: [],
@@ -426,7 +425,7 @@ describe("Loom tree: child entities record into parent loom", () => {
     expect(result).toBe("standalone");
   });
 
-  test("cantrip with parent_turn_id creates entity that branches from parent", async () => {
+  test("entity with parent_turn_id creates child branch under parent", async () => {
     const storage = new MemoryStorage();
     const loom = new Loom(storage);
 
@@ -470,16 +469,19 @@ describe("Loom tree: child entities record into parent loom", () => {
       }),
     ]);
 
-    const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "child prompt" },
+    const entity = new Entity({
+      llm: crystal as any,
+      identity: {
+        system_prompt: "child prompt",
+        hyperparameters: { tool_choice: "auto" },
+        gate_definitions: [],
+      },
       circle: makeCircle(),
+      dependency_overrides: null,
       loom,
       cantrip_id: "child-cantrip",
       parent_turn_id: parentTurnId,
     });
-
-    const entity = spell.invoke();
     await entity.cast("child task");
 
     // The child's call root should branch from the parent turn

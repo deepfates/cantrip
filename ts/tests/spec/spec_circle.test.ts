@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { cantrip } from "../../src/cantrip/cantrip";
+import { Entity } from "../../src/cantrip/entity";
 import { TaskComplete } from "../../src/entity/errors";
 import { gate } from "../../src/circle/gate/decorator";
 import { Circle } from "../../src/circle/circle";
 import type { BoundGate } from "../../src/circle/gate/gate";
-import { max_turns, require_done, max_depth, exclude_gate, resolveWards, type Ward } from "../../src/circle/ward";
+import { max_turns, require_done, max_depth, resolveWards, type Ward } from "../../src/circle/ward";
 
 // ── Shared helpers ─────────────────────────────────────────────────
 
@@ -85,8 +86,8 @@ describe("CIRCLE-1: circle must have done gate", () => {
     });
     expect(() =>
       cantrip({
-        crystal: crystal as any,
-        call: { system_prompt: "test" },
+        llm: crystal as any,
+        identity: { system_prompt: "test" },
         circle: { gates: [notDone], wards: [{ max_turns: 10, require_done_tool: false }] } as any,
       }),
     ).toThrow(/done/i);
@@ -163,8 +164,8 @@ describe("CIRCLE-3: gate execution is synchronous from entity perspective", () =
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, slowGate]),
     });
 
@@ -226,8 +227,8 @@ describe("CIRCLE-4: gate results visible in context", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, echoGate]),
     });
 
@@ -297,8 +298,8 @@ describe("CIRCLE-5: gate errors returned as observations", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, failingGate]),
     });
 
@@ -340,8 +341,8 @@ describe("CIRCLE-6: wards enforced by circle not entity", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(
         [doneGate, echoGate],
         [{ max_turns: 1, require_done_tool: false }],
@@ -423,8 +424,8 @@ describe("CIRCLE-7: multiple gate calls in one utterance executed in order", () 
     ]);
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle([doneTracked, echoTracked]),
     });
 
@@ -457,8 +458,8 @@ describe("CIRCLE-8: done gate returns its argument as the result", () => {
     ]);
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
 
@@ -538,14 +539,20 @@ describe("CIRCLE-10: gate dependencies injected at construction", () => {
       },
     };
 
-    const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+    const entity = new Entity({
+      llm: crystal as any,
+      identity: {
+        system_prompt: "test",
+        hyperparameters: { tool_choice: "auto" },
+        gate_definitions: [],
+      },
       circle: makeCircle([doneGate, readGateWithDep]),
       dependency_overrides: { fsRoot: () => "/test/data" },
+      usage_tracker: undefined,
+      loom: undefined,
     });
 
-    await spell.cast("read test.txt");
+    await entity.cast("read test.txt");
 
     // The second invocation should see the result with the injected root
     const secondMessages = messagesPerCall[1];
@@ -600,53 +607,6 @@ describe("Ward composition via resolveWards", () => {
     expect(resolved.max_depth).toBe(3);
   });
 
-  test("exclude_gate composes with other ward types", () => {
-    const resolved = resolveWards([max_turns(10), require_done(), exclude_gate("echo")]);
-    expect(resolved.max_turns).toBe(10);
-    expect(resolved.require_done_tool).toBe(true);
-    expect(resolved.exclude_gates).toEqual(["echo"]);
-  });
-
-  test("multiple exclude_gate wards compose via union", () => {
-    const resolved = resolveWards([exclude_gate("echo"), exclude_gate("read_file")]);
-    expect(resolved.exclude_gates.sort()).toEqual(["echo", "read_file"]);
-  });
-});
-
-// ── Ward-based gate removal in Circle ─────────────────────────────
-
-describe("Ward-based gate removal in Circle", () => {
-  test("excluded gate is removed from Circle gates and crystalView", () => {
-    const circle = makeCircle(
-      [doneGate, echoGate],
-      [{ max_turns: 10, require_done_tool: true }, exclude_gate("echo")],
-    );
-
-    expect(circle.gates).toHaveLength(1);
-    expect(circle.gates[0].name).toBe("done");
-
-    const view = circle.crystalView();
-    expect(view.tool_definitions).toHaveLength(1);
-    expect(view.tool_definitions[0].name).toBe("done");
-  });
-
-  test("excluding nonexistent gate is a no-op", () => {
-    const circle = makeCircle(
-      [doneGate, echoGate],
-      [{ max_turns: 10 }, exclude_gate("nonexistent")],
-    );
-
-    expect(circle.gates).toHaveLength(2);
-  });
-
-  test("done gate cannot be excluded", () => {
-    const circle = makeCircle(
-      [doneGate, echoGate],
-      [{ max_turns: 10 }, exclude_gate("done")],
-    );
-
-    expect(circle.gates.some((g) => g.name === "done")).toBe(true);
-  });
 });
 
 // ── WARD-1: nested wards compose with min() for numeric, OR for boolean ─
@@ -683,31 +643,16 @@ describe("WARD-1: nested ward composition rules", () => {
     expect(resolved.require_done_tool).toBe(true); // OR(false, true, false)
   });
 
-  test("WARD-1: nested ward composition with exclude_gates uses union", () => {
-    // When multiple ward layers each exclude different gates,
-    // the union of all exclusions applies
-    const parentWard = { max_turns: 200, exclude_gates: ["echo"] };
-    const childWard = { max_turns: 50, exclude_gates: ["read_file"] };
-    const grandchildWard = { exclude_gates: ["echo", "write_file"] };
-
-    const resolved = resolveWards([parentWard, childWard, grandchildWard]);
-    expect(resolved.max_turns).toBe(50);
-    // Union of all exclude_gates across layers
-    expect(resolved.exclude_gates.sort()).toEqual(["echo", "read_file", "write_file"]);
-  });
-
   test("WARD-1: nested wards compose all field types together", () => {
-    // Full composition: numeric (min), boolean (OR), exclude_gates (union)
+    // Full composition: numeric (min), boolean (OR)
     const resolved = resolveWards([
-      { max_turns: 100, max_depth: 5, require_done_tool: false, exclude_gates: ["echo"] },
-      { max_turns: 50, require_done_tool: true, exclude_gates: ["read_file"] },
-      { max_depth: 3, exclude_gates: ["echo"] },
+      { max_turns: 100, max_depth: 5, require_done_tool: false },
+      { max_turns: 50, require_done_tool: true },
+      { max_depth: 3 },
     ]);
     expect(resolved.max_turns).toBe(50);          // min(100, 50)
     expect(resolved.max_depth).toBe(3);            // min(5, 3)
     expect(resolved.require_done_tool).toBe(true); // OR(false, true, false)
-    // Union with dedup: ["echo", "read_file"]
-    expect(resolved.exclude_gates.sort()).toEqual(["echo", "read_file"]);
   });
 });
 

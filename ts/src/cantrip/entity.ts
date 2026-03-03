@@ -1,6 +1,7 @@
-import type { BaseChatModel } from "../crystal/crystal";
-import type { AnyMessage } from "../crystal/messages";
+import type { BaseChatModel } from "../llm/base";
+import type { AnyMessage } from "../llm/messages";
 import type { Call } from "./call";
+import type { Identity } from "./identity";
 import { renderGateDefinitions } from "./call";
 import { Circle } from "../circle/circle";
 import type { DependencyOverrides } from "../circle/gate/depends";
@@ -9,7 +10,7 @@ import type { Intent } from "./intent";
 import type { TurnEvent } from "../entity/events";
 import { HiddenUserMessageEvent } from "../entity/events";
 import { resolveWards, type Ward } from "../circle/ward";
-import { UsageTracker } from "../crystal/tokens";
+import { UsageTracker } from "../llm/tokens";
 import {
   destroyEphemeralMessages,
   invokeLLMWithRetries,
@@ -17,7 +18,7 @@ import {
   runLoop,
 } from "../entity/runtime";
 import { recordCallRoot, recordTurn, checkAndFold } from "../entity/recording";
-import { Loom, MemoryStorage } from "../loom";
+import { Loom, MemoryStorage } from "../loom/index";
 import type { FoldingConfig } from "../loom/folding";
 import { done } from "../circle/gate/builtin/done";
 import { DEFAULT_FOLDING_CONFIG } from "../loom/folding";
@@ -30,11 +31,11 @@ import {
 
 /**
  * Options for constructing an Entity.
- * Holds the spec parts (crystal, call, circle) — no Agent dependency.
+ * Holds the spec parts (llm, identity, circle) — no Agent dependency.
  */
 export type EntityOptions = {
-  crystal: BaseChatModel;
-  call: Call;
+  llm: BaseChatModel;
+  identity: Identity;
   circle: Circle;
   dependency_overrides: DependencyOverrides | null;
   /** Optional shared usage tracker (for aggregating across recursive entities). */
@@ -61,20 +62,20 @@ export type EntityOptions = {
 };
 
 /**
- * An Entity is a persistent multi-turn session created by invoking a Cantrip.
+ * An Entity is a persistent multi-turn session created by summoning a Cantrip.
  *
- * While `cast()` is fire-and-forget (one intent → one result), `invoke()`
+ * While `cast()` is fire-and-forget (one intent → one result), `summon()`
  * creates an Entity that accumulates state across multiple `cast()` calls.
  *
  * Entity owns its circle state (messages) directly and uses `runLoop`
  * for both `cast()` (returns string) and `cast_stream()` (yields events).
  */
 export class Entity {
-  /** The Crystal (LLM) that powers this Entity. */
-  readonly crystal: BaseChatModel;
+  /** The LLM that powers this Entity. */
+  readonly llm: BaseChatModel;
 
-  /** The resolved Call parameters. */
-  readonly call: Call;
+  /** The resolved identity parameters. */
+  readonly identity: Identity;
 
   /** The Circle of capabilities and constraints. */
   readonly circle: Circle;
@@ -121,8 +122,17 @@ export class Entity {
   };
 
   constructor(options: EntityOptions) {
-    this.crystal = options.crystal;
-    this.call = options.call;
+    const llm = options.llm;
+    if (!llm) {
+      throw new Error("Entity: llm is required");
+    }
+    const identity = options.identity;
+    if (!identity) {
+      throw new Error("Entity: identity is required");
+    }
+
+    this.llm = llm;
+    this.identity = identity;
     this.circle = options.circle;
     this.usage_tracker = options.usage_tracker ?? new UsageTracker();
     this.loom = options.loom;
@@ -138,36 +148,102 @@ export class Entity {
     }
 
     // Auto-populate framework bindings for call_entity if that gate is present.
-    // Framework bindings use Depends instances as Map keys, so we need a Map.
-    // If the user passed a Record, convert entries to Map keyed by the factory function.
     const userOverrides = options.dependency_overrides;
     let overrides: DependencyOverrides | null = userOverrides ?? null;
 
     if (this.tool_map.has("call_entity")) {
-      // Ensure we have a Map for framework bindings
-      let bindingMap: Map<any, any>;
       if (userOverrides instanceof Map) {
-        bindingMap = userOverrides;
-      } else if (userOverrides && typeof userOverrides === "object") {
-        // Convert Record overrides to Map (keyed by factory function for Depends.resolve)
-        bindingMap = new Map();
-        for (const [name, factory] of Object.entries(userOverrides)) {
-          bindingMap.set(name, factory);
-        }
-      } else {
-        bindingMap = new Map();
-      }
+        const bindingMap: Map<any, any> = userOverrides;
 
-      // currentTurnIdBinding: provide a getter that always reads current last_turn_id
-      if (!bindingMap.has(currentTurnIdBinding)) {
-        bindingMap.set(currentTurnIdBinding, () => () => this.last_turn_id);
-      }
-      // spawnBinding: provide a default spawn that creates a real child cantrip.
-      // The child gets its own circle (with done + parent's non-delegation gates),
-      // shares the parent's loom (for tree-linked turns), and tracks usage.
-      // Callers can override via dependency_overrides for richer child configs.
-      if (!bindingMap.has(spawnBinding)) {
-        bindingMap.set(spawnBinding, (): SpawnFn => {
+        // currentTurnIdBinding: provide a getter that always reads current last_turn_id
+        if (!bindingMap.has(currentTurnIdBinding)) {
+          bindingMap.set(currentTurnIdBinding, () => () => this.last_turn_id);
+        }
+
+        // spawnBinding: provide a default spawn that creates a real child cantrip.
+        // The child gets its own circle (with done + parent's non-delegation gates),
+        // shares the parent's loom (for tree-linked turns), and tracks usage.
+        // Callers can override via dependency_overrides for richer child configs.
+        if (!bindingMap.has(spawnBinding)) {
+          bindingMap.set(spawnBinding, (): SpawnFn => {
+            return async (query: string, context: unknown): Promise<string> => {
+              const contextStr = typeof context === "string"
+                ? context
+                : JSON.stringify(context, null, 2);
+              const truncated = contextStr.length > 10000
+                ? contextStr.slice(0, 10000) + "\n... [truncated]"
+                : contextStr;
+
+              // Build child gates: parent's gates minus call_entity/call_entity_batch
+              // (child doesn't get further delegation by default — prevents runaway recursion).
+              // Replace any medium-specific done gate with the plain done gate,
+              // since the child has no medium.
+              const childGates: BoundGate[] = this.circle.gates
+                .filter((g) => g.name !== "call_entity" && g.name !== "call_entity_batch" && g.name !== "done")
+                .concat([done]);
+
+              // Inherit parent wards and compose with child safety bounds.
+              // resolveWards() handles composition: min() for numeric, OR for boolean.
+              // The child safety ward caps max_turns and
+              // disables require_done so the child terminates on text response.
+              const parentResolved = resolveWards(this.circle.wards);
+              const childMaxTurns = Math.min(parentResolved.max_turns, 10);
+
+              // Decrement max_depth for the child (counts down through recursion).
+              const childDepthWard: Ward = parentResolved.max_depth < Infinity
+                ? { max_depth: parentResolved.max_depth - 1 }
+                : {};
+
+              const childCircle = Circle({
+                gates: childGates,
+                wards: [
+                  ...this.circle.wards,                                    // inherit parent wards
+                  { max_turns: childMaxTurns, require_done_tool: false },  // child safety cap
+                  childDepthWard,                                          // decremented depth
+                ],
+              });
+
+              // Build child call
+              const childCall: Call = {
+                system_prompt: `You are a child entity. Pursue the intent and call done with the result.\n\nContext:\n${truncated}`,
+                hyperparameters: { tool_choice: "auto" },
+                gate_definitions: renderGateDefinitions(childCircle.gates),
+              };
+
+              // Share parent's loom (child turns appear as subtree) or create ephemeral one
+              const childLoom = this.loom ?? new Loom(new MemoryStorage());
+
+              const childEntity = new Entity({
+                llm: this.llm,
+                identity: childCall,
+                circle: childCircle,
+                dependency_overrides: null,
+                usage_tracker: this.usage_tracker,
+                loom: childLoom,
+                parent_turn_id: this.last_turn_id,
+                folding: this.folding,
+                folding_enabled: this.folding_enabled,
+                retry: this.retry,
+              });
+
+              return childEntity.cast(query);
+            };
+          });
+        }
+        overrides = bindingMap;
+      } else {
+        const bindingRecord: Record<string, any> = {
+          ...(userOverrides && !(userOverrides instanceof Map) ? userOverrides as Record<string, any> : {}),
+        };
+
+        const currentTurnKey = currentTurnIdBinding.dependency.name;
+        if (!bindingRecord[currentTurnKey]) {
+          bindingRecord[currentTurnKey] = () => () => this.last_turn_id;
+        }
+
+        const spawnKey = spawnBinding.dependency.name;
+        if (!bindingRecord[spawnKey]) {
+          bindingRecord[spawnKey] = (): SpawnFn => {
           return async (query: string, context: unknown): Promise<string> => {
             const contextStr = typeof context === "string"
               ? context
@@ -185,8 +261,8 @@ export class Entity {
               .concat([done]);
 
             // Inherit parent wards and compose with child safety bounds.
-            // resolveWards() handles composition: min() for numeric, OR for boolean,
-            // union for exclude_gates. The child safety ward caps max_turns and
+            // resolveWards() handles composition: min() for numeric, OR for boolean.
+            // The child safety ward caps max_turns and
             // disables require_done so the child terminates on text response.
             const parentResolved = resolveWards(this.circle.wards);
             const childMaxTurns = Math.min(parentResolved.max_turns, 10);
@@ -199,7 +275,7 @@ export class Entity {
             const childCircle = Circle({
               gates: childGates,
               wards: [
-                ...this.circle.wards,                                    // inherit parent wards (exclude_gates, etc.)
+                ...this.circle.wards,                                    // inherit parent wards
                 { max_turns: childMaxTurns, require_done_tool: false },  // child safety cap
                 childDepthWard,                                          // decremented depth
               ],
@@ -216,8 +292,8 @@ export class Entity {
             const childLoom = this.loom ?? new Loom(new MemoryStorage());
 
             const childEntity = new Entity({
-              crystal: this.crystal,
-              call: childCall,
+              llm: this.llm,
+              identity: childCall,
               circle: childCircle,
               dependency_overrides: null,
               usage_tracker: this.usage_tracker,
@@ -230,10 +306,11 @@ export class Entity {
 
             return childEntity.cast(query);
           };
-        });
-      }
+          };
+        }
 
-      overrides = bindingMap;
+        overrides = bindingRecord;
+      }
     }
 
     this.dependency_overrides = overrides;
@@ -331,16 +408,16 @@ export class Entity {
     const ward = resolveWards(this.circle.wards);
     const effectiveToolChoice = ward.require_done_tool
       ? "required"
-      : this.call.hyperparameters.tool_choice;
+      : this.identity.hyperparameters.tool_choice;
 
     // Initialize system prompt if this is a fresh conversation
-    if (!this.messages.length && this.call.system_prompt) {
+    if (!this.messages.length && this.identity.system_prompt) {
       // Auto-prepend circle capability docs (medium physics + gate docs)
       // so the developer's Call string is pure strategy.
       const capDocs = this.circle.capabilityDocs();
       const systemContent = capDocs
-        ? capDocs + "\n\n" + this.call.system_prompt
-        : this.call.system_prompt;
+        ? capDocs + "\n\n" + this.identity.system_prompt
+        : this.identity.system_prompt;
       this.messages.push({
         role: "system",
         content: systemContent,
@@ -351,10 +428,10 @@ export class Entity {
     // INTENT-2: intent becomes a user message
     this.messages.push({ role: "user", content: intent } as AnyMessage);
 
-    // Circle provides crystalView when constructed via Circle()
-    const crystalView = this.circle.crystalView?.(effectiveToolChoice);
-    const tool_definitions = crystalView?.tool_definitions ?? this.call.gate_definitions;
-    const viewToolChoice = crystalView?.tool_choice ?? effectiveToolChoice;
+    // Circle provides toolView when constructed via Circle()
+    const toolView = this.circle.toolView?.(effectiveToolChoice);
+    const tool_definitions = toolView?.tool_definitions ?? this.identity.gate_definitions;
+    const viewToolChoice = toolView?.tool_choice ?? effectiveToolChoice;
 
     // CALL-4: Record the call as the loom root before the first turn
     if (this.loom && this.last_turn_id === null) {
@@ -362,18 +439,18 @@ export class Entity {
         loom: this.loom,
         cantrip_id: this.cantrip_id,
         entity_id: this.entity_id,
-        system_prompt: this.call.system_prompt,
-        tool_definitions: crystalView?.tool_definitions ?? this.call.gate_definitions,
+        system_prompt: this.identity.system_prompt,
+        tool_definitions: toolView?.tool_definitions ?? this.identity.gate_definitions,
         parent_turn_id: this.parent_turn_id,
       });
     }
 
     return runLoop({
-      llm: this.crystal,
+      llm: this.llm,
       tools: this.circle.gates,
       circle: this.circle,
       messages: this.messages,
-      system_prompt: this.call.system_prompt,
+      system_prompt: this.identity.system_prompt,
       max_iterations: ward.max_turns,
       require_done_tool: ward.require_done_tool,
       dependency_overrides: this.dependency_overrides ?? null,
@@ -381,7 +458,7 @@ export class Entity {
       on_event,
       invoke_llm: async () =>
         invokeLLMWithRetries({
-          llm: this.crystal,
+          llm: this.llm,
           messages: this.messages,
           tools: this.circle.gates,
           tool_definitions,
@@ -394,7 +471,7 @@ export class Entity {
         }),
       on_max_iterations: async () =>
         generateMaxIterationsSummary({
-          llm: this.crystal,
+          llm: this.llm,
           messages: this.messages,
           max_iterations: ward.max_turns,
         }),
@@ -423,8 +500,8 @@ export class Entity {
               last_turn_id: this.last_turn_id!,
               folding: this.folding,
               folding_enabled: this.folding_enabled,
-              llm: this.crystal,
-              system_prompt: this.call.system_prompt,
+              llm: this.llm,
+              system_prompt: this.identity.system_prompt,
               response,
             });
             if (newMessages) {

@@ -1,4 +1,4 @@
-import type { ToolChoice, GateDefinition } from "../crystal/crystal";
+import type { ToolChoice, GateDefinition } from "../llm/base";
 import type { BoundGate } from "../circle/gate/gate";
 
 /**

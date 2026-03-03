@@ -31,11 +31,11 @@ export async function main() {
 
     // The entity auto-prepends capability docs from the circle.
     const entity = cantrip({
-      crystal,
-      call: `Coding assistant. Working dir: ${ctx.working_dir}`,
+      llm: crystal,
+      identity: `Coding assistant. Working dir: ${ctx.working_dir}`,
       circle,
       dependency_overrides: new Map([[getSandboxContext, () => ctx]]),
-    }).invoke();
+    }).summon();
 
     return {
       entity,

@@ -54,8 +54,8 @@ describe("INTENT-1: casting without intent is invalid", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
 
@@ -73,8 +73,8 @@ describe("INTENT-1: casting without intent is invalid", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
 
@@ -110,8 +110,8 @@ describe("INTENT-2: intent appears as first user message", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "You are helpful" },
+      llm: crystal as any,
+      identity: { system_prompt: "You are helpful" },
       circle: makeCircle(),
     });
 

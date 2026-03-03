@@ -491,9 +491,9 @@ describe("RLM browser handle pattern", () => {
     const browserCtx = mockBrowserContext();
 
     const mockLlm = new MockLlm([
-      // First call: try to click with a fake handle
+      // First identity: try to click with a fake handle
       jsResponse('click({__h: 999, kind: "taiko_handle", desc: "fake"});'),
-      // Second call: LLM recovers after error
+      // Second identity: LLM recovers after error
       jsResponse('submit_answer("recovered");', "tc2"),
     ]);
 
@@ -1225,9 +1225,9 @@ describe("RLM browser edge cases", () => {
     const browserCtx = mockBrowserContext();
 
     const mockLlm = new MockLlm([
-      // First call: create a selector and store it
+      // First identity: create a selector and store it
       jsResponse('var btn = button("Submit");'),
-      // Second call: use the stored selector
+      // Second identity: use the stored selector
       (msgs: any) => ({
         content: "using stored selector",
         tool_calls: [

@@ -44,13 +44,13 @@ export async function main() {
   });
 
   const weatherSpell = cantrip({
-    crystal,
-    call: "Answer using your tools. Call done with your answer.",
+    llm: crystal,
+    identity: "Answer using your tools. Call done with your answer.",
     circle: weatherOnly,
   });
   const bothSpell = cantrip({
-    crystal,
-    call: "Answer using your tools. Call done with your answer.",
+    llm: crystal,
+    identity: "Answer using your tools. Call done with your answer.",
     circle: bothGates,
   });
 
@@ -73,8 +73,8 @@ export async function main() {
     wards: [max_turns(2)],  // very tight — may not finish
   });
 
-  const looseSpell = cantrip({ crystal, call: "Use tools to answer. Call done with result.", circle: loose });
-  const tightSpell = cantrip({ crystal, call: "Use tools to answer. Call done with result.", circle: tight });
+  const looseSpell = cantrip({ llm: crystal, identity: "Use tools to answer. Call done with result.", circle: loose });
+  const tightSpell = cantrip({ llm: crystal, identity: "Use tools to answer. Call done with result.", circle: tight });
 
   const r3 = await looseSpell.cast(intent);
   console.log(`10 turns allowed: ${r3}`);
@@ -86,7 +86,7 @@ export async function main() {
     console.log(`2 turns allowed: ward stopped it — ${e.message}`);
   }
 
-  console.log("\nSame crystal, same call, same gates — wards change the outcome.");
+  console.log("\nSame llm: crystal, same identity: call, same gates — wards change the outcome.");
 
   return { r1, r2, r3 };
 }

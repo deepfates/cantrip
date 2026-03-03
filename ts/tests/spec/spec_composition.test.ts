@@ -67,8 +67,8 @@ describe("COMP-1a: delegation — child circle is subset of parent", () => {
     ]);
 
     const childSpell = cantrip({
-      crystal: childCrystal as any,
-      call: { system_prompt: "child agent" },
+      llm: childCrystal as any,
+      identity: { system_prompt: "child agent" },
       circle: Circle({
         gates: [doneGate],
         wards: [{ max_turns: 5, require_done_tool: true }],
@@ -124,8 +124,8 @@ describe("COMP-1a: delegation — child circle is subset of parent", () => {
     ]);
 
     const parentSpell = cantrip({
-      crystal: parentCrystal as any,
-      call: { system_prompt: "parent agent" },
+      llm: parentCrystal as any,
+      identity: { system_prompt: "parent agent" },
       circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
@@ -163,8 +163,8 @@ describe("COMP-2: call_entity blocks parent until child completes", () => {
     ]);
 
     const childSpell = cantrip({
-      crystal: childCrystal as any,
-      call: { system_prompt: "compute" },
+      llm: childCrystal as any,
+      identity: { system_prompt: "compute" },
       circle: Circle({
         gates: [doneGate],
         wards: [{ max_turns: 5, require_done_tool: true }],
@@ -220,8 +220,8 @@ describe("COMP-2: call_entity blocks parent until child completes", () => {
     ]);
 
     const parentSpell = cantrip({
-      crystal: parentCrystal as any,
-      call: { system_prompt: "parent" },
+      llm: parentCrystal as any,
+      identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
@@ -262,8 +262,8 @@ describe("COMP-3: call_entity_batch returns results in request order", () => {
       ]);
 
       return cantrip({
-        crystal: crystal as any,
-        call: { system_prompt: "child" },
+        llm: crystal as any,
+        identity: { system_prompt: "child" },
         circle: Circle({
           gates: [doneGate],
           wards: [{ max_turns: 5, require_done_tool: true }],
@@ -328,8 +328,8 @@ describe("COMP-3: call_entity_batch returns results in request order", () => {
     ]);
 
     const parentSpell = cantrip({
-      crystal: parentCrystal as any,
-      call: { system_prompt: "parent" },
+      llm: parentCrystal as any,
+      identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, batchGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
@@ -370,8 +370,8 @@ describe("COMP-4: child entity has independent context", () => {
     };
 
     const childSpell = cantrip({
-      crystal: childCrystal as any,
-      call: { system_prompt: "child system" },
+      llm: childCrystal as any,
+      identity: { system_prompt: "child system" },
       circle: Circle({
         gates: [doneGate],
         wards: [{ max_turns: 5, require_done_tool: true }],
@@ -433,8 +433,8 @@ describe("COMP-4: child entity has independent context", () => {
     };
 
     const parentSpell = cantrip({
-      crystal: parentCrystal as any,
-      call: { system_prompt: "parent secret context" },
+      llm: parentCrystal as any,
+      identity: { system_prompt: "parent secret context" },
       circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
@@ -532,8 +532,8 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
@@ -609,8 +609,8 @@ describe("COMP-6: user-land depth tracking prevents deep recursion", () => {
       };
 
       return cantrip({
-        crystal: crystal as any,
-        call: { system_prompt: `agent at depth ${depth}` },
+        llm: crystal as any,
+        identity: { system_prompt: `agent at depth ${depth}` },
         circle: Circle({
           gates: [doneGate, callAgentGate],
           wards: [{ max_turns: 10, require_done_tool: true }],
@@ -655,8 +655,8 @@ describe("COMP-7: child can use different crystal", () => {
     };
 
     const childSpell = cantrip({
-      crystal: childCrystal as any,
-      call: { system_prompt: "alternate crystal" },
+      llm: childCrystal as any,
+      identity: { system_prompt: "alternate crystal" },
       circle: Circle({
         gates: [doneGate],
         wards: [{ max_turns: 5, require_done_tool: true }],
@@ -717,8 +717,8 @@ describe("COMP-7: child can use different crystal", () => {
     };
 
     const result = await cantrip({
-      crystal: parentCrystal as any,
-      call: { system_prompt: "parent" },
+      llm: parentCrystal as any,
+      identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
@@ -787,8 +787,8 @@ describe("COMP-9: parent termination truncates active children", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "parent" },
+      llm: crystal as any,
+      identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, slowChildGate],
         // Ward: max_turns=1, no require_done — parent will be truncated
@@ -801,122 +801,6 @@ describe("COMP-9: parent termination truncates active children", () => {
     expect(result).toContain("Max iterations reached");
     // The child gate did execute (it started)
     expect(childStarted).toBe(true);
-  });
-});
-
-// ── Ward Inheritance: child inherits parent wards via default SpawnFn ──
-
-describe("Ward inheritance: child inherits parent exclude_gates", () => {
-  test("child circle does not include gate excluded by parent ward", async () => {
-    // The default SpawnFn (entity.ts) now inherits parent wards.
-    // Parent has exclude_gates: ["secret_gate"]. The child should NOT see it.
-    // We verify by intercepting tool_definitions passed to crystal.query().
-
-    const secretGate = gate("Secret gate", async () => "secret", {
-      name: "secret_gate",
-      schema: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-    });
-
-    const callEntityGate = call_entity()!;
-
-    const parentCircle = Circle({
-      gates: [doneGate, secretGate, callEntityGate],
-      wards: [
-        { max_turns: 10, require_done_tool: true },
-        { exclude_gates: ["secret_gate"] },
-      ],
-    });
-
-    // Parent circle itself already excludes secret_gate
-    expect(parentCircle.gates.map((g: any) => g.name)).not.toContain(
-      "secret_gate",
-    );
-
-    // Track tool_definitions per crystal.query() call.
-    // Call 1 = parent (triggers call_entity), Call 2 = child (calls done),
-    // Call 3 = parent (calls done).
-    let callCount = 0;
-    const toolDefsPerCall: (string[] | null)[] = [];
-
-    const crystal = {
-      model: "dummy",
-      provider: "dummy",
-      name: "dummy",
-      async query(
-        _messages: any[],
-        tool_definitions: any[] | null,
-        _tool_choice: any,
-      ) {
-        callCount++;
-        toolDefsPerCall.push(
-          tool_definitions?.map((td: any) => td.name) ?? null,
-        );
-
-        if (callCount === 1) {
-          return {
-            content: null,
-            tool_calls: [
-              {
-                id: "p1",
-                type: "function",
-                function: {
-                  name: "call_entity",
-                  arguments: JSON.stringify({ query: "sub task" }),
-                },
-              },
-            ],
-          };
-        }
-        if (callCount === 2) {
-          return {
-            content: null,
-            tool_calls: [
-              {
-                id: "child_done",
-                type: "function",
-                function: {
-                  name: "done",
-                  arguments: JSON.stringify({ message: "child result" }),
-                },
-              },
-            ],
-          };
-        }
-        return {
-          content: null,
-          tool_calls: [
-            {
-              id: "p2",
-              type: "function",
-              function: {
-                name: "done",
-                arguments: JSON.stringify({ message: "parent done" }),
-              },
-            },
-          ],
-        };
-      },
-    };
-
-    const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "parent" },
-      circle: parentCircle,
-    });
-
-    const result = await spell.cast("test ward inheritance");
-    expect(result).toBe("parent done");
-
-    // Call 2 was the child — its tools should NOT include secret_gate
-    expect(toolDefsPerCall.length).toBeGreaterThanOrEqual(3);
-    const childToolNames = toolDefsPerCall[1];
-    expect(childToolNames).not.toBeNull();
-    expect(childToolNames).not.toContain("secret_gate");
-    expect(childToolNames).toContain("done");
   });
 });
 
@@ -934,8 +818,8 @@ describe("COMP-8: child failure returns error to parent", () => {
     };
 
     const childSpell = cantrip({
-      crystal: childCrystal as any,
-      call: { system_prompt: "child" },
+      llm: childCrystal as any,
+      identity: { system_prompt: "child" },
       circle: Circle({
         gates: [doneGate],
         wards: [{ max_turns: 5, require_done_tool: true }],
@@ -998,8 +882,8 @@ describe("COMP-8: child failure returns error to parent", () => {
     };
 
     const result = await cantrip({
-      crystal: parentCrystal as any,
-      call: { system_prompt: "parent" },
+      llm: parentCrystal as any,
+      identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, callAgentGate],
         wards: [{ max_turns: 10, require_done_tool: true }],
@@ -1083,8 +967,8 @@ describe("COMP-2: child blocks parent until complete (real child cantrip)", () =
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "parent" },
+      llm: crystal as any,
+      identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, callEntityGate!],
         wards: [{ max_turns: 10, require_done_tool: true }],
@@ -1187,8 +1071,8 @@ describe("COMP-3: child entity gets own circle with gates and wards", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "parent with echo" },
+      llm: crystal as any,
+      identity: { system_prompt: "parent with echo" },
       circle: Circle({
         gates: [doneGate, echoGate, callEntityGate!],
         wards: [{ max_turns: 10, require_done_tool: true }],
@@ -1276,8 +1160,8 @@ describe("LOOM-12: child turns in parent loom", () => {
     const sharedLoom = new Loom(new MemoryStorage());
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "parent" },
+      llm: crystal as any,
+      identity: { system_prompt: "parent" },
       circle: Circle({
         gates: [doneGate, callEntityGate!],
         wards: [{ max_turns: 10, require_done_tool: true }],

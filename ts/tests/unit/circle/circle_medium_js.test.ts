@@ -4,7 +4,7 @@ import { js, getJsMediumSandbox } from "../../../src/circle/medium/js";
 import { Circle } from "../../../src/circle/circle";
 import { max_turns } from "../../../src/circle/ward";
 import type { BoundGate } from "../../../src/circle/gate/gate";
-import type { AssistantMessage } from "../../../src/crystal/messages";
+import type { AssistantMessage } from "../../../src/llm/messages";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 

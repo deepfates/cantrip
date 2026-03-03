@@ -253,11 +253,11 @@ function extractText(prompt: Array<ContentBlock>): string {
  * // Simple entity
  * serveCantripACP(async ({ params }) => {
  *   const c = cantrip({
- *     crystal: new ChatAnthropic({ model: "claude-sonnet-4-5" }),
+ *     llm: new ChatAnthropic({ model: "claude-sonnet-4-5" }),
  *     call: { system_prompt: "You are helpful." },
  *     circle: Circle({ gates: [...safeFsGates, done], wards: [max_turns(50)] }),
  *   });
- *   return c.invoke();
+ *   return c.summon();
  * });
  * ```
  */

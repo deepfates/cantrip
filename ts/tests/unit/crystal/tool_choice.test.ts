@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatAnthropic } from "../../../src/crystal/providers/anthropic/chat";
-import { ChatOpenAI } from "../../../src/crystal/providers/openai/chat";
+import { ChatAnthropic } from "../../../src/llm/anthropic/chat";
+import { ChatOpenAI } from "../../../src/llm/openai/chat";
 
 // Access private getToolChoice via prototype trick
 function getAnthropicToolChoice(

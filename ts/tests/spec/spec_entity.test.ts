@@ -65,8 +65,8 @@ describe("ENTITY-1: entity only created by casting cantrip", () => {
     ]);
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
 
@@ -74,7 +74,7 @@ describe("ENTITY-1: entity only created by casting cantrip", () => {
     expect(result).toBe("created");
   });
 
-  test("ENTITY-1: cantrip.invoke() produces an entity whose turn() runs the agent", async () => {
+  test("ENTITY-1: cantrip.summon() produces an entity whose turn() runs the agent", async () => {
     const crystal = makeLlm([
       () => ({
         content: null,
@@ -91,14 +91,14 @@ describe("ENTITY-1: entity only created by casting cantrip", () => {
       }),
     ]);
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
 
-    const entity = spell.invoke();
+    const entity = spell.summon();
     // Actually call turn() and verify it produces a result
-    const result = await entity.cast("test invoke");
+    const result = await entity.cast("test summon");
     expect(result).toBe("invoked");
   });
 });
@@ -131,13 +131,13 @@ describe("ENTITY-2: each entity has unique ID", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
 
-    const entity1 = spell.invoke();
-    const entity2 = spell.invoke();
+    const entity1 = spell.summon();
+    const entity2 = spell.summon();
 
     await entity1.cast("entity1 msg");
     await entity2.cast("entity2 msg");
@@ -220,12 +220,12 @@ describe("ENTITY-3: state grows monotonically within a thread", () => {
     });
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle([doneGate, echoGate]),
     });
 
-    const entity = spell.invoke();
+    const entity = spell.summon();
     await entity.cast("grow test");
 
     const history = entity.history;
@@ -269,12 +269,12 @@ describe("ENTITY-3: state grows monotonically within a thread", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
 
-    const entity = spell.invoke();
+    const entity = spell.summon();
     await entity.cast("first intent");
     const historyAfterFirst = entity.history.length;
 
@@ -307,12 +307,12 @@ describe("ENTITY-4: entity thread persists after termination", () => {
     ]);
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
 
-    const entity = spell.invoke();
+    const entity = spell.summon();
     await entity.cast("persist test");
 
     const history = entity.history;
@@ -329,17 +329,17 @@ describe("ENTITY-4: entity thread persists after termination", () => {
   });
 });
 
-// ── ENTITY-5: invoke creates entity, ENTITY-6: turn runs a step ────
+// ── ENTITY-5: summon creates entity, ENTITY-6: turn runs a step ────
 
-describe("ENTITY-5/6: invoke and turn API", () => {
-  test("ENTITY-5: invoke() creates an entity without running a step", () => {
+describe("ENTITY-5/6: summon and turn API", () => {
+  test("ENTITY-5: summon() creates an entity without running a step", () => {
     const crystal = makeLlm([]);
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
-    const entity = spell.invoke();
+    const entity = spell.summon();
     // Entity exists but no turn has run yet
     expect(entity).toBeDefined();
     expect(entity.history.length).toBe(0);
@@ -363,12 +363,12 @@ describe("ENTITY-5/6: invoke and turn API", () => {
     ]);
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
 
-    const entity = spell.invoke();
+    const entity = spell.summon();
     const result = await entity.cast("do something");
     expect(result).toBe("hello from turn");
   });

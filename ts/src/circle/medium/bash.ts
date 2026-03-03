@@ -1,5 +1,5 @@
-import type { ToolChoice, GateDefinition } from "../../crystal/crystal";
-import type { AssistantMessage, ToolMessage } from "../../crystal/messages";
+import type { ToolChoice, GateDefinition } from "../../llm/base";
+import type { AssistantMessage, ToolMessage } from "../../llm/messages";
 import type { BoundGate } from "../gate/gate";
 import type { DependencyOverrides } from "../gate/depends";
 import type { TurnEvent } from "../../entity/events";
@@ -33,7 +33,7 @@ export type BashMediumOptions = {
  * Creates a bash medium — a shell session that the entity works in.
  *
  * Gates are described in the system prompt but not projected into the shell.
- * The crystal sees a single `bash` tool with tool_choice: "required".
+ * The llm sees a single `bash` tool with tool_choice: "required".
  * Termination is via the submit_answer command pattern.
  */
 export function bash(opts?: BashMediumOptions): Medium {
@@ -77,7 +77,7 @@ export function bash(opts?: BashMediumOptions): Medium {
       initialized = true;
     },
 
-    crystalView(): {
+    toolView(): {
       tool_definitions: GateDefinition[];
       tool_choice: ToolChoice;
     } {

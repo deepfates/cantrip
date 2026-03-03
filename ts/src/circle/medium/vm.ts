@@ -1,6 +1,6 @@
 import * as nodeVm from "node:vm";
-import type { ToolChoice, GateDefinition } from "../../crystal/crystal";
-import type { AssistantMessage, ToolMessage } from "../../crystal/messages";
+import type { ToolChoice, GateDefinition } from "../../llm/base";
+import type { AssistantMessage, ToolMessage } from "../../llm/messages";
 import type { BoundGate } from "../gate/gate";
 import type { DependencyOverrides } from "../gate/depends";
 import type { TurnEvent } from "../../entity/events";
@@ -58,7 +58,7 @@ function describeStateEntry(val: unknown): string {
  * Creates a vm medium — a node:vm sandbox that the entity works in.
  *
  * Gates are projected into the sandbox as async functions callable via await.
- * The crystal sees a single `vm` tool with tool_choice: "required".
+ * The llm sees a single `vm` tool with tool_choice: "required".
  * Full ES2024 support — arrow functions, async/await, native objects.
  * Weak isolation (V8 context, not a security boundary).
  */
@@ -145,7 +145,7 @@ export function vm(opts?: VmMediumOptions): Medium {
       initialized = true;
     },
 
-    crystalView(): { tool_definitions: GateDefinition[]; tool_choice: ToolChoice } {
+    toolView(): { tool_definitions: GateDefinition[]; tool_choice: ToolChoice } {
       return {
         tool_definitions: [vmToolDefinition],
         tool_choice: { type: "tool", name: "vm" },

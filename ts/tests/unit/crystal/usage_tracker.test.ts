@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { UsageTracker } from "../../../src/crystal/tokens";
+import { UsageTracker } from "../../../src/llm/tokens";
 
 describe("usage tracker", () => {
   test("summarizes usage by model", async () => {

@@ -76,6 +76,11 @@ export class ChatAnthropic implements BaseChatModel {
     tools: ToolDefinition[] | null | undefined
   ): any {
     if (!tool_choice || !tools) return null;
+    if (typeof tool_choice === "object" && tool_choice !== null) {
+      const name = (tool_choice as { name?: string }).name;
+      if (!name) return null;
+      return { type: "tool", name };
+    }
     if (tool_choice === "auto") return { type: "auto" };
     if (tool_choice === "required") return { type: "any" };
     if (tool_choice === "none") return { type: "none" };
@@ -135,6 +140,15 @@ export class ChatAnthropic implements BaseChatModel {
       prompt_cache_creation_tokens: usage.cache_creation_input_tokens ?? null,
       prompt_image_tokens: null,
     };
+  }
+
+  async query(
+    messages: AnyMessage[],
+    tools?: ToolDefinition[] | null,
+    tool_choice?: ToolChoice | null,
+    extra?: Record<string, unknown>
+  ): Promise<ChatInvokeCompletion> {
+    return this.ainvoke(messages, tools, tool_choice, extra);
   }
 
   async ainvoke(

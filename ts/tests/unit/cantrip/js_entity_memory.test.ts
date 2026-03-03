@@ -1,9 +1,9 @@
 // Tests WASM sandbox memory windowing and entity.history manipulation
 // using cantrip() composition.
 import { describe, test, expect, mock } from "bun:test";
-import { BaseChatModel } from "../../../src/crystal/crystal";
-import type { AnyMessage } from "../../../src/crystal/messages";
-import type { ChatInvokeCompletion } from "../../../src/crystal/views";
+import { BaseChatModel } from "../../../src/llm/base";
+import type { AnyMessage } from "../../../src/llm/messages";
+import type { ChatInvokeCompletion } from "../../../src/llm/views";
 import { cantrip } from "../../../src/cantrip/cantrip";
 import { Circle } from "../../../src/circle/circle";
 import { js, getJsMediumSandbox } from "../../../src/circle/medium/js";
@@ -45,11 +45,11 @@ async function createTestAgentWithMemory(opts: {
   const circle = Circle({ medium, gates, wards: [max_turns(20), require_done()] });
 
   const spell = cantrip({
-    crystal: llm,
-    call: "Conversational agent with persistent memory. Use submit_answer() to respond.",
+    llm: llm,
+    identity: "Conversational agent with persistent memory. Use submit_answer() to respond.",
     circle,
   });
-  const entity = spell.invoke();
+  const entity = spell.summon();
 
   // Init medium AFTER entity so spawnBinding is available
   await medium.init(gates, entity.dependency_overrides);

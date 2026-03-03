@@ -27,8 +27,8 @@ export async function main() {
   });
 
   const spell = cantrip({
-    crystal,
-    call: "Explore the context variable using code. Use submit_answer() when done.",
+    llm: crystal,
+    identity: "Explore the context variable using code. Use submit_answer() when done.",
     circle,
   });
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatLMStudio } from "../../src/crystal/providers/lmstudio/chat";
-import type { GateDefinition } from "../../src/crystal/crystal";
+import { ChatLMStudio } from "../../src/llm/lmstudio/chat";
+import type { GateDefinition } from "../../src/llm/base";
 import { loadEnv } from "../helpers/env";
 
 loadEnv();

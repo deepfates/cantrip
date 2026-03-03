@@ -2,17 +2,16 @@
 // metadata loop, and token aggregation using cantrip() composition.
 import { describe, expect, test, afterEach } from "bun:test";
 import { JsAsyncContext } from "../../../src/circle/medium/js/async_context";
-import type { BaseChatModel } from "../../../src/crystal/crystal";
-import type { AnyMessage } from "../../../src/crystal/messages";
-import type { ChatInvokeCompletion } from "../../../src/crystal/views";
-import { cantrip } from "../../../src/cantrip/cantrip";
+import type { BaseChatModel } from "../../../src/llm/base";
+import type { AnyMessage } from "../../../src/llm/messages";
+import type { ChatInvokeCompletion } from "../../../src/llm/views";
+import { Entity } from "../../../src/cantrip/entity";
 import { Circle } from "../../../src/circle/circle";
 import { js, getJsMediumSandbox } from "../../../src/circle/medium/js";
 import { max_turns, require_done } from "../../../src/circle/ward";
 import { call_entity, call_entity_batch, spawnBinding, type SpawnFn } from "../../../src/circle/gate/builtin/call_entity_gate";
 import { done_for_medium } from "../../../src/circle/gate/builtin/done";
-import type { Entity } from "../../../src/cantrip/entity";
-import { UsageTracker } from "../../../src/crystal/tokens";
+import { UsageTracker } from "../../../src/llm/tokens";
 
 /**
  * Local helper for tests.
@@ -75,17 +74,21 @@ async function createTestAgent(opts: {
   const overrides = new Map<any, any>();
   overrides.set(spawnBinding, (): SpawnFn => richSpawn);
 
-  const spell = cantrip({
-    crystal: opts.llm,
-    call: "Explore the context using code. Use submit_answer() to provide your final answer.",
+  const entity = new Entity({
+    llm: opts.llm,
+    identity: {
+      system_prompt:
+        "Explore the context using code. Use submit_answer() to provide your final answer.",
+      hyperparameters: { tool_choice: "required" },
+      gate_definitions: [],
+    },
     circle,
     dependency_overrides: overrides,
     usage_tracker,
   });
-  const entity = spell.invoke();
 
   // Init medium AFTER entity so spawnBinding is available
-  await medium.init(gates, entity.dependency_overrides);
+  await medium.init(gates, entity.dependency_overrides ?? undefined);
   const sandbox = getJsMediumSandbox(medium)!;
 
   return { entity, sandbox };
@@ -278,7 +281,7 @@ describe("JS Entity Integration", () => {
           },
         ],
       }),
-      // L2 at max depth: plain LLM call, no sandbox — just returns content
+      // L2 at max depth: plain LLM identity: call, no sandbox — just returns content
       () => ({
         content: "Max Depth Reached",
         tool_calls: [],

@@ -1,12 +1,12 @@
 /**
  * Thread derivation — convert a root-to-leaf path of Turns into
- * a Message[] suitable for crystal invocation.
+ * a Message[] suitable for llm invocation.
  *
  * See SPEC.md §6.2: "A thread is any root-to-leaf path you can walk."
  * See SPEC.md §6.9: The loom MAY be exposed as entity-readable state.
  */
 
-import type { AnyMessage, AssistantMessage, ToolMessage } from "../crystal/messages";
+import type { AnyMessage, AssistantMessage, ToolMessage } from "../llm/messages";
 import type { Turn, GateCallRecord } from "./turn";
 import type { Loom } from "./loom";
 
@@ -35,7 +35,7 @@ export function deriveThread(loom: Loom, leafId: string): Thread {
 }
 
 /**
- * Convert a thread's turns into a Message[] for the crystal.
+ * Convert a thread's turns into a Message[] for the llm.
  *
  * Each turn produces:
  *   1. An assistant message (the utterance + gate calls)
@@ -99,7 +99,7 @@ export function threadToMessages(thread: Thread): AnyMessage[] {
   return messages;
 }
 
-/** Convert a GateCallRecord to the GateCall shape expected by the crystal. */
+/** Convert a GateCallRecord to the GateCall shape expected by the llm. */
 function gateCallRecordToGateCall(gc: GateCallRecord) {
   return {
     id: gc.gate_name, // simplified; real impl may use unique IDs

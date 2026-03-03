@@ -22,6 +22,8 @@ export function hasToolCalls(resp: ChatInvokeCompletion): boolean {
   return Boolean(resp.tool_calls && resp.tool_calls.length);
 }
 
+export const hasGateCalls = hasToolCalls;
+
 export function completionText(resp: ChatInvokeCompletion): string {
   return resp.content ?? "";
 }

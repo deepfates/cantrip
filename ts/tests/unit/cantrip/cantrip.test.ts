@@ -50,8 +50,8 @@ describe("cantrip", () => {
   test("cantrip() returns an object with .cast()", () => {
     const crystal = makeLlm([]);
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
     expect(spell).toBeDefined();
@@ -61,8 +61,8 @@ describe("cantrip", () => {
   test("cantrip() throws if crystal is missing", () => {
     expect(() =>
       cantrip({
-        crystal: undefined as any,
-        call: { system_prompt: "test" },
+        llm: undefined as any,
+        identity: { system_prompt: "test" },
         circle: makeCircle(),
       }),
     ).toThrow();
@@ -72,8 +72,8 @@ describe("cantrip", () => {
     const crystal = makeLlm([]);
     expect(() =>
       cantrip({
-        crystal: crystal as any,
-        call: undefined as any,
+        llm: crystal as any,
+        identity: undefined as any,
         circle: makeCircle(),
       }),
     ).toThrow();
@@ -83,8 +83,8 @@ describe("cantrip", () => {
     const crystal = makeLlm([]);
     expect(() =>
       cantrip({
-        crystal: crystal as any,
-        call: { system_prompt: "test" },
+        llm: crystal as any,
+        identity: { system_prompt: "test" },
         circle: undefined as any,
       }),
     ).toThrow();
@@ -98,8 +98,8 @@ describe("cantrip", () => {
     });
     expect(() =>
       cantrip({
-        crystal: crystal as any,
-        call: { system_prompt: "test" },
+        llm: crystal as any,
+        identity: { system_prompt: "test" },
         circle: makeCircle([noDoneGate]),
       }),
     ).toThrow(/done/i);
@@ -109,8 +109,8 @@ describe("cantrip", () => {
     const crystal = makeLlm([]);
     expect(() =>
       cantrip({
-        crystal: crystal as any,
-        call: { system_prompt: "test" },
+        llm: crystal as any,
+        identity: { system_prompt: "test" },
         circle: makeCircle([doneGate], []),
       }),
     ).toThrow(/ward/i);
@@ -134,8 +134,8 @@ describe("cantrip", () => {
     ]);
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "You are a helper." },
+      llm: crystal as any,
+      identity: { system_prompt: "You are a helper." },
       circle: makeCircle(),
     });
 
@@ -146,8 +146,8 @@ describe("cantrip", () => {
   test("INTENT-1: cast() throws if intent is not provided", async () => {
     const crystal = makeLlm([]);
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
 
@@ -184,8 +184,8 @@ describe("cantrip", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "You are a helper." },
+      llm: crystal as any,
+      identity: { system_prompt: "You are a helper." },
       circle: makeCircle(),
     });
 
@@ -210,16 +210,16 @@ describe("cantrip", () => {
     expect(hasFirstIntent).toBe(false);
   });
 
-  // ── invoke() and cast() ──────────────────────────────────────────
+  // ── summon() and cast() ──────────────────────────────────────────
 
-  test("invoke() returns an entity with .cast()", () => {
+  test("summon() returns an entity with .cast()", () => {
     const crystal = makeLlm([]);
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
-    const entity = spell.invoke();
+    const entity = spell.summon();
     expect(entity).toBeDefined();
     expect(typeof entity.cast).toBe("function");
   });
@@ -242,12 +242,12 @@ describe("cantrip", () => {
     ]);
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "You are a helper." },
+      llm: crystal as any,
+      identity: { system_prompt: "You are a helper." },
       circle: makeCircle(),
     });
 
-    const entity = spell.invoke();
+    const entity = spell.summon();
     const result = await entity.cast("do something");
     expect(result).toBe("hello from turn");
   });
@@ -280,12 +280,12 @@ describe("cantrip", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "You are a helper." },
+      llm: crystal as any,
+      identity: { system_prompt: "You are a helper." },
       circle: makeCircle(),
     });
 
-    const entity = spell.invoke();
+    const entity = spell.summon();
     await entity.cast("first message");
     await entity.cast("second message");
 
@@ -300,7 +300,7 @@ describe("cantrip", () => {
     expect(userMessages[1].content).toBe("second message");
   });
 
-  test("two invoke() calls on same cantrip → independent entities", async () => {
+  test("two summon() calls on same cantrip → independent entities", async () => {
     const messagesPerCall: any[][] = [];
 
     const crystal = {
@@ -328,13 +328,13 @@ describe("cantrip", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "You are a helper." },
+      llm: crystal as any,
+      identity: { system_prompt: "You are a helper." },
       circle: makeCircle(),
     });
 
-    const entity1 = spell.invoke();
-    const entity2 = spell.invoke();
+    const entity1 = spell.summon();
+    const entity2 = spell.summon();
 
     await entity1.cast("entity1 message");
     await entity2.cast("entity2 message");
@@ -363,7 +363,7 @@ describe("cantrip", () => {
 
     const mockMedium = {
       async init() {},
-      crystalView() {
+      toolView() {
         return {
           tool_definitions: [{
             name: "js",
@@ -409,8 +409,8 @@ describe("cantrip", () => {
     });
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle,
     });
 
@@ -418,16 +418,16 @@ describe("cantrip", () => {
     expect(disposeFinished).toBe(true);
   });
 
-  test("entity exposes spec parts (crystal, call, circle)", () => {
+  test("entity exposes spec parts (llm, identity, circle)", () => {
     const crystal = makeLlm([]);
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
-    const entity = spell.invoke();
-    expect(entity.crystal).toBeDefined();
-    expect(entity.call).toBeDefined();
+    const entity = spell.summon();
+    expect(entity.llm).toBeDefined();
+    expect(entity.identity).toBeDefined();
     expect(entity.circle).toBeDefined();
   });
 
@@ -450,8 +450,8 @@ describe("cantrip", () => {
 
     // Providing call as just { system_prompt: "..." } — no gate_definitions or hyperparameters
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "Simple prompt" },
+      llm: crystal as any,
+      identity: { system_prompt: "Simple prompt" },
       circle: makeCircle(),
     });
 

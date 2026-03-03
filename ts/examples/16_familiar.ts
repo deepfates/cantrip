@@ -17,6 +17,7 @@ import { resolve } from "node:path";
 import { mkdirSync } from "node:fs";
 import {
   cantrip,
+  Entity,
   Circle,
   ChatAnthropic,
   max_turns,
@@ -35,6 +36,7 @@ import {
   progressBinding,
   js, vm, bash, browser,
   type CantripMediumConfig,
+  renderGateDefinitions,
 } from "../src";
 
 // ── CLI args ──────────────────────────────────────────────────────────
@@ -119,14 +121,14 @@ Each cast() invokes an LLM — be cost-aware. Here are the patterns:
 
   // Shell work — child runs in bash, you get the result back
   const worker = cantrip({
-    crystal: "anthropic/claude-haiku-4.5",
-    call: "Execute the command and report output. Use submit_answer <result> when done.",
+    llm: "anthropic/claude-haiku-4.5",
+    identity: "Execute the command and report output. Use submit_answer <result> when done.",
     circle: { medium: "bash", medium_opts: { cwd: "${repoRoot}" }, gates: ["done"], wards: [{ max_turns: 5 }] }
   });
   const output = await cast(worker, "Run the test suite and summarize failures");
 
   // Thinking — leaf cantrip, no medium, single LLM call
-  const thinker = cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "You analyze code." });
+  const thinker = cantrip({ llm: "anthropic/claude-haiku-4.5", identity: "You analyze code." });
   const analysis = await cast(thinker, "Here's a function:\\n" + code + "\\nWhat bugs do you see?");
 
   // Compose in code — loops, conditionals, pipelines
@@ -134,7 +136,7 @@ Each cast() invokes an LLM — be cost-aware. Here are the patterns:
   for (const file of files) {
     const src = await repo_read(file);
     if (src.includes("TODO")) {
-      const reviewer = cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "Find TODOs and assess priority." });
+      const reviewer = cantrip({ llm: "anthropic/claude-haiku-4.5", identity: "Find TODOs and assess priority." });
       const review = await cast(reviewer, file + ":\\n" + src);
       console.log(file + ": " + review);
     }
@@ -142,7 +144,7 @@ Each cast() invokes an LLM — be cost-aware. Here are the patterns:
 
   // Parallel fan-out — cast_batch fires N cantrips concurrently on the host
   const handles = files.map(f => ({
-    cantrip: cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "Summarize this file." }),
+    cantrip: cantrip({ llm: "anthropic/claude-haiku-4.5", identity: "Summarize this file." }),
     intent: f  // or pre-read content
   }));
   const summaries = await cast_batch(handles);  // all N run in parallel, returns string[]
@@ -233,14 +235,18 @@ export async function main(intent?: string) {
         wards: [max_turns(50), require_done()],
       });
 
-      const entity = cantrip({
-        crystal,
-        call: SYSTEM_PROMPT(repoRoot, loomPath),
+      const entity = new Entity({
+        llm: crystal,
+        identity: {
+          system_prompt: SYSTEM_PROMPT(repoRoot, loomPath),
+          hyperparameters: { tool_choice: "auto" },
+          gate_definitions: renderGateDefinitions(circle.gates),
+        },
         circle,
         dependency_overrides: depOverrides,
         loom,
         folding_enabled: true,
-      }).invoke();
+      });
 
       const onTurn =
         memoryWindow > 0
@@ -308,9 +314,13 @@ export async function main(intent?: string) {
     wards: [max_turns(50), require_done()],
   });
 
-  const spell = cantrip({
-    crystal,
-    call: SYSTEM_PROMPT(repoRoot, loomPath),
+  const entity = new Entity({
+    llm: crystal,
+    identity: {
+      system_prompt: SYSTEM_PROMPT(repoRoot, loomPath),
+      hyperparameters: { tool_choice: "auto" },
+      gate_definitions: renderGateDefinitions(circle.gates),
+    },
     circle,
     dependency_overrides: depOverrides,
     loom,
@@ -321,16 +331,16 @@ export async function main(intent?: string) {
     // Single-shot: run one intent and exit
     try {
       console.log(`Intent: ${task}\n`);
-      const result = await spell.cast(task);
+      const result = await entity.cast(task);
       console.log(`\nResult:\n${result}`);
       return result;
     } finally {
+      await entity.dispose();
       await circle.dispose?.();
     }
   }
 
   // REPL: default interactive mode
-  const entity = spell.invoke();
   await runRepl({
     entity,
     greeting:

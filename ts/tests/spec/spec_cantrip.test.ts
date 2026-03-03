@@ -43,36 +43,36 @@ function makeLlm(responses: (() => any)[]) {
   };
 }
 
-// ── CANTRIP-1: cantrip requires crystal, call, and circle ──────────
+// ── CANTRIP-1: cantrip requires llm, identity, and circle ──────────
 
-describe("CANTRIP-1: cantrip requires crystal, call, and circle", () => {
-  test("CANTRIP-1: throws when crystal is missing", () => {
+describe("CANTRIP-1: cantrip requires llm, identity, and circle", () => {
+  test("CANTRIP-1: throws when llm is missing", () => {
     expect(() =>
       cantrip({
-        crystal: undefined as any,
-        call: { system_prompt: "test" },
+        llm: undefined as any,
+        identity: { system_prompt: "test" },
         circle: makeCircle(),
       }),
-    ).toThrow(/crystal/i);
+    ).toThrow(/llm/i);
   });
 
-  test("CANTRIP-1: throws when call is missing", () => {
+  test("CANTRIP-1: throws when identity is missing", () => {
     const crystal = makeLlm([]);
     expect(() =>
       cantrip({
-        crystal: crystal as any,
-        call: undefined as any,
+        llm: crystal as any,
+        identity: undefined as any,
         circle: makeCircle(),
       }),
-    ).toThrow(/call/i);
+    ).toThrow(/identity/i);
   });
 
   test("CANTRIP-1: throws when circle is missing", () => {
     const crystal = makeLlm([]);
     expect(() =>
       cantrip({
-        crystal: crystal as any,
-        call: { system_prompt: "test" },
+        llm: crystal as any,
+        identity: { system_prompt: "test" },
         circle: undefined as any,
       }),
     ).toThrow(/circle/i);
@@ -81,8 +81,8 @@ describe("CANTRIP-1: cantrip requires crystal, call, and circle", () => {
   test("CANTRIP-1: succeeds with all three present", () => {
     const crystal = makeLlm([]);
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
     expect(spell).toBeDefined();
@@ -124,8 +124,8 @@ describe("CANTRIP-2: cantrip is reusable across intents", () => {
     ]);
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "You are helpful" },
+      llm: crystal as any,
+      identity: { system_prompt: "You are helpful" },
       circle: makeCircle(),
     });
 
@@ -161,8 +161,8 @@ describe("CANTRIP-2: cantrip is reusable across intents", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: "test" },
+      llm: crystal as any,
+      identity: { system_prompt: "test" },
       circle: makeCircle(),
     });
 
@@ -202,8 +202,8 @@ describe("CANTRIP-2: cantrip is reusable across intents", () => {
     };
 
     const spell = cantrip({
-      crystal: crystal as any,
-      call: { system_prompt: null },
+      llm: crystal as any,
+      identity: { system_prompt: null },
       circle: makeCircle(),
     });
 
@@ -228,8 +228,8 @@ describe("CANTRIP-3: cantrip validates circle constraints", () => {
     });
     expect(() =>
       cantrip({
-        crystal: crystal as any,
-        call: { system_prompt: "test" },
+        llm: crystal as any,
+        identity: { system_prompt: "test" },
         circle: makeCircle([notDone]),
       }),
     ).toThrow(/done/i);
@@ -239,8 +239,8 @@ describe("CANTRIP-3: cantrip validates circle constraints", () => {
     const crystal = makeLlm([]);
     expect(() =>
       cantrip({
-        crystal: crystal as any,
-        call: { system_prompt: "test" },
+        llm: crystal as any,
+        identity: { system_prompt: "test" },
         circle: makeCircle([doneGate], []),
       }),
     ).toThrow(/ward/i);

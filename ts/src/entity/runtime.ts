@@ -1,19 +1,19 @@
 import { promises as fs } from "fs";
 import path from "path";
-import type { BaseChatModel, ToolChoice, GateDefinition } from "../crystal/crystal";
+import type { BaseChatModel, ToolChoice, GateDefinition } from "../llm/base";
 import type {
   AnyMessage,
   AssistantMessage,
   ContentPartImage,
   GateCall,
   ToolMessage,
-} from "../crystal/messages";
-import type { ChatInvokeCompletion } from "../crystal/views";
-import { hasGateCalls } from "../crystal/views";
+} from "../llm/messages";
+import type { ChatInvokeCompletion } from "../llm/views";
+import { hasGateCalls } from "../llm/views";
 import type { Circle } from "../circle/circle";
 import type { DependencyOverrides } from "../circle/gate/depends";
 import type { BoundGate } from "../circle/gate";
-import { UsageTracker } from "../crystal/tokens";
+import { UsageTracker } from "../llm/tokens";
 import { TaskComplete } from "./errors";
 import type { TurnEvent } from "./events";
 import {
@@ -22,6 +22,21 @@ import {
   ThinkingEvent,
   UsageEvent,
 } from "./events";
+
+async function invokeModel(
+  llm: BaseChatModel,
+  messages: AnyMessage[],
+  tools?: GateDefinition[] | null,
+  tool_choice?: ToolChoice | null,
+): Promise<ChatInvokeCompletion> {
+  if (llm.query) {
+    return llm.query(messages, tools, tool_choice);
+  }
+  if (llm.ainvoke) {
+    return llm.ainvoke(messages, tools, tool_choice);
+  }
+  throw new Error("Model does not implement query() or ainvoke()");
+}
 
 export async function destroyEphemeralMessages(options: {
   messages: AnyMessage[];
@@ -169,7 +184,8 @@ export async function invokeLLMWithRetries(options: {
 
   for (let attempt = 0; attempt < llm_max_retries; attempt += 1) {
     try {
-      const response = await llm.query(
+      const response = await invokeModel(
+        llm,
         messages,
         tool_definitions.length ? tool_definitions : null,
         tool_definitions.length ? tool_choice : null,
@@ -226,7 +242,8 @@ export async function invokeLLMOnce(options: {
   const { llm, messages, tools, tool_definitions, tool_choice, usage_tracker } =
     options;
 
-  const response = await llm.query(
+  const response = await invokeModel(
+    llm,
     messages,
     tool_definitions.length ? tool_definitions : null,
     tool_definitions.length ? tool_choice : null,
@@ -256,7 +273,7 @@ Keep the summary brief but informative.`;
 
   messages.push({ role: "user", content: summaryPrompt } as AnyMessage);
   try {
-    const response = await llm.query(messages, null, null);
+    const response = await invokeModel(llm, messages, null, null);
     return `[Max iterations reached]\n\n${response.content ?? "Unable to generate summary."}`;
   } catch (err) {
     return `Task stopped after ${max_iterations} iterations. Unable to generate summary due to error.`;

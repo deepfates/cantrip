@@ -85,8 +85,8 @@ export async function main() {
 
     // The entity auto-prepends capability docs from the circle.
     const spell = cantrip({
-      crystal,
-      call:
+      llm: crystal,
+      identity:
         "Research entity with browser automation and recursive delegation. " +
         "Use code to explore data, browse the web, and delegate sub-intents via call_entity. " +
         "Use submit_answer() when done.",
@@ -95,7 +95,7 @@ export async function main() {
       dependency_overrides: depOverrides,
     });
 
-    const entity = spell.invoke();
+    const entity = spell.summon();
 
     // Memory management: sliding window on entity history
     const onTurn =

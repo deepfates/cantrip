@@ -1,23 +1,23 @@
 // ── Cantrip ─────────────────────────────────────────────────────────
 // Public API surface. Import from here unless you need deep internals.
 
-// ── Crystal (the model) ─────────────────────────────────────────────
-export { ChatAnthropic } from "./crystal/providers/anthropic/chat";
-export { ChatOpenAI } from "./crystal/providers/openai/chat";
-export { ChatOpenAILike } from "./crystal/providers/openai/like";
-export { ChatGoogle } from "./crystal/providers/google/chat";
-export { ChatLMStudio } from "./crystal/providers/lmstudio/chat";
-export { ChatOpenRouter } from "./crystal/providers/openrouter/chat";
+// ── LLM (the model) ─────────────────────────────────────────────────
+export { ChatAnthropic } from "./llm/anthropic/chat";
+export { ChatOpenAI } from "./llm/openai/chat";
+export { ChatOpenAILike } from "./llm/openai/like";
+export { ChatGoogle } from "./llm/google/chat";
+export { ChatLMStudio } from "./llm/lmstudio/chat";
+export { ChatOpenRouter } from "./llm/openrouter/chat";
 export type {
   BaseChatModel,
   ToolChoice,
   GateDefinition,
-} from "./crystal/crystal";
-export type { ChatInvokeUsage, ChatInvokeCompletion } from "./crystal/views";
-export * from "./crystal/messages";
+} from "./llm/base";
+export type { ChatInvokeUsage, ChatInvokeCompletion } from "./llm/views";
+export * from "./llm/messages";
 
-// ── Crystal / Tokens ────────────────────────────────────────────────
-export * from "./crystal/tokens";
+// ── LLM / Tokens ────────────────────────────────────────────────────
+export * from "./llm/tokens";
 
 // ── Circle (the environment) ────────────────────────────────────────
 export { Circle } from "./circle/circle";
@@ -42,7 +42,6 @@ export {
   max_turns,
   require_done,
   max_depth,
-  exclude_gate,
   resolveWards,
 } from "./circle/ward";
 
@@ -103,7 +102,7 @@ export type {
 export { cantrip } from "./cantrip/cantrip";
 export { Entity } from "./cantrip/entity";
 export type { EntityOptions } from "./cantrip/entity";
-export type { Cantrip, CantripInput, CallInput } from "./cantrip/cantrip";
+export type { Cantrip, CantripInput } from "./cantrip/cantrip";
 export type { Call, CallHyperparameters } from "./cantrip/call";
 export { renderGateDefinitions } from "./cantrip/call";
 export type { Intent } from "./cantrip/intent";

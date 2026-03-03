@@ -1,5 +1,5 @@
-import type { ToolChoice, GateDefinition } from "../crystal/crystal";
-import type { AssistantMessage, ToolMessage } from "../crystal/messages";
+import type { ToolChoice, GateDefinition } from "../llm/base";
+import type { AssistantMessage, ToolMessage } from "../llm/messages";
 import type { BoundGate } from "./gate/gate";
 import type { DependencyOverrides } from "./gate/depends";
 import type { TurnEvent } from "../entity/events";
@@ -8,8 +8,8 @@ import type { CircleExecuteResult } from "./circle";
 /**
  * A Medium is the substrate an entity works IN.
  *
- * No medium (tool-calling): crystal sees one tool per gate, execute() dispatches tool_calls to gates by name.
- * JS medium: crystal sees one `js` tool with tool_choice: "required", execute() runs code in a QuickJS sandbox.
+ * No medium (tool-calling): llm sees one tool per gate, execute() dispatches tool_calls to gates by name.
+ * JS medium: llm sees one `js` tool with tool_choice: "required", execute() runs code in a QuickJS sandbox.
  * Gates are projected into the medium as host functions.
  */
 export interface Medium {
@@ -19,8 +19,8 @@ export interface Medium {
     dependency_overrides?: DependencyOverrides | null,
   ): Promise<void>;
 
-  /** What the crystal sees when this medium is active. */
-  crystalView(): {
+  /** What the llm sees when this medium is active. */
+  toolView(): {
     tool_definitions: GateDefinition[];
     tool_choice: ToolChoice;
   };

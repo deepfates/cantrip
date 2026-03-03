@@ -19,8 +19,8 @@ export async function main() {
   });
 
   const spell = cantrip({
-    crystal,
-    call: "You work in a bash shell. Use shell commands to explore and answer questions. Use submit_answer <result> when done.",
+    llm: crystal,
+    identity: "You work in a bash shell. Use shell commands to explore and answer questions. Use submit_answer <result> when done.",
     circle,
   });
 

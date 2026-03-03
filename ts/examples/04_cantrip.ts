@@ -28,8 +28,8 @@ export async function main() {
   });
 
   const spell = cantrip({
-    crystal,
-    call: {
+    llm: crystal,
+    identity: {
       system_prompt:
         "You are a calculator. Use the add tool, then call done with the result.",
     },

@@ -18,8 +18,8 @@ export async function main() {
   });
 
   const spell = cantrip({
-    crystal,
-    call: {
+    llm: crystal,
+    identity: {
       system_prompt: "You control a headless browser via Taiko. Navigate, click, extract data. Use submit_answer(value) to return your final result.",
     },
     circle,

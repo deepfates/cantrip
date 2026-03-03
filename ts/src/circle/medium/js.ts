@@ -1,5 +1,5 @@
-import type { ToolChoice, GateDefinition } from "../../crystal/crystal";
-import type { AssistantMessage, ToolMessage } from "../../crystal/messages";
+import type { ToolChoice, GateDefinition } from "../../llm/base";
+import type { AssistantMessage, ToolMessage } from "../../llm/messages";
 import type { BoundGate } from "../gate/gate";
 import type { DependencyOverrides } from "../gate/depends";
 import type { TurnEvent } from "../../entity/events";
@@ -70,7 +70,7 @@ function describeStateEntry(val: unknown): string {
  * Creates a JS medium — a QuickJS sandbox that the entity works in.
  *
  * Gates are projected into the sandbox as host functions.
- * The crystal sees a single `js` tool with tool_choice: "required".
+ * The llm sees a single `js` tool with tool_choice: "required".
  * Termination is via `submit_answer()` which throws TaskComplete.
  */
 export function js(opts?: JsMediumOptions): Medium {
@@ -134,7 +134,7 @@ export function js(opts?: JsMediumOptions): Medium {
       initialized = true;
     },
 
-    crystalView(): { tool_definitions: GateDefinition[]; tool_choice: ToolChoice } {
+    toolView(): { tool_definitions: GateDefinition[]; tool_choice: ToolChoice } {
       return {
         tool_definitions: [jsToolDefinition],
         tool_choice: { type: "tool", name: "js" },
@@ -156,7 +156,7 @@ export function js(opts?: JsMediumOptions): Medium {
       const messages: ToolMessage[] = [];
       const gate_calls: CircleExecuteResult["gate_calls"] = [];
 
-      // The crystal should emit a single tool_call for the `js` tool
+      // The llm should emit a single tool_call for the `js` tool
       for (const toolCall of utterance.tool_calls ?? []) {
         let args: Record<string, any> = {};
         try {

@@ -197,13 +197,13 @@ describe("browser tool", () => {
 
   describe("state persistence", () => {
     test("maintains browser state between calls", async () => {
-      // First call: navigate
+      // First identity: navigate
       await browser.execute(
         { code: `await goto('${exampleUrl}')` },
         dependency_overrides,
       );
 
-      // Second call: check we're still there
+      // Second identity: check we're still there
       const result = await browser.execute(
         { code: `return await currentURL()` },
         dependency_overrides,

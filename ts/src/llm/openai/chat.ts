@@ -176,6 +176,11 @@ export class ChatOpenAI implements BaseChatModel {
     tools: ToolDefinition[] | null | undefined,
   ): unknown {
     if (!tool_choice || !tools) return null;
+    if (typeof tool_choice === "object" && tool_choice !== null) {
+      const name = (tool_choice as { name?: string }).name;
+      if (!name) return null;
+      return { type: "function", function: { name } };
+    }
     if (tool_choice === "auto") return "auto";
     if (tool_choice === "required") return "required";
     if (tool_choice === "none") return "none";
@@ -210,6 +215,15 @@ export class ChatOpenAI implements BaseChatModel {
       completion_tokens: completionTokens,
       total_tokens: response.usage.total_tokens ?? 0,
     };
+  }
+
+  async query(
+    messages: AnyMessage[],
+    tools?: ToolDefinition[] | null,
+    tool_choice?: ToolChoice | null,
+    extra?: Record<string, unknown>,
+  ): Promise<ChatInvokeCompletion> {
+    return this.ainvoke(messages, tools, tool_choice, extra);
   }
 
   async ainvoke(

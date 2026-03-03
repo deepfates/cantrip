@@ -15,11 +15,8 @@ export type Ward = {
   /** Whether the Entity must use a 'done' tool to terminate (vs. stopping on text response). */
   require_done_tool?: boolean;
 
-  /** Maximum recursion depth for nested entity spawning. */
+ /** Maximum recursion depth for nested entity spawning. */
   max_depth?: number;
-
-  /** Gate names to remove from the circle. Union semantics: if ANY ward excludes a gate, it's excluded. */
-  exclude_gates?: string[];
 };
 
 /**
@@ -30,7 +27,6 @@ export type ResolvedWard = {
   max_turns: number;
   require_done_tool: boolean;
   max_depth: number;
-  exclude_gates: string[];
 };
 
 /** Default ward configuration. */
@@ -38,7 +34,6 @@ export const DEFAULT_WARD: ResolvedWard = {
   max_turns: 200,
   require_done_tool: false,
   max_depth: Infinity,
-  exclude_gates: [],
 };
 
 /**
@@ -54,7 +49,6 @@ export function resolveWards(wards: Ward[]): ResolvedWard {
   let max_turns: number | undefined;
   let require_done_tool = false;
   let max_depth: number | undefined;
-  const excludedGates = new Set<string>();
 
   for (const w of wards) {
     if (w.max_turns !== undefined) {
@@ -66,21 +60,12 @@ export function resolveWards(wards: Ward[]): ResolvedWard {
     if (w.max_depth !== undefined) {
       max_depth = max_depth === undefined ? w.max_depth : Math.min(max_depth, w.max_depth);
     }
-    if (w.exclude_gates) {
-      for (const name of w.exclude_gates) {
-        excludedGates.add(name);
-      }
-    }
   }
-
-  // The "done" gate is never excludable — the circle requires it (CIRCLE-1).
-  excludedGates.delete("done");
 
   return {
     max_turns: max_turns ?? DEFAULT_WARD.max_turns,
     require_done_tool,
     max_depth: max_depth ?? DEFAULT_WARD.max_depth,
-    exclude_gates: Array.from(excludedGates),
   };
 }
 
@@ -97,9 +82,4 @@ export function require_done(): Ward {
 /** Create a ward that limits recursion depth. */
 export function max_depth(n: number): Ward {
   return { max_depth: n };
-}
-
-/** Create a ward that excludes a gate from the circle. */
-export function exclude_gate(name: string): Ward {
-  return { exclude_gates: [name] };
 }
