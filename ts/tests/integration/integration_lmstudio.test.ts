@@ -6,13 +6,17 @@ import { loadEnv } from "../helpers/env";
 
 loadEnv();
 
-const runLive =
-  process.env.LM_STUDIO_TEST === "1" || process.env.LM_STUDIO_TEST === "true";
-
-const it = runLive ? test : test.skip;
-
 const model = process.env.LM_STUDIO_MODEL ?? "gpt-oss-20b";
 const base_url = process.env.LM_STUDIO_BASE_URL ?? "http://localhost:1234/v1";
+
+// Probe the local server — skip if it's not running
+let serverAvailable = false;
+try {
+  const res = await fetch(`${base_url}/models`, { signal: AbortSignal.timeout(2000) });
+  serverAvailable = res.ok;
+} catch {}
+
+const it = serverAvailable ? test : test.skip;
 
 const echoTool: GateDefinition = {
   name: "echo",

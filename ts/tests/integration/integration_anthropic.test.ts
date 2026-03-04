@@ -30,7 +30,7 @@ describe("integration: anthropic", () => {
       { role: "user", content: "Reply with 'pong' only." } as any,
     ]);
     expect(response.content?.toLowerCase()).toContain("pong");
-  });
+  }, 15_000);
 
   it("returns tool calls when required", async () => {
     const llm = new ChatAnthropic({ model });
@@ -40,5 +40,5 @@ describe("integration: anthropic", () => {
       "required",
     );
     expect(response.tool_calls?.length ?? 0).toBeGreaterThan(0);
-  });
+  }, 15_000);
 });

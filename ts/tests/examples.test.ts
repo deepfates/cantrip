@@ -9,8 +9,7 @@ import { main as diMain } from "../examples/12_full_agent";
 loadEnv();
 
 const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY);
-const runLiveLlmExamples = process.env.RUN_LIVE_LLM_TESTS === "1";
-const itAnthropic = hasAnthropicKey && runLiveLlmExamples ? test : test.skip;
+const itAnthropic = hasAnthropicKey ? test : test.skip;
 
 describe("examples", () => {
   test("01_core_loop runs", async () => {
