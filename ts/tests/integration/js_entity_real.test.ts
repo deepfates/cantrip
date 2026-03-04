@@ -33,7 +33,7 @@ function createTestCircle(context: unknown) {
 function createLlm(reasoning_effort: "low" | "medium" | "high" = "medium") {
   // gpt-5-mini is a reasoning model — needs adequate reasoning_effort for tool-use tasks.
   // Default "low" causes it to skip data inspection and hallucinate field names.
-  return new ChatOpenAI({ model: modelName, reasoning_effort });
+  return new ChatOpenAI({ model: modelName, reasoning: true, reasoning_effort });
 }
 
 describe("JS entity: real integration", () => {
