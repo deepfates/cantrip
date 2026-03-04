@@ -58,14 +58,8 @@ export function cantrip(input: CantripInput): Cantrip {
   const identity = resolveIdentity(input);
   const { llm, circle } = input;
 
-  if (!circle.wards || circle.wards.length === 0) {
-    throw new Error("cantrip: circle must have at least one ward (CANTRIP-3)");
-  }
-
-  const hasDoneGate = circle.gates.some((g) => g.name === "done");
-  if (!hasDoneGate && !circle.hasMedium) {
-    throw new Error("cantrip: circle must have a done gate (CANTRIP-3)");
-  }
+  // Circle already validates done gate (CIRCLE-1) and termination ward (CIRCLE-2)
+  // at construction time — no need to re-check here.
 
   const summon = (): Entity =>
     new Entity({

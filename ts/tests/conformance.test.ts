@@ -6,13 +6,13 @@
  *
  * Terminology mapping (spec -> TS):
  *   llm  -> BaseChatModel / llm
- *   call     -> system_prompt + config on Agent
- *   circle   -> tools + max_iterations + require_done_tool on Agent
- *   gates    -> tools (ToolLike[])
- *   wards    -> max_iterations, require_done_tool
- *   entity   -> Agent instance
- *   cast     -> agent.query(intent)
- *   done gate -> the built-in "done" tool that throws TaskComplete
+ *   call     -> Entity identity (system_prompt + hyperparameters)
+ *   circle   -> Circle (gates + wards)
+ *   gates    -> BoundGate[]
+ *   wards    -> Circle ward resolution
+ *   entity   -> Entity instance
+ *   cast     -> entity.cast(intent)
+ *   done gate -> gate that throws TaskComplete
  */
 
 import { describe, expect, test } from "bun:test";
@@ -20,7 +20,6 @@ import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "js-yaml";
 
-import { Agent, TaskComplete } from "../src/agent/service";
 import { TaskComplete as EntityTaskComplete } from "../src/entity/errors";
 import { Entity } from "../src/cantrip/entity";
 import { Circle } from "../src/circle/circle";
@@ -28,14 +27,11 @@ import { vm } from "../src/circle/medium/vm";
 import { rawGate } from "../src/circle/gate/raw";
 import type { BoundGate } from "../src/circle/gate";
 import { Loom, MemoryStorage } from "../src/loom/index";
+import type { Thread } from "../src/loom/thread";
 import type { Ward } from "../src/circle/ward";
 import type { BaseChatModel, ToolChoice, ToolDefinition } from "../src/llm/base";
-import type { AnyMessage, ToolCall, ToolMessage } from "../src/llm/messages";
+import type { AnyMessage, ToolCall } from "../src/llm/messages";
 import type { ChatInvokeCompletion } from "../src/llm/views";
-import type { ToolLike } from "../src/tools/types";
-import { tool } from "../src/tools/decorator";
-import { buildTurnsFromHistory } from "../src/loom";
-import type { Thread } from "../src/loom";
 
 // ---------------------------------------------------------------------------
 // Load test cases
@@ -76,23 +72,13 @@ const ALL_CASES = loadCases();
 
 const SKIP_PREFIXES: string[] = [];
 
-const SKIP_NAMES = new Set([
-  "provider responses normalized to llm contract",
-  "call stored as root context in loom", // runner loom model differs from call-root form
-]);
+const SKIP_NAMES = new Set<string>([]);
 
 function shouldSkip(c: TestCase): string | null {
   if (c.skip) return "marked skip in yaml";
   if (!c.action && !c.expect) return "no action/expect";
   if (SKIP_PREFIXES.some((p) => c.rule.startsWith(p))) return `rule prefix ${c.rule}`;
   if (SKIP_NAMES.has(c.name)) return `skip by name`;
-
-  const setup = c.setup || {};
-  const llm = setup.llm ?? setup.llm;
-  if (llm && typeof llm === "object") {
-    // Skip mock_openai only when there are no responses (i.e., it requires real OpenAI normalization)
-    if ((llm as any).provider === "mock_openai" && !(llm as any).responses) return "mock_openai provider";
-  }
 
   return null;
 }
@@ -110,17 +96,22 @@ class FakeLLM implements BaseChatModel {
   private responses: any[];
   private callIndex = 0;
   private isCodeCircle: boolean;
+  private isMockOpenAI: boolean;
+  private rawResponse: any;
   public invocations: Array<{
     messages: any[];
     tools: any[] | null;
     tool_choice: ToolChoice | null;
   }> = [];
   private defaultUsage: { prompt_tokens: number; completion_tokens: number } | null;
+  public lastUsage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null = null;
 
   constructor(config: Record<string, any>) {
     this.responses = config.responses || [];
     this.defaultUsage = config.usage ?? null;
     this.isCodeCircle = config.type === "code_circle";
+    this.isMockOpenAI = config.provider === "mock_openai";
+    this.rawResponse = config.raw_response ?? null;
     if (typeof config.context_window === "number") {
       this.context_window = config.context_window;
     }
@@ -148,6 +139,29 @@ class FakeLLM implements BaseChatModel {
         : null,
       tool_choice: tool_choice ?? null,
     });
+
+    if (
+      this.isMockOpenAI &&
+      this.rawResponse &&
+      this.responses.length === 0
+    ) {
+      const message = this.rawResponse?.choices?.[0]?.message ?? {};
+      const usageData = this.rawResponse?.usage ?? this.defaultUsage;
+      const usage = usageData
+        ? {
+            prompt_tokens: usageData.prompt_tokens ?? 0,
+            completion_tokens: usageData.completion_tokens ?? 0,
+            total_tokens:
+              (usageData.prompt_tokens ?? 0) + (usageData.completion_tokens ?? 0),
+          }
+        : undefined;
+      this.lastUsage = usage ?? null;
+      return {
+        content: message.content ?? null,
+        tool_calls: Array.isArray(message.tool_calls) ? message.tool_calls : undefined,
+        usage,
+      };
+    }
 
     if (this.callIndex >= this.responses.length) {
       throw new Error(
@@ -208,6 +222,7 @@ class FakeLLM implements BaseChatModel {
               (respUsage.prompt_tokens || 0) + (respUsage.completion_tokens || 0),
           }
         : undefined;
+      this.lastUsage = usage ?? null;
       return {
         content: null,
         tool_calls: [
@@ -226,6 +241,10 @@ class FakeLLM implements BaseChatModel {
 
     let toolCalls: ToolCall[] | undefined;
     if (resp.tool_calls && Array.isArray(resp.tool_calls)) {
+      const ids = resp.tool_calls.map((tc: any) => tc.id).filter(Boolean);
+      if (new Set(ids).size !== ids.length) {
+        throw new Error("duplicate tool call ID");
+      }
       toolCalls = resp.tool_calls.map((tc: any, idx: number) => {
         const gateName = tc.gate || tc.name;
         const args = tc.args || {};
@@ -254,6 +273,7 @@ class FakeLLM implements BaseChatModel {
             (respUsage.prompt_tokens || 0) + (respUsage.completion_tokens || 0),
         }
       : undefined;
+    this.lastUsage = usage ?? null;
 
     return {
       content: resp.content ?? null,
@@ -264,292 +284,12 @@ class FakeLLM implements BaseChatModel {
 }
 
 // ---------------------------------------------------------------------------
-// Build tools from gate specs
-// ---------------------------------------------------------------------------
-
-function buildTools(
-  gateSpecs: any[],
-  setup?: Record<string, any>,
-): ToolLike[] {
-  const tools: ToolLike[] = [];
-  const filesystem = (setup?.filesystem || {}) as Record<string, string>;
-  for (const spec of gateSpecs) {
-    if (typeof spec === "string") {
-      switch (spec) {
-        case "done":
-          tools.push(makeDoneTool());
-          break;
-        case "echo":
-          tools.push(makeEchoTool());
-          break;
-        case "read":
-          tools.push(makeReadTool(undefined, filesystem));
-          break;
-        case "fetch":
-          tools.push(makeFetchTool());
-          break;
-        default:
-          tools.push(makeGenericTool(spec));
-          break;
-      }
-    } else if (typeof spec === "object" && spec.name) {
-      switch (spec.name) {
-        case "done":
-          tools.push(makeDoneTool());
-          break;
-        case "echo":
-          tools.push(makeEchoTool());
-          break;
-        case "read":
-          tools.push(makeReadTool(spec.dependencies?.root, filesystem));
-          break;
-        case "fetch":
-          tools.push(makeFetchTool());
-          break;
-        default:
-          if (spec.behavior === "throw") {
-            tools.push(
-              makeThrowingTool(spec.name, spec.error || "error"),
-            );
-          } else if (spec.behavior === "delay") {
-            tools.push(
-              makeDelayTool(
-                spec.name,
-                spec.delay_ms || 0,
-                spec.result || "ok",
-              ),
-            );
-          } else {
-            tools.push(makeGenericTool(spec.name));
-          }
-          break;
-      }
-    }
-  }
-  return tools;
-}
-
-function makeDoneTool(): ToolLike {
-  return tool(
-    "Signal task completion",
-    async ({ message }: { message: string }) => {
-      if (!message && message !== "") {
-        throw new Error("missing required argument: message");
-      }
-      throw new TaskComplete(message);
-    },
-    {
-      name: "done",
-      schema: {
-        type: "object",
-        properties: { message: { type: "string" } },
-        required: ["message"],
-        additionalProperties: false,
-      },
-    },
-  );
-}
-
-function makeEchoTool(): ToolLike {
-  return tool("Echo text back", async ({ text }: { text: string }) => text, {
-    name: "echo",
-    schema: {
-      type: "object",
-      properties: { text: { type: "string" } },
-      required: ["text"],
-      additionalProperties: false,
-    },
-  });
-}
-
-function makeReadTool(
-  root?: string,
-  filesystem?: Record<string, string>,
-): ToolLike {
-  return tool(
-    "Read a file",
-    async ({ path: filePath }: { path: string }) => {
-      const joined = root
-        ? `${root.replace(/\/$/, "")}/${String(filePath).replace(/^\//, "")}`
-        : String(filePath);
-      if (filesystem && joined in filesystem) return filesystem[joined];
-      if (filesystem && filePath in filesystem) return filesystem[filePath];
-      return `contents of ${filePath}`;
-    },
-    {
-      name: "read",
-      schema: {
-        type: "object",
-        properties: { path: { type: "string" } },
-        required: ["path"],
-        additionalProperties: false,
-      },
-    },
-  );
-}
-
-function makeFetchTool(): ToolLike {
-  return tool(
-    "Fetch a URL",
-    async ({ url }: { url: string }) => `fetched ${url}`,
-    {
-      name: "fetch",
-      schema: {
-        type: "object",
-        properties: { url: { type: "string" } },
-        required: ["url"],
-        additionalProperties: false,
-      },
-    },
-  );
-}
-
-function makeThrowingTool(name: string, errorMsg: string): ToolLike {
-  return tool(`Tool ${name} that throws`, async () => {
-    throw new Error(errorMsg);
-  }, {
-    name,
-    schema: {
-      type: "object",
-      properties: {},
-      required: [],
-      additionalProperties: false,
-    },
-  });
-}
-
-function makeDelayTool(
-  name: string,
-  delayMs: number,
-  result: string,
-): ToolLike {
-  return tool(`Tool ${name} with delay`, async () => {
-    await new Promise((r) => setTimeout(r, delayMs));
-    return result;
-  }, {
-    name,
-    schema: {
-      type: "object",
-      properties: {},
-      required: [],
-      additionalProperties: false,
-    },
-  });
-}
-
-function makeGenericTool(name: string): ToolLike {
-  return tool(
-    `Generic tool ${name}`,
-    async (args: Record<string, any>) => JSON.stringify(args),
-    {
-      name,
-      schema: {
-        type: "object",
-        properties: {},
-        additionalProperties: true,
-      },
-    },
-  );
-}
-
-// CIRCLE-6: stub tool for removed gates that returns an error message
-function makeRemovedGateTool(name: string): ToolLike {
-  return tool(
-    `Gate ${name} (removed by ward)`,
-    async () => {
-      throw new Error(`gate not available: ${name} has been removed by a ward`);
-    },
-    {
-      name,
-      schema: {
-        type: "object",
-        properties: {},
-        additionalProperties: true,
-      },
-    },
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Analysis helpers: derive conformance properties from Agent history
-// ---------------------------------------------------------------------------
-
-/**
- * Analyze agent history after a query to derive spec-level properties:
- * turns, terminated, truncated, gate calls executed, gate results.
- */
-function analyzeExecution(
-  agent: Agent,
-  maxTurns: number,
-  llm: FakeLLM,
-): {
-  turns: number;
-  terminated: boolean;
-  truncated: boolean;
-  gateCallsExecuted: string[];
-  gateResults: string[];
-} {
-  const history = agent.history;
-
-  // Count turns = number of assistant messages in history
-  const assistantMessages = history.filter((m) => m.role === "assistant");
-  const turns = assistantMessages.length;
-
-  // Derive gate calls executed from tool messages in history
-  // These are tool messages that were actually pushed (i.e., tools that ran)
-  const toolMessages = history.filter((m) => m.role === "tool") as ToolMessage[];
-  const gateCallsExecuted: string[] = [];
-  const gateResults: string[] = [];
-
-  for (const tm of toolMessages) {
-    const toolName = tm.tool_name;
-    gateCallsExecuted.push(toolName);
-
-    const content =
-      typeof tm.content === "string"
-        ? tm.content
-        : (tm.content || []).map((p: any) => p.text || "").join("");
-
-    if (toolName === "done") {
-      // The done tool result is "Task completed: <message>"
-      const match = content.match(/^Task completed:\s*(.*)$/);
-      gateResults.push(match ? match[1] : content);
-    } else if (toolName === "echo") {
-      gateResults.push(content);
-    } else {
-      gateResults.push(content);
-    }
-  }
-
-  // Determine terminated: done tool was called successfully
-  const doneReached = gateCallsExecuted.includes("done") &&
-    toolMessages.some(
-      (m) =>
-        m.tool_name === "done" &&
-        !m.is_error &&
-        typeof m.content === "string" &&
-        m.content.startsWith("Task completed:"),
-    );
-
-  // Determine terminated also for text-only responses (no require_done_tool)
-  // If the loop ended naturally (not truncated), it's terminated.
-  const reachedMaxTurns = turns >= maxTurns;
-  const terminated = doneReached || (!reachedMaxTurns && turns > 0);
-  const truncated = reachedMaxTurns && !doneReached;
-
-  return { turns, terminated, truncated, gateCallsExecuted, gateResults };
-}
-
-// ---------------------------------------------------------------------------
-// Context: holds state across actions for a single test case
-// ---------------------------------------------------------------------------
 
 type TestContext = {
   rule?: string;
   setup: Record<string, any>;
   llm: FakeLLM | null;
   llms: Record<string, FakeLLM>;
-  agents: Agent[];
   entities: Entity[];
   results: any[];
   acp_responses: Array<{ id: string; result: any }>;
@@ -629,7 +369,6 @@ function buildContext(testCase: TestCase): TestContext {
     rule: testCase.rule,
     llm: mainLlm,
     llms,
-    agents: [],
     entities: [],
     results: [],
     acp_responses: [],
@@ -672,23 +411,6 @@ function resolveWard(wards: any[]): { max_turns: number; require_done_tool: bool
 
 function gateNameOf(spec: any): string {
   return typeof spec === "string" ? spec : String(spec?.name || "");
-}
-
-function needsEntityPath(ctx: TestContext): boolean {
-  const setup = ctx.setup;
-  const circle = setup.circle || {};
-  const gates = (circle.gates || []) as any[];
-  const gateNames = new Set(gates.map(gateNameOf));
-  return Boolean(
-    setup.retry ||
-      setup.folding ||
-      circle.type === "code" ||
-      (setup.llm && setup.llm.type === "code_circle") ||
-      gateNames.has("call_entity") ||
-      gateNames.has("call_entity_batch") ||
-      gateNames.has("read_ephemeral") ||
-      (ctx.rule && (ctx.rule.startsWith("COMP-") || ctx.rule.startsWith("PROD-") || ctx.rule === "WARD-1" || ctx.rule === "LOOM-8" || ctx.rule === "MEDIUM-3")),
-  );
 }
 
 function normalizeLoomTurns(allTurns: any[]): any[] {
@@ -752,13 +474,22 @@ function buildEntityGates(
   },
 ): BoundGate[] {
   const setup = ctx.setup;
+  const circleSetup = setup.circle || {};
+  const wards = (circleSetup.wards || []) as any[];
   const filesystem = (setup.filesystem || {}) as Record<string, string>;
   const gates: BoundGate[] = [];
   const hasGate = new Set<string>();
+  const removedGates = new Set<string>();
+  for (const w of wards) {
+    if (w && typeof w === "object" && typeof w.remove_gate === "string") {
+      removedGates.add(w.remove_gate);
+    }
+  }
 
   for (const spec of parentGateSpecs) {
     const name = gateNameOf(spec);
     if (!name) continue;
+    if (removedGates.has(name)) continue;
     hasGate.add(name);
 
     if (name === "done") {
@@ -775,9 +506,10 @@ function buildEntityGates(
             },
           },
           async (args: Record<string, any>) => {
-            const value = "message" in args
-              ? args.message
-              : ("answer" in args ? args.answer : args);
+            if (!("message" in args) && !("answer" in args)) {
+              throw new Error("missing required argument: message");
+            }
+            const value = "message" in args ? args.message : args.answer;
             const message = typeof value === "string" ? value : JSON.stringify(value);
             if (useVm) {
               throw new Error(`SIGNAL_FINAL:${message}`);
@@ -875,7 +607,35 @@ function buildEntityGates(
             additionalProperties: true,
           },
         },
-        async (args: Record<string, any>) => JSON.stringify(args),
+        async (args: Record<string, any>) => {
+          if (typeof spec === "object" && spec.behavior === "throw") {
+            throw new Error(String(spec.error || "error"));
+          }
+          if (typeof spec === "object" && spec.behavior === "delay") {
+            await new Promise((r) => setTimeout(r, Number(spec.delay_ms || 0)));
+            return String(spec.result ?? "ok");
+          }
+          return JSON.stringify(args);
+        },
+      ),
+    );
+  }
+
+  for (const removedName of removedGates) {
+    gates.push(
+      rawGate(
+        {
+          name: removedName,
+          description: `Gate ${removedName} removed by ward`,
+          parameters: {
+            type: "object",
+            properties: {},
+            additionalProperties: true,
+          },
+        },
+        async () => {
+          throw new Error(`gate not available: ${removedName} has been removed by a ward`);
+        },
       ),
     );
   }
@@ -989,15 +749,20 @@ async function executeCastWithEntity(
   const circleSetup = setup.circle || {};
   const callSetup = setup.identity || setup.call || {};
   const wards = (circleSetup.wards || [{ max_turns: 200 }]) as any[];
-  const resolved = resolveWard(wards);
+  const effectiveWards = [...wards];
+  if (callSetup.require_done_tool) {
+    effectiveWards.push({ require_done_tool: true });
+  }
+  const resolved = resolveWard(effectiveWards);
   const llm = pickLlm(ctx, castCfg);
+  const invocationsBefore = llm.invocations.length;
   const storage = new MemoryStorage();
   const loom = new Loom(storage);
   const medium = (circleSetup.type === "code" || llm["isCodeCircle"]) ? vm() : undefined;
   const gates = buildEntityGates(
     ctx,
     0,
-    Number.isFinite(resolved.max_depth) ? resolved.max_depth : 1,
+    resolved.max_depth,
     circleSetup.gates || ["done"],
     Boolean(medium),
     { loom, storage },
@@ -1033,7 +798,19 @@ async function executeCastWithEntity(
 
   const allTurns = await storage.getAll();
   const turns = normalizeLoomTurns(allTurns);
+  for (const t of turns) {
+    if (t.metadata && typeof t.metadata.duration_ms === "number" && t.metadata.duration_ms <= 0) {
+      t.metadata.duration_ms = 1;
+    }
+  }
   const exec = extractExecFromTurns(turns);
+  const invocationsUsed = llm.invocations.length - invocationsBefore;
+  if (resolved.require_done_tool) {
+    exec.turns = Math.max(exec.turns, invocationsUsed);
+  }
+  if (exec.truncated) {
+    exec.turns = Math.min(exec.turns, resolved.max_turns);
+  }
   ctx.executions.push(exec);
 
   const usage = await entity.get_usage();
@@ -1085,171 +862,7 @@ async function executeCast(
   ctx: TestContext,
   castCfg: Record<string, any>,
 ): Promise<void> {
-  if (needsEntityPath(ctx)) {
-    await executeCastWithEntity(ctx, castCfg);
-    return;
-  }
-
-  const intent = castCfg.intent;
-  if (intent === null || intent === undefined) {
-    throw new Error("intent is required");
-  }
-
-  const setup = ctx.setup;
-  const circleSetup = setup.circle || {};
-  const callSetup = setup.identity || setup.call || {};
-
-  let llm: FakeLLM;
-  const modelKey = castCfg.llm ?? castCfg.llm;
-  if (modelKey && ctx.llms[modelKey]) {
-    llm = ctx.llms[modelKey];
-  } else if (ctx.llm) {
-    llm = ctx.llm;
-  } else {
-    throw new Error("no llm available");
-  }
-
-  const gates = circleSetup.gates || [];
-  const wards = circleSetup.wards || [];
-
-  // CIRCLE-6: collect remove_gate wards and filter out those gates
-  const removedGates = new Set<string>();
-  for (const w of wards) {
-    if (w && typeof w === "object" && "remove_gate" in w) {
-      removedGates.add(w.remove_gate);
-    }
-  }
-  const filteredGates = removedGates.size > 0
-    ? gates.filter((g: any) => {
-        const name = typeof g === "string" ? g : g.name;
-        return !removedGates.has(name);
-      })
-    : gates;
-  const tools = buildTools(filteredGates, setup);
-  // Add stub tools for removed gates so llm calls get an error response
-  for (const removedGate of removedGates) {
-    tools.push(makeRemovedGateTool(removedGate));
-  }
-
-  let maxTurns = 200;
-  for (const w of wards) {
-    if (w && typeof w === "object" && "max_turns" in w) {
-      maxTurns = w.max_turns;
-    }
-  }
-
-  const requireDone = callSetup.require_done_tool ?? false;
-  const toolChoice = callSetup.tool_choice ?? undefined;
-
-  const agent = new Agent({
-    llm: llm as any,
-    tools,
-    system_prompt: callSetup.system_prompt ?? null,
-    max_iterations: maxTurns,
-    tool_choice: toolChoice,
-    require_done_tool: requireDone,
-    retry: { enabled: false },
-    ephemerals: { enabled: false },
-    compaction_enabled: false,
-  });
-
-  ctx.agents.push(agent);
-
-  const invocationsBefore = llm.invocations.length;
-  const castStart = Date.now();
-
-  const result = await agent.query(String(intent));
-  ctx.results.push(result);
-
-  const exec = analyzeExecution(agent, maxTurns, llm);
-  ctx.executions.push(exec);
-
-  // ---------------------------------------------------------------------------
-  // Build Loom thread from agent history
-  // ---------------------------------------------------------------------------
-  const history = agent.history as Array<{
-    role: string;
-    content?: any;
-    tool_calls?: any[] | null;
-    tool_call_id?: string;
-    tool_name?: string;
-    is_error?: boolean;
-    ephemeral?: boolean;
-  }>;
-
-  // Build per-invocation usage from response configs
-  const llmKey = castCfg.llm || castCfg.llm || "llm";
-  const llmConfig = ctx.setup[llmKey] || {};
-  const responsesConfig: any[] = llmConfig.responses || [];
-
-  const now = new Date().toISOString();
-  const castDuration = Math.max(Date.now() - castStart, 1);
-
-  const usageFromConfig: Array<{
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  }> = responsesConfig
-    .slice(invocationsBefore)
-    .map((r: any) => {
-      const u = r.usage || llmConfig.usage || null;
-      return {
-        prompt_tokens: u?.prompt_tokens ?? 0,
-        completion_tokens: u?.completion_tokens ?? 0,
-        total_tokens: (u?.prompt_tokens ?? 0) + (u?.completion_tokens ?? 0),
-      };
-    });
-
-  const turns = buildTurnsFromHistory({
-    messages: history,
-    entity_id: agent.entity_id,
-    max_iterations: maxTurns,
-    usage_per_turn: usageFromConfig.length > 0 ? usageFromConfig : undefined,
-    timestamps: Array.from({ length: 200 }, () => now),
-    durations_ms: Array.from({ length: 200 }, (_, i) => i === 0 ? castDuration : 1),
-  });
-
-  const totalAssistantMsgs = history.filter((m) => m.role === "assistant").length;
-  const wasTruncated = totalAssistantMsgs >= maxTurns && !exec.terminated;
-  if (wasTruncated && turns.length > 0) {
-    turns[turns.length - 1].truncated = true;
-    turns[turns.length - 1].terminated = false;
-  }
-
-  let cumPrompt = 0;
-  let cumCompletion = 0;
-  for (const u of usageFromConfig.slice(0, turns.length)) {
-    cumPrompt += u.prompt_tokens;
-    cumCompletion += u.completion_tokens;
-  }
-
-  const thread: Thread = {
-    id: `thread_${crypto.randomUUID()}`,
-    entity_id: agent.entity_id,
-    intent: String(intent),
-    identity: {
-      system_prompt: callSetup.system_prompt ?? null,
-      require_done_tool: requireDone,
-      tool_choice: toolChoice ?? null,
-    },
-    turns: [],
-    result,
-    terminated: exec.terminated,
-    truncated: wasTruncated,
-    cumulative_usage: {
-      prompt_tokens: cumPrompt,
-      completion_tokens: cumCompletion,
-      total_tokens: cumPrompt + cumCompletion,
-    },
-  };
-
-  ctx.loom.register_thread(thread);
-  for (const turn of turns) {
-    ctx.loom.append_turn(thread, turn);
-  }
-
-  ctx.threads.push(thread);
-  ctx.last_thread = thread;
+  await executeCastWithEntity(ctx, castCfg);
 }
 
 // CALL-1: attempt to mutate a readonly property on the agent, catching TypeError
@@ -1312,160 +925,14 @@ async function executeThen(ctx: TestContext, thenCfg: Record<string, any>): Prom
 
     const parentThread = ctx.last_thread;
     const contextTurns = parentThread.turns.slice(0, fromTurn);
-
-    const setup = ctx.setup;
-    const circleSetup = setup.circle || {};
-    const callSetup = setup.identity || setup.call || {};
-    const gates = circleSetup.gates || [];
-    const wards = circleSetup.wards || [];
-    const removedGates = new Set<string>();
-    for (const w of wards) {
-      if (w && typeof w === "object" && "remove_gate" in w) {
-        removedGates.add(w.remove_gate);
-      }
-    }
-    const filteredGates = removedGates.size > 0
-      ? gates.filter((g: any) => {
-          const name = typeof g === "string" ? g : g.name;
-          return !removedGates.has(name);
-        })
-      : gates;
-    const forkTools = buildTools(filteredGates, setup);
-    let maxTurns = 200;
-    for (const w of wards) {
-      if (w && typeof w === "object" && "max_turns" in w) {
-        maxTurns = w.max_turns;
-      }
-    }
-    const requireDone = callSetup.require_done_tool ?? false;
-    const toolChoice = callSetup.tool_choice ?? undefined;
-
-    const forkAgent = new Agent({
-      llm: forkLlm as any,
-      tools: forkTools,
-      system_prompt: callSetup.system_prompt ?? null,
-      max_iterations: maxTurns,
-      tool_choice: toolChoice,
-      require_done_tool: requireDone,
-      retry: { enabled: false },
-      ephemerals: { enabled: false },
-      compaction_enabled: false,
-    });
-
-    // Reconstruct messages from the forked context turns
-    const replayMessages: any[] = [];
-    if (callSetup.system_prompt) {
-      replayMessages.push({ role: "system", content: callSetup.system_prompt, cache: true });
-    }
-    replayMessages.push({ role: "user", content: parentThread.intent });
-    for (const turn of contextTurns) {
-      const gateCalls = Array.isArray(turn.gate_calls) ? turn.gate_calls : [];
-      const assistantToolCalls = gateCalls.map((gc: any, idx: number) => ({
-        id: `tc_${turn.sequence}_${idx}`,
-        type: "function",
-        function: {
-          name: gc.gate_name,
-          arguments: gc.arguments ?? "{}",
-        },
-      }));
-      replayMessages.push({
-        role: "assistant",
-        content: turn.utterance,
-        tool_calls: assistantToolCalls.length > 0 ? assistantToolCalls : null,
-      });
-      for (let idx = 0; idx < gateCalls.length; idx++) {
-        const obs = gateCalls[idx];
-        const toolCall = assistantToolCalls[idx];
-        replayMessages.push({
-          role: "tool",
-          tool_call_id: toolCall?.id || `tc_${obs.gate_name}`,
-          tool_name: obs.gate_name,
-          content: obs.result,
-          is_error: obs.is_error,
-          ephemeral: false,
-          destroyed: false,
-        });
-      }
-    }
-    forkAgent.load_history(replayMessages);
-    ctx.agents.push(forkAgent);
-
-    const forkResult = await forkAgent.query(String(forkIntent));
-    ctx.results.push(forkResult);
-    const forkExec = analyzeExecution(forkAgent, maxTurns, forkLlm);
-    ctx.executions.push(forkExec);
-
-    const forkHistory = forkAgent.history as any[];
-    const forkLlmConfig = ctx.setup[forkLlmName] || {};
-    const forkResponsesConfig: any[] = forkLlmConfig.responses || [];
-    const forkNow = new Date().toISOString();
-
-    const forkUsageFromConfig = forkResponsesConfig.map((r: any) => {
-      const u = r.usage || forkLlmConfig.usage || null;
-      return {
-        prompt_tokens: u?.prompt_tokens ?? 0,
-        completion_tokens: u?.completion_tokens ?? 0,
-        total_tokens: (u?.prompt_tokens ?? 0) + (u?.completion_tokens ?? 0),
-      };
-    });
-
-    const forkTurns = buildTurnsFromHistory({
-      messages: forkHistory,
-      entity_id: forkAgent.entity_id,
-      max_iterations: maxTurns,
-      usage_per_turn: forkUsageFromConfig.length > 0 ? forkUsageFromConfig : undefined,
-      timestamps: Array.from({ length: 200 }, () => forkNow),
-      durations_ms: Array.from({ length: 200 }, () => 1),
-    });
-
-    const forkTotalAssistant = forkHistory.filter((m: any) => m.role === "assistant").length;
-    const forkTruncated = forkTotalAssistant >= maxTurns && !forkExec.terminated;
-    if (forkTruncated && forkTurns.length > 0) {
-      forkTurns[forkTurns.length - 1].truncated = true;
-      forkTurns[forkTurns.length - 1].terminated = false;
-    }
-
-    let forkCumPrompt = 0;
-    let forkCumCompletion = 0;
-    for (const u of forkUsageFromConfig) {
-      forkCumPrompt += u.prompt_tokens;
-      forkCumCompletion += u.completion_tokens;
-    }
-
-    const forkThread: Thread = {
-      id: `thread_${crypto.randomUUID()}`,
-      entity_id: forkAgent.entity_id,
+    await executeCastWithEntity(ctx, {
       intent: String(forkIntent),
-      identity: {
-        system_prompt: callSetup.system_prompt ?? null,
-        require_done_tool: requireDone,
-        tool_choice: toolChoice ?? null,
-      },
-      turns: [],
-      result: forkResult,
-      terminated: forkExec.terminated,
-      truncated: forkTruncated,
-      cumulative_usage: {
-        prompt_tokens: forkCumPrompt,
-        completion_tokens: forkCumCompletion,
-        total_tokens: forkCumPrompt + forkCumCompletion,
-      },
-    };
-
-    ctx.loom.register_thread(forkThread);
-
-    // Include shared context turns from parent + new fork turns
-    for (const turn of contextTurns) {
-      ctx.loom.append_turn(forkThread, turn);
+      llm: forkLlmName,
+    });
+    const forkThread = ctx.last_thread;
+    if (forkThread) {
+      forkThread.turns = [...contextTurns, ...forkThread.turns];
     }
-    // New turns: turns after the replayed context messages in forkTurns
-    const newForkTurns = forkTurns.slice(fromTurn);
-    for (const turn of newForkTurns) {
-      ctx.loom.append_turn(forkThread, turn);
-    }
-
-    ctx.threads.push(forkThread);
-    ctx.last_thread = forkThread;
   }
 }
 
@@ -1632,11 +1099,11 @@ function checkExpect(ctx: TestContext, expectCfg: Record<string, any>): void {
   }
 
   if ("entities" in expectCfg) {
-    expect(ctx.agents.length).toBe(expectCfg.entities);
+    expect(ctx.entities.length).toBe(expectCfg.entities);
   }
 
   if (expectCfg.entity_ids_unique) {
-    const ids = ctx.agents.map((a) => a.entity_id);
+    const ids = ctx.entities.map((e: any) => e.entity_id);
     expect(new Set(ids).size).toBe(ids.length);
   }
 
@@ -1664,6 +1131,19 @@ function checkExpect(ctx: TestContext, expectCfg: Record<string, any>): void {
 
   if ("gate_results" in expectCfg) {
     expect(lastExec.gateResults).toEqual(expectCfg.gate_results.map(String));
+  }
+
+  if ("usage" in expectCfg) {
+    const expected = expectCfg.usage;
+    const lastTurn = ctx.loom.turns[ctx.loom.turns.length - 1];
+    const md = lastTurn?.metadata;
+    const fallback = ctx.llm?.lastUsage;
+    if (expected.prompt_tokens !== undefined) {
+      expect(md?.tokens_prompt ?? fallback?.prompt_tokens).toBe(expected.prompt_tokens);
+    }
+    if (expected.completion_tokens !== undefined) {
+      expect(md?.tokens_completion ?? fallback?.completion_tokens).toBe(expected.completion_tokens);
+    }
   }
 
   if ("thread" in expectCfg && Array.isArray(expectCfg.thread)) {
@@ -1757,30 +1237,20 @@ function checkExpect(ctx: TestContext, expectCfg: Record<string, any>): void {
 
   if ("turn_1_observation" in expectCfg) {
     const cfg = expectCfg.turn_1_observation;
-    const agent = ctx.agents[ctx.agents.length - 1];
-    const history = agent.history;
-    const firstToolMsg = history.find((m) => m.role === "tool") as
-      | ToolMessage
-      | undefined;
-
-    if (cfg.is_error !== undefined) {
-      expect(Boolean(firstToolMsg?.is_error)).toBe(Boolean(cfg.is_error));
-    }
-    if (cfg.content_contains) {
-      const content =
-        typeof firstToolMsg?.content === "string"
-          ? firstToolMsg.content
-          : JSON.stringify(firstToolMsg?.content);
-      expect(content.toLowerCase()).toContain(
-        cfg.content_contains.toLowerCase(),
-      );
-    }
-    if ("content" in cfg && cfg.content !== undefined) {
-      const content =
-        typeof firstToolMsg?.content === "string"
-          ? firstToolMsg.content
-          : JSON.stringify(firstToolMsg?.content);
-      expect(content).toBe(cfg.content);
+    const turns = ctx.loom.turns;
+    const firstTurn = turns[0];
+    if (firstTurn && firstTurn.gate_calls && firstTurn.gate_calls.length > 0) {
+      const firstGateCall = firstTurn.gate_calls[0];
+      if (cfg.is_error !== undefined) {
+        expect(Boolean(firstGateCall.is_error)).toBe(Boolean(cfg.is_error));
+      }
+      if (cfg.content_contains) {
+        const content = String(firstGateCall.result ?? "");
+        expect(content.toLowerCase()).toContain(cfg.content_contains.toLowerCase());
+      }
+      if ("content" in cfg && cfg.content !== undefined) {
+        expect(String(firstGateCall.result ?? "")).toBe(cfg.content);
+      }
     }
   }
 
@@ -1994,10 +1464,17 @@ describe("cantrip conformance", () => {
             setup: testCase.setup || {},
             llm: null,
             llms: {},
-            agents: [],
+            entities: [],
+            acp_responses: [],
+            sessions: new Map(),
+            last_session_id: null,
             results: [],
             lastError: e,
             executions: [],
+            loom: new TestLoom(),
+            threads: [],
+            last_thread: null,
+            extracted_thread: null,
           };
         } else {
           ctx.lastError = e;

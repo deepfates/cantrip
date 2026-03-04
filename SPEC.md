@@ -99,8 +99,6 @@ A **cantrip** is the script that produces the loop. It binds an LLM to a circle 
 
 > **CANTRIP-2**: A cantrip is a value. It MUST be reusable — casting it multiple times on different intents MUST produce independent entities.
 
-> **CANTRIP-3**: Constructing a cantrip MUST validate that the circle has a `done` gate (CIRCLE-1) and at least one truncation ward (CIRCLE-2).
-
 An **intent** is the reason the loop runs — the goal, the task, the thing the entity is trying to achieve. Same cantrip, different intent, different episode. The intent is what varies between runs.
 
 > **INTENT-1**: The intent MUST be provided when casting a cantrip. A cantrip cannot be cast without an intent.

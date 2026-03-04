@@ -90,30 +90,16 @@ describe("cantrip", () => {
     ).toThrow();
   });
 
-  test("CANTRIP-3: throws if circle has no done gate", () => {
-    const llm = makeLlm([]);
+  test("CIRCLE-1: circle rejects missing done gate", () => {
     const noDoneGate = gate("Not done", async () => "ok", {
       name: "other",
       schema: { type: "object", properties: {}, additionalProperties: false },
     });
-    expect(() =>
-      cantrip({
-        llm: llm as any,
-        identity: { system_prompt: "test" },
-        circle: makeCircle([noDoneGate]),
-      }),
-    ).toThrow(/done/i);
+    expect(() => makeCircle([noDoneGate])).toThrow(/done/i);
   });
 
-  test("CANTRIP-3: throws if circle has no ward", () => {
-    const llm = makeLlm([]);
-    expect(() =>
-      cantrip({
-        llm: llm as any,
-        identity: { system_prompt: "test" },
-        circle: makeCircle([doneGate], []),
-      }),
-    ).toThrow(/ward/i);
+  test("CIRCLE-2: circle rejects missing termination ward", () => {
+    expect(() => makeCircle([doneGate], [])).toThrow(/ward/i);
   });
 
   test("cast() runs the agent loop and returns the done result", async () => {

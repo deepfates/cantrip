@@ -217,32 +217,18 @@ describe("CANTRIP-2: cantrip is reusable across intents", () => {
   });
 });
 
-// ── CANTRIP-3: validates circle has done gate and truncation ward ──
+// ── CIRCLE-1 / CIRCLE-2: circle validates done gate and termination ward ──
 
-describe("CANTRIP-3: cantrip validates circle constraints", () => {
-  test("CANTRIP-3: throws if circle has no done gate", () => {
-    const llm = makeLlm([]);
+describe("Circle validates its own invariants", () => {
+  test("CIRCLE-1: circle rejects missing done gate", () => {
     const notDone = gate("Not done", async () => "ok", {
       name: "other",
       schema: { type: "object", properties: {}, additionalProperties: false },
     });
-    expect(() =>
-      cantrip({
-        llm: llm as any,
-        identity: { system_prompt: "test" },
-        circle: makeCircle([notDone]),
-      }),
-    ).toThrow(/done/i);
+    expect(() => Circle({ gates: [notDone], wards: [ward] })).toThrow(/done/i);
   });
 
-  test("CANTRIP-3: throws if circle has no ward", () => {
-    const llm = makeLlm([]);
-    expect(() =>
-      cantrip({
-        llm: llm as any,
-        identity: { system_prompt: "test" },
-        circle: makeCircle([doneGate], []),
-      }),
-    ).toThrow(/ward/i);
+  test("CIRCLE-2: circle rejects missing termination ward", () => {
+    expect(() => Circle({ gates: [doneGate], wards: [] })).toThrow(/ward/i);
   });
 });

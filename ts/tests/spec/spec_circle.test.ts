@@ -78,20 +78,6 @@ describe("CIRCLE-1: circle must have done gate", () => {
     ).toThrow(/done/i);
   });
 
-  test("CIRCLE-1: cantrip also validates done gate", () => {
-    const llm = makeLlm([]);
-    const notDone = gate("Not done", async () => "ok", {
-      name: "other",
-      schema: { type: "object", properties: {}, additionalProperties: false },
-    });
-    expect(() =>
-      cantrip({
-        llm: llm as any,
-        identity: { system_prompt: "test" },
-        circle: { gates: [notDone], wards: [{ max_turns: 10, require_done_tool: false }] } as any,
-      }),
-    ).toThrow(/done/i);
-  });
 });
 
 // ── CIRCLE-2: circle must have termination ward ────────────────────

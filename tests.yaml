@@ -45,10 +45,6 @@
     results: ["first", "second"]
     entities: 2 # two independent entities produced
 
-- rule: CANTRIP-3
-  name: cantrip validates circle has done gate and truncation ward
-  # Same as CIRCLE-1 and CIRCLE-2 — tested below
-
 - rule: INTENT-1
   name: casting without intent is invalid
   setup:
@@ -84,12 +80,6 @@
       - messages:
           - { role: system, content: "You are helpful" }
           - { role: user, content: "my task" }
-
-- rule: ENTITY-1
-  name: entity only created by casting cantrip
-  # Structural — no freestanding entity constructor exists.
-  # Verified by API design rather than I/O test.
-  skip: true
 
 - rule: ENTITY-2
   name: each entity has unique ID
@@ -580,10 +570,6 @@
     construct_cantrip: true
   expect:
     error: "circle must have a done gate"
-
-- rule: CIRCLE-2
-  name: circle must have termination ward
-  # Same as LOOP-2 — tested above
 
 - rule: CIRCLE-3
   name: gate execution is synchronous from entity perspective
@@ -1358,12 +1344,6 @@
 # Chapter 7: Production
 # =============================================================================
 
-- rule: PROD-1
-  name: protocol does not alter entity behavior
-  # This is a design rule, not easily testable with I/O pairs.
-  # Implementations should verify this through integration tests.
-  skip: true
-
 - rule: PROD-2
   name: retried invocation appears as single turn
   setup:
@@ -1530,8 +1510,3 @@
   expect:
     logs_exclude: "sk-proj-very-secret"
     loom_export_exclude: "sk-proj-very-secret"
-
-- rule: PROD-9
-  name: stdio adapter documents healthy idle state and debug mode
-  # UX/documentation-oriented production requirement
-  skip: true

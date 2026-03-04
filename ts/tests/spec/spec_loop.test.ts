@@ -85,29 +85,17 @@ describe("LOOP-1: turns alternate between entity and circle", () => {
 // ── LOOP-2: cantrip without max_turns ward is invalid ──────────────
 
 describe("LOOP-2: cantrip without truncation ward is invalid", () => {
-  test("LOOP-2: throws if circle has no wards", () => {
-    const llm = makeLlm([]);
-    expect(() =>
-      cantrip({
-        llm: llm as any,
-        identity: { system_prompt: "test" },
-        circle: { gates: [doneGate], wards: [] } as any,
-      }),
-    ).toThrow(/ward/i);
+  test("LOOP-2: circle rejects empty wards (CIRCLE-2)", () => {
+    expect(() => Circle({ gates: [doneGate], wards: [] })).toThrow(/ward/i);
   });
 
-  test("LOOP-2: cantrip with require_done but no done gate throws via CANTRIP-3", () => {
-    const llm = makeLlm([]);
+  test("LOOP-2: circle rejects missing done gate (CIRCLE-1)", () => {
     const notDone = gate("Other", async () => "ok", {
       name: "other",
       schema: { type: "object", properties: {}, additionalProperties: false },
     });
     expect(() =>
-      cantrip({
-        llm: llm as any,
-        identity: { system_prompt: "test" },
-        circle: { gates: [notDone], wards: [{ max_turns: 10, require_done_tool: true }] } as any,
-      }),
+      Circle({ gates: [notDone], wards: [{ max_turns: 10, require_done_tool: true }] }),
     ).toThrow(/done/i);
   });
 });
