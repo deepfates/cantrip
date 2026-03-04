@@ -16,10 +16,6 @@ export type ChatGoogleOptions = {
   max_output_tokens?: number | null;
   config?: Record<string, unknown> | null;
   include_system_in_user?: boolean;
-  max_retries?: number;
-  retryable_status_codes?: number[];
-  retry_base_delay?: number;
-  retry_max_delay?: number;
   explicit_context_caching?: boolean;
   explicit_cache_ttl_seconds?: number | null;
 };
@@ -35,10 +31,6 @@ export class ChatGoogle implements BaseChatModel {
   max_output_tokens: number | null;
   config: Record<string, unknown> | null;
   include_system_in_user: boolean;
-  max_retries: number;
-  retryable_status_codes: number[];
-  retry_base_delay: number;
-  retry_max_delay: number;
   explicit_context_caching: boolean;
   explicit_cache_ttl_seconds: number | null;
 
@@ -49,18 +41,14 @@ export class ChatGoogle implements BaseChatModel {
     this.model = options.model;
     this.api_key = options.api_key ?? process.env.GOOGLE_API_KEY ?? null;
     this.base_url = options.base_url ?? "https://generativelanguage.googleapis.com/v1beta";
-    this.temperature = options.temperature ?? 0.5;
+    this.temperature = options.temperature ?? null;
     this.top_p = options.top_p ?? null;
     this.seed = options.seed ?? null;
     this.thinking_budget = options.thinking_budget ?? null;
-    this.max_output_tokens = options.max_output_tokens ?? 8096;
+    this.max_output_tokens = options.max_output_tokens ?? null;
     this.config = options.config ?? null;
     this.include_system_in_user = options.include_system_in_user ?? false;
-    this.max_retries = options.max_retries ?? 5;
-    this.retryable_status_codes = options.retryable_status_codes ?? [429, 500, 502, 503, 504];
-    this.retry_base_delay = options.retry_base_delay ?? 1.0;
-    this.retry_max_delay = options.retry_max_delay ?? 60.0;
-    this.explicit_context_caching = options.explicit_context_caching ?? true;
+    this.explicit_context_caching = options.explicit_context_caching ?? false;
     this.explicit_cache_ttl_seconds = options.explicit_cache_ttl_seconds ?? 3600;
   }
 
@@ -297,8 +285,6 @@ export class ChatGoogle implements BaseChatModel {
 
     if (this.thinking_budget !== null) {
       config.thinkingConfig = { thinkingBudget: this.thinking_budget };
-    } else if (this.thinking_budget === null && this.model.includes("gemini-2.5-flash")) {
-      config.thinkingConfig = { thinkingBudget: 0 };
     }
 
     const cachedContent = await this.createCachedContent(system_instruction, tools);
@@ -353,24 +339,6 @@ export class ChatGoogle implements BaseChatModel {
       return { content, tool_calls: toolCalls, usage, stop_reason: stopReason };
     };
 
-    for (let attempt = 0; attempt < this.max_retries; attempt += 1) {
-      try {
-        return await makeRequest();
-      } catch (err: any) {
-        const status = err?.status_code ?? err?.status ?? err?.response?.status ?? null;
-        const retryable = status && this.retryable_status_codes.includes(status);
-        if (retryable && attempt < this.max_retries - 1) {
-          const delay = Math.min(this.retry_base_delay * 2 ** attempt, this.retry_max_delay);
-          const jitter = Math.random() * delay * 0.1;
-          const totalDelay = delay + jitter;
-          await new Promise((r) => setTimeout(r, totalDelay * 1000));
-          continue;
-        }
-        if (err instanceof ModelProviderError) throw err;
-        throw new ModelProviderError(String(err?.message ?? err), status ?? 502, this.name);
-      }
-    }
-
-    throw new Error("Retry loop completed without return or exception");
+    return await makeRequest();
   }
 }

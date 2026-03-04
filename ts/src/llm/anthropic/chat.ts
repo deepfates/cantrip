@@ -36,9 +36,9 @@ export class ChatAnthropic implements BaseChatModel {
     this.api_key = options.api_key ?? process.env.ANTHROPIC_API_KEY ?? null;
     this.base_url = options.base_url ?? "https://api.anthropic.com";
     this.prompt_cache_beta =
-      options.prompt_cache_beta ?? "prompt-caching-2024-07-31";
+      options.prompt_cache_beta ?? null;
     this.max_cached_tool_definitions =
-      options.max_cached_tool_definitions ?? 3;
+      options.max_cached_tool_definitions ?? 0;
   }
 
   get provider(): string {

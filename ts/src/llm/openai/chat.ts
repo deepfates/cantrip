@@ -5,7 +5,7 @@ import type { ChatInvokeCompletion, ChatInvokeUsage } from "../views";
 import { OpenAIMessageSerializer } from "./serializer";
 
 export type ReasoningEffort = "low" | "medium" | "high";
-export type ServiceTier = "auto" | "default" | "flex" | "priority" | "scale";
+export type ServiceTier = "auto" | "default" | "flex" | "priority";
 
 export type ChatOpenAIOptions = {
   model: string;
@@ -22,8 +22,6 @@ export type ChatOpenAIOptions = {
   service_tier?: ServiceTier | null;
   top_p?: number | null;
   parallel_tool_calls?: boolean;
-  prompt_cache_key?: string | null;
-  prompt_cache_retention?: "in_memory" | "24h" | null;
   max_completion_tokens?: number | null;
 };
 
@@ -37,8 +35,6 @@ export class ChatOpenAI implements BaseChatModel {
   service_tier: ServiceTier | null;
   top_p: number | null;
   parallel_tool_calls: boolean;
-  prompt_cache_key: string | null;
-  prompt_cache_retention: "in_memory" | "24h" | null;
   api_key: string | null;
   base_url: string;
   headers: Record<string, string>;
@@ -55,8 +51,6 @@ export class ChatOpenAI implements BaseChatModel {
     this.service_tier = options.service_tier ?? null;
     this.top_p = options.top_p ?? null;
     this.parallel_tool_calls = options.parallel_tool_calls ?? true;
-    this.prompt_cache_key = options.prompt_cache_key ?? null;
-    this.prompt_cache_retention = options.prompt_cache_retention ?? null;
     const envApiKey = process.env.OPENAI_API_KEY ?? null;
     if (options.api_key === undefined) {
       this.api_key = envApiKey;
@@ -68,7 +62,7 @@ export class ChatOpenAI implements BaseChatModel {
     this.base_url = options.base_url ?? "https://api.openai.com/v1";
     this.headers = options.headers ?? {};
     this.require_api_key = options.require_api_key ?? true;
-    this.max_completion_tokens = options.max_completion_tokens ?? 4096;
+    this.max_completion_tokens = options.max_completion_tokens ?? null;
   }
 
   get provider(): string {
@@ -77,10 +71,6 @@ export class ChatOpenAI implements BaseChatModel {
 
   get name(): string {
     return String(this.model);
-  }
-
-  private resolvePromptCacheRetention(): "in_memory" | "24h" | null {
-    return this.prompt_cache_retention;
   }
 
   private makeStrictSchema(
@@ -115,7 +105,8 @@ export class ChatOpenAI implements BaseChatModel {
       if (copy.type) {
         copy.type = Array.isArray(copy.type) ? copy.type : [copy.type, "null"];
       } else if (!copy.anyOf) {
-        copy.anyOf = [copy, { type: "null" }];
+        const original = JSON.parse(JSON.stringify(copy));
+        return { anyOf: [original, { type: "null" }] };
       }
     }
 
@@ -135,7 +126,7 @@ export class ChatOpenAI implements BaseChatModel {
           name: tool.name,
           description: tool.description,
           parameters: params,
-          strict: tool.strict ?? true,
+          strict: tool.strict ?? false,
         },
       };
     });
@@ -223,23 +214,18 @@ export class ChatOpenAI implements BaseChatModel {
     if (this.service_tier !== null)
       modelParams.service_tier = this.service_tier;
 
-    const extraBody: Record<string, unknown> = {};
-    if (this.prompt_cache_key) {
-      extraBody.prompt_cache_key = this.prompt_cache_key;
-      const retention = this.resolvePromptCacheRetention();
-      if (retention) extraBody.prompt_cache_retention = retention;
-    }
-    if (Object.keys(extraBody).length) modelParams.extra_body = extraBody;
-
     if (this.reasoning) {
       modelParams.reasoning_effort = this.reasoning_effort;
       delete modelParams.temperature;
       delete modelParams.frequency_penalty;
+      delete modelParams.top_p;
     }
 
     if (tools && tools.length) {
       modelParams.tools = this.serializeTools(tools);
-      modelParams.parallel_tool_calls = this.parallel_tool_calls;
+      if (!this.reasoning) {
+        modelParams.parallel_tool_calls = this.parallel_tool_calls;
+      }
       const mappedChoice = this.getToolChoice(tool_choice ?? "auto", tools);
       if (mappedChoice !== null) modelParams.tool_choice = mappedChoice;
     }
