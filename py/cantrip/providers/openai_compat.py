@@ -51,6 +51,7 @@ class OpenAICompatLLM(LLM):
                     "type": "function",
                     "function": {
                         "name": t["name"],
+                        "description": t.get("description", ""),
                         "parameters": t.get("parameters") or {"type": "object"},
                     },
                 }
@@ -70,7 +71,7 @@ class OpenAICompatLLM(LLM):
             resp = requests.post(
                 f"{self.base_url}/chat/completions",
                 headers=headers,
-                data=json.dumps(payload),
+                json=payload,
                 timeout=self.timeout_s,
             )
         except requests.exceptions.Timeout as e:

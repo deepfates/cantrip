@@ -89,6 +89,7 @@ defmodule Cantrip.LLMs.OpenAICompatible do
         type: "function",
         function: %{
           name: tool[:name] || tool["name"],
+          description: tool[:description] || tool["description"] || "",
           parameters:
             tool[:parameters] || tool["parameters"] || %{type: "object", properties: %{}}
         }

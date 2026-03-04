@@ -162,6 +162,7 @@ defmodule Cantrip.LLMs.Gemini do
     Enum.map(tools, fn tool ->
       %{
         name: tool[:name] || tool["name"],
+        description: tool[:description] || tool["description"] || "",
         parameters: tool[:parameters] || tool["parameters"] || %{type: "object", properties: %{}}
       }
     end)

@@ -285,7 +285,9 @@
       (System/getenv "OPENAI_API_KEY")))
 
 (defn- openai-model [llm]
-  (or (:model llm) "gpt-4o-mini"))
+  (or (:model llm)
+      (throw (ex-info "llm :model is required"
+                      {:llm (dissoc llm :api-key :api_key)}))))
 
 (defn- message->openai
   "Converts a cantrip message to OpenAI wire format."
@@ -320,12 +322,14 @@
   "Converts a cantrip tool definition to OpenAI function-calling format."
   [tool]
   (let [tool-name (or (:name tool) (when (keyword? tool) (name tool)) (str tool))
+        desc (or (:description tool) "")
         params (or (:parameters tool) {})
         schema (if (and (map? params) (contains? params "type"))
                  params
                  (merge {"type" "object"} params))]
     {"type" "function"
      "function" {"name" tool-name
+                 "description" desc
                  "parameters" schema}}))
 
 (defn- tool-choice->openai [tc]

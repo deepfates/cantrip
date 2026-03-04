@@ -81,3 +81,15 @@
     (is (= 1 (count @invocations)))
     (is (= :auto (-> @invocations first :tool-choice)))
     (is (= [{:name "done"}] (-> @invocations first :tools)))))
+
+(deftest tool-description-is-serialized
+  (let [tool {:name "echo" :description "Echo back the input" :parameters {"type" "object"}}
+        result (#'cantrip.llm/tool->openai tool)]
+    (is (= "Echo back the input"
+           (get-in result ["function" "description"]))
+        "Tool description must be included in serialized output")))
+
+(deftest openai-model-required
+  (is (thrown? clojure.lang.ExceptionInfo
+               (#'cantrip.llm/openai-model {}))
+      "Must throw when :model is not provided"))

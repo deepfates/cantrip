@@ -149,6 +149,7 @@ defmodule Cantrip.LLMs.Anthropic do
     Enum.map(tools, fn tool ->
       %{
         name: tool[:name] || tool["name"],
+        description: tool[:description] || tool["description"] || "",
         input_schema:
           tool[:parameters] || tool["parameters"] || %{type: "object", properties: %{}}
       }

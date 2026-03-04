@@ -104,3 +104,45 @@ def test_openai_compat_raises_provider_transport_error(
 
     with pytest.raises(CantripError, match=r"provider_transport_error:conn reset"):
         c.query(messages=[{"role": "user", "content": "x"}], tools=[], tool_choice=None)
+
+
+def test_tool_description_is_sent(monkeypatch) -> None:
+    """Tool descriptions must be included in the API payload."""
+    captured: dict = {}
+
+    class FakeResp:
+        status_code = 200
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "ok",
+                            "tool_calls": None,
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+
+    def fake_post(url, *, headers=None, json=None, timeout=None):
+        captured["json"] = json
+        return FakeResp()
+
+    import requests
+
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    from cantrip.providers.openai_compat import OpenAICompatLLM
+
+    llm = OpenAICompatLLM(model="test", base_url="http://fake", api_key="k")
+    tools = [{"name": "echo", "description": "Echo back the input", "parameters": {"type": "object"}}]
+    llm.query(messages=[{"role": "user", "content": "hi"}], tools=tools, tool_choice="auto")
+
+    sent_tools = captured["json"]["tools"]
+    assert len(sent_tools) == 1
+    func = sent_tools[0]["function"]
+    assert "description" in func, "Tool description must be sent to the API"
+    assert func["description"] == "Echo back the input"
