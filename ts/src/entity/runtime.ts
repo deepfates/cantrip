@@ -182,7 +182,7 @@ export async function invokeLLMWithRetries(options: {
   } = options;
   let lastError: any = null;
 
-  for (let attempt = 0; attempt < llm_max_retries; attempt += 1) {
+  for (let attempt = 0; attempt <= llm_max_retries; attempt += 1) {
     try {
       const response = await invokeModel(
         llm,
@@ -212,7 +212,7 @@ export async function invokeLLMWithRetries(options: {
 
       if (
         (retryable || isTimeout || isConnection) &&
-        attempt < llm_max_retries - 1
+        attempt < llm_max_retries
       ) {
         const delay = Math.min(
           llm_retry_base_delay * 2 ** attempt,

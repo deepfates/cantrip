@@ -98,5 +98,7 @@ describe("ChatOpenAI request shaping", () => {
     const llm = new ChatOpenAI({ model: "gpt-5", require_api_key: false });
     await llm.query([{ role: "user", content: "hi" } as any]);
     expect(lastRequestBody).not.toHaveProperty("extra_body");
+    expect(lastRequestBody).not.toHaveProperty("prompt_cache_key");
+    expect(lastRequestBody).not.toHaveProperty("prompt_cache_retention");
   });
 });
