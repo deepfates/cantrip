@@ -13,6 +13,7 @@ from typing import Any
 
 from cantrip.browser import browser_driver_from_name
 from cantrip.code_runner import (
+    InProcessPythonRunnerFactory,
     SubprocessPythonRunnerFactory,
     code_runner_from_name,
 )
@@ -431,8 +432,16 @@ class Cantrip:
                     child_llm = self.child_llm
 
                 child_llm = child_llm or self.llm
+                # Use request's system_prompt if provided; otherwise give children
+                # a generic prompt so they don't inherit parent's delegation instructions
+                # (which reference gates unavailable at lower depths).
+                child_system_prompt = req.get("system_prompt") or (
+                    "You are a helpful assistant. Complete the task and return your answer. "
+                    "If you have a code tool, write Python code that calls done(answer) with the result. "
+                    "If you have a done tool, call done with your answer."
+                )
                 child_call = Identity(
-                    system_prompt=self.identity.system_prompt,
+                    system_prompt=child_system_prompt,
                     temperature=self.identity.temperature,
                     require_done_tool=self.identity.require_done_tool
                     or bool(req.get("require_done_tool", False)),
@@ -654,15 +663,26 @@ class Cantrip:
                 runner = (
                     code_dep.get("runner")
                     if isinstance(code_dep, dict) and code_dep.get("runner")
-                    else "mini"
+                    else "inprocess"
+                )
+                timeout_s = (
+                    float(code_dep.get("timeout_s"))
+                    if isinstance(code_dep, dict) and code_dep.get("timeout_s") is not None
+                    else None
                 )
                 if (
                     str(runner) in {"python-subprocess", "subprocess-python", "python"}
-                    and isinstance(code_dep, dict)
-                    and code_dep.get("timeout_s") is not None
+                    and timeout_s is not None
                 ):
                     runtime = SubprocessPythonRunnerFactory(
-                        timeout_s=float(code_dep.get("timeout_s"))
+                        timeout_s=timeout_s
+                    ).create_executor()
+                elif (
+                    str(runner) in {"inprocess", "inprocess-python", "python-inprocess"}
+                    and timeout_s is not None
+                ):
+                    runtime = InProcessPythonRunnerFactory(
+                        timeout_s=timeout_s
                     ).create_executor()
                 else:
                     runtime = code_runner_from_name(str(runner)).create_executor()
@@ -717,6 +737,8 @@ class Cantrip:
             messages = self._context_messages(thread)
             tools = self._make_tools(self.circle)
             tool_choice = medium.tool_choice(self.identity.tool_choice)
+            if self.identity.require_done_tool and tool_choice is None:
+                tool_choice = "required"
 
             try:
                 response = self._query_with_retry(

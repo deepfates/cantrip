@@ -5,7 +5,7 @@ from cantrip.builders import build_cantrip_from_env
 from cantrip.cli_runner import format_cli_json, run_cli
 from cantrip.entity import Entity
 from cantrip.errors import CantripError
-from cantrip.executor import MiniCodeExecutor, SubprocessPythonExecutor
+from cantrip.executor import InProcessPythonExecutor, MiniCodeExecutor, SubprocessPythonExecutor
 from cantrip.http_router import CantripHTTPRouter
 from cantrip.loom import InMemoryLoomStore, Loom, SQLiteLoomStore
 from cantrip.models import Identity, Circle
@@ -23,6 +23,7 @@ __all__ = [
     "LLM",
     "FakeLLM",
     "Loom",
+    "InProcessPythonExecutor",
     "MiniCodeExecutor",
     "InMemoryLoomStore",
     "SQLiteLoomStore",

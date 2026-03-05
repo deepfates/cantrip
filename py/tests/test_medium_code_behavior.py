@@ -10,7 +10,7 @@ def test_code_circle_projects_single_code_tool_and_required_choice() -> None:
         {
             "record_inputs": True,
             "responses": [
-                {"code": "done('ok');"},
+                {"code": "done('ok')"},
             ],
         }
     )
@@ -32,11 +32,11 @@ def test_call_entity_gate_name_supported_in_code_circle() -> None:
     parent = FakeLLM(
         {
             "responses": [
-                {"code": "var r = call_entity({intent: 'child'}); done(r);"},
+                {"code": 'r = call_entity({"intent": "child"})\ndone(r)'},
             ]
         }
     )
-    child = FakeLLM({"responses": [{"code": "done('child-ok');"}]})
+    child = FakeLLM({"responses": [{"code": "done('child-ok')"}]})
     cantrip = Cantrip(
         llm=parent,
         child_llm=child,
@@ -55,8 +55,8 @@ def test_call_entity_batch_runs_children_concurrently() -> None:
             "responses": [
                 {
                     "code": (
-                        "var r = call_entity_batch([{intent:'a'},{intent:'b'},{intent:'c'}]);"
-                        'done(r.join(","));'
+                        'r = call_entity_batch([{"intent":"a"},{"intent":"b"},{"intent":"c"}])\n'
+                        'done(",".join(str(x) for x in r))'
                     )
                 }
             ]
@@ -113,7 +113,7 @@ def test_code_circle_accepts_code_function_tool_calls() -> None:
     llm = FakeLLM(
         {
             "responses": [
-                {"tool_calls": [{"gate": "code", "args": {"code": "done('ok');"}}]},
+                {"tool_calls": [{"gate": "code", "args": {"code": "done('ok')"}}]},
             ]
         }
     )

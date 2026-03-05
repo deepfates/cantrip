@@ -10,8 +10,8 @@ def test_call_entity_can_override_child_medium_to_browser() -> None:
             "responses": [
                 {
                     "code": (
-                        "var r = call_entity({intent:'child', medium:'browser'});"
-                        "done(r);"
+                        'r = call_entity({"intent": "child", "medium": "browser"})\n'
+                        "done(r)"
                     )
                 }
             ]
@@ -164,12 +164,12 @@ def test_call_entity_batch_supports_mixed_child_medium_options() -> None:
             "responses": [
                 {
                     "code": (
-                        "var out = call_entity_batch(["
-                        "{intent:'a'},"
-                        "{intent:'b', medium:'code', depends:{code:{runner:'python-subprocess'}}},"
-                        "{intent:'c', medium:'browser', depends:{browser:{driver:'memory'}}}"
-                        "]);"
-                        'done(out.join(","));'
+                        "out = call_entity_batch([\n"
+                        '  {"intent": "a"},\n'
+                        '  {"intent": "b", "medium": "code", "depends": {"code": {"runner": "python-subprocess"}}},\n'
+                        '  {"intent": "c", "medium": "browser", "depends": {"browser": {"driver": "memory"}}}\n'
+                        "])\n"
+                        'done(",".join(str(x) for x in out))'
                     )
                 }
             ]

@@ -4,11 +4,10 @@ import json
 from typing import Any
 
 from cantrip import Cantrip, Circle, FakeLLM, Identity
-from cantrip.providers.base import LLM
 
 
-def run(llm: LLM | None = None) -> dict[str, Any]:
-    _ = llm
+def run(mode: str | None = None) -> dict[str, Any]:
+    _ = mode
     # Pattern 2: gates define the action space available to the agent.
     # We construct a circle with echo + done, then inspect what gates are exposed.
     circle = Circle(

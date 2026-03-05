@@ -4,11 +4,10 @@ import json
 from typing import Any
 
 from cantrip import Cantrip, CantripError, Circle, FakeLLM, Identity
-from cantrip.providers.base import LLM
 
 
-def run(llm: LLM | None = None) -> dict[str, Any]:
-    _ = llm
+def run(mode: str | None = None) -> dict[str, Any]:
+    _ = mode
     # Pattern 3: circle + wards assembled explicitly.
     valid_circle = Circle(
         gates=[{"name": "echo"}, "done"],

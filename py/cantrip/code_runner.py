@@ -3,7 +3,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from cantrip.errors import CantripError
-from cantrip.executor import CodeExecutor, MiniCodeExecutor, SubprocessPythonExecutor
+from cantrip.executor import (
+    CodeExecutor,
+    InProcessPythonExecutor,
+    MiniCodeExecutor,
+    SubprocessPythonExecutor,
+)
 
 
 class CodeRunnerFactory(ABC):
@@ -33,6 +38,14 @@ class MiniCodeRunnerFactory(CodeRunnerFactory):
         return MiniCodeExecutor()
 
 
+class InProcessPythonRunnerFactory(CodeRunnerFactory):
+    def __init__(self, timeout_s: float = 5.0) -> None:
+        self.timeout_s = timeout_s
+
+    def create_executor(self) -> CodeExecutor:
+        return InProcessPythonExecutor(timeout_s=self.timeout_s)
+
+
 class SubprocessPythonRunnerFactory(CodeRunnerFactory):
     def __init__(self, timeout_s: float = 5.0) -> None:
         self.timeout_s = timeout_s
@@ -42,7 +55,9 @@ class SubprocessPythonRunnerFactory(CodeRunnerFactory):
 
 
 def code_runner_from_name(name: str | None) -> CodeRunnerFactory:
-    key = (name or "mini").strip().lower()
+    key = (name or "inprocess").strip().lower()
+    if key in {"inprocess", "inprocess-python", "python-inprocess"}:
+        return InProcessPythonRunnerFactory()
     if key in {"mini", "mini-js", "minicode"}:
         return MiniCodeRunnerFactory()
     if key in {"python", "python-subprocess", "subprocess-python"}:

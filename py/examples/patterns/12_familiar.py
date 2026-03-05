@@ -16,75 +16,96 @@ from cantrip import (
     OpenAICompatLLM,
     SQLiteLoomStore,
 )
+from cantrip.env import load_dotenv_if_present
 from cantrip.providers.base import LLM
 
+# Simplified code medium delegation: children inherit parent's medium (code).
+# No need to specify llm/medium in call_entity args.
 SCRIPTED_RESPONSES: list[dict[str, Any]] = [
     {
-        "code": (
-            "var a = call_entity({intent: 'Analyze metrics in code', llm: 'child_code', medium: 'code', wards: [{max_turns: 2}]});"
-            "var b = call_entity({intent: 'Write narrative summary', llm: 'child_tool', medium: 'tool', wards: [{max_turns: 2}]});"
-            "done(a + ' | ' + b);"
-        )
+        "tool_calls": [{
+            "gate": "code",
+            "args": {
+                "code": (
+                    'a = call_entity({"intent": "Compute 2+3 and call done(answer)"})\n'
+                    'b = call_entity({"intent": "What is the capital of Japan? Call done(answer)"})\n'
+                    "done(str(a) + ' | ' + str(b))"
+                )
+            },
+        }]
     },
     {
-        "code": (
-            "var a = call_entity({intent: 'Re-check metrics in code', llm: 'child_code', medium: 'code', wards: [{max_turns: 2}]});"
-            "var b = call_entity({intent: 'Re-check narrative summary', llm: 'child_tool', medium: 'tool', wards: [{max_turns: 2}]});"
-            "done(a + ' | ' + b);"
-        )
+        "tool_calls": [{
+            "gate": "code",
+            "args": {
+                "code": (
+                    'a = call_entity({"intent": "Compute 10*5 and call done(answer)"})\n'
+                    'b = call_entity({"intent": "What is the capital of Germany? Call done(answer)"})\n'
+                    "done(str(a) + ' | ' + str(b))"
+                )
+            },
+        }]
     },
 ]
 
-CHILD_CODE_RESPONSES: list[dict[str, Any]] = [
-    {"code": "done('code-child: trend computed');"},
-    {"code": "done('code-child: trend re-computed');"},
+# Children also use code medium (inherited), so they respond with code tool calls.
+CHILD_RESPONSES: list[dict[str, Any]] = [
+    {"tool_calls": [{"gate": "code", "args": {"code": "done('5')"}}]},
+    {"tool_calls": [{"gate": "code", "args": {"code": "done('Tokyo')"}}]},
+    {"tool_calls": [{"gate": "code", "args": {"code": "done('50')"}}]},
+    {"tool_calls": [{"gate": "code", "args": {"code": "done('Berlin')"}}]},
 ]
 
-CHILD_TOOL_RESPONSES: list[dict[str, Any]] = [
-    {"tool_calls": [{"gate": "done", "args": {"answer": "tool-child: summary drafted"}}]},
-    {"tool_calls": [{"gate": "done", "args": {"answer": "tool-child: summary refined"}}]},
-]
 
-
-def _resolve_llm(llm: LLM | None) -> tuple[LLM, bool]:
-    if llm is not None:
-        return llm, True
-    try:
-        resolved = OpenAICompatLLM(
-            model=os.environ["CANTRIP_OPENAI_MODEL"],
-            base_url=os.environ["CANTRIP_OPENAI_BASE_URL"],
-            api_key=os.getenv("CANTRIP_OPENAI_API_KEY"),
-        )
-        return resolved, True
-    except Exception:
+def _resolve_llm(mode: str | None = None) -> tuple[LLM, bool]:
+    if mode == "scripted":
         return FakeLLM({"responses": SCRIPTED_RESPONSES}), False
+    load_dotenv_if_present(str(Path(__file__).resolve().parents[2] / ".env"))
+    model = os.environ.get("OPENAI_MODEL") or os.environ.get("CANTRIP_OPENAI_MODEL")
+    base_url = os.environ.get("OPENAI_BASE_URL", os.environ.get("CANTRIP_OPENAI_BASE_URL", "https://api.openai.com/v1"))
+    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("CANTRIP_OPENAI_API_KEY")
+    if not model:
+        raise RuntimeError("Missing OPENAI_MODEL (or CANTRIP_OPENAI_MODEL). Set it in .env or environment.")
+    if not api_key:
+        raise RuntimeError("Missing OPENAI_API_KEY (or CANTRIP_OPENAI_API_KEY). Set it in .env or environment.")
+    return OpenAICompatLLM(model=model, base_url=base_url, api_key=api_key), True
 
 
-def run(llm: LLM | None = None) -> dict[str, Any]:
-    # Pattern 12: familiar coordinates child cantrips and keeps a persistent loom.
-    parent_llm, using_real = _resolve_llm(llm)
+def run(mode: str | None = None) -> dict[str, Any]:
+    # Pattern 12: familiar coordinates child cantrips and keeps a persistent loom (FAM-1).
+    parent_llm, using_real = _resolve_llm(mode)
 
     if using_real:
-        child_code_llm: LLM = parent_llm
-        child_tool_llm: LLM = parent_llm
+        child_llm: LLM = parent_llm
     else:
-        child_code_llm = FakeLLM({"responses": CHILD_CODE_RESPONSES})
-        child_tool_llm = FakeLLM({"responses": CHILD_TOOL_RESPONSES})
+        child_llm = FakeLLM({"responses": CHILD_RESPONSES})
 
     loom_path = Path(tempfile.mkdtemp(prefix="cantrip-familiar-")) / "loom.db"
     loom = Loom(store=SQLiteLoomStore(loom_path))
 
     familiar_spell = Cantrip(
         llm=parent_llm,
-        llms={"child_code": child_code_llm, "child_tool": child_tool_llm},
+        child_llm=child_llm,
         circle=Circle(
             medium="code",
             gates=["done", "call_entity"],
             wards=[{"max_turns": 6}, {"max_depth": 2}],
         ),
+        medium_depends={"code": {"timeout_s": 60}},
         identity=Identity(
             system_prompt=(
-                "You are a coordinator. Delegate to child entities with call_entity and finalize with done(answer)."
+                "You are a coordinator that delegates tasks to child entities.\n"
+                "Use the code tool to write Python. Available functions:\n"
+                "  done(answer)  -- finish and return your final answer\n"
+                "  call_entity(config_dict)  -- delegate a task to a child entity\n"
+                "Each call_entity takes a dict with an 'intent' key describing what the child should do.\n"
+                "The child will return its result as a string.\n"
+                "After all children return, combine results and call done().\n"
+                "Example:\n"
+                '  result1 = call_entity({"intent": "What is 2+2?"})\n'
+                '  result2 = call_entity({"intent": "Name the largest planet"})\n'
+                "  done(result1 + ' | ' + result2)\n"
+                "IMPORTANT: Replace the example intents with the ACTUAL tasks from the user's request."
             ),
             require_done_tool=True,
         ),
@@ -92,8 +113,14 @@ def run(llm: LLM | None = None) -> dict[str, Any]:
     )
 
     familiar: Entity = familiar_spell.summon()
-    first = familiar.send("Analyze each category and produce a report.")
-    second = familiar.send("Run a second pass and refine the report.")
+    first = familiar.send(
+        "Delegate two tasks to child entities: one to compute 2+3 "
+        "and one to find the capital of Japan. Combine results with done()."
+    )
+    second = familiar.send(
+        "Delegate two more tasks: compute 10*5 "
+        "and find the capital of Germany. Combine results with done()."
+    )
 
     thread_ids = [t.id for t in loom.list_threads()]
     reloaded = Loom(store=SQLiteLoomStore(loom_path))
@@ -106,8 +133,8 @@ def run(llm: LLM | None = None) -> dict[str, Any]:
         "loom_threads": len(loom.list_threads()),
         "entity_turns": len(familiar.turns),
         "persisted_loom": persisted_any,
-        "child_code_calls": len(getattr(child_code_llm, "invocations", [])),
-        "child_tool_calls": len(getattr(child_tool_llm, "invocations", [])),
+        "child_code_calls": len(getattr(child_llm, "invocations", [])),
+        "child_tool_calls": 0,  # No tool-medium children in simplified version
     }
 
 

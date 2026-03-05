@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any
 
-from cantrip import Cantrip, Circle, FakeLLM, Identity, OpenAICompatLLM
-from cantrip.providers.base import LLM
+from cantrip import Cantrip, Circle, FakeLLM, Identity
+
+# Folding is a structural feature — it compresses older turns to keep context small.
+# Demonstrated with FakeLLM + record_inputs regardless of mode, because the point
+# is to observe folding markers in the context window, not LLM behavior.
 
 SCRIPTED_RESPONSES: list[dict[str, Any]] = [
     {"tool_calls": [{"gate": "echo", "args": {"text": "turn-1"}}]},
@@ -15,33 +17,24 @@ SCRIPTED_RESPONSES: list[dict[str, Any]] = [
 ]
 
 
-def _resolve_llm(llm: LLM | None) -> LLM:
-    if llm is not None:
-        return llm
-    try:
-        return OpenAICompatLLM(
-            model=os.environ["CANTRIP_OPENAI_MODEL"],
-            base_url=os.environ["CANTRIP_OPENAI_BASE_URL"],
-            api_key=os.getenv("CANTRIP_OPENAI_API_KEY"),
-        )
-    except Exception:
-        return FakeLLM({"responses": SCRIPTED_RESPONSES, "record_inputs": True})
-
-
-def run(llm: LLM | None = None) -> dict[str, Any]:
-    # Pattern 8: long threads trigger folding of old context.
-    active_llm = _resolve_llm(llm)
+def run(mode: str | None = None) -> dict[str, Any]:
+    # Pattern 8: long threads trigger folding of old context (FOLD-1).
+    # Folding is structural — always uses FakeLLM with record_inputs to inspect context.
+    active_llm = FakeLLM({"responses": SCRIPTED_RESPONSES, "record_inputs": True})
     spell = Cantrip(
         llm=active_llm,
         identity=Identity(
-            system_prompt="Use echo for intermediate notes, done when complete."
+            system_prompt=(
+                "You have echo(text) for notes and done(answer) to finish. "
+                "Use echo for intermediate observations, then done when complete."
+            )
         ),
         circle=Circle(gates=["done", "echo"], wards=[{"max_turns": 8}]),
         folding={"trigger_after_turns": 2},
     )
 
     result, thread = spell.cast_with_thread(
-        "Review each region and then summarize the full trend."
+        "Count to three, echoing each number with echo(text), then call done('counting complete')."
     )
 
     folded_seen = False

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -24,6 +25,154 @@ class CodeExecutor:
         self, source: str, call_gate: Callable[[str, Any], Any]
     ) -> CodeExecResult:
         raise NotImplementedError
+
+
+# Safe builtins allowlist for InProcessPythonExecutor
+_SAFE_BUILTINS: dict[str, Any] = {
+    "len": len,
+    "range": range,
+    "str": str,
+    "int": int,
+    "float": float,
+    "list": list,
+    "dict": dict,
+    "tuple": tuple,
+    "set": set,
+    "bool": bool,
+    "enumerate": enumerate,
+    "zip": zip,
+    "map": map,
+    "filter": filter,
+    "sorted": sorted,
+    "min": min,
+    "max": max,
+    "sum": sum,
+    "abs": abs,
+    "round": round,
+    "isinstance": isinstance,
+    "type": type,
+    "hasattr": hasattr,
+    "getattr": getattr,
+    "setattr": setattr,
+    "repr": repr,
+    "reversed": reversed,
+    "any": any,
+    "all": all,
+    "None": None,
+    "True": True,
+    "False": False,
+    "Exception": Exception,
+    "RuntimeError": RuntimeError,
+    "ValueError": ValueError,
+    "TypeError": TypeError,
+    "KeyError": KeyError,
+    "IndexError": IndexError,
+    "NameError": NameError,
+    "AttributeError": AttributeError,
+    "__build_class__": __build_class__,
+}
+
+
+class _DoneSignal(Exception):
+    """Internal signal raised when done() is called to stop execution."""
+
+    pass
+
+
+class InProcessPythonExecutor(CodeExecutor):
+    """Runs entity-written Python via exec() with gate functions injected.
+
+    Not an isolation boundary; use SubprocessPythonExecutor for sandboxing.
+    Available functions in entity code: done(answer), call_entity(req_dict),
+    call_entity_batch(req_list). Variables persist across turns via self.env.
+    """
+
+    def __init__(self, timeout_s: float = 5.0) -> None:
+        self.env: dict[str, Any] = {}
+        self.timeout_s = timeout_s
+
+    def execute(
+        self, source: str, call_gate: Callable[[str, Any], Any]
+    ) -> CodeExecResult:
+        obs: list[Any] = []
+        result = None
+        is_done = False
+
+        def done(answer: Any) -> Any:
+            nonlocal result, is_done
+            rec = call_gate("done", {"answer": answer})
+            obs.append(rec)
+            if rec.is_error:
+                raise RuntimeError(rec.content)
+            result = rec.result
+            is_done = True
+            raise _DoneSignal()
+
+        def call_entity(req: dict[str, Any]) -> Any:
+            rec = call_gate("call_entity", req)
+            obs.append(rec)
+            if rec.is_error:
+                raise RuntimeError(rec.content)
+            return rec.result
+
+        def call_entity_batch(reqs: list[dict[str, Any]]) -> Any:
+            rec = call_gate("call_entity_batch", reqs)
+            obs.append(rec)
+            if rec.is_error:
+                raise RuntimeError(rec.content)
+            return rec.result
+
+        # Capture print() output
+        captured_print = io.StringIO()
+
+        def safe_print(*args: Any, **kwargs: Any) -> None:
+            kwargs.pop("file", None)
+            print(*args, file=captured_print, **kwargs)
+
+        namespace: dict[str, Any] = {
+            **self.env,
+            "done": done,
+            "call_entity": call_entity,
+            "call_entity_batch": call_entity_batch,
+            "print": safe_print,
+        }
+
+        safe_builtins = dict(_SAFE_BUILTINS)
+        safe_builtins["print"] = safe_print
+        namespace["__builtins__"] = safe_builtins
+
+        error_holder: dict[str, BaseException] = {}
+        finished = threading.Event()
+
+        def _run() -> None:
+            try:
+                exec(source, namespace)  # noqa: S102
+            except _DoneSignal:
+                pass
+            except BaseException as e:  # noqa: BLE001
+                error_holder["error"] = e
+            finally:
+                finished.set()
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+        thread.join(timeout=self.timeout_s)
+
+        if not finished.is_set():
+            raise RuntimeError(
+                f"code execution timed out after {self.timeout_s:.1f}s"
+            )
+
+        if "error" in error_holder:
+            raise error_holder["error"]  # type: ignore[misc]
+
+        # Persist variables for next turn (exclude injected functions)
+        _injected = {"done", "call_entity", "call_entity_batch", "print", "__builtins__"}
+        for k, v in namespace.items():
+            if k not in _injected:
+                self.env[k] = v
+
+        return CodeExecResult(observation=obs, result=result, done=is_done)
 
 
 class MiniCodeExecutor(CodeExecutor):

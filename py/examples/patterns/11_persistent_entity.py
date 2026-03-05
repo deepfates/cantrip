@@ -2,42 +2,51 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 from cantrip import Cantrip, Circle, Entity, FakeLLM, Identity, OpenAICompatLLM
+from cantrip.env import load_dotenv_if_present
 from cantrip.providers.base import LLM
 
 SCRIPTED_RESPONSES: list[dict[str, Any]] = [
-    {"tool_calls": [{"gate": "done", "args": {"answer": "Initial anomaly scan complete."}}]},
-    {"tool_calls": [{"gate": "done", "args": {"answer": "Follow-up used prior anomaly context."}}]},
+    {"tool_calls": [{"gate": "done", "args": {"answer": "1) No atmosphere, 2) 1/6 Earth gravity, 3) Formed from giant impact."}}]},
+    {"tool_calls": [{"gate": "done", "args": {"answer": "The giant impact origin is most surprising because it implies the Moon is made of Earth material."}}]},
 ]
 
 
-def _resolve_llm(llm: LLM | None) -> LLM:
-    if llm is not None:
-        return llm
-    try:
-        return OpenAICompatLLM(
-            model=os.environ["CANTRIP_OPENAI_MODEL"],
-            base_url=os.environ["CANTRIP_OPENAI_BASE_URL"],
-            api_key=os.getenv("CANTRIP_OPENAI_API_KEY"),
-        )
-    except Exception:
+def _resolve_llm(mode: str | None = None) -> LLM:
+    if mode == "scripted":
         return FakeLLM({"responses": SCRIPTED_RESPONSES})
+    load_dotenv_if_present(str(Path(__file__).resolve().parents[2] / ".env"))
+    model = os.environ.get("OPENAI_MODEL") or os.environ.get("CANTRIP_OPENAI_MODEL")
+    base_url = os.environ.get("OPENAI_BASE_URL", os.environ.get("CANTRIP_OPENAI_BASE_URL", "https://api.openai.com/v1"))
+    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("CANTRIP_OPENAI_API_KEY")
+    if not model:
+        raise RuntimeError("Missing OPENAI_MODEL (or CANTRIP_OPENAI_MODEL). Set it in .env or environment.")
+    if not api_key:
+        raise RuntimeError("Missing OPENAI_API_KEY (or CANTRIP_OPENAI_API_KEY). Set it in .env or environment.")
+    return OpenAICompatLLM(model=model, base_url=base_url, api_key=api_key)
 
 
-def run(llm: LLM | None = None) -> dict[str, Any]:
+def run(mode: str | None = None) -> dict[str, Any]:
     # Pattern 11: summon once, send repeatedly, state accumulates.
-    active_llm = _resolve_llm(llm)
+    active_llm = _resolve_llm(mode)
     spell = Cantrip(
         llm=active_llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 3}]),
-        identity=Identity(system_prompt="Track prior answers and return concise updates."),
+        identity=Identity(
+            system_prompt=(
+                "You are a helpful assistant. Answer questions concisely. "
+                "You have one tool: done(answer). Always call done(answer) with your response. "
+                "Remember context from previous exchanges."
+            )
+        ),
     )
 
     entity: Entity = spell.summon()
-    first = entity.send("Inspect category A and list anomalies.")
-    second = entity.send("Now prioritize the anomalies you already found.")
+    first = entity.send("List 3 interesting facts about the Moon. Call done(answer).")
+    second = entity.send("Based on your previous answer, which fact is most surprising and why? Call done(answer).")
 
     invocations = getattr(active_llm, "invocations", [])
     second_prompt = ""

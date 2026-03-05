@@ -1,12 +1,56 @@
 defmodule CantripExamplesTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Cantrip.Examples
+
+  # ── Helpers ──────────────────────────────────────────────────────────────────
+
+  defp clean_env do
+    for {key, _} <- System.get_env(),
+        String.starts_with?(key, "CANTRIP_") or
+          String.starts_with?(key, "OPENAI_") or
+          String.starts_with?(key, "ANTHROPIC_") or
+          String.starts_with?(key, "GEMINI_") or
+          String.starts_with?(key, "GOOGLE_") or
+          String.starts_with?(key, "LM_STUDIO_") do
+      System.delete_env(key)
+    end
+  end
+
+  setup do
+    clean_env()
+    on_exit(fn -> clean_env() end)
+    :ok
+  end
+
+  # ── Cross-cutting: catalog and ids ─────────────────────────────────────────
 
   test "catalog and ids expose the progression" do
     assert Examples.ids() == Enum.map(1..12, &String.pad_leading(Integer.to_string(&1), 2, "0"))
     assert Enum.all?(Examples.catalog(), &(is_binary(&1.id) and is_binary(&1.title)))
   end
+
+  # ── Cross-cutting: mode: :scripted always works without env vars ───────────
+
+  for id <- ~w(01 02 03 04 05 06 07 08 09 10 11 12) do
+    test "#{id} runs in scripted mode without env vars" do
+      result = Examples.run(unquote(id), mode: :scripted)
+      assert {:ok, _, _, _, _} = result
+    end
+  end
+
+  # ── Cross-cutting: no silent fallback (no env + no scripted = error) ────────
+
+  # Examples that need an LLM must fail when called with mode: :real and no env vars
+  for id <- ~w(01 03 04 05 06 07 08 09 10 11 12) do
+    test "#{id} raises without env vars when not scripted" do
+      assert_raise RuntimeError, ~r/Cannot resolve LLM from environment/, fn ->
+        Examples.run(unquote(id), mode: :real)
+      end
+    end
+  end
+
+  # ── Per-example structural requirements (scripted mode) ────────────────────
 
   test "01 llm query is stateless and does not build an entity" do
     assert {:ok, result, nil, nil, meta} = Examples.run("01", mode: :scripted)
@@ -108,10 +152,8 @@ defmodule CantripExamplesTest do
 
   test "11 persistent entity accumulates state across sends" do
     assert {:ok, result, _cantrip, loom, meta} = Examples.run("11", mode: :scripted)
-    # Send 1: categories + observation count
     assert is_map(result.first)
     assert result.first.observation_count == 1
-    # Send 2: variables from send 1 persisted -- extended observations
     assert is_map(result.second)
     assert result.second.region_count == 3
     assert result.second.total_observations == 3

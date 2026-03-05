@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from cantrip import Cantrip, Circle, FakeLLM, Identity, OpenAICompatLLM
+from cantrip.env import load_dotenv_if_present
 from cantrip.providers.base import LLM
 
 SCRIPTED_RESPONSES: list[dict[str, Any]] = [
@@ -16,20 +17,21 @@ SCRIPTED_RESPONSES: list[dict[str, Any]] = [
 ]
 
 
-def _resolve_llm(llm: LLM | None) -> LLM:
-    if llm is not None:
-        return llm
-    try:
-        return OpenAICompatLLM(
-            model=os.environ["CANTRIP_OPENAI_MODEL"],
-            base_url=os.environ["CANTRIP_OPENAI_BASE_URL"],
-            api_key=os.getenv("CANTRIP_OPENAI_API_KEY"),
-        )
-    except Exception:
+def _resolve_llm(mode: str | None = None) -> LLM:
+    if mode == "scripted":
         return FakeLLM({"responses": SCRIPTED_RESPONSES})
+    load_dotenv_if_present(str(Path(__file__).resolve().parents[2] / ".env"))
+    model = os.environ.get("OPENAI_MODEL") or os.environ.get("CANTRIP_OPENAI_MODEL")
+    base_url = os.environ.get("OPENAI_BASE_URL", os.environ.get("CANTRIP_OPENAI_BASE_URL", "https://api.openai.com/v1"))
+    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("CANTRIP_OPENAI_API_KEY")
+    if not model:
+        raise RuntimeError("Missing OPENAI_MODEL (or CANTRIP_OPENAI_MODEL). Set it in .env or environment.")
+    if not api_key:
+        raise RuntimeError("Missing OPENAI_API_KEY (or CANTRIP_OPENAI_API_KEY). Set it in .env or environment.")
+    return OpenAICompatLLM(model=model, base_url=base_url, api_key=api_key)
 
 
-def run(llm: LLM | None = None) -> dict[str, Any]:
+def run(mode: str | None = None) -> dict[str, Any]:
     # Pattern 7: code medium + filesystem gate + adaptation after error.
     workspace = Path(tempfile.mkdtemp(prefix="cantrip-full-agent-"))
     (workspace / "metrics.txt").write_text(
@@ -37,33 +39,36 @@ def run(llm: LLM | None = None) -> dict[str, Any]:
     )
 
     spell = Cantrip(
-        llm=_resolve_llm(llm),
+        llm=_resolve_llm(mode),
         identity=Identity(
             system_prompt=(
-                "Act like a coding agent. Read files, adapt on failures, then done(answer)."
+                "You are a file analyst. You have two tools: repo_read(path) to read files, "
+                "and done(answer) to finish. If a read fails, you'll get an error — try a different path. "
+                "Call done(answer) with your findings when ready."
             ),
             require_done_tool=True,
         ),
         circle=Circle(
-            medium="code",
             gates=["done", {"name": "repo_read", "depends": {"root": str(workspace)}}],
             wards=[{"max_turns": 5}],
         ),
     )
 
     result, thread = spell.cast_with_thread(
-        "Analyze the workspace metrics file and summarize the trend."
+        "First try to read missing.txt with repo_read. It will fail. Then read metrics.txt instead. Then call done with the contents."
     )
     observations = [rec for turn in thread.turns for rec in turn.observation]
+    errors = [o for o in observations if o.is_error]
+    successes = [o for o in observations if not o.is_error and o.gate_name == "repo_read"]
 
     return {
         "pattern": 7,
         "result": result,
         "turn_count": len(thread.turns),
         "terminated": thread.terminated,
-        "first_error": observations[0].is_error if observations else False,
-        "error_message": observations[0].content if observations else "",
-        "adapted_with_second_read": len(observations) >= 2 and not observations[1].is_error,
+        "had_error": len(errors) > 0,
+        "error_then_recovery": len(errors) > 0 and len(successes) > 0,
+        "successful_read": successes[0].result if successes else None,
     }
 
 

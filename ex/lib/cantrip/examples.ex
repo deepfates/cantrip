@@ -171,7 +171,8 @@ defmodule Cantrip.Examples do
       Cantrip.new(%{
         llm: llm,
         identity: %{
-          system_prompt: "You are a disciplined analyst. Call done with the final answer.",
+          system_prompt:
+            "You are a disciplined analyst. You have two tools: echo (to log observations) and done (to return your final answer). Call done with your answer.",
           require_done_tool: true,
           tool_choice: "required"
         },
@@ -326,7 +327,8 @@ defmodule Cantrip.Examples do
            Cantrip.new(%{
              llm: conversation_llm,
              identity: %{
-               system_prompt: "You are a greeter. Echo once, then call done.",
+               system_prompt:
+                 "You are a greeter. You have two tools: echo (to display text) and done (to finish). First call echo with a greeting, then call done with a completion message.",
                require_done_tool: true,
                tool_choice: "required"
              },
@@ -337,7 +339,7 @@ defmodule Cantrip.Examples do
              llm: code_llm,
              identity: %{
                system_prompt:
-                 "You work in Elixir code. Use host functions and call done.(answer) when finished.",
+                 "You write Elixir code. Available host functions: echo.(opts) and done.(answer). Compute the requested value and call done.(answer) with the result string.",
                require_done_tool: true,
                tool_choice: "required"
              },
@@ -404,7 +406,7 @@ defmodule Cantrip.Examples do
         llm: llm,
         identity: %{
           system_prompt:
-            "You work in Elixir code. Use host functions and call done.(answer) when finished.",
+            "You write Elixir code. Available host functions: read.(%{path: \"file.txt\"}), compile_and_load.(%{module: \"Name\", source: \"code\"}), and done.(answer). If a gate returns an error, recover gracefully and continue.",
           require_done_tool: true,
           tool_choice: "required"
         },
@@ -457,7 +459,8 @@ defmodule Cantrip.Examples do
       Cantrip.new(%{
         llm: llm,
         identity: %{
-          system_prompt: "You are a disciplined analyst. Call done with the final answer.",
+          system_prompt:
+            "You are a disciplined analyst. You have two tools: echo (to record an observation) and done (to return your final answer). Use echo to record each observation one at a time, then call done when finished.",
           require_done_tool: true,
           tool_choice: "required"
         },
@@ -531,13 +534,8 @@ defmodule Cantrip.Examples do
             {:ok, llm} ->
               llm
 
-            {:error, _} ->
-              {FakeLLM,
-               FakeLLM.new([
-                 %{code: "done.(\"revenue: stable\")"},
-                 %{code: "done.(\"support: improving\")"},
-                 %{code: "done.(\"growth: accelerating\")"}
-               ])}
+            {:error, reason} ->
+              raise "Cannot resolve LLM from environment: #{reason}. Set OPENAI_API_KEY and OPENAI_MODEL in .env or environment, or pass mode: :scripted."
           end
       end
 
@@ -548,7 +546,7 @@ defmodule Cantrip.Examples do
         child_llm: child_llm,
         identity: %{
           system_prompt:
-            "You work in Elixir code. Use host functions and call done.(answer) when finished.",
+            "You write Elixir code. Available host functions: call_entity.(%{intent: \"task\", gates: [\"done\"]}), call_entity_batch.([%{intent: \"task\", gates: [\"done\"]}]), and done.(answer). Delegate work to child entities and collect their results, then call done with the combined result.",
           require_done_tool: true,
           tool_choice: "required"
         },
@@ -586,7 +584,8 @@ defmodule Cantrip.Examples do
       Cantrip.new(%{
         llm: llm,
         identity: %{
-          system_prompt: "You are a disciplined analyst. Call done with the final answer.",
+          system_prompt:
+            "You are a disciplined analyst. You have two tools: echo (to record an observation) and done (to return your final answer). First call echo with an observation, then call done with a summary.",
           require_done_tool: true,
           tool_choice: "required"
         },
@@ -666,7 +665,7 @@ defmodule Cantrip.Examples do
         llm: llm,
         identity: %{
           system_prompt:
-            "You work in Elixir code. Use host functions and call done.(answer) when finished.",
+            "You write Elixir code. Variables persist across turns and across sends. Define variables to build up state, then call done.(answer) with a map summarizing results. Available host function: done.(answer).",
           require_done_tool: true,
           tool_choice: "required"
         },
@@ -725,8 +724,11 @@ defmodule Cantrip.Examples do
 
         true ->
           case Cantrip.llm_from_env() do
-            {:ok, {mod, state}} -> inspect({mod, state})
-            {:error, _} -> :scripted
+            {:ok, {mod, state}} ->
+              inspect({mod, state})
+
+            {:error, reason} ->
+              raise "Cannot resolve LLM from environment: #{reason}. Set OPENAI_API_KEY and OPENAI_MODEL in .env or environment, or pass mode: :scripted."
           end
       end
 
@@ -748,7 +750,7 @@ defmodule Cantrip.Examples do
         llm: llm,
         identity: %{
           system_prompt:
-            "You work in Elixir code. Use host functions and call done.(answer) when finished.",
+            "You write Elixir code. Variables persist across turns and sends. You can construct child Cantrip instances using Cantrip.new/1 and Cantrip.cast/2. Use Process.put/get for cross-send memory. Call done.(answer) when finished.",
           require_done_tool: true,
           tool_choice: "required"
         },
@@ -786,7 +788,7 @@ defmodule Cantrip.Examples do
   end
 
   # ---------------------------------------------------------------------------
-  # LLM resolution: try env vars, fall back to FakeLLM for CI.
+  # LLM resolution: try env vars, raise if missing (use mode: :scripted for CI).
   # This is the ONLY shared helper -- it does not touch circles or identities.
   # ---------------------------------------------------------------------------
   defp choose_llm(opts, scripted_responses, fake_opts \\ []) do
@@ -799,8 +801,11 @@ defmodule Cantrip.Examples do
 
       true ->
         case Cantrip.llm_from_env() do
-          {:ok, llm} -> llm
-          {:error, _reason} -> {FakeLLM, FakeLLM.new(scripted_responses, fake_opts)}
+          {:ok, llm} ->
+            llm
+
+          {:error, reason} ->
+            raise "Cannot resolve LLM from environment: #{reason}. Set OPENAI_API_KEY and OPENAI_MODEL in .env or environment, or pass mode: :scripted."
         end
     end
   end
@@ -833,7 +838,7 @@ defmodule Cantrip.Examples do
     {:ok, child_conversation} =
       Cantrip.new(%{
         llm: conversation_llm,
-        identity: %{system_prompt: "Child conversation analyst", require_done_tool: true, tool_choice: "required"},
+        identity: %{system_prompt: "You are a child analyst. You have one tool: done. Analyze the given topic and call done with a short summary.", require_done_tool: true, tool_choice: "required"},
         circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 2}]}
       })
 
@@ -849,7 +854,7 @@ defmodule Cantrip.Examples do
     {:ok, child_code} =
       Cantrip.new(%{
         llm: code_llm,
-        identity: %{system_prompt: "Child code analyst"},
+        identity: %{system_prompt: "You write Elixir code. Analyze the given topic and call done.(answer) with a short summary."},
         circle: %{type: :code, gates: [:done], wards: [%{max_turns: 2}]}
       })
 
@@ -873,7 +878,7 @@ defmodule Cantrip.Examples do
     {:ok, child_conversation} =
       Cantrip.new(%{
         llm: child_llm,
-        identity: %{system_prompt: "Child conversation analyst", require_done_tool: true, tool_choice: "required"},
+        identity: %{system_prompt: "You are a child analyst. You have one tool: done. Analyze the given topic and call done with a short summary.", require_done_tool: true, tool_choice: "required"},
         circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 2}]}
       })
 
@@ -883,7 +888,7 @@ defmodule Cantrip.Examples do
     {:ok, child_code} =
       Cantrip.new(%{
         llm: child_llm,
-        identity: %{system_prompt: "Child code analyst"},
+        identity: %{system_prompt: "You write Elixir code. Analyze the given topic and call done.(answer) with a short summary."},
         circle: %{type: :code, gates: [:done], wards: [%{max_turns: 2}]}
       })
 
