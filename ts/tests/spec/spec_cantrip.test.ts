@@ -1,0 +1,234 @@
+import { describe, expect, test } from "bun:test";
+
+import { cantrip } from "../../src/cantrip/cantrip";
+import { TaskComplete } from "../../src/entity/recording";
+import { gate } from "../../src/circle/gate/decorator";
+import { Circle } from "../../src/circle/circle";
+import type { BoundGate } from "../../src/circle/gate/gate";
+
+// ── Shared helpers ─────────────────────────────────────────────────
+
+async function doneHandler({ message }: { message: string }) {
+  throw new TaskComplete(message);
+}
+
+const doneGate = gate("Signal completion", doneHandler, {
+  name: "done",
+  schema: {
+    type: "object",
+    properties: { message: { type: "string" } },
+    required: ["message"],
+    additionalProperties: false,
+  },
+});
+
+const ward = { max_turns: 10, require_done_tool: true };
+
+function makeCircle(gates: BoundGate[] = [doneGate], wards = [ward]) {
+  return Circle({ gates, wards });
+}
+
+function makeLlm(responses: (() => any)[]) {
+  let callIndex = 0;
+  return {
+    model: "dummy",
+    provider: "dummy",
+    name: "dummy",
+    async query(messages: any[]) {
+      const fn = responses[callIndex];
+      if (!fn) throw new Error(`Unexpected LLM call #${callIndex}`);
+      callIndex++;
+      return fn();
+    },
+  };
+}
+
+// ── CANTRIP-1: cantrip requires llm, identity, and circle ──────────
+
+describe("CANTRIP-1: cantrip requires llm, identity, and circle", () => {
+  test("CANTRIP-1: throws when llm is missing", () => {
+    expect(() =>
+      cantrip({
+        llm: undefined as any,
+        identity: { system_prompt: "test" },
+        circle: makeCircle(),
+      }),
+    ).toThrow(/llm/i);
+  });
+
+  test("CANTRIP-1: throws when identity is missing", () => {
+    const llm = makeLlm([]);
+    expect(() =>
+      cantrip({
+        llm: llm as any,
+        identity: undefined as any,
+        circle: makeCircle(),
+      }),
+    ).toThrow(/identity/i);
+  });
+
+  test("CANTRIP-1: throws when circle is missing", () => {
+    const llm = makeLlm([]);
+    expect(() =>
+      cantrip({
+        llm: llm as any,
+        identity: { system_prompt: "test" },
+        circle: undefined as any,
+      }),
+    ).toThrow(/circle/i);
+  });
+
+  test("CANTRIP-1: succeeds with all three present", () => {
+    const llm = makeLlm([]);
+    const spell = cantrip({
+      llm: llm as any,
+      identity: { system_prompt: "test" },
+      circle: makeCircle(),
+    });
+    expect(spell).toBeDefined();
+    expect(typeof spell.cast).toBe("function");
+  });
+});
+
+// ── CANTRIP-2: cantrip is reusable across intents ──────────────────
+
+describe("CANTRIP-2: cantrip is reusable across intents", () => {
+  test("CANTRIP-2: two casts produce independent results", async () => {
+    const llm = makeLlm([
+      () => ({
+        content: null,
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: {
+              name: "done",
+              arguments: JSON.stringify({ message: "first" }),
+            },
+          },
+        ],
+      }),
+      () => ({
+        content: null,
+        tool_calls: [
+          {
+            id: "call_2",
+            type: "function",
+            function: {
+              name: "done",
+              arguments: JSON.stringify({ message: "second" }),
+            },
+          },
+        ],
+      }),
+    ]);
+
+    const spell = cantrip({
+      llm: llm as any,
+      identity: { system_prompt: "You are helpful" },
+      circle: makeCircle(),
+    });
+
+    const result1 = await spell.cast("first task");
+    const result2 = await spell.cast("second task");
+
+    expect(result1).toBe("first");
+    expect(result2).toBe("second");
+  });
+
+  test("CANTRIP-2: second cast does not see first cast's messages", async () => {
+    const messagesPerCall: any[][] = [];
+    const llm = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async query(messages: any[]) {
+        messagesPerCall.push([...messages]);
+        return {
+          content: null,
+          tool_calls: [
+            {
+              id: `call_${messagesPerCall.length}`,
+              type: "function",
+              function: {
+                name: "done",
+                arguments: JSON.stringify({ message: `r${messagesPerCall.length}` }),
+              },
+            },
+          ],
+        };
+      },
+    };
+
+    const spell = cantrip({
+      llm: llm as any,
+      identity: { system_prompt: "test" },
+      circle: makeCircle(),
+    });
+
+    await spell.cast("first intent");
+    await spell.cast("second intent");
+
+    // Second call should not contain "first intent"
+    const secondCallMessages = messagesPerCall[1];
+    const hasFirst = secondCallMessages.some(
+      (m: any) => typeof m.content === "string" && m.content.includes("first intent"),
+    );
+    expect(hasFirst).toBe(false);
+  });
+
+  test("CANTRIP-2: null system_prompt is valid (minimal cantrip)", async () => {
+    const messagesPerCall: any[][] = [];
+    const llm = {
+      model: "dummy",
+      provider: "dummy",
+      name: "dummy",
+      async query(messages: any[]) {
+        messagesPerCall.push([...messages]);
+        return {
+          content: null,
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "done",
+                arguments: JSON.stringify({ message: "ok" }),
+              },
+            },
+          ],
+        };
+      },
+    };
+
+    const spell = cantrip({
+      llm: llm as any,
+      identity: { system_prompt: null },
+      circle: makeCircle(),
+    });
+
+    const result = await spell.cast("minimal test");
+    expect(result).toBe("ok");
+
+    // First message should be user (no system message)
+    const firstMessage = messagesPerCall[0][0];
+    expect(firstMessage.role).toBe("user");
+    expect(firstMessage.content).toBe("minimal test");
+  });
+});
+
+// ── CIRCLE-1 / CIRCLE-2: circle validates done gate and termination ward ──
+
+describe("Circle validates its own invariants", () => {
+  test("CIRCLE-1: circle rejects missing done gate", () => {
+    const notDone = gate("Not done", async () => "ok", {
+      name: "other",
+      schema: { type: "object", properties: {}, additionalProperties: false },
+    });
+    expect(() => Circle({ gates: [notDone], wards: [ward] })).toThrow(/done/i);
+  });
+
+  test("CIRCLE-2: circle rejects missing termination ward", () => {
+    expect(() => Circle({ gates: [doneGate], wards: [] })).toThrow(/ward/i);
+  });
+});

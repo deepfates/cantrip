@@ -1,11 +1,29 @@
 .env
-.env.*
-!.env.example
-.tmp_cache/
 .DS_Store
-node_modules/
-tmp/
-repomix-output.xml
-tests/evals/results/
 .cantrip/
-prototypes/
+.claude/
+.clj-kondo/
+.lsp/
+_investigation/
+SPEC.md.bak
+.uv-cache
+.venv_check
+# TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+# Python
+__pycache__/
+*.pyc
+.venv/
+# Clojure
+.cpcache/
+target/
+classes/
+# Elixir
+_build/
+deps/
+*.beam
+# Editors
+*.swp
+*~

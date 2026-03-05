@@ -1,0 +1,52 @@
+{
+  "name": "unknown_session",
+  "steps": [
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {"protocolVersion": 1}
+      },
+      "expect": {
+        "response_count": 1,
+        "result_protocol_version": 1,
+        "responses": [
+          {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "protocolVersion": 1,
+              "agentCapabilities": {
+                "promptCapabilities": {"image": false},
+                "loadSession": false
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "session/prompt",
+        "params": {
+          "sessionId": "sess_missing",
+          "prompt": "hola"
+        }
+      },
+      "expect": {
+        "response_count": 1,
+        "first_error_code": -32004,
+        "responses": [
+          {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "error": {"code": -32004, "message": "unknown sessionId"}
+          }
+        ]
+      }
+    }
+  ]
+}
