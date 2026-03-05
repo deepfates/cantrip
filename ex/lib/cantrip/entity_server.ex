@@ -28,8 +28,8 @@ defmodule Cantrip.EntityServer do
   def run_persistent(pid), do: GenServer.call(pid, :run_persistent, :infinity)
 
   @doc "Send a new intent to a persistent entity, running another loop episode."
-  def cast_intent(pid, intent) when is_binary(intent) do
-    GenServer.call(pid, {:cast_intent, intent}, :infinity)
+  def send_intent(pid, intent) when is_binary(intent) do
+    GenServer.call(pid, {:send_intent, intent}, :infinity)
   end
 
   @impl true
@@ -78,7 +78,7 @@ defmodule Cantrip.EntityServer do
   end
 
   @impl true
-  def handle_call({:cast_intent, intent}, _from, state) do
+  def handle_call({:send_intent, intent}, _from, state) do
     next_messages = state.messages ++ [%{role: :user, content: intent}]
     next_state = %{state | messages: next_messages}
     {result, final_state, meta} = run_loop(next_state)

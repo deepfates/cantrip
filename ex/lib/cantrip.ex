@@ -213,7 +213,7 @@ defmodule Cantrip do
   @spec send(pid(), String.t()) ::
           {:ok, term(), t(), Loom.t(), map()} | {:error, term()}
   def send(pid, intent) when is_pid(pid) and is_binary(intent) do
-    EntityServer.cast_intent(pid, intent)
+    EntityServer.send_intent(pid, intent)
   end
 
   @doc """
