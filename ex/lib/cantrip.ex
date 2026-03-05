@@ -7,6 +7,8 @@ defmodule Cantrip do
   - llm response contract invariants
   """
 
+  import Kernel, except: [send: 2]
+
   alias Cantrip.{Identity, Circle, LLM, EntityServer, Loom}
 
   defstruct id: nil,
