@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 from cantrip import Cantrip, Circle, FakeLLM, Identity, OpenAICompatLLM
+from cantrip.mediums import medium_for
 from cantrip.providers.base import LLM
 
 SCRIPTED_RESPONSES: list[dict[str, Any]] = [
@@ -52,8 +53,8 @@ def run(llm: LLM | None = None) -> dict[str, Any]:
         "pattern": 6,
         "tool_result": tool_result,
         "code_result": code_result,
-        "tool_surface": [t["name"] for t in tool_cantrip._make_tools(tool_cantrip.circle)],
-        "code_surface": [t["name"] for t in code_cantrip._make_tools(code_cantrip.circle)],
+        "tool_surface": [t["name"] for t in medium_for("tool").make_tools(tool_cantrip.circle)],
+        "code_surface": [t["name"] for t in medium_for("code").make_tools(code_cantrip.circle)],
         "code_observation_gates": [rec.gate_name for rec in code_thread.turns[0].observation],
         "turn_counts": [len(tool_thread.turns), len(code_thread.turns)],
     }

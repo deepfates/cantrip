@@ -1,70 +1,61 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import Any
 
-from cantrip import Cantrip, Circle, FakeLLM, Identity, Loom
-from cantrip.models import Thread
+from cantrip import Cantrip, Circle, FakeLLM, Identity
 from cantrip.providers.base import LLM
-
-
-@dataclass(frozen=True)
-class GateExample:
-    name: str
-    parameters: dict[str, Any]
-
-
-ECHO_GATE = GateExample(
-    name="echo",
-    parameters={
-        "type": "object",
-        "properties": {"text": {"type": "string"}},
-        "required": ["text"],
-    },
-)
 
 
 def run(llm: LLM | None = None) -> dict[str, Any]:
     _ = llm
-    # Pattern 2: gates are metadata + executable behavior.
-    circle = Circle(gates=[{"name": ECHO_GATE.name, "parameters": ECHO_GATE.parameters}, "done"], wards=[{"max_turns": 3}])
-    cantrip = Cantrip(llm=FakeLLM({"responses": []}), circle=circle, identity=Identity())
-    thread = Thread(id="gate-thread", entity_id="gate-entity", intent="demo", identity=Identity())
+    # Pattern 2: gates define the action space available to the agent.
+    # We construct a circle with echo + done, then inspect what gates are exposed.
+    circle = Circle(
+        gates=[
+            {"name": "echo", "parameters": {
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+            }},
+            "done",
+        ],
+        wards=[{"max_turns": 3}],
+    )
 
-    echo_call = cantrip._execute_gate(
-        thread,
-        "echo",
-        {"text": "hello from gate"},
-        parent_turn_id=None,
-        circle=circle,
-        depth=None,
-    )
-    done_ok = cantrip._execute_gate(
-        thread,
-        "done",
-        {"answer": "finished"},
-        parent_turn_id=None,
-        circle=circle,
-        depth=None,
-    )
-    done_bad = cantrip._execute_gate(
-        thread,
-        "done",
-        {"answer": "   "},
-        parent_turn_id=None,
-        circle=circle,
-        depth=None,
-    )
+    # Public API: available_gates() returns the gate registry.
+    gates = circle.available_gates()
+    gate_names = sorted(gates.keys())
+
+    # Drive the echo gate through a cast: FakeLLM calls echo, then done.
+    echo_llm = FakeLLM({"responses": [
+        {"tool_calls": [{"gate": "echo", "args": {"text": "hello from gate"}}]},
+        {"tool_calls": [{"gate": "done", "args": {"answer": "finished"}}]},
+    ]})
+    cantrip = Cantrip(llm=echo_llm, circle=circle, identity=Identity())
+    result, thread = cantrip.cast_with_thread("Demonstrate echo then done.")
+
+    # The first turn used echo; the second used done.
+    echo_result = thread.turns[0].observation[0].result
+    done_result = result
+
+    # Drive done with empty answer to show rejection.
+    empty_llm = FakeLLM({"responses": [
+        {"tool_calls": [{"gate": "done", "args": {"answer": "   "}}]},
+        {"tool_calls": [{"gate": "done", "args": {"answer": "recovered"}}]},
+    ]})
+    cantrip2 = Cantrip(llm=empty_llm, circle=circle, identity=Identity())
+    _, thread2 = cantrip2.cast_with_thread("Try empty done then recover.")
+    done_bad = thread2.turns[0].observation[0]
 
     return {
         "pattern": 2,
-        "gate_name": ECHO_GATE.name,
-        "echo_result": echo_call.result,
-        "done_result": done_ok.result,
+        "gate_name": "echo",
+        "gate_names": gate_names,
+        "echo_result": echo_result,
+        "done_result": done_result,
         "done_rejects_empty": done_bad.is_error,
         "done_error": done_bad.content,
-        "loom_turns": len(Loom().turns),
     }
 
 

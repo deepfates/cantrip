@@ -46,7 +46,7 @@ def run(llm: LLM | None = None) -> dict[str, Any]:
         "Give the final outcome for region A."
     )
     truncated_result, truncated_thread = spell.cast_with_thread(
-        "Start region B analysis but do not finish."
+        "Analyze region B and summarize findings."
     )
     threads = loom.list_threads()
 
