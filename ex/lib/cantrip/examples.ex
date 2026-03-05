@@ -2,19 +2,19 @@ defmodule Cantrip.Examples do
   @moduledoc """
   Grimoire teaching examples for the Elixir Cantrip implementation.
 
-  Progression:
-  01 LLM Query
-  02 Gate
-  03 Circle
-  04 Cantrip
-  05 Wards
-  06 Medium
-  07 Full Agent
-  08 Folding
-  09 Composition
-  10 Loom
-  11 Persistent Entity
-  12 Familiar
+  Progression (Appendix A):
+  01 LLM Query        (A.1)
+  02 Gate             (A.2)
+  03 Circle           (A.3)
+  04 Cantrip          (A.4)
+  05 Wards            (A.5)
+  06 Medium           (A.6)
+  07 Full Agent       (A.7)
+  08 Folding          (A.8)
+  09 Composition      (A.9)
+  10 Loom             (A.10)
+  11 Persistent Entity (A.11)
+  12 Familiar         (A.12)
   """
 
   import Kernel, except: [send: 2]
@@ -45,31 +45,64 @@ defmodule Cantrip.Examples do
     opts = Map.new(opts)
 
     case id do
+      # A.1 LLM-1: The LLM is stateless. Two queries, no memory between them.
       "01" ->
-        run_llm_query(opts)
+        run_01(opts)
 
+      # A.2 CIRCLE-1: Gates are host functions. done is special.
       "02" ->
-        run_gate(opts)
+        run_02(opts)
 
+      # A.3 CIRCLE-1, CIRCLE-2: Circle rejects missing done gate or missing truncation ward.
+      "03" ->
+        run_03(opts)
+
+      # A.4 CANTRIP-1, CANTRIP-2: Cantrip is a reusable value. Each cast is independent.
       "04" ->
-        run_cantrip_independence(opts)
+        run_04(opts)
 
+      # A.5 WARD-1: Wards compose subtractively. Stricter wins.
+      "05" ->
+        run_05(opts)
+
+      # A.6 MEDIUM-1: Same gates, different medium -> different action space. A = M u G - W.
       "06" ->
-        run_medium(opts)
+        run_06(opts)
 
+      # A.7 CIRCLE-5: Error as steering. Read failure becomes observation data.
+      "07" ->
+        run_07(opts)
+
+      # A.8 LOOM-5, LOOM-6: Folding compresses older context; loom keeps full history.
+      "08" ->
+        run_08(opts)
+
+      # A.9 COMP-2, COMP-3, COMP-4: Parent delegates to children. Batch returns in order.
+      "09" ->
+        run_09(opts)
+
+      # A.10 LOOM-3, LOOM-7: Loom is append-only. Every turn recorded.
+      "10" ->
+        run_10(opts)
+
+      # A.11 ENTITY-5: Persistent entity accumulates state across sends.
       "11" ->
-        run_persistent_entity(opts)
+        run_11(opts)
 
+      # A.12 Familiar: Persistent entity constructs child cantrips through code.
       "12" ->
-        run_familiar(opts)
+        run_12(opts)
 
       _ ->
-        run_cast_example(id, opts)
+        {:error, "unknown pattern id"}
     end
   end
 
-  # 01: one query in, one response out. No circle, no loop.
-  defp run_llm_query(opts) do
+  # ---------------------------------------------------------------------------
+  # A.1 LLM Query (LLM-1)
+  # The LLM is stateless. Send messages, get a response. No loop, no circle.
+  # ---------------------------------------------------------------------------
+  defp run_01(opts) do
     llm = choose_llm(opts, [%{content: "4"}, %{content: "4"}], record_inputs: true)
     {module, llm_state} = llm
 
@@ -96,8 +129,13 @@ defmodule Cantrip.Examples do
     end
   end
 
-  # 02: gates are host functions with metadata, executable without any loop.
-  defp run_gate(_opts) do
+  # ---------------------------------------------------------------------------
+  # A.2 Gate (CIRCLE-1)
+  # Gates are host functions with metadata. done is special -- it terminates.
+  # Testable in isolation, outside any loop.
+  # ---------------------------------------------------------------------------
+  defp run_02(_opts) do
+    # CIRCLE-1: every circle must have a done gate
     circle =
       Circle.new(%{
         gates: [
@@ -119,21 +157,83 @@ defmodule Cantrip.Examples do
     {:ok, result, nil, nil, %{terminated: true, truncated: false, turns: 0}}
   end
 
-  defp run_cast_example(id, opts) do
-    with {:ok, {intent, cantrip}} <- build(id, opts),
-         {:ok, result, next_cantrip, loom, meta} <- Cantrip.cast(cantrip, intent) do
-      result = maybe_enrich_result(id, result, cantrip, next_cantrip, loom, meta)
-      {:ok, result, next_cantrip, loom, meta}
+  # ---------------------------------------------------------------------------
+  # A.3 Circle (CIRCLE-1, CIRCLE-2)
+  # Circle enforces invariants at construction time, not at runtime.
+  # Missing done gate or missing truncation ward -> error before any entity.
+  # ---------------------------------------------------------------------------
+  defp run_03(opts) do
+    llm =
+      choose_llm(opts, [%{tool_calls: [%{gate: "done", args: %{answer: "circle validated"}}]}])
+
+    # Successful construction: circle with done + ward
+    {:ok, cantrip} =
+      Cantrip.new(%{
+        llm: llm,
+        identity: %{
+          system_prompt: "You are a disciplined analyst. Call done with the final answer.",
+          require_done_tool: true,
+          tool_choice: "required"
+        },
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 5}]}
+      })
+
+    with {:ok, result, next_cantrip, loom, meta} <-
+           Cantrip.cast(cantrip, "Summarize quarterly trends and finish.") do
+      # CIRCLE-1: no done gate -> construction error
+      missing_done =
+        Cantrip.new(%{
+          llm: llm,
+          identity: %{system_prompt: "invalid"},
+          circle: %{type: :conversation, gates: [:echo], wards: [%{max_turns: 3}]}
+        })
+
+      # CIRCLE-2: no truncation ward -> construction error
+      missing_ward =
+        Cantrip.new(%{
+          llm: llm,
+          identity: %{system_prompt: "invalid"},
+          circle: %{type: :conversation, gates: [:done], wards: []}
+        })
+
+      enriched = %{
+        ok_result: result,
+        missing_done_error: error_text(missing_done),
+        missing_ward_error: error_text(missing_ward)
+      }
+
+      {:ok, enriched, next_cantrip, loom, meta}
     else
       {:error, reason, _cantrip} -> {:error, reason}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  # 04: a cantrip is a reusable value, not a running process.
-  defp run_cantrip_independence(opts) do
-    with {:ok, {_intent, cantrip}} <- build("04", opts),
-         {:ok, first, c1, loom1, _m1} <- Cantrip.cast(cantrip, "Analyze the north region."),
+  # ---------------------------------------------------------------------------
+  # A.4 Cantrip (CANTRIP-1, CANTRIP-2)
+  # A cantrip is a reusable value. Each cast produces an independent entity.
+  # ---------------------------------------------------------------------------
+  defp run_04(opts) do
+    llm =
+      choose_llm(opts, [
+        %{tool_calls: [%{gate: "done", args: %{answer: "first entity finished"}}]},
+        %{tool_calls: [%{gate: "done", args: %{answer: "second entity finished"}}]}
+      ])
+
+    # CANTRIP-1: bind llm + identity + circle into a reusable value
+    {:ok, cantrip} =
+      Cantrip.new(%{
+        llm: llm,
+        identity: %{
+          system_prompt: "You are a regional analyst. Call done with your finding.",
+          require_done_tool: true,
+          tool_choice: "required"
+        },
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 3}]}
+      })
+
+    # CANTRIP-2: each cast is independent -- no shared state
+    with {:ok, first, c1, loom1, _m1} <- Cantrip.cast(cantrip, "Analyze the north region."),
          {:ok, second, c2, loom2, meta2} <- Cantrip.cast(c1, "Analyze the south region.") do
       result = %{
         first: first,
@@ -150,8 +250,60 @@ defmodule Cantrip.Examples do
     end
   end
 
-  # 06: same gates, different medium -> different action space.
-  defp run_medium(opts) do
+  # ---------------------------------------------------------------------------
+  # A.5 Wards (WARD-1)
+  # Wards compose subtractively. Numeric: min(). Boolean: OR.
+  # A child can only tighten, never loosen, the parent's constraints.
+  # ---------------------------------------------------------------------------
+  defp run_05(opts) do
+    llm = choose_llm(opts, [%{tool_calls: [%{gate: "done", args: %{answer: "wards composed"}}]}])
+
+    {:ok, cantrip} =
+      Cantrip.new(%{
+        llm: llm,
+        identity: %{
+          system_prompt: "You enforce safety policies. Call done when satisfied.",
+          require_done_tool: true,
+          tool_choice: "required"
+        },
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 4}]}
+      })
+
+    with {:ok, result, next_cantrip, loom, meta} <-
+           Cantrip.cast(cantrip, "Explain the most restrictive policy and finish.") do
+      # WARD-1: demonstrate subtractive composition
+      parent = [%{max_turns: 200}, %{require_done_tool: false}]
+      child = [%{max_turns: 40}, %{max_turns: 120}, %{require_done_tool: true}]
+      composed = Circle.compose_wards(parent, child)
+
+      max_turns =
+        composed
+        |> Enum.flat_map(fn w -> if is_integer(w[:max_turns]), do: [w[:max_turns]], else: [] end)
+        |> Enum.min(fn -> nil end)
+
+      require_done = Enum.any?(parent ++ child, &Map.get(&1, :require_done_tool, false))
+
+      enriched = %{
+        ok_result: result,
+        composed_max_turns: max_turns,
+        composed_require_done_tool: require_done,
+        subtractive: true
+      }
+
+      {:ok, enriched, next_cantrip, loom, meta}
+    else
+      {:error, reason, _cantrip} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # A.6 Medium (MEDIUM-1)
+  # Same gates, different medium -> different action space. A = M u G - W.
+  # Conversation medium: actions are tool calls.
+  # Code medium: actions are Elixir expressions with gate bindings.
+  # ---------------------------------------------------------------------------
+  defp run_06(opts) do
     conversation_llm =
       choose_llm(opts, [
         %{tool_calls: [%{gate: "echo", args: %{text: "hello from conversation"}}]},
@@ -169,16 +321,26 @@ defmodule Cantrip.Examples do
         }
       ])
 
+    # Same gates (done + echo), different mediums
     with {:ok, convo_cantrip} <-
            Cantrip.new(%{
              llm: conversation_llm,
-             identity: identity_for(:conversation),
+             identity: %{
+               system_prompt: "You are a greeter. Echo once, then call done.",
+               require_done_tool: true,
+               tool_choice: "required"
+             },
              circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 4}]}
            }),
          {:ok, code_cantrip} <-
            Cantrip.new(%{
              llm: code_llm,
-             identity: identity_for(:code),
+             identity: %{
+               system_prompt:
+                 "You work in Elixir code. Use host functions and call done.(answer) when finished.",
+               require_done_tool: true,
+               tool_choice: "required"
+             },
              circle: %{type: :code, gates: [:done, :echo], wards: [%{max_turns: 4}]}
            }),
          {:ok, convo_result, _next_convo, convo_loom, _convo_meta} <-
@@ -192,7 +354,7 @@ defmodule Cantrip.Examples do
         code_result: code_result,
         code_gates_called:
           code_loom.turns |> Enum.flat_map(&(&1.gate_calls || [])) |> Enum.uniq(),
-        action_space_formula: "A = M ∪ G - W",
+        action_space_formula: "A = M \u222a G - W",
         terminated: Map.get(code_meta, :terminated, false)
       }
 
@@ -203,191 +365,12 @@ defmodule Cantrip.Examples do
     end
   end
 
-  # 11: summon once, send multiple intents, keep state.
-  defp run_persistent_entity(opts) do
-    with {:ok, {_intent, cantrip}} <- build("11", opts),
-         {:ok, pid} <- Cantrip.summon(cantrip),
-         {:ok, first, _c1, loom1, meta1} <- Cantrip.send(pid, "Initialize a running counter."),
-         {:ok, second, c2, loom2, meta2} <- Cantrip.send(pid, "Increment the counter.") do
-      _ = Process.exit(pid, :normal)
-
-      result = %{
-        first: first,
-        second: second,
-        turns_after_first_send: length(loom1.turns),
-        turns_after_second_send: length(loom2.turns),
-        terminated_first: Map.get(meta1, :terminated, false),
-        terminated_second: Map.get(meta2, :terminated, false)
-      }
-
-      {:ok, result, c2, loom2, meta2}
-    else
-      {:error, reason, _cantrip} -> {:error, reason}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  # 12: familiar-like code flow constructing child cantrips with different mediums/llms.
-  defp run_familiar(opts) do
-    with {:ok, {_intent, cantrip}} <- build("12", opts),
-         {:ok, pid} <- Cantrip.summon(cantrip),
-         {:ok, first, _c1, loom1, _meta1} <-
-           Cantrip.send(pid, "Construct children and delegate work."),
-         {:ok, second, c2, loom2, meta2} <- Cantrip.send(pid, "Recall what happened before.") do
-      _ = Process.exit(pid, :normal)
-
-      persisted_path =
-        case c2.loom_storage do
-          {:jsonl, path} -> path
-          _ -> nil
-        end
-
-      result = %{
-        first: first,
-        second: second,
-        turns: length(loom2.turns),
-        persisted_loom: is_binary(persisted_path) and File.exists?(persisted_path),
-        loom_path: persisted_path,
-        turns_after_first_send: length(loom1.turns)
-      }
-
-      {:ok, result, c2, loom2, meta2}
-    else
-      {:error, reason, _cantrip} -> {:error, reason}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp maybe_enrich_result("03", result, cantrip, _next_cantrip, _loom, _meta) do
-    llm = {cantrip.llm_module, cantrip.llm_state}
-
-    missing_done =
-      Cantrip.new(%{
-        llm: llm,
-        identity: %{system_prompt: "invalid"},
-        circle: %{type: :conversation, gates: [:echo], wards: [%{max_turns: 3}]}
-      })
-
-    missing_ward =
-      Cantrip.new(%{
-        llm: llm,
-        identity: %{system_prompt: "invalid"},
-        circle: %{type: :conversation, gates: [:done], wards: []}
-      })
-
-    %{
-      ok_result: result,
-      missing_done_error: error_text(missing_done),
-      missing_ward_error: error_text(missing_ward)
-    }
-  end
-
-  defp maybe_enrich_result("05", result, _cantrip, _next_cantrip, _loom, _meta) do
-    parent = [%{max_turns: 200}, %{require_done_tool: false}]
-    child = [%{max_turns: 40}, %{max_turns: 120}, %{require_done_tool: true}]
-    composed = Circle.compose_wards(parent, child)
-
-    max_turns =
-      composed
-      |> Enum.flat_map(fn w -> if is_integer(w[:max_turns]), do: [w[:max_turns]], else: [] end)
-      |> Enum.min(fn -> nil end)
-
-    require_done = Enum.any?(parent ++ child, &Map.get(&1, :require_done_tool, false))
-
-    %{
-      ok_result: result,
-      composed_max_turns: max_turns,
-      composed_require_done_tool: require_done,
-      subtractive: true
-    }
-  end
-
-  defp maybe_enrich_result("08", result, _cantrip, next_cantrip, _loom, _meta) do
-    folded_seen =
-      case next_cantrip.llm_module do
-        FakeLLM ->
-          next_cantrip.llm_state
-          |> FakeLLM.invocations()
-          |> Enum.any?(fn req ->
-            Enum.any?(req.messages || [], fn msg ->
-              is_binary(msg[:content]) and String.starts_with?(msg[:content], "[Folded:")
-            end)
-          end)
-
-        _ ->
-          false
-      end
-
-    %{ok_result: result, folded_seen: folded_seen}
-  end
-
-  defp maybe_enrich_result("10", result, cantrip, _next_cantrip, loom, meta) do
-    gates_called =
-      loom.turns
-      |> Enum.flat_map(&(&1.gate_calls || []))
-      |> Enum.uniq()
-
-    thread = Cantrip.extract_thread(cantrip, loom)
-
-    %{
-      ok_result: result,
-      turn_count: length(loom.turns),
-      thread_length: length(thread),
-      terminated_turns: Enum.count(loom.turns, &Map.get(&1, :terminated, false)),
-      truncated_turns: Enum.count(loom.turns, &Map.get(&1, :truncated, false)),
-      gates_called: gates_called,
-      token_usage: Map.get(meta, :cumulative_usage, %{})
-    }
-  end
-
-  defp maybe_enrich_result(_id, result, _cantrip, _next_cantrip, _loom, _meta), do: result
-
-  defp error_text({:error, reason}), do: reason
-  defp error_text(_), do: nil
-
-  # 03 Circle: invariants enforced before runtime.
-  defp build("03", opts) do
-    llm =
-      choose_llm(opts, [%{tool_calls: [%{gate: "done", args: %{answer: "circle validated"}}]}])
-
-    cantrip_from(%{
-      llm: llm,
-      identity: identity_for(:conversation),
-      circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 5}]},
-      intent: "Summarize quarterly trends after one echo step and finish."
-    })
-  end
-
-  # 04 Cantrip: same cantrip, independent casts.
-  defp build("04", opts) do
-    llm =
-      choose_llm(opts, [
-        %{tool_calls: [%{gate: "done", args: %{answer: "first entity finished"}}]},
-        %{tool_calls: [%{gate: "done", args: %{answer: "second entity finished"}}]}
-      ])
-
-    cantrip_from(%{
-      llm: llm,
-      identity: identity_for(:conversation),
-      circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 3}]},
-      intent: "Compute a baseline summary and finish."
-    })
-  end
-
-  # 05 Wards: compose restrictions.
-  defp build("05", opts) do
-    llm = choose_llm(opts, [%{tool_calls: [%{gate: "done", args: %{answer: "wards composed"}}]}])
-
-    cantrip_from(%{
-      llm: llm,
-      identity: identity_for(:conversation),
-      circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 4}]},
-      intent: "Explain the most restrictive policy and finish."
-    })
-  end
-
-  # 07 Full Agent: code medium + read + compile_and_load, with error steering.
-  defp build("07", opts) do
+  # ---------------------------------------------------------------------------
+  # A.7 Full Agent (CIRCLE-5)
+  # Code medium + read + compile_and_load. Error as steering: the entity
+  # reads a missing file, gets an error observation, and recovers.
+  # ---------------------------------------------------------------------------
+  defp run_07(opts) do
     suffix = Integer.to_string(System.unique_integer([:positive]))
     module_name = "Elixir.CantripFullAgent#{suffix}"
     root = temp_root("cantrip_full_agent")
@@ -415,27 +398,48 @@ defmodule Cantrip.Examples do
         }
       ])
 
-    cantrip_from(%{
-      llm: llm,
-      identity: identity_for(:code),
-      circle: %{
-        type: :code,
-        gates: [
-          :done,
-          %{name: :read, dependencies: %{root: root}},
-          :compile_and_load
-        ],
-        wards: [
-          %{max_turns: 6},
-          %{allow_compile_modules: [module_name]}
-        ]
-      },
-      intent: "Read regional data, recover from errors, and return a summary."
-    })
+    # CIRCLE-5: gate errors become observation data, not crashes
+    {:ok, cantrip} =
+      Cantrip.new(%{
+        llm: llm,
+        identity: %{
+          system_prompt:
+            "You work in Elixir code. Use host functions and call done.(answer) when finished.",
+          require_done_tool: true,
+          tool_choice: "required"
+        },
+        circle: %{
+          type: :code,
+          gates: [
+            :done,
+            %{name: :read, dependencies: %{root: root}},
+            :compile_and_load
+          ],
+          wards: [
+            %{max_turns: 6},
+            %{allow_compile_modules: [module_name]}
+          ]
+        }
+      })
+
+    case Cantrip.cast(cantrip, "Read regional data, recover from errors, and return a summary.") do
+      {:ok, result, next_cantrip, loom, meta} ->
+        {:ok, result, next_cantrip, loom, meta}
+
+      {:error, reason, _cantrip} ->
+        {:error, reason}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
-  # 08 Folding: long run compresses older context in prompt, not in loom.
-  defp build("08", opts) do
+  # ---------------------------------------------------------------------------
+  # A.8 Folding (LOOM-5, LOOM-6)
+  # Long-running entity: older turns fold into summary in prompt view,
+  # but loom retains every turn unmodified.
+  # ---------------------------------------------------------------------------
+  defp run_08(opts) do
     llm =
       choose_llm(
         opts,
@@ -448,18 +452,53 @@ defmodule Cantrip.Examples do
         record_inputs: true
       )
 
-    cantrip_from(%{
-      llm: llm,
-      identity: identity_for(:conversation),
-      circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 8}]},
-      folding: %{trigger_after_turns: 2},
-      intent: "Collect three observations and then finalize."
-    })
+    # LOOM-5: folding compresses older turns after trigger threshold
+    {:ok, cantrip} =
+      Cantrip.new(%{
+        llm: llm,
+        identity: %{
+          system_prompt: "You are a disciplined analyst. Call done with the final answer.",
+          require_done_tool: true,
+          tool_choice: "required"
+        },
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 8}]},
+        folding: %{trigger_after_turns: 2}
+      })
+
+    with {:ok, result, next_cantrip, loom, meta} <-
+           Cantrip.cast(cantrip, "Collect three observations and then finalize.") do
+      # LOOM-6: verify folding appeared in prompt view
+      folded_seen =
+        case next_cantrip.llm_module do
+          FakeLLM ->
+            next_cantrip.llm_state
+            |> FakeLLM.invocations()
+            |> Enum.any?(fn req ->
+              Enum.any?(req.messages || [], fn msg ->
+                is_binary(msg[:content]) and String.starts_with?(msg[:content], "[Folded:")
+              end)
+            end)
+
+          _ ->
+            false
+        end
+
+      enriched = %{ok_result: result, folded_seen: folded_seen}
+      {:ok, enriched, next_cantrip, loom, meta}
+    else
+      {:error, reason, _cantrip} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  # 09 Composition: parent delegates single + batch child work.
-  defp build("09", opts) do
-    llm =
+  # ---------------------------------------------------------------------------
+  # A.9 Composition (COMP-2, COMP-3, COMP-4)
+  # Parent delegates single + batch child work via call_entity.
+  # Child circles are independent. Ward composition ensures children
+  # can only be more restricted than parent.
+  # ---------------------------------------------------------------------------
+  defp run_09(opts) do
+    parent_llm =
       choose_llm(opts, [
         %{
           code: """
@@ -473,62 +512,197 @@ defmodule Cantrip.Examples do
         }
       ])
 
+    # Child LLM: try env vars, fall back to scripted
     child_llm =
-      choose_child_llm(opts, llm, [
-        %{code: "done.(\"revenue: stable\")"},
-        %{code: "done.(\"support: improving\")"},
-        %{code: "done.(\"growth: accelerating\")"}
-      ])
+      cond do
+        Map.has_key?(opts, :child_llm) ->
+          Map.fetch!(opts, :child_llm)
 
-    cantrip_from(%{
-      llm: llm,
-      child_llm: child_llm,
-      identity: identity_for(:code),
-      circle: %{
-        type: :code,
-        gates: [:done, :call_entity, :call_entity_batch],
-        wards: [%{max_turns: 8}, %{max_depth: 2}, %{max_batch_size: 4}]
-      },
-      intent: "Analyze each category and summarize the overall trend."
-    })
+        scripted_mode?(opts) ->
+          {FakeLLM,
+           FakeLLM.new([
+             %{code: "done.(\"revenue: stable\")"},
+             %{code: "done.(\"support: improving\")"},
+             %{code: "done.(\"growth: accelerating\")"}
+           ])}
+
+        true ->
+          case Cantrip.llm_from_env() do
+            {:ok, llm} ->
+              llm
+
+            {:error, _} ->
+              {FakeLLM,
+               FakeLLM.new([
+                 %{code: "done.(\"revenue: stable\")"},
+                 %{code: "done.(\"support: improving\")"},
+                 %{code: "done.(\"growth: accelerating\")"}
+               ])}
+          end
+      end
+
+    # COMP-4: child circle is independent, WARD-1: child wards compose with parent
+    {:ok, cantrip} =
+      Cantrip.new(%{
+        llm: parent_llm,
+        child_llm: child_llm,
+        identity: %{
+          system_prompt:
+            "You work in Elixir code. Use host functions and call done.(answer) when finished.",
+          require_done_tool: true,
+          tool_choice: "required"
+        },
+        circle: %{
+          type: :code,
+          gates: [:done, :call_entity, :call_entity_batch],
+          wards: [%{max_turns: 8}, %{max_depth: 2}, %{max_batch_size: 4}]
+        }
+      })
+
+    case Cantrip.cast(cantrip, "Analyze each category and summarize the overall trend.") do
+      {:ok, result, next_cantrip, loom, meta} ->
+        {:ok, result, next_cantrip, loom, meta}
+
+      {:error, reason, _cantrip} ->
+        {:error, reason}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
-  # 10 Loom: inspect turns and thread metadata after a normal run.
-  defp build("10", opts) do
+  # ---------------------------------------------------------------------------
+  # A.10 Loom (LOOM-3, LOOM-7)
+  # Every turn recorded. Append-only. Thread extraction shows the full trace.
+  # ---------------------------------------------------------------------------
+  defp run_10(opts) do
     llm =
       choose_llm(opts, [
         %{tool_calls: [%{gate: "echo", args: %{text: "category-a: up"}}]},
         %{tool_calls: [%{gate: "done", args: %{answer: "overall trend: up"}}]}
       ])
 
-    cantrip_from(%{
-      llm: llm,
-      identity: identity_for(:conversation),
-      circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 5}]},
-      intent: "Inspect category signals and provide a one-line trend summary."
-    })
+    {:ok, cantrip} =
+      Cantrip.new(%{
+        llm: llm,
+        identity: %{
+          system_prompt: "You are a disciplined analyst. Call done with the final answer.",
+          require_done_tool: true,
+          tool_choice: "required"
+        },
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 5}]}
+      })
+
+    with {:ok, result, _next_cantrip, loom, meta} <-
+           Cantrip.cast(cantrip, "Inspect category signals and provide a one-line trend summary.") do
+      # LOOM-3: append-only, LOOM-7: each turn has utterance, observation, usage, timing
+      gates_called =
+        loom.turns
+        |> Enum.flat_map(&(&1.gate_calls || []))
+        |> Enum.uniq()
+
+      thread = Cantrip.extract_thread(cantrip, loom)
+
+      enriched = %{
+        ok_result: result,
+        turn_count: length(loom.turns),
+        thread_length: length(thread),
+        terminated_turns: Enum.count(loom.turns, &Map.get(&1, :terminated, false)),
+        truncated_turns: Enum.count(loom.turns, &Map.get(&1, :truncated, false)),
+        gates_called: gates_called,
+        token_usage: Map.get(meta, :cumulative_usage, %{})
+      }
+
+      {:ok, enriched, cantrip, loom, meta}
+    else
+      {:error, reason, _cantrip} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  # 11 Persistent entity: code bindings survive across sends.
-  defp build("11", opts) do
+  # ---------------------------------------------------------------------------
+  # A.11 Persistent Entity (ENTITY-5)
+  # Summon once, send multiple intents. Variables from send 1 survive in send 2.
+  # State accumulates meaningfully -- not a counter, but data that builds.
+  # ---------------------------------------------------------------------------
+  defp run_11(opts) do
     llm =
       choose_llm(opts, [
-        %{code: "counter = 1"},
-        %{code: "done.(counter)"},
-        %{code: "counter = counter + 1"},
-        %{code: "done.(counter)"}
+        # Send 1, turn 1: define categories and collect initial observations
+        %{
+          code: """
+          categories = %{north: "growth", south: "decline", west: "stable"}
+          observations = ["Q1 revenue up 12%"]
+          """
+        },
+        # Send 1, turn 2: report via done (variables now persisted in sandbox)
+        %{
+          code: """
+          done.(%{categories: categories, observation_count: length(observations)})
+          """
+        },
+        # Send 2, turn 1: variables from send 1 persist -- extend them
+        %{
+          code: """
+          observations = observations ++ ["Q2 costs down 8%", "Q3 pipeline strong"]
+          """
+        },
+        # Send 2, turn 2: summarize using all accumulated state
+        %{
+          code: """
+          summary = %{
+            region_count: map_size(categories),
+            total_observations: length(observations),
+            north_trend: categories[:north]
+          }
+          done.(summary)
+          """
+        }
       ])
 
-    cantrip_from(%{
-      llm: llm,
-      identity: identity_for(:code),
-      circle: %{type: :code, gates: [:done], wards: [%{max_turns: 4}]},
-      intent: "unused"
-    })
+    # ENTITY-5: persistent entity with code medium -- bindings survive across sends
+    {:ok, cantrip} =
+      Cantrip.new(%{
+        llm: llm,
+        identity: %{
+          system_prompt:
+            "You work in Elixir code. Use host functions and call done.(answer) when finished.",
+          require_done_tool: true,
+          tool_choice: "required"
+        },
+        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 4}]}
+      })
+
+    with {:ok, pid} <- Cantrip.summon(cantrip),
+         {:ok, first, _c1, loom1, meta1} <-
+           Cantrip.send(pid, "Set up the regional analysis categories and first observations."),
+         {:ok, second, c2, loom2, meta2} <-
+           Cantrip.send(pid, "Add more observations and summarize using existing categories.") do
+      _ = Process.exit(pid, :normal)
+
+      result = %{
+        first: first,
+        second: second,
+        turns_after_first_send: length(loom1.turns),
+        turns_after_second_send: length(loom2.turns),
+        terminated_first: Map.get(meta1, :terminated, false),
+        terminated_second: Map.get(meta2, :terminated, false)
+      }
+
+      {:ok, result, c2, loom2, meta2}
+    else
+      {:error, reason, _cantrip} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  # 12 Familiar: construct and cast child cantrips from code, persist loom to disk.
-  defp build("12", opts) do
+  # ---------------------------------------------------------------------------
+  # A.12 Familiar
+  # Persistent entity that constructs child cantrips through code.
+  # Children use the same LLM resolution pattern (env -> fallback).
+  # Loom persisted to disk for cross-session memory.
+  # ---------------------------------------------------------------------------
+  defp run_12(opts) do
     loom_path =
       Map.get(
         opts,
@@ -539,48 +713,28 @@ defmodule Cantrip.Examples do
         )
       )
 
+    # Resolve child LLM the same way as parent: env -> fallback
+    child_llm_tuple =
+      cond do
+        Map.has_key?(opts, :child_llm) ->
+          inspect(Map.fetch!(opts, :child_llm))
+
+        scripted_mode?(opts) ->
+          # In scripted mode, children get their own FakeLLM instances
+          :scripted
+
+        true ->
+          case Cantrip.llm_from_env() do
+            {:ok, {mod, state}} -> inspect({mod, state})
+            {:error, _} -> :scripted
+          end
+      end
+
+    # Build the code for send 1 based on LLM resolution
+    {send1_code, _scripted_parent} = build_familiar_send1(child_llm_tuple)
+
     scripted = [
-      %{
-        code: """
-        Process.put(:example_memory, ["familiar-start"])
-
-        conversation_llm =
-          {Cantrip.FakeLLM,
-           Cantrip.FakeLLM.new([
-             %{tool_calls: [%{gate: "done", args: %{answer: "child-conversation"}}]}
-           ])}
-
-        {:ok, child_conversation} =
-          Cantrip.new(%{
-            llm: conversation_llm,
-            identity: %{system_prompt: "Child conversation analyst", require_done_tool: true, tool_choice: "required"},
-            circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 2}]}
-          })
-
-        {:ok, convo_result, _, _, _} =
-          Cantrip.cast(child_conversation, "Analyze customer retention risk by segment.")
-
-        code_llm =
-          {Cantrip.FakeLLM,
-           Cantrip.FakeLLM.new([
-             %{code: "done.(\\\"child-code\\\")"}
-           ])}
-
-        {:ok, child_code} =
-          Cantrip.new(%{
-            llm: code_llm,
-            identity: %{system_prompt: "Child code analyst"},
-            circle: %{type: :code, gates: [:done], wards: [%{max_turns: 2}]}
-          })
-
-        {:ok, code_result, _, _, _} =
-          Cantrip.cast(child_code, "Compute a quick anomaly score.")
-
-        memory = (Process.get(:example_memory) || []) ++ [convo_result, code_result]
-        Process.put(:example_memory, memory)
-        done.(memory)
-        """
-      },
+      %{code: send1_code},
       %{
         code:
           "memory = (Process.get(:example_memory) || []) ++ [\"second-send\"]\nProcess.put(:example_memory, memory)\ndone.(memory)"
@@ -589,58 +743,65 @@ defmodule Cantrip.Examples do
 
     llm = choose_llm(opts, scripted)
 
-    cantrip_from(%{
-      llm: llm,
-      identity: identity_for(:code),
-      circle: %{type: :code, gates: [:done], wards: [%{max_turns: 8}]},
-      loom_storage: {:jsonl, loom_path},
-      intent: "unused"
-    })
-  end
+    {:ok, cantrip} =
+      Cantrip.new(%{
+        llm: llm,
+        identity: %{
+          system_prompt:
+            "You work in Elixir code. Use host functions and call done.(answer) when finished.",
+          require_done_tool: true,
+          tool_choice: "required"
+        },
+        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 8}]},
+        loom_storage: {:jsonl, loom_path}
+      })
 
-  defp build(_, _opts), do: {:error, "unknown pattern id"}
+    with {:ok, pid} <- Cantrip.summon(cantrip),
+         {:ok, first, _c1, loom1, _meta1} <-
+           Cantrip.send(pid, "Construct children and delegate work."),
+         {:ok, second, c2, loom2, meta2} <-
+           Cantrip.send(pid, "Recall what happened before.") do
+      _ = Process.exit(pid, :normal)
 
-  defp cantrip_from(attrs) do
-    intent = Map.fetch!(attrs, :intent)
+      persisted_path =
+        case c2.loom_storage do
+          {:jsonl, path} -> path
+          _ -> nil
+        end
 
-    cantrip_attrs =
-      attrs
-      |> Map.drop([:intent])
-      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-      |> Map.new()
+      result = %{
+        first: first,
+        second: second,
+        turns: length(loom2.turns),
+        persisted_loom: is_binary(persisted_path) and File.exists?(persisted_path),
+        loom_path: persisted_path,
+        turns_after_first_send: length(loom1.turns)
+      }
 
-    case Cantrip.new(cantrip_attrs) do
-      {:ok, cantrip} -> {:ok, {intent, cantrip}}
+      {:ok, result, c2, loom2, meta2}
+    else
+      {:error, reason, _cantrip} -> {:error, reason}
       {:error, reason} -> {:error, reason}
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # LLM resolution: try env vars, fall back to FakeLLM for CI.
+  # This is the ONLY shared helper -- it does not touch circles or identities.
+  # ---------------------------------------------------------------------------
   defp choose_llm(opts, scripted_responses, fake_opts \\ []) do
     cond do
       Map.has_key?(opts, :llm) ->
         Map.fetch!(opts, :llm)
 
       scripted_mode?(opts) ->
-        fake_llm(scripted_responses, fake_opts)
+        {FakeLLM, FakeLLM.new(scripted_responses, fake_opts)}
 
       true ->
         case Cantrip.llm_from_env() do
           {:ok, llm} -> llm
-          {:error, _reason} -> fake_llm(scripted_responses, fake_opts)
+          {:error, _reason} -> {FakeLLM, FakeLLM.new(scripted_responses, fake_opts)}
         end
-    end
-  end
-
-  defp choose_child_llm(opts, parent_llm, scripted_child_responses) do
-    cond do
-      Map.has_key?(opts, :child_llm) ->
-        Map.fetch!(opts, :child_llm)
-
-      scripted_mode?(opts) ->
-        fake_llm(scripted_child_responses)
-
-      true ->
-        parent_llm
     end
   end
 
@@ -649,29 +810,91 @@ defmodule Cantrip.Examples do
     mode == :scripted or Map.get(opts, :fake, false)
   end
 
-  defp fake_llm(responses, opts \\ []), do: {FakeLLM, FakeLLM.new(responses, opts)}
-
-  defp identity_for(:conversation) do
-    %{
-      system_prompt:
-        "You are a disciplined analyst. Use tools deliberately and call done with the final answer.",
-      require_done_tool: true,
-      tool_choice: "required"
-    }
-  end
-
-  defp identity_for(:code) do
-    %{
-      system_prompt:
-        "You work in Elixir code. Use host functions and call done.(answer) when finished.",
-      require_done_tool: true,
-      tool_choice: "required"
-    }
-  end
+  defp error_text({:error, reason}), do: reason
+  defp error_text(_), do: nil
 
   defp temp_root(prefix) do
     root = Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
     root
+  end
+
+  # Build the familiar's first send code. Children use same LLM resolution.
+  defp build_familiar_send1(:scripted) do
+    code = """
+    Process.put(:example_memory, ["familiar-start"])
+
+    conversation_llm =
+      {Cantrip.FakeLLM,
+       Cantrip.FakeLLM.new([
+         %{tool_calls: [%{gate: "done", args: %{answer: "child-conversation"}}]}
+       ])}
+
+    {:ok, child_conversation} =
+      Cantrip.new(%{
+        llm: conversation_llm,
+        identity: %{system_prompt: "Child conversation analyst", require_done_tool: true, tool_choice: "required"},
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 2}]}
+      })
+
+    {:ok, convo_result, _, _, _} =
+      Cantrip.cast(child_conversation, "Analyze customer retention risk by segment.")
+
+    code_llm =
+      {Cantrip.FakeLLM,
+       Cantrip.FakeLLM.new([
+         %{code: "done.(\\\"child-code\\\")"}
+       ])}
+
+    {:ok, child_code} =
+      Cantrip.new(%{
+        llm: code_llm,
+        identity: %{system_prompt: "Child code analyst"},
+        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 2}]}
+      })
+
+    {:ok, code_result, _, _, _} =
+      Cantrip.cast(child_code, "Compute a quick anomaly score.")
+
+    memory = (Process.get(:example_memory) || []) ++ [convo_result, code_result]
+    Process.put(:example_memory, memory)
+    done.(memory)
+    """
+
+    {code, true}
+  end
+
+  defp build_familiar_send1(llm_str) do
+    code = """
+    Process.put(:example_memory, ["familiar-start"])
+
+    child_llm = #{llm_str}
+
+    {:ok, child_conversation} =
+      Cantrip.new(%{
+        llm: child_llm,
+        identity: %{system_prompt: "Child conversation analyst", require_done_tool: true, tool_choice: "required"},
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 2}]}
+      })
+
+    {:ok, convo_result, _, _, _} =
+      Cantrip.cast(child_conversation, "Analyze customer retention risk by segment.")
+
+    {:ok, child_code} =
+      Cantrip.new(%{
+        llm: child_llm,
+        identity: %{system_prompt: "Child code analyst"},
+        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 2}]}
+      })
+
+    {:ok, code_result, _, _, _} =
+      Cantrip.cast(child_code, "Compute a quick anomaly score.")
+
+    memory = (Process.get(:example_memory) || []) ++ [convo_result, code_result]
+    Process.put(:example_memory, memory)
+    done.(memory)
+    """
+
+    {code, false}
   end
 end

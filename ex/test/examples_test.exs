@@ -50,7 +50,7 @@ defmodule CantripExamplesTest do
 
   test "06 medium changes action space with same gates" do
     assert {:ok, result, _cantrip, _loom, meta} = Examples.run("06", mode: :scripted)
-    assert result.action_space_formula == "A = M ∪ G - W"
+    assert result.action_space_formula == "A = M \u222a G - W"
     assert "echo" in result.conversation_gates_called
     assert "done" in result.code_gates_called
     assert String.starts_with?(result.code_result, "code total=")
@@ -108,8 +108,14 @@ defmodule CantripExamplesTest do
 
   test "11 persistent entity accumulates state across sends" do
     assert {:ok, result, _cantrip, loom, meta} = Examples.run("11", mode: :scripted)
-    assert result.first == 1
-    assert result.second == 2
+    # Send 1: categories + observation count
+    assert is_map(result.first)
+    assert result.first.observation_count == 1
+    # Send 2: variables from send 1 persisted -- extended observations
+    assert is_map(result.second)
+    assert result.second.region_count == 3
+    assert result.second.total_observations == 3
+    assert result.second.north_trend == "growth"
     assert result.turns_after_second_send > result.turns_after_first_send
     assert length(loom.turns) == 4
     assert meta.terminated
