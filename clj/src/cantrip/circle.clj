@@ -13,15 +13,6 @@
      :result "missing required answer"
      :is-error true}))
 
-(defn- removed-gates
-  [circle]
-  (->> (:wards circle)
-       (keep (fn [ward]
-               (or (:remove-gate ward)
-                   (:remove_gate ward))))
-       (map gates/gate-keyword)
-       set))
-
 (defn- gate-spec
   [circle gate]
   (let [gate-id (gates/gate-keyword gate)
@@ -92,8 +83,7 @@
    (loop [calls tool-calls
           observation []
           terminated? false
-          result nil
-          removed (removed-gates circle)]
+          result nil]
      (if (or (empty? calls) terminated?)
        {:observation observation
         :terminated? terminated?
@@ -103,8 +93,7 @@
              args (:args call)
              gate-name (name gate)]
          (cond
-           (or (contains? removed gate)
-               (not (gates/gate-available? (:gates circle) gate)))
+           (not (gates/gate-available? (:gates circle) gate))
            (recur (rest calls)
                   (conj observation
                         {:gate gate-name
@@ -112,14 +101,13 @@
                          :result "gate not available"
                          :is-error true})
                   false
-                  nil
-                  removed)
+                  nil)
 
            (= gate :done)
            (let [rec (done-observation args)]
              (if (:is-error rec)
-               (recur (rest calls) (conj observation rec) false nil removed)
-               (recur (rest calls) (conj observation rec) true (:result rec) removed)))
+               (recur (rest calls) (conj observation rec) false nil)
+               (recur (rest calls) (conj observation rec) true (:result rec))))
 
            :else
            (let [{:keys [result is-error]} (gate-observation circle gate args dependencies)]
@@ -130,5 +118,4 @@
                            :result result
                            :is-error is-error})
                     false
-                    nil
-                    removed))))))))
+                    nil))))))))

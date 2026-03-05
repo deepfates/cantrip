@@ -98,7 +98,7 @@ describe("ENTITY-1: entity only created by casting cantrip", () => {
 
     const entity = spell.summon();
     // Actually call turn() and verify it produces a result
-    const result = await entity.cast("test summon");
+    const result = await entity.send("test summon");
     expect(result).toBe("invoked");
   });
 });
@@ -139,8 +139,8 @@ describe("ENTITY-2: each entity has unique ID", () => {
     const entity1 = spell.summon();
     const entity2 = spell.summon();
 
-    await entity1.cast("entity1 msg");
-    await entity2.cast("entity2 msg");
+    await entity1.send("entity1 msg");
+    await entity2.send("entity2 msg");
 
     // entity2's call should NOT contain entity1's message
     const entity2Messages = messagesPerCall[1];
@@ -226,7 +226,7 @@ describe("ENTITY-3: state grows monotonically within a thread", () => {
     });
 
     const entity = spell.summon();
-    await entity.cast("grow test");
+    await entity.send("grow test");
 
     const history = entity.history;
     // History must contain: system, user, assistant+tool (turn1), assistant+tool (turn2), assistant+tool (turn3 done)
@@ -275,10 +275,10 @@ describe("ENTITY-3: state grows monotonically within a thread", () => {
     });
 
     const entity = spell.summon();
-    await entity.cast("first intent");
+    await entity.send("first intent");
     const historyAfterFirst = entity.history.length;
 
-    await entity.cast("second intent");
+    await entity.send("second intent");
     const historyAfterSecond = entity.history.length;
 
     // History must grow monotonically — second cast adds to existing state
@@ -313,7 +313,7 @@ describe("ENTITY-4: entity thread persists after termination", () => {
     });
 
     const entity = spell.summon();
-    await entity.cast("persist test");
+    await entity.send("persist test");
 
     const history = entity.history;
     // History should contain at least: system, user, assistant messages
@@ -369,7 +369,7 @@ describe("ENTITY-5/6: summon and turn API", () => {
     });
 
     const entity = spell.summon();
-    const result = await entity.cast("do something");
+    const result = await entity.send("do something");
     expect(result).toBe("hello from turn");
   });
 });

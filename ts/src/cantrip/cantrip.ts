@@ -78,7 +78,7 @@ export function cantrip(input: CantripInput): Cantrip {
       if (!intent) throw new Error("cast: intent is required (INTENT-1)");
       const entity = summon();
       try {
-        return await entity.cast(intent);
+        return await entity.send(intent);
       } finally {
         await entity.dispose();
       }
@@ -87,7 +87,7 @@ export function cantrip(input: CantripInput): Cantrip {
       if (!intent) throw new Error("cast_stream: intent is required (INTENT-1)");
       const entity = summon();
       try {
-        for await (const event of entity.cast_stream(intent)) {
+        for await (const event of entity.send_stream(intent)) {
           yield event;
         }
       } finally {

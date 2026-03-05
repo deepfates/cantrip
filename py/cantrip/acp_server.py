@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-import copy
 import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from cantrip.models import Turn
+from cantrip.entity import Entity
 from cantrip.runtime import Cantrip
 
 
 @dataclass
 class _SessionState:
-    seed_turns: list[Turn] = field(default_factory=list)
+    entity: Entity
     transcript: list[tuple[str, str]] = field(default_factory=list)
     cancel_requested: bool = False
 
@@ -31,7 +30,7 @@ class CantripACPServer:
 
     def create_session(self) -> str:
         session_id = str(uuid.uuid4())
-        self._sessions[session_id] = _SessionState()
+        self._sessions[session_id] = _SessionState(entity=self.cantrip.summon())
         return session_id
 
     def session_exists(self, session_id: str) -> bool:
@@ -54,19 +53,21 @@ class CantripACPServer:
         if state is None:
             raise KeyError(f"unknown session: {session_id}")
 
-        prior_turn_count = len(state.seed_turns)
+        prior_turn_count = len(state.entity.turns)
         composed_intent = self._compose_intent(state, intent)
         state.cancel_requested = False
         started = time.perf_counter()
-        result, thread = self.cantrip.cast_with_thread(
-            intent=composed_intent,
-            seed_turns=state.seed_turns,
+        result = state.entity.send(
+            composed_intent,
+            compose_intent=False,
             event_sink=event_sink,
             cancel_check=lambda: bool(state.cancel_requested),
         )
+        thread = state.entity.last_thread
+        if thread is None:
+            raise RuntimeError("entity.send() did not produce a thread")
         cast_ms = max(1, int((time.perf_counter() - started) * 1000))
         state.cancel_requested = False
-        state.seed_turns = copy.deepcopy(thread.turns)
         assistant_text = self._assistant_text_from_outcome(thread, result)
         state.transcript.append((intent, assistant_text))
         events = self._events_from_thread(

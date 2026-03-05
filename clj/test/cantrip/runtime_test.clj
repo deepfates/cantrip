@@ -126,7 +126,7 @@
     (is (= ["done" "read"]
            (mapv :name (-> @invocations first :tools))))))
 
-(deftest summon-cast-intent-persists-turn-history
+(deftest summon-send-persists-turn-history
   (let [invocations (atom [])
         entity (runtime/summon
                 {:llm {:provider :fake
@@ -139,8 +139,8 @@
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 3}]}})
-        first-result (runtime/cast-intent entity "a")
-        second-result (runtime/cast-intent entity "b")
+        first-result (runtime/send entity "a")
+        second-result (runtime/send entity "b")
         state (runtime/entity-state entity)]
     (is (= "ok" (:result first-result)))
     (is (= "ok" (:result second-result)))
@@ -215,9 +215,9 @@
                           :gates [:done]
                           :wards [{:max-turns 3}]}
                  :runtime {:folding {:max_turns_in_context 1}}})]
-    (runtime/cast-intent entity "one")
-    (runtime/cast-intent entity "two")
-    (runtime/cast-intent entity "three")
+    (runtime/send entity "one")
+    (runtime/send entity "two")
+    (runtime/send entity "three")
     (is (= 3 (count @invocations)))
     (is (some #(and (= :system (:role %))
                     (str/includes? (:content %) "Folded"))

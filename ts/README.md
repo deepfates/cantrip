@@ -148,8 +148,8 @@ const result = await spell.cast("Analyze this data");
 
 // Summon — persistent. Entity survives, accepts more intents.
 const entity = spell.summon();
-const r1 = await entity.cast("First task");
-const r2 = await entity.cast("Follow-up task"); // remembers r1
+const r1 = await entity.send("First task");
+const r2 = await entity.send("Follow-up task"); // remembers r1
 ```
 
 For interactive sessions, use `summon()` with the built-in REPL:

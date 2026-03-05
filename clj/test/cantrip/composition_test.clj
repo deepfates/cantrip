@@ -14,7 +14,7 @@
 
 (deftest call-agent-links-child-root-to-parent-turn
   (let [entity (runtime/summon parent-cantrip)
-        _ (runtime/cast-intent entity "start parent")
+        _ (runtime/send entity "start parent")
         parent-last-id (:id (last @(:turn-history entity)))
         child-cantrip {:llm {:provider :fake
                                  :responses [{:tool-calls [{:id "c1" :gate :done :args {:answer "child"}}]}]}
@@ -27,18 +27,6 @@
     (is (= :terminated (:status result)))
     (is (= "child" (:result result)))
     (is (= parent-last-id (:parent-id (first child-first-turn))))))
-
-(deftest call-agent-enforces-child-circle-subset
-  (let [entity (runtime/summon parent-cantrip)
-        child-cantrip {:llm {:provider :fake
-                                 :responses [{:tool-calls [{:id "c1" :gate :done :args {:answer "child"}}]}]}
-                       :identity {:system-prompt "child"}
-                       :circle {:medium :conversation
-                                :gates [:done :read]
-                                :wards [{:max-turns 2}]}}
-        result (runtime/call-agent entity {:cantrip child-cantrip :intent "child task"})]
-    (is (= :error (:status result)))
-    (is (= "cannot grant gate: child gates must be subset of parent gates" (:error result)))))
 
 (deftest call-agent-enforces-depth-ward
   (let [entity (runtime/summon (assoc-in parent-cantrip [:circle :wards] [{:max-turns 3} {:max-depth 0}]))
@@ -73,7 +61,7 @@
                        :identity {:system-prompt "child"}
                        :circle {:medium :conversation :gates [:done] :wards [{:max-turns 2}]}}
         child-result (runtime/call-agent entity {:cantrip child-cantrip :intent "child task"})
-        parent-result (runtime/cast-intent entity "parent continues")]
+        parent-result (runtime/send entity "parent continues")]
     (is (= :error (:status child-result)))
     (is (= :terminated (:status parent-result)))
     (is (= "parent-1" (:result parent-result)))))

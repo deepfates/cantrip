@@ -83,7 +83,7 @@ describe("Entity loom integration", () => {
       entity_id: "test-entity",
     });
 
-    await entity.cast("hello");
+    await entity.send("hello");
 
     const turns = await storage.getAll();
     // Should have at least the call root + one turn
@@ -122,7 +122,7 @@ describe("Entity loom integration", () => {
       dependency_overrides: null,
     });
 
-    const result = await entity.cast("hello");
+    const result = await entity.send("hello");
     expect(result).toBe("no loom");
   });
 
@@ -154,7 +154,7 @@ describe("Entity loom integration", () => {
     });
 
     const entity = spell.summon();
-    await entity.cast("hello");
+    await entity.send("hello");
 
     const turns = await storage.getAll();
     expect(turns.length).toBeGreaterThanOrEqual(1);
@@ -195,7 +195,7 @@ describe("Entity loom integration", () => {
       },
     });
 
-    const result = await entity.cast("hello");
+    const result = await entity.send("hello");
     expect(result).toBe("with retry config");
   });
 
@@ -240,8 +240,8 @@ describe("Entity loom integration", () => {
       entity_id: "entity-1",
     });
 
-    await entity.cast("first");
-    await entity.cast("second");
+    await entity.send("first");
+    await entity.send("second");
 
     const turns = await storage.getAll();
     // Root + at least 2 turn records

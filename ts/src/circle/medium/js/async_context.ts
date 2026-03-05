@@ -104,7 +104,7 @@ export class JsAsyncContext {
    * @example
    * ```ts
    * ctx.registerAsyncFunction("call_entity", async (intent, context) => {
-   *   const result = await entity.cast(intent, context);
+   *   const result = await entity.send(intent, context);
    *   return result;
    * });
    *

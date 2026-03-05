@@ -268,7 +268,7 @@ def test_acp_server_maps_cancelled_thread_to_cancelled_stop_reason() -> None:
             id="t-cancelled",
             entity_id="e",
             intent=intent,
-            call=Identity(),
+            identity=Identity(),
             turns=[],
         )
         thread.truncated = True
@@ -296,7 +296,7 @@ def test_acp_server_fails_fast_on_stagnant_code_loop() -> None:
             }
         ),
         circle=Circle(gates=["done"], wards=[{"max_turns": 8}], medium="code"),
-        call=Identity(require_done_tool=True, tool_choice="required"),
+        identity=Identity(require_done_tool=True, tool_choice="required"),
     )
     server = CantripACPServer(cantrip)
     sid = server.create_session()

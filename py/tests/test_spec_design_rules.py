@@ -53,8 +53,8 @@ def _snapshot_first_query(cantrip: Cantrip) -> dict[str, object]:
 )
 def test_entity_1_only_cast_creates_entity_thread(build_cantrip) -> None:
     cantrip = build_cantrip()
-    # Public API does not expose a freestanding Entity constructor.
-    assert "Entity" not in __import__("cantrip").__all__
+    # Public API exposes Entity for summon/send usage.
+    assert "Entity" in __import__("cantrip").__all__
     # Creating a cantrip does not instantiate an entity/thread.
     assert cantrip.loom.list_threads() == []
 

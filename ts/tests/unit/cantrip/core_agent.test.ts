@@ -87,7 +87,7 @@ describe("entity (from core agent tests)", () => {
       llm: llm as any,
       gates: [add, done],
     });
-    const result = await entity.cast("What is 2 + 3?");
+    const result = await entity.send("What is 2 + 3?");
     expect(result).toBe("Result is 5");
   });
 
@@ -124,7 +124,7 @@ describe("entity (from core agent tests)", () => {
       wards: [{ max_turns: 200, require_done_tool: true }],
     });
 
-    const result = await entity.cast("finish");
+    const result = await entity.send("finish");
     expect(result).toBe("all set");
   });
 
@@ -142,6 +142,6 @@ describe("entity (from core agent tests)", () => {
       llm: llm as any,
       gates: [done],
     });
-    await expect(entity.cast("hi")).rejects.toThrow("boom");
+    await expect(entity.send("hi")).rejects.toThrow("boom");
   });
 });

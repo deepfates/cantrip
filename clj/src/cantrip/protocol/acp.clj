@@ -112,7 +112,7 @@
                        []
                        :error)
               (let [history (conj (:history session) prompt-text)
-                    cast-result (runtime/cast-intent (:entity session) prompt-text)
+                    cast-result (runtime/send (:entity session) prompt-text)
                     text (or (:result cast-result) "")
                     redacted (redaction/redact-text text)
                     next-router (assoc-in router [:sessions sid :history] history)]

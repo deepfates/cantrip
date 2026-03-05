@@ -65,10 +65,10 @@ export type EntityOptions = {
  * An Entity is a persistent multi-turn session created by summoning a Cantrip.
  *
  * While `cast()` is fire-and-forget (one intent → one result), `summon()`
- * creates an Entity that accumulates state across multiple `cast()` calls.
+ * creates an Entity that accumulates state across multiple `send()` calls.
  *
  * Entity owns its circle state (messages) directly and uses `runLoop`
- * for both `cast()` (returns string) and `cast_stream()` (yields events).
+ * for both `send()` (returns string) and `send_stream()` (yields events).
  */
 export class Entity {
   /** The LLM that powers this Entity. */
@@ -226,7 +226,7 @@ export class Entity {
                 retry: this.retry,
               });
 
-              return childEntity.cast(query);
+              return childEntity.send(query);
             };
           });
         }
@@ -304,7 +304,7 @@ export class Entity {
               retry: this.retry,
             });
 
-            return childEntity.cast(query);
+            return childEntity.send(query);
           };
           };
         }
@@ -342,18 +342,18 @@ export class Entity {
   }
 
   /**
-   * Cast an intent: run the agent loop, return the result.
-   * State accumulates — each cast sees all prior context.
+   * Send an intent: run the agent loop, return the result.
+   * State accumulates — each send sees all prior context.
    */
-  async cast(intent: Intent): Promise<string> {
+  async send(intent: Intent): Promise<string> {
     return this._runLoop(intent);
   }
 
   /**
-   * Cast an intent with streaming: yields TurnEvents as they occur.
-   * State accumulates — each cast sees all prior context.
+   * Send an intent with streaming: yields TurnEvents as they occur.
+   * State accumulates — each send sees all prior context.
    */
-  async *cast_stream(intent: Intent): AsyncGenerator<TurnEvent> {
+  async *send_stream(intent: Intent): AsyncGenerator<TurnEvent> {
     const events: TurnEvent[] = [];
     let resolve: (() => void) | null = null;
     let done = false;

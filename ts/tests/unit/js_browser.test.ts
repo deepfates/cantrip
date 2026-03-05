@@ -397,7 +397,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     const parsed = JSON.parse(result);
     expect(parsed.__h).toBeNumber();
     expect(parsed.kind).toBe("taiko_handle");
@@ -421,7 +421,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("clicked");
     // Verify the mock Taiko click was called with the real FakeElementWrapper
     const clickCall = browserCtx.calls.find((c) => c.fn === "click");
@@ -450,7 +450,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("composed");
     // near() should have been called with real FakeElementWrapper
     const nearCall = browserCtx.calls.find((c) => c.fn === "near");
@@ -478,7 +478,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("clicked string");
     // String is passed directly to Taiko's click (which accepts strings natively)
     const clickCall = browserCtx.calls.find((c) => c.fn === "click");
@@ -502,7 +502,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toContain("button");
     expect(result).toContain("Submit");
   });
@@ -523,7 +523,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("true");
   });
 
@@ -544,7 +544,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("recovered");
   });
 
@@ -569,7 +569,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("https://example.com - Example Domain");
   });
 
@@ -593,7 +593,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("written");
     const writeCall = browserCtx.calls.find((c) => c.fn === "write");
     expect(writeCall).toBeDefined();
@@ -622,7 +622,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("Example Domain");
     const gotoCall = browserCtx.calls.find((c) => c.fn === "goto");
     expect(gotoCall).toBeDefined();
@@ -643,7 +643,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("no browser");
   });
 
@@ -682,7 +682,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    await entity.cast("test");
+    await entity.send("test");
     expect(capturedSystemPrompt).toContain("button(");
     expect(capturedSystemPrompt).toContain("click(");
     expect(capturedSystemPrompt).toContain("goto(");
@@ -722,7 +722,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    await entity.cast("test");
+    await entity.send("test");
     expect(capturedSystemPrompt).not.toContain("button(");
     expect(capturedSystemPrompt).not.toContain(".text()");
     expect(capturedSystemPrompt).not.toContain("into(");
@@ -782,7 +782,7 @@ describe("JS browser handle pattern", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("Start");
+    const result = await entity.send("Start");
     expect(result).toBe("Summary: test data");
   });
 });
@@ -815,7 +815,7 @@ describe("JS browser transparent wrappers", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toContain("Submit");
   });
 
@@ -835,7 +835,7 @@ describe("JS browser transparent wrappers", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("true");
   });
 
@@ -853,7 +853,7 @@ describe("JS browser transparent wrappers", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toContain("textBox");
     expect(result).toContain("Email");
   });
@@ -872,7 +872,7 @@ describe("JS browser transparent wrappers", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("true");
   });
 
@@ -892,7 +892,7 @@ describe("JS browser transparent wrappers", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("attr-class");
   });
 
@@ -917,7 +917,7 @@ describe("JS browser transparent wrappers", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toContain("Submit");
     // click should have resolved the handle correctly
     const clickCall = browserCtx.calls.find((c) => c.fn === "click");
@@ -949,7 +949,7 @@ describe("JS browser transparent wrappers", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("composed");
+    const result = await entity.send("composed");
     // The click should have resolved both the button handle and the near handle
     const clickCall = browserCtx.calls.find((c) => c.fn === "click");
     expect(clickCall).toBeDefined();
@@ -977,7 +977,7 @@ describe("JS browser transparent wrappers", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("written");
     const writeCall = browserCtx.calls.find((c) => c.fn === "write");
     expect(writeCall).toBeDefined();
@@ -1005,7 +1005,7 @@ describe("JS browser transparent wrappers", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     // Forged handles won't have methods (they weren't created by wrapHandle),
     // so it should say "no method"
     expect(result).toBe("no method");
@@ -1025,7 +1025,7 @@ describe("JS browser transparent wrappers", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toContain("Price");
   });
 
@@ -1045,7 +1045,7 @@ describe("JS browser transparent wrappers", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("eval-result");
     // Verify evaluate was called with a function, not the raw string
     const evalCall = browserCtx.calls.find((c) => c.fn === "evaluate");
@@ -1069,7 +1069,7 @@ describe("JS browser transparent wrappers", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toContain("Submit");
   });
 });
@@ -1221,7 +1221,7 @@ describe("JS browser edge cases", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     const ids = JSON.parse(result);
     expect(ids).toHaveLength(3);
     // All IDs should be unique
@@ -1254,7 +1254,7 @@ describe("JS browser edge cases", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     const results = JSON.parse(result);
     expect(results).toEqual([true, false, false, false, false]);
   });
@@ -1290,7 +1290,7 @@ describe("JS browser edge cases", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("clicked stored");
     // Verify click was called
     const clickCall = browserCtx.calls.find((c) => c.fn === "click");
@@ -1313,7 +1313,7 @@ describe("JS browser edge cases", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toContain("requires a selector handle");
   });
 });
@@ -1348,7 +1348,7 @@ describe("JS browser full API surface", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("opened");
     const call = browserCtx.calls.find((c) => c.fn === "openTab");
     expect(call).toBeDefined();
@@ -1375,7 +1375,7 @@ describe("JS browser full API surface", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("switched and closed");
     expect(browserCtx.calls.find((c) => c.fn === "switchTo")).toBeDefined();
     expect(browserCtx.calls.find((c) => c.fn === "closeTab")).toBeDefined();
@@ -1402,7 +1402,7 @@ describe("JS browser full API surface", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("dragged");
     const call = browserCtx.calls.find((c) => c.fn === "dragAndDrop");
     expect(call).toBeDefined();
@@ -1426,7 +1426,7 @@ describe("JS browser full API surface", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     const cookies = JSON.parse(result);
     expect(cookies).toBeArray();
     expect(cookies[0].name).toBe("session");
@@ -1452,7 +1452,7 @@ describe("JS browser full API surface", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("cookies managed");
     expect(browserCtx.calls.find((c) => c.fn === "setCookie")).toBeDefined();
     expect(
@@ -1474,7 +1474,7 @@ describe("JS browser full API surface", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("emulated");
     const call = browserCtx.calls.find((c) => c.fn === "emulateDevice");
     expect(call).toBeDefined();
@@ -1497,7 +1497,7 @@ describe("JS browser full API surface", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("highlighted");
     const call = browserCtx.calls.find((c) => c.fn === "highlight");
     expect(call).toBeDefined();
@@ -1524,7 +1524,7 @@ describe("JS browser full API surface", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("written with to");
     const writeCall = browserCtx.calls.find((c) => c.fn === "write");
     expect(writeCall).toBeDefined();
@@ -1551,7 +1551,7 @@ describe("JS browser full API surface", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("attached");
     const call = browserCtx.calls.find((c) => c.fn === "attach");
     expect(call).toBeDefined();
@@ -1586,7 +1586,7 @@ describe("JS browser full API surface", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toContain("blocked");
   });
 });

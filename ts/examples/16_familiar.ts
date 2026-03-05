@@ -331,7 +331,7 @@ export async function main(intent?: string) {
     // Single-shot: run one intent and exit
     try {
       console.log(`Intent: ${task}\n`);
-      const result = await entity.cast(task);
+      const result = await entity.send(task);
       console.log(`\nResult:\n${result}`);
       return result;
     } finally {

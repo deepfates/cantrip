@@ -188,7 +188,7 @@ defmodule Cantrip do
   @doc """
   ENTITY-5: Start a persistent entity that can receive multiple intents.
   Returns `{:ok, pid, result, cantrip, loom, meta}` after the first cast completes.
-  The entity remains alive — send additional intents with `send_intent/2`.
+  The entity remains alive — send additional intents with `send/2`.
   """
   @spec summon(t(), String.t()) ::
           {:ok, pid(), term(), t(), Loom.t(), map()} | {:error, term(), t()}
@@ -210,9 +210,9 @@ defmodule Cantrip do
   ENTITY-5: Send a new intent to a persistent entity, running another loop episode.
   State (loom, code_state, messages) accumulates across all casts.
   """
-  @spec send_intent(pid(), String.t()) ::
+  @spec send(pid(), String.t()) ::
           {:ok, term(), t(), Loom.t(), map()} | {:error, term()}
-  def send_intent(pid, intent) when is_pid(pid) and is_binary(intent) do
+  def send(pid, intent) when is_pid(pid) and is_binary(intent) do
     EntityServer.cast_intent(pid, intent)
   end
 

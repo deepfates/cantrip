@@ -22,13 +22,13 @@ defmodule CantripM22SummonTest do
     assert length(loom1.turns) == 1
     assert Process.alive?(pid)
 
-    # Second cast via send_intent — state accumulates
-    {:ok, result2, _cantrip2, loom2, _meta2} = Cantrip.send_intent(pid, "continue")
+    # Second cast via send — state accumulates
+    {:ok, result2, _cantrip2, loom2, _meta2} = Cantrip.send(pid, "continue")
     assert result2 == "second"
     assert length(loom2.turns) == 2
 
     # Third cast
-    {:ok, result3, _cantrip3, loom3, _meta3} = Cantrip.send_intent(pid, "finish")
+    {:ok, result3, _cantrip3, loom3, _meta3} = Cantrip.send(pid, "finish")
     assert result3 == "third"
     assert length(loom3.turns) == 3
 
@@ -57,7 +57,7 @@ defmodule CantripM22SummonTest do
     assert result1 == "42"
 
     # Second intent can access x from first cast
-    {:ok, result2, _cantrip, _loom, _meta} = Cantrip.send_intent(pid, "use x")
+    {:ok, result2, _cantrip, _loom, _meta} = Cantrip.send(pid, "use x")
     assert result2 == "43"
   end
 end

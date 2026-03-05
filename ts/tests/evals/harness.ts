@@ -349,7 +349,7 @@ export async function runJsSandboxEval(options: {
   const EVAL_TIMEOUT_MS = 240_000; // 4 minutes hard wall-clock limit
   try {
     answer = await Promise.race([
-      entity.cast(query),
+      entity.send(query),
       new Promise<string>((_, reject) =>
         setTimeout(
           () => reject(new Error("JS-sandbox eval timeout")),
@@ -424,7 +424,7 @@ export async function runEntityWithJsEval(options: {
 
   let answer: string;
   try {
-    answer = await entity.cast(query);
+    answer = await entity.send(query);
   } finally {
     jsCtx.dispose();
   }
@@ -490,7 +490,7 @@ export async function runEntityMetaJsEval(options: {
 
   let answer: string;
   try {
-    answer = await entity.cast(query);
+    answer = await entity.send(query);
   } finally {
     jsCtx.dispose();
   }

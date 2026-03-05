@@ -17,6 +17,7 @@ from cantrip.code_runner import (
     code_runner_from_name,
 )
 from cantrip.errors import CantripError
+from cantrip.entity import Entity
 from cantrip.loom import InMemoryLoomStore, Loom
 from cantrip.mediums import medium_for
 from cantrip.models import Identity, Circle, LLMResponse, GateCallRecord, Thread, Turn
@@ -363,19 +364,10 @@ class Cantrip:
                 else:
                     composed_max_depth = min(parent_child_depth, requested_max_depth)
 
-                removed_gates = set(circle.removed_gates())
-                for w in requested_wards:
-                    if isinstance(w, dict) and "remove_gate" in w:
-                        removed_gates.add(str(w["remove_gate"]))
-
                 child_wards: list[dict[str, Any]] = [
                     {"max_turns": composed_max_turns},
                     {"max_depth": composed_max_depth},
                 ]
-                child_wards.extend(
-                    {"remove_gate": gate_to_remove}
-                    for gate_to_remove in sorted(removed_gates)
-                )
 
                 available_parent_gates = circle.available_gates()
                 if isinstance(req.get("gates"), list) and req.get("gates"):
@@ -925,6 +917,10 @@ class Cantrip:
             depth=depth,
         )
         return result
+
+    def summon(self) -> "Entity":
+        """Create a persistent entity. Use entity.send(intent) to run intents."""
+        return Entity(self)
 
     def cast_stream(
         self,

@@ -33,7 +33,7 @@ describe("integration: cantrip API", () => {
     expect(typeof result).toBe("string");
   }, 30_000);
 
-  it("summon() returns an entity, entity.cast() works", async () => {
+  it("summon() returns an entity, entity.send() works", async () => {
     const { cantrip, Circle, ChatAnthropic, done, gate, max_turns } = await import("../../src");
 
     const llm = new ChatAnthropic({ model });
@@ -53,14 +53,14 @@ describe("integration: cantrip API", () => {
     }).summon();
 
     expect(entity).toBeTruthy();
-    expect(typeof entity.cast).toBe("function");
+    expect(typeof entity.send).toBe("function");
 
-    const result = await entity.cast("hello");
+    const result = await entity.send("hello");
     expect(result).toBeTruthy();
     expect(typeof result).toBe("string");
 
     // Multi-turn: second turn sees prior context
-    const result2 = await entity.cast("say more");
+    const result2 = await entity.send("say more");
     expect(result2).toBeTruthy();
     expect(typeof result2).toBe("string");
   }, 60_000);

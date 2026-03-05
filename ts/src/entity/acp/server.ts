@@ -55,7 +55,7 @@ export type CantripEntityFactory = (
   | Promise<Entity>
   | Promise<CantripSessionHandle>;
 
-/** Streamable source — abstracts over Entity.cast_stream. */
+/** Streamable source — abstracts over Entity.send_stream. */
 type StreamSource = (text: string) => AsyncGenerator<any>;
 
 interface CantripSession {
@@ -77,12 +77,12 @@ function toStreamSource(result: Entity | CantripSessionHandle): {
   onClose?: () => void | Promise<void>;
 } {
   if (result instanceof Entity) {
-    return { stream: (text) => result.cast_stream(text) };
+    return { stream: (text) => result.send_stream(text) };
   }
   // CantripSessionHandle
   const handle = result as CantripSessionHandle;
   return {
-    stream: (text) => handle.entity.cast_stream(text),
+    stream: (text) => handle.entity.send_stream(text),
     onTurn: handle.onTurn,
     onClose: handle.onClose,
   };

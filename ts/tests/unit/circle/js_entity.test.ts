@@ -64,7 +64,7 @@ async function createTestAgent(opts: {
       usage_tracker,
     });
     try {
-      return await child.entity.cast(query);
+      return await child.entity.send(query);
     } finally {
       child.sandbox.dispose();
     }
@@ -181,7 +181,7 @@ describe("JS Entity Integration", () => {
       context: hugeContext,
     });
     activeSandbox = sandbox;
-    const result = await entity.cast("test");
+    const result = await entity.send("test");
     expect(result).toBe("History is clean");
   });
 
@@ -235,7 +235,7 @@ describe("JS Entity Integration", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("Start");
+    const result = await entity.send("Start");
     expect(result).toBe("password123");
 
     // Verify token aggregation: Parent tracker should see both its tokens and child's
@@ -295,7 +295,7 @@ describe("JS Entity Integration", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("Start");
+    const result = await entity.send("Start");
     expect(result).toBe("Max Depth Reached");
   });
 
@@ -324,7 +324,7 @@ describe("JS Entity Integration", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("Start");
+    const result = await entity.send("Start");
     const parsed = JSON.parse(result);
     expect(parsed.a).toBe(1);
     expect(parsed.b).toEqual([2, 3]);
@@ -380,7 +380,7 @@ describe("JS Entity Integration", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("Start");
+    const result = await entity.send("Start");
     // Parent's context should still be 'original' despite child's attempt to mutate
     expect(result).toBe("original");
   });
@@ -432,7 +432,7 @@ describe("JS Entity Integration", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("Start");
+    const result = await entity.send("Start");
     expect(result).toBe("Result for a, Result for b");
 
     // Verify token aggregation for batch

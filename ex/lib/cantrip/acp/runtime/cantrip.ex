@@ -44,7 +44,7 @@ defmodule Cantrip.ACP.Runtime.Cantrip do
   end
 
   def prompt(%{entity_pid: pid} = session, text) when is_pid(pid) and is_binary(text) do
-    case Cantrip.send_intent(pid, text) do
+    case Cantrip.send(pid, text) do
       {:ok, result, next_cantrip, _loom, _meta} ->
         answer = normalize_answer(result)
         next_session = %{session | cantrip: next_cantrip}

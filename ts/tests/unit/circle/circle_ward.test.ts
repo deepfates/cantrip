@@ -148,7 +148,7 @@ describe("Entity with Circle", () => {
       circle,
       dependency_overrides: null,
     });
-    const result = await entity.cast("hello");
+    const result = await entity.send("hello");
     expect(result).toBe("ok");
   });
 });

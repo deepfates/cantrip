@@ -269,7 +269,7 @@ describe("LLM-6: provider responses normalized to llm contract", () => {
 
     // Use summon() so we can inspect the agent for usage tracking
     const entity = spell.summon();
-    const result = await entity.cast("test normalization");
+    const result = await entity.send("test normalization");
 
     // Content is normalized: returned as-is as the result string
     expect(result).toBe("hello");

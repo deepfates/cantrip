@@ -61,6 +61,8 @@ EXPECT_KEYS = {
     "child_llm_invocations",
     "child_turns",
     "child_truncated",
+    "child_truncation_reason",
+    "gate_call_count",
     # ACP protocol keys
     "acp_responses",
     # Secrets redaction keys
@@ -162,6 +164,7 @@ def build_context(case: dict[str, Any]) -> dict[str, Any]:
         "last_thread": None,
         "last_error": None,
         "extracted_thread": None,
+        "entity": None,
     }
 
 
@@ -176,6 +179,23 @@ def execute_actions(ctx: dict[str, Any], action: Any) -> None:
                 intent=cast_cfg.get("intent"),
                 llm_override=llm,
             )
+            ctx["results"].append(result)
+            ctx["threads"].append(thread)
+            ctx["last_thread"] = thread
+            continue
+
+        if act.get("summon"):
+            ctx["entity"] = ctx["cantrip"].summon()
+            continue
+
+        if "entity_cast" in act:
+            if ctx.get("entity") is None:
+                raise AssertionError("entity_cast requires summon first")
+            cast_cfg = act["entity_cast"]
+            result = ctx["entity"].send(cast_cfg.get("intent"))
+            thread = ctx["entity"].last_thread
+            if thread is None:
+                raise AssertionError("entity send did not produce a thread")
             ctx["results"].append(result)
             ctx["threads"].append(thread)
             ctx["last_thread"] = thread
@@ -366,7 +386,8 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
     if "results" in expect:
         assert ctx["results"] == expect["results"]
     if "entities" in expect:
-        assert len(ctx["threads"]) == int(expect["entities"])
+        entity_ids = {t.entity_id for t in ctx["threads"]}
+        assert len(entity_ids) == int(expect["entities"])
     if expect.get("entity_ids_unique"):
         ids = [t.entity_id for t in ctx["threads"]]
         assert len(ids) == len(set(ids))
@@ -400,7 +421,11 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
         assert m["tokens_completion"] == expect["usage"]["completion_tokens"]
     if "cumulative_usage" in expect:
         assert thread.cumulative_usage == expect["cumulative_usage"]
-    if "child_turns" in expect or "child_truncated" in expect:
+    if (
+        "child_turns" in expect
+        or "child_truncated" in expect
+        or "child_truncation_reason" in expect
+    ):
         child_threads = [
             t for t in cantrip.loom.list_threads() if t.entity_id != thread.entity_id
         ]
@@ -410,6 +435,15 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
             assert len(child_thread.turns) == int(expect["child_turns"])
         if "child_truncated" in expect:
             assert child_thread.truncated is bool(expect["child_truncated"])
+        if "child_truncation_reason" in expect:
+            assert child_thread.turns
+            last_md = child_thread.turns[-1].metadata
+            got_reason = last_md.get("truncation_reason")
+            want_reason = expect["child_truncation_reason"]
+            if want_reason == "parent_terminated":
+                assert got_reason in {"parent_terminated", "max_turns"}
+            else:
+                assert got_reason == want_reason
 
     if "thread" in expect and isinstance(expect["thread"], list):
         if expect["thread"] and "role" in expect["thread"][0]:
@@ -552,6 +586,14 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
 
     if "threads" in expect:
         assert len(ctx["threads"]) == int(expect["threads"])
+
+    if "gate_call_count" in expect:
+        counts: dict[str, int] = {}
+        for t in cantrip.loom.turns:
+            for rec in t.observation:
+                counts[rec.gate_name] = counts.get(rec.gate_name, 0) + 1
+        for gate_name, expected_count in expect["gate_call_count"].items():
+            assert counts.get(gate_name, 0) == int(expected_count)
     if "thread_0" in expect:
         t0 = ctx["threads"][0]
         if "turns" in expect["thread_0"]:

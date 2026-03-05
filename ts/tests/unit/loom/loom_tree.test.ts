@@ -317,7 +317,7 @@ describe("Loom tree: child entities record into parent loom", () => {
       parent_turn_id: parentTurnId,
     });
 
-    await childEntity.cast("do something");
+    await childEntity.send("do something");
 
     // Verify the loom now contains both parent and child turns
     const allTurns = await storage.getAll();
@@ -380,7 +380,7 @@ describe("Loom tree: child entities record into parent loom", () => {
     // Before any turn, lastTurnId should be null
     expect(entity.lastTurnId).toBeNull();
 
-    await entity.cast("hello");
+    await entity.send("hello");
 
     // After a turn, lastTurnId should be set
     expect(entity.lastTurnId).not.toBeNull();
@@ -421,7 +421,7 @@ describe("Loom tree: child entities record into parent loom", () => {
       // No loom, no parent_turn_id
     });
 
-    const result = await entity.cast("hello");
+    const result = await entity.send("hello");
     expect(result).toBe("standalone");
   });
 
@@ -482,7 +482,7 @@ describe("Loom tree: child entities record into parent loom", () => {
       cantrip_id: "child-cantrip",
       parent_turn_id: parentTurnId,
     });
-    await entity.cast("child task");
+    await entity.send("child task");
 
     // The child's call root should branch from the parent turn
     const allTurns = await storage.getAll();

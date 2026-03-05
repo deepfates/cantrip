@@ -476,22 +476,7 @@ defmodule Cantrip.EntityServer do
   defp execute_call_entity(state, opts) do
     requested = opts[:gates] || opts["gates"] || Circle.gate_names(state.cantrip.circle)
     requested = Enum.map(requested, &to_string/1)
-    parent_gates = MapSet.new(Circle.gate_names(state.cantrip.circle))
-
-    case Enum.find(requested, fn gate -> not MapSet.member?(parent_gates, gate) end) do
-      nil ->
-        maybe_call_child(state, opts, requested)
-
-      denied_gate ->
-        %{
-          value: "cannot grant gate: #{denied_gate}",
-          observation: %{
-            gate: "call_entity",
-            result: "cannot grant gate: #{denied_gate}",
-            is_error: true
-          }
-        }
-    end
+    maybe_call_child(state, opts, requested)
   end
 
   defp maybe_call_child(state, opts, requested_gates) do
@@ -506,7 +491,20 @@ defmodule Cantrip.EntityServer do
       child_intent = opts[:intent] || opts["intent"] || ""
       child_wards = normalize_child_wards(opts)
       composed_wards = Circle.compose_wards(state.cantrip.circle.wards, child_wards)
-      child_circle = Circle.subset(state.cantrip.circle, requested_gates)
+      requested_gates = Enum.uniq(requested_gates ++ ["done"])
+      parent_gate_map = state.cantrip.circle.gates
+
+      child_gates =
+        requested_gates
+        |> Enum.map(fn name ->
+          case Map.get(parent_gate_map, name) do
+            nil -> {name, %{name: name}}
+            gate -> {name, gate}
+          end
+        end)
+        |> Map.new()
+
+      child_circle = %{state.cantrip.circle | gates: child_gates}
       child_circle = %{child_circle | wards: composed_wards}
       {child_module, child_state} = choose_child_llm(state, opts)
 

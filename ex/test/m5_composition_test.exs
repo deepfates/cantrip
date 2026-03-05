@@ -3,30 +3,6 @@ defmodule CantripM5CompositionTest do
 
   alias Cantrip.FakeLLM
 
-  test "COMP-1 child cannot request gates parent does not have" do
-    parent =
-      {FakeLLM,
-       FakeLLM.new([
-         %{code: "call_entity.(%{intent: \"sub task\", gates: [\"fetch\"]})\ndone.(\"ok\")"}
-       ])}
-
-    {:ok, cantrip} =
-      Cantrip.new(
-        llm: parent,
-        circle: %{
-          type: :code,
-          gates: [:done, :call_entity],
-          wards: [%{max_turns: 10}, %{max_depth: 1}]
-        }
-      )
-
-    {:ok, _result, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "test gate inheritance")
-    [turn | _] = loom.turns
-    [obs | _] = turn.observation
-    assert obs.is_error
-    assert obs.result =~ "cannot grant gate"
-  end
-
   describe "WARD-1 ward composition" do
     test "compose_wards takes min of numeric wards" do
       parent = [%{max_turns: 20}, %{max_depth: 3}]
@@ -34,21 +10,6 @@ defmodule CantripM5CompositionTest do
       composed = Cantrip.Circle.compose_wards(parent, child)
       assert Cantrip.Circle.max_turns(%Cantrip.Circle{wards: composed}) == 10
       assert Cantrip.Circle.max_depth(%Cantrip.Circle{wards: composed}) == 3
-    end
-
-    test "compose_wards unions remove_gate wards" do
-      parent = [%{max_turns: 10}, %{remove_gate: "fetch"}]
-      child = [%{remove_gate: "write"}]
-      composed = Cantrip.Circle.compose_wards(parent, child)
-
-      removals =
-        Enum.flat_map(composed, fn
-          %{remove_gate: g} -> [g]
-          _ -> []
-        end)
-        |> Enum.sort()
-
-      assert removals == ["fetch", "write"]
     end
 
     test "compose_wards with empty child returns parent wards" do

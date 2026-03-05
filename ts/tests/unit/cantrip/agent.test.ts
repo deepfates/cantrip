@@ -89,7 +89,7 @@ describe("entity", () => {
       llm: llm as any,
       gates: [add, done],
     });
-    const result = await entity.cast("What is 2 + 3?");
+    const result = await entity.send("What is 2 + 3?");
     expect(result).toBe("Result is 5");
   });
 
@@ -126,7 +126,7 @@ describe("entity", () => {
       wards: [{ max_turns: 200, require_done_tool: true }],
     });
 
-    const result = await entity.cast("finish");
+    const result = await entity.send("finish");
     expect(result).toBe("all set");
   });
 
@@ -153,7 +153,7 @@ describe("entity", () => {
       retry: { max_retries: 3, base_delay: 0, max_delay: 0 },
     });
 
-    const result = await entity.cast("hi");
+    const result = await entity.send("hi");
     expect(result).toBe("ok");
   });
 
@@ -203,7 +203,7 @@ describe("entity", () => {
       llm: llm as any,
       gates: [eph, done],
     });
-    const result = await entity.cast("run twice");
+    const result = await entity.send("run twice");
     expect(result).toBe("done");
 
     const toolMessages = entity.history.filter(
@@ -229,7 +229,7 @@ describe("entity", () => {
       gates: [done],
     });
 
-    const result = await entity.cast("hi");
+    const result = await entity.send("hi");
     expect(result).toBe("ok");
   });
 });

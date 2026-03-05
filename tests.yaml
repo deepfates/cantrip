@@ -1510,3 +1510,153 @@
   expect:
     logs_exclude: "sk-proj-very-secret"
     loom_export_exclude: "sk-proj-very-secret"
+
+# =============================================================================
+# Additional coverage: previously untested spec rules
+# =============================================================================
+
+- rule: INTENT-3
+  name: intent is immutable for the lifetime of a cast
+  description: >
+    The entity cannot change its own intent mid-episode. Even if the entity
+    produces output resembling a new intent, the original intent persists
+    unchanged in all subsequent LLM invocations.
+  setup:
+    llm:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "new intent please" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "original intent"
+  expect:
+    llm_invocations:
+      # On every invocation, the original intent text is still present
+      - messages_include: "original intent"
+      - messages_include: "original intent"
+
+- rule: ENTITY-5
+  name: summoned entity accumulates state across sends
+  description: >
+    A summoned entity persists after its loop completes. It receives additional
+    intents via send(). State (turns) accumulates across all sends.
+    Expressed via ACP session since all conformance runners support it.
+  setup:
+    llm:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "first done" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "second done" } }]
+      record_inputs: true
+    circle:
+      gates: [done]
+      wards: [{ max_turns: 10 }]
+  action:
+    acp_exchange:
+      - { id: "1", method: "initialize", params: { protocolVersion: 1 } }
+      - { id: "2", method: "session/new", params: {} }
+      - { id: "3", method: "session/prompt", params: { prompt: "first task" } }
+      - { id: "4", method: "session/prompt", params: { prompt: "second task" } }
+  expect:
+    acp_responses:
+      - { id: "1", has_result: true }
+      - { id: "2", has_result: true }
+      - { id: "3", result_contains: "first done" }
+      - { id: "4", result_contains: "second done" }
+    llm_invocations:
+      - {} # first send — just intent
+      - messages_include: "first task" # second send sees prior context
+
+- rule: CIRCLE-11
+  name: circle presents gates to LLM on every query
+  description: >
+    The circle MUST generate a capability presentation — gate definitions —
+    and include them in every LLM query. Gate definitions in the tools
+    parameter is the standard form.
+  setup:
+    llm:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test gate presentation"
+  expect:
+    result: "ok"
+    # Verify the LLM received tool definitions including both gates
+    llm_received_tools:
+      - { name: "done" }
+      - { name: "echo" }
+
+- rule: LOOM-6
+  name: folding does not compress identity or gate definitions
+  description: >
+    Folding MUST NOT compress the system prompt or gate definitions.
+    After folding, the entity's context still starts with the identity
+    and still includes all gate definitions.
+  setup:
+    llm:
+      responses:
+        - tool_calls: [{ gate: "echo", args: { text: "1" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "2" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "3" } }]
+        - tool_calls: [{ gate: "echo", args: { text: "4" } }]
+        - tool_calls: [{ gate: "done", args: { answer: "ok" } }]
+      record_inputs: true
+    circle:
+      gates: [done, echo]
+      wards: [{ max_turns: 10 }]
+    identity:
+      system_prompt: "You are a test entity"
+    folding:
+      trigger_after_turns: 2
+  action:
+    cast:
+      intent: "test folding preserves identity"
+  expect:
+    result: "ok"
+    llm_invocations:
+      # After folding, system prompt must still be present as first message
+      - first_message: { role: system, content: "You are a test entity" }
+      - first_message: { role: system, content: "You are a test entity" }
+      - first_message: { role: system, content: "You are a test entity" }
+
+- rule: LOOM-13
+  name: replay forking hydrates gate results from loom
+  description: >
+    When forking via replay, gate results MUST be hydrated from the loom's
+    recorded observations rather than re-executed. Gates must NOT be called
+    during replay to prevent non-idempotent side effects.
+  setup:
+    llm:
+      responses:
+        - tool_calls: [{ gate: "counter", args: {} }]
+        - tool_calls: [{ gate: "counter", args: {} }]
+        - tool_calls: [{ gate: "done", args: { answer: "original" } }]
+    fork_llm:
+      responses:
+        - tool_calls: [{ gate: "done", args: { answer: "forked" } }]
+    circle:
+      gates:
+        - name: done
+        - name: counter
+          stateful: true  # counter increments on each call
+      wards: [{ max_turns: 10 }]
+  action:
+    cast:
+      intent: "test replay hydration"
+    then:
+      fork:
+        from_turn: 1
+        llm: fork_llm
+        intent: "continue from fork"
+  expect:
+    thread_1:
+      result: "forked"

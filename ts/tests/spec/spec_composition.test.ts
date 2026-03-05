@@ -45,9 +45,9 @@ function makeLlm(responses: (() => any)[]) {
   };
 }
 
-// ── COMP-1a: delegation — child circle is subset of parent ──────────
+// ── COMP-1a: delegation — child circle is independently constructed ──────────
 
-describe("COMP-1a: delegation — child circle is subset of parent", () => {
+describe("COMP-1a: delegation — child circle is independently constructed", () => {
   test("COMP-1a: parent cantrip delegates to child via gate that runs a nested cantrip", async () => {
     // Create a child cantrip
     const childLlm = makeLlm([

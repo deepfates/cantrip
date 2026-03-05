@@ -53,7 +53,7 @@ def test_end_to_end_delegated_repo_workflow(tmp_path) -> None:
             wards=[{"max_turns": 4}, {"max_depth": 2}],
             depends={"code": {"runner": "mini"}},
         ),
-        call=Identity(require_done_tool=True, tool_choice="required"),
+        identity=Identity(require_done_tool=True, tool_choice="required"),
     )
 
     result, parent_thread = cantrip.cast_with_thread("delegate now")

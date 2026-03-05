@@ -855,9 +855,6 @@
         real-gap-reason
         (fn [tc]
           (cond
-            (= "COMP-1" (:rule tc))
-            "child gates are currently constrained to parent circle subset"
-
             (and (= "MEDIUM-1" (:rule tc))
                  (nil? (get-in tc [:setup :circle :medium]))
                  (nil? (get-in tc [:setup :circle :circle-type])))

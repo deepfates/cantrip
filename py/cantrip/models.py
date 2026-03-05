@@ -64,16 +64,8 @@ class Circle:
                 return int(w["max_depth"])
         return None
 
-    def removed_gates(self) -> set[str]:
-        removed = set()
-        for w in self.wards:
-            if "remove_gate" in w:
-                removed.add(str(w["remove_gate"]))
-        return removed
-
     def available_gates(self) -> dict[str, Gate]:
-        removed = self.removed_gates()
-        gates = {k: v for k, v in self._gates.items() if k not in removed}
+        gates = dict(self._gates)
         max_depth = self.max_depth()
         if max_depth is not None and max_depth <= 0:
             gates.pop("call_entity", None)

@@ -134,7 +134,7 @@ describe("Entity progress events", () => {
     });
     activeEntity = entity;
 
-    await entity.cast("Start");
+    await entity.send("Start");
 
     const starts = events.filter((e) => e.type === "sub_entity_start");
     const ends = events.filter((e) => e.type === "sub_entity_end");
@@ -196,7 +196,7 @@ describe("Entity progress events", () => {
     });
     activeEntity = entity;
 
-    await entity.cast("Start");
+    await entity.send("Start");
 
     const batchStarts = events.filter((e) => e.type === "batch_start");
     const batchItems = events.filter((e) => e.type === "batch_item");
@@ -267,7 +267,7 @@ describe("Entity progress events", () => {
     });
     activeEntity = entity;
 
-    const result = await entity.cast("Go");
+    const result = await entity.send("Go");
     expect(result).toBe("child result");
   });
 });

@@ -18,7 +18,7 @@ def mk_basic_cantrip(
     *,
     gates=None,
     wards=None,
-    call=None,
+    identity=None,
     medium="tool",
     filesystem=None,
 ):
@@ -29,7 +29,7 @@ def mk_basic_cantrip(
         medium=medium,
         filesystem=filesystem,
     )
-    return Cantrip(llm=llm, circle=circle, call=call or Identity())
+    return Cantrip(llm=llm, circle=circle, identity=identity or Identity())
 
 
 def mk_sqlite_loom(tmp_dir: Path) -> Loom:

@@ -83,7 +83,7 @@ async function createTestAgent(opts: {
       depth: childDepth,
     });
     try {
-      return await child.entity.cast(query);
+      return await child.entity.send(query);
     } finally {
       child.sandbox.dispose();
     }
@@ -435,7 +435,7 @@ describe("call_entity_batch input validation", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("Start");
+    const result = await entity.send("Start");
     expect(result).toContain("call_entity_batch: task[0].intent must be a string");
   });
 
@@ -470,7 +470,7 @@ describe("call_entity_batch input validation", () => {
     });
     activeSandbox = sandbox;
 
-    const result = await entity.cast("Start");
+    const result = await entity.send("Start");
     expect(result).toContain("call_entity_batch: task[0].intent must be a string");
   });
 });

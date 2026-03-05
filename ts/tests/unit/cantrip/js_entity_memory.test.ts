@@ -206,24 +206,24 @@ describe("JS Entity Memory", () => {
     });
 
     // Simulate 4 turns
-    await entity.cast("Turn 1");
+    await entity.send("Turn 1");
     manageMemory();
 
-    await entity.cast("Turn 2");
+    await entity.send("Turn 2");
     manageMemory();
 
     // After 2 turns, nothing should be in history yet (within window)
     let result = await sandbox.evalCode("context.history.length");
     expect((result as any).output).toBe("0");
 
-    await entity.cast("Turn 3");
+    await entity.send("Turn 3");
     manageMemory();
 
     // After 3 turns with window=2, turn 1 should be in history
     result = await sandbox.evalCode("context.history.length");
     expect(parseInt((result as any).output)).toBeGreaterThan(0);
 
-    await entity.cast("Turn 4");
+    await entity.send("Turn 4");
     manageMemory();
 
     // With 4 turns and windowSize=2, we should have 2 in history and 2 active

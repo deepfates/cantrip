@@ -67,13 +67,13 @@ defmodule CantripM4CircleRuntimeTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        circle: %{gates: [:done, :fetch], wards: [%{max_turns: 10}, %{remove_gate: "fetch"}]}
+        circle: %{gates: [:done], wards: [%{max_turns: 10}]}
       )
 
     {:ok, "ok", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "ward")
     [turn1 | _] = loom.turns
     assert hd(turn1.observation).is_error
-    assert hd(turn1.observation).result =~ "gate not available"
+    assert hd(turn1.observation).result =~ "unknown gate"
   end
 
   test "CIRCLE-10 injected gate dependencies are used" do

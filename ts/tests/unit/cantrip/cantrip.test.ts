@@ -207,7 +207,7 @@ describe("cantrip", () => {
     });
     const entity = spell.summon();
     expect(entity).toBeDefined();
-    expect(typeof entity.cast).toBe("function");
+    expect(typeof entity.send).toBe("function");
   });
 
   test("cast() runs the agent loop and returns the done result", async () => {
@@ -234,7 +234,7 @@ describe("cantrip", () => {
     });
 
     const entity = spell.summon();
-    const result = await entity.cast("do something");
+    const result = await entity.send("do something");
     expect(result).toBe("hello from turn");
   });
 
@@ -272,8 +272,8 @@ describe("cantrip", () => {
     });
 
     const entity = spell.summon();
-    await entity.cast("first message");
-    await entity.cast("second message");
+    await entity.send("first message");
+    await entity.send("second message");
 
     // The second LLM call should see the first turn's context
     const secondCallMessages = messagesPerCall[1];
@@ -322,8 +322,8 @@ describe("cantrip", () => {
     const entity1 = spell.summon();
     const entity2 = spell.summon();
 
-    await entity1.cast("entity1 message");
-    await entity2.cast("entity2 message");
+    await entity1.send("entity1 message");
+    await entity2.send("entity2 message");
 
     // entity2's LLM call should NOT contain "entity1 message"
     const entity2Messages = messagesPerCall[1];

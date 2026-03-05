@@ -11,7 +11,7 @@
  *   gates    -> BoundGate[]
  *   wards    -> Circle ward resolution
  *   entity   -> Entity instance
- *   cast     -> entity.cast(intent)
+ *   cast     -> entity.send(intent)
  *   done gate -> gate that throws TaskComplete
  */
 
@@ -475,21 +475,13 @@ function buildEntityGates(
 ): BoundGate[] {
   const setup = ctx.setup;
   const circleSetup = setup.circle || {};
-  const wards = (circleSetup.wards || []) as any[];
   const filesystem = (setup.filesystem || {}) as Record<string, string>;
   const gates: BoundGate[] = [];
   const hasGate = new Set<string>();
-  const removedGates = new Set<string>();
-  for (const w of wards) {
-    if (w && typeof w === "object" && typeof w.remove_gate === "string") {
-      removedGates.add(w.remove_gate);
-    }
-  }
 
   for (const spec of parentGateSpecs) {
     const name = gateNameOf(spec);
     if (!name) continue;
-    if (removedGates.has(name)) continue;
     hasGate.add(name);
 
     if (name === "done") {
@@ -621,25 +613,6 @@ function buildEntityGates(
     );
   }
 
-  for (const removedName of removedGates) {
-    gates.push(
-      rawGate(
-        {
-          name: removedName,
-          description: `Gate ${removedName} removed by ward`,
-          parameters: {
-            type: "object",
-            properties: {},
-            additionalProperties: true,
-          },
-        },
-        async () => {
-          throw new Error(`gate not available: ${removedName} has been removed by a ward`);
-        },
-      ),
-    );
-  }
-
   if (hasGate.has("call_entity") && depth < maxDepth) {
     gates.push(
       rawGate(
@@ -697,7 +670,7 @@ function buildEntityGates(
               : undefined,
           });
           ctx.entities.push(child);
-          return await child.cast(intent);
+          return await child.send(intent);
         },
       ),
     );
@@ -793,7 +766,7 @@ async function executeCastWithEntity(
   });
   ctx.entities.push(entity);
 
-  const result = await entity.cast(String(intent));
+  const result = await entity.send(String(intent));
   ctx.results.push(result);
 
   const allTurns = await storage.getAll();
@@ -994,7 +967,7 @@ async function executeActions(ctx: TestContext, action: any): Promise<void> {
           const entity = ctx.sessions.get(sessionId);
           if (!entity) throw new Error(`session missing: ${sessionId}`);
           const promptText = String(step.params?.prompt ?? "");
-          const out = await entity.cast(promptText);
+          const out = await entity.send(promptText);
           ctx.results.push(out);
           ctx.acp_responses.push({ id, result: { sessionId, message: out } });
           continue;

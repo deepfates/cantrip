@@ -5,7 +5,6 @@
             [cantrip.gates :as gates]
             [cantrip.loom :as loom]
             [cantrip.medium :as medium]
-            [clojure.set :as set]
             [clojure.string :as str]))
 
 (declare call-agent)
@@ -60,22 +59,6 @@
 (defn- max-depth-ward [cantrip]
   (ward-value cantrip :max-depth))
 
-(defn- subset-violation
-  [parent-cantrip child-cantrip]
-  (let [parent-circle (:circle parent-cantrip)
-        child-circle (:circle child-cantrip)
-        parent-medium (:medium parent-circle)
-        child-medium (:medium child-circle)
-        parent-gates (set (gates/gate-names (:gates parent-circle)))
-        child-gates (set (gates/gate-names (:gates child-circle)))
-        parent-max-turns (long (max-turns-ward parent-cantrip))
-        child-max-turns (long (max-turns-ward child-cantrip))]
-    (cond
-      (not= parent-medium child-medium) "child circle medium must match parent medium"
-      (not (set/subset? child-gates parent-gates)) "cannot grant gate: child gates must be subset of parent gates"
-      (> child-max-turns parent-max-turns) "child max-turns must not exceed parent max-turns"
-      :else nil)))
-
 (defn- llm-by-selector
   [named-llms selector]
   (let [selector-k (cond
@@ -92,9 +75,12 @@
 
 (defn- normalize-request-gates
   [gates]
-  (mapv (fn [g]
-          (if (string? g) (keyword g) g))
-        gates))
+  (->> gates
+       (map (fn [g]
+              (if (string? g) (keyword g) g)))
+       (cons :done)
+       distinct
+       vec))
 
 (defn- child-llm-by-depth
   [named-llms parent-depth]
@@ -419,8 +405,8 @@
      :turn-history (atom [])
      :depth 0}))
 
-(defn cast-intent
-  "Runs one intent against a summoned entity, preserving state across casts."
+(defn send
+  "Sends an intent to a summoned entity, preserving state across episodes."
   [entity intent]
   (domain/require-intent! intent)
   (let [cantrip (:cantrip entity)
@@ -467,57 +453,54 @@
        :error "max depth exceeded"}
 
       :else
-      (if-let [violation (subset-violation parent-cantrip child-cantrip)]
-        {:status :error
-         :error violation}
-        (try
-          (domain/require-intent! intent)
-          (domain/validate-cantrip! child-cantrip)
-          (let [parent-loom @(:loom parent-entity)
-                parent-history @(:turn-history parent-entity)
-                parent-turn-id (:id (last parent-history))
-                [initial-loom initial-parent-turn-id]
-                (if (and (nil? parent-turn-id)
-                         (:allow-inline-root-turn? parent-entity))
-                  (let [synthetic-parent-turn {:entity-id (:entity-id parent-entity)
-                                               :utterance {:content (or (:inline-intent parent-entity) intent)}
-                                               :observation [{:gate "call_entity"
-                                                              :arguments "{}"
-                                                              :result "inline composition bridge"}]
-                                               :metadata {:tokens_prompt 0
-                                                          :tokens_completion 0
-                                                          :duration_ms 1
-                                                          :timestamp (System/currentTimeMillis)}
-                                               :terminated false
-                                               :truncated false}
-                        [loom-with-parent parent-turn] (loom/append-turn parent-loom synthetic-parent-turn)]
-                    (reset! (:loom parent-entity) loom-with-parent)
-                    (reset! (:turn-history parent-entity) (conj (vec parent-history) parent-turn))
-                    [loom-with-parent (:id parent-turn)])
-                  [parent-loom parent-turn-id])
-                child-id (str (random-uuid))
-                child-entity {:entity-id child-id
-                              :cantrip child-cantrip
-                              :loom (atom initial-loom)
-                              :turn-history (atom [])
-                              :depth (inc parent-depth)}
-                result (run-cast child-id
-                                 child-cantrip
-                                 intent
-                                 []
-                                 initial-loom
-                                 {:prompt_tokens 0 :completion_tokens 0}
-                                 {:first-parent-id initial-parent-turn-id
-                                  :parent-entity child-entity})]
-            (reset! (:loom parent-entity) (:loom result))
-            {:status (:status result)
-             :result (:result result)
-             :child-entity-id child-id
-             :turns (:turns result)})
-          (catch clojure.lang.ExceptionInfo e
-            {:status :error
-             :error (.getMessage e)
-             :data (ex-data e)}))))))
+      (try
+        (domain/require-intent! intent)
+        (domain/validate-cantrip! child-cantrip)
+        (let [parent-loom @(:loom parent-entity)
+              parent-history @(:turn-history parent-entity)
+              parent-turn-id (:id (last parent-history))
+              [initial-loom initial-parent-turn-id]
+              (if (and (nil? parent-turn-id)
+                       (:allow-inline-root-turn? parent-entity))
+                (let [synthetic-parent-turn {:entity-id (:entity-id parent-entity)
+                                             :utterance {:content (or (:inline-intent parent-entity) intent)}
+                                             :observation [{:gate "call_entity"
+                                                            :arguments "{}"
+                                                            :result "inline composition bridge"}]
+                                             :metadata {:tokens_prompt 0
+                                                        :tokens_completion 0
+                                                        :duration_ms 1
+                                                        :timestamp (System/currentTimeMillis)}
+                                             :terminated false
+                                             :truncated false}
+                      [loom-with-parent parent-turn] (loom/append-turn parent-loom synthetic-parent-turn)]
+                  (reset! (:loom parent-entity) loom-with-parent)
+                  (reset! (:turn-history parent-entity) (conj (vec parent-history) parent-turn))
+                  [loom-with-parent (:id parent-turn)])
+                [parent-loom parent-turn-id])
+              child-id (str (random-uuid))
+              child-entity {:entity-id child-id
+                            :cantrip child-cantrip
+                            :loom (atom initial-loom)
+                            :turn-history (atom [])
+                            :depth (inc parent-depth)}
+              result (run-cast child-id
+                               child-cantrip
+                               intent
+                               []
+                               initial-loom
+                               {:prompt_tokens 0 :completion_tokens 0}
+                               {:first-parent-id initial-parent-turn-id
+                                :parent-entity child-entity})]
+          (reset! (:loom parent-entity) (:loom result))
+          {:status (:status result)
+           :result (:result result)
+           :child-entity-id child-id
+           :turns (:turns result)})
+        (catch clojure.lang.ExceptionInfo e
+          {:status :error
+           :error (.getMessage e)
+           :data (ex-data e)})))))
 
 (defn call-agent-batch
   "Runs child compositions and returns results in input order."

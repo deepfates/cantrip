@@ -20,7 +20,7 @@ def test_sqlite_loom_persists_turns(tmp_path: Path) -> None:
     cantrip = Cantrip(
         llm=llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 3}]),
-        call=Identity(system_prompt="persist"),
+        identity=Identity(system_prompt="persist"),
         loom=loom,
     )
 

@@ -164,9 +164,9 @@
                           :gates [:done]
                           :wards [{:max-turns 3}]}
                  :runtime {:folding {:max_turns_in_context 1}}})]
-    (runtime/cast-intent entity "one")
-    (runtime/cast-intent entity "two")
-    (runtime/cast-intent entity "three")
+    (runtime/send entity "one")
+    (runtime/send entity "two")
+    (runtime/send entity "three")
     {:invocations @invocations
      :state (runtime/entity-state entity)}))
 

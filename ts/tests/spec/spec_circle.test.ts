@@ -538,7 +538,7 @@ describe("CIRCLE-10: gate dependencies injected at construction", () => {
       loom: undefined,
     });
 
-    await entity.cast("read test.txt");
+    await entity.send("read test.txt");
 
     // The second invocation should see the result with the injected root
     const secondMessages = messagesPerCall[1];

@@ -13,7 +13,7 @@ def run(tmp_dir: Path | None = None):
     familiar = Cantrip(
         llm=FakeLLM({"responses": [{"tool_calls": [{"gate": "done", "args": {"answer": "familiar-ok"}}]}]}),
         circle=Circle(gates=["done"], wards=[{"max_turns": 5}]),
-        call=Identity(system_prompt="You are a long-lived coordinator."),
+        identity=Identity(system_prompt="You are a long-lived coordinator."),
         loom=loom,
     )
     return {"pattern": 16, "result": familiar.cast("coordinate"), "threads": len(familiar.loom.list_threads())}

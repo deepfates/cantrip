@@ -111,7 +111,6 @@ defmodule Cantrip.Circle do
     gate_lines =
       circle
       |> gate_names()
-      |> Enum.reject(&removed_by_ward?(circle, &1))
       |> Enum.map(&format_gate_description/1)
       |> Enum.join("\n")
 
@@ -155,32 +154,16 @@ defmodule Cantrip.Circle do
         }
   def execute_gate(circle, gate_name, args) do
     gate_name = canonical_gate_name(gate_name)
-
-    if removed_by_ward?(circle, gate_name) do
-      %{gate: gate_name, result: "gate not available: #{gate_name}", is_error: true}
-    else
-      do_execute(circle, gate_name, args)
-    end
+    do_execute(circle, gate_name, args)
   end
 
   @spec gate_names(t()) :: [String.t()]
   def gate_names(%__MODULE__{gates: gates}), do: Map.keys(gates)
 
-  @spec subset(t(), [String.t()]) :: t()
-  def subset(%__MODULE__{} = circle, names) do
-    allow = MapSet.new(names)
-
-    gates =
-      Enum.filter(circle.gates, fn {name, _gate} -> MapSet.member?(allow, name) end) |> Map.new()
-
-    %{circle | gates: gates}
-  end
-
   @doc """
   Compose parent and child wards per WARD-1:
   - Numeric wards (max_turns, max_depth, etc.): take min()
   - Boolean wards (require_done_tool): take OR
-  - Set-valued wards (remove_gate): take union
   A child can only tighten, never loosen, the parent's constraints.
   """
   @spec compose_wards(list(map()), list(map())) :: list(map())
@@ -210,21 +193,15 @@ defmodule Cantrip.Circle do
       end)
       |> Enum.map(fn {k, v} -> %{k => v} end)
 
-    # Collect all remove_gate wards (union)
-    parent_removals = extract_removals(parent_wards)
-    child_removals = extract_removals(child_wards)
-    all_removals = MapSet.union(parent_removals, child_removals)
-    removal_wards = Enum.map(all_removals, fn gate -> %{remove_gate: gate} end)
-
-    # Pass through non-numeric, non-removal wards from both sides
+    # Pass through non-numeric wards from both sides
     passthrough =
       (parent_wards ++ child_wards)
       |> Enum.reject(fn ward ->
-        Enum.any?(numeric_keys, &Map.has_key?(ward, &1)) or Map.has_key?(ward, :remove_gate)
+        Enum.any?(numeric_keys, &Map.has_key?(ward, &1))
       end)
       |> Enum.uniq()
 
-    merged_numerics ++ removal_wards ++ passthrough
+    merged_numerics ++ passthrough
   end
 
   defp extract_numerics(wards, keys) do
@@ -239,15 +216,6 @@ defmodule Cantrip.Circle do
         end
       end)
     end)
-  end
-
-  defp extract_removals(wards) do
-    wards
-    |> Enum.flat_map(fn
-      %{remove_gate: gate} when is_binary(gate) -> [gate]
-      _ -> []
-    end)
-    |> MapSet.new()
   end
 
   defp fetch(map, key, default),
@@ -540,13 +508,6 @@ defmodule Cantrip.Circle do
   end
 
   defp compile_and_load(_module, _source, _path, _gate), do: {:error, "source is required"}
-
-  defp removed_by_ward?(%__MODULE__{wards: wards}, gate_name) do
-    Enum.any?(wards, fn
-      %{remove_gate: ^gate_name} -> true
-      _ -> false
-    end)
-  end
 
   defp canonical_gate_name("call_entity"), do: "call_entity"
   defp canonical_gate_name("call_entity_batch"), do: "call_entity_batch"
