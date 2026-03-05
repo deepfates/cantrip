@@ -9,7 +9,7 @@ This note translates the TypeScript examples into the spec's language-neutral co
 | 01–02 | LLM and gate primitives | `LLM-*`, `GATE`, `done` | Swap-in provider, unit-test gates directly |
 | 03–05 | Circle invariants and wards | `CIRCLE-1`, `CIRCLE-2`, `Ward` | Enforce `done`, compose safeguards before run |
 | 06 | Provider portability | `LlmProvider` | Treat the LLM as configuration, not code |
-| 07–09 | Medium selection | `Medium`, `llmView()` | Bind one medium per circle; advertise capabilities |
+| 07–09 | Medium selection | `Medium`, `tool_view()` | Bind one medium per circle; advertise capabilities |
 | 10 | Parallel delegation | `call_entity_batch`, `loom` | Capture tree-structured work for audit + retries |
 | 11 | Folding | `Loom`, `folding_config` | Apply summaries before the context ceiling |
 | 12 | Full agent | `Medium: js`, `safeFsGates` | Run code in a sandbox, cross filesystem via gates |
@@ -31,7 +31,7 @@ This note translates the TypeScript examples into the spec's language-neutral co
 
 ### 3. Medium physics (Examples 07–09)
 - *Conversation default*: Example 07 shows that omitting a medium yields the conversation baseline — the entity "sees" gates as tool calls. This is the spec's default `medium: conversation`.
-- *Code mediums*: Example 08 replaces conversation with the JS medium. Instead of textual tool calls, the LLM writes JavaScript inside QuickJS. Example 09 switches to the browser medium (Taiko). Both reinforce the spec rule: **exactly one medium per circle**; whichever medium you choose defines how the circle injects capability docs via the `llmView()` pattern.
+- *Code mediums*: Example 08 replaces conversation with the JS medium. Instead of textual tool calls, the LLM writes JavaScript inside QuickJS. Example 09 switches to the browser medium (Taiko). Both reinforce the spec rule: **exactly one medium per circle**; whichever medium you choose defines how the circle injects capability docs via the `tool_view()` pattern.
 - *Productionization*: document each medium's physics (e.g., JS globals, `submit_answer`, Taiko APIs). Provide teardown hooks (`circle.dispose`) so headless browsers and runtimes close cleanly. When deploying, pin mediums to isolated sandboxes (QuickJS, containerized Chrome) and feed the resulting capability string into audit logs.
 
 ### 4. Delegation and tree memory (Examples 10 & 14)

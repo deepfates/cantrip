@@ -429,8 +429,6 @@ The loom records whether each thread **terminated** (entity called `done`) or wa
 
 This TypeScript package is the reference implementation. The spec is designed so that implementations in other languages can be generated from it — the **ghost library** pattern, where the spec and its test suite are the durable artifacts and code regenerates from them. A Python cantrip and a TypeScript cantrip are both cantrips. The concepts compose across language boundaries because each language implements its own native mediums while sharing the same circle/gate/ward semantics.
 
-The [bibliography](./BIBLIOGRAPHY.md) traces each idea from first appearance through academic formalization to independent confirmation.
-
 ---
 
 ## Examples

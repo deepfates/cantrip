@@ -32,7 +32,7 @@ export async function main() {
   // Cast again — independent, no shared state
   console.log("\nCasting again: different intent, same cantrip");
   const result2 = await spell.cast(
-    "Explain what A = (M + G) - W means in the context of agent architecture."
+    "Explain what A = M ∪ G − W means in the context of agent architecture."
   );
   console.log(`Result: ${result2}`);
 

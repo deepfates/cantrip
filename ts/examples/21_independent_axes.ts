@@ -1,5 +1,5 @@
 // Example 21: Independent Axes
-// The circle formula A = (M + G) - W has independent knobs.
+// The circle formula A = M ∪ G − W has independent knobs.
 // Same cantrip structure, different configurations — showing that medium,
 // gates, and wards are orthogonal. Change one without touching the others.
 
@@ -25,7 +25,7 @@ const population = gate(
 
 export async function main() {
   console.log("=== Example 21: Independent Axes ===");
-  console.log("A = (M + G) - W — each axis is an independent knob.\n");
+  console.log("A = M ∪ G − W — each axis is an independent knob.\n");
 
   const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
   const intent = "Tell me about Seattle.";
