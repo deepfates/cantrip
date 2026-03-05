@@ -106,12 +106,12 @@ defmodule Cantrip.LLMs.Anthropic do
             else: []
 
         tool_blocks =
-          Enum.map(tool_calls, fn identity ->
+          Enum.map(tool_calls, fn tc ->
             %{
               type: "tool_use",
-              id: identity[:id] || identity["id"],
-              name: identity[:gate] || identity["gate"],
-              input: identity[:args] || identity["args"] || %{}
+              id: tc[:id] || tc["id"],
+              name: tc[:gate] || tc["gate"],
+              input: tc[:args] || tc["args"] || %{}
             }
           end)
 
@@ -192,11 +192,11 @@ defmodule Cantrip.LLMs.Anthropic do
     normalized_tool_calls =
       tool_calls
       |> Enum.filter(&(&1["type"] == "tool_use"))
-      |> Enum.map(fn identity ->
+      |> Enum.map(fn tc ->
         %{
-          id: identity["id"],
-          gate: identity["name"],
-          args: identity["input"] || %{}
+          id: tc["id"],
+          gate: tc["name"],
+          args: tc["input"] || %{}
         }
       end)
 

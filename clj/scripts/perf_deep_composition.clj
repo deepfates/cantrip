@@ -5,7 +5,7 @@
              :responses [{:tool-calls [{:id "done_1"
                                         :gate :done
                                         :args {:answer answer}}]}]}
-   :call {}
+   :identity {}
    :circle {:medium :code
             :gates [:done]
             :wards [{:max-turns 2}]}})
@@ -23,7 +23,7 @@
       (recur (dec remaining)
              {:llm {:provider :fake
                         :responses [{:content (mk-level-code child)}]}
-              :call {:require-done-tool true}
+              :identity {:require-done-tool true}
               :circle {:medium :code
                        :gates [:done :call_entity]
                        :wards [{:max-turns 4} {:max-depth 12}]}}))))

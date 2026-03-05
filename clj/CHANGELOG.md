@@ -5,9 +5,9 @@ All notable changes to this project are documented in this file.
 ## [0.1.0] - 2026-02-25
 
 ### Added
-- Core runtime composition through `call-agent`/`call-agent-batch` host bindings in code medium.
+- Core runtime composition through `call-entity`/`call-entity-batch` host bindings in code medium.
 - Loom subtree recording for nested composition with per-entity sequence tracking.
-- Depth-aware child crystal derivation (`child_crystal_lN` resolution).
+- Depth-aware child LLM derivation (`child_llm_lN` resolution).
 - Runtime composition wards:
   - `max-depth`
   - `max-batch-size`
@@ -22,7 +22,7 @@ All notable changes to this project are documented in this file.
 ### Changed
 - Conformance runner now exercises core runtime behavior directly.
 - Removed composition simulation shim from conformance execution.
-- Runtime now validates `call-agent` request shape and batch input shape.
+- Runtime now validates `call-entity` request shape and batch input shape.
 - Minecraft medium uses explicit host injection only (no implicit namespace resolution).
 
 ### Security

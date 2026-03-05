@@ -31,10 +31,10 @@
 (defn- host-code-bindings
   [dependencies]
   (merge
-   (when-let [f (:call-agent-fn dependencies)]
+   (when-let [f (:call-entity-fn dependencies)]
      {'call-agent f
       'call_entity f})
-   (when-let [f (:call-agent-batch-fn dependencies)]
+   (when-let [f (:call-entity-batch-fn dependencies)]
      {'call-agent-batch f
       'call_entity_batch f})))
 

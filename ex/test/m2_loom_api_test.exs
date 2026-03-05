@@ -75,8 +75,8 @@ defmodule CantripM2LoomApiTest do
   end
 
   test "LOOM-10 extract_thread with leaf_id traces root-to-leaf path" do
-    call = %{system_prompt: nil}
-    loom = Cantrip.Loom.new(call)
+    identity_config = %{system_prompt: nil}
+    loom = Cantrip.Loom.new(identity_config)
 
     loom = Cantrip.Loom.append_turn(loom, %{utterance: "a", observation: []})
     loom = Cantrip.Loom.append_turn(loom, %{utterance: "b", observation: []})

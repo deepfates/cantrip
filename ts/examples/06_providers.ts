@@ -37,7 +37,7 @@ export async function main() {
     wards: [max_turns(10)],
   });
 
-  const call = {
+  const identity = {
     system_prompt: "You are a calculator. Use add, then call done.",
   };
 
@@ -85,7 +85,7 @@ export async function main() {
   const llm = useFake ? fakeLlm : (llms[provider]?.() ?? llms.anthropic());
   console.log(`Using llm: ${llm.name} (${llm.model})`);
 
-  const spell = cantrip({ llm: llm, identity: call, circle });
+  const spell = cantrip({ llm: llm, identity: identity, circle });
   const result = await spell.cast("What is 7 + 8?");
   console.log(`Result: ${result}`);
 

@@ -13,7 +13,6 @@ class Identity:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
-Call = Identity
 
 
 @dataclass
@@ -125,7 +124,7 @@ class Thread:
     id: str
     entity_id: str
     intent: str
-    call: Identity
+    identity: Identity
     turns: list[Turn] = field(default_factory=list)
     result: Any = None
     terminated: bool = False

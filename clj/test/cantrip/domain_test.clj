@@ -3,11 +3,11 @@
             [cantrip.domain :as domain]))
 
 (deftest validate-cantrip-core-shape
-  (testing "CANTRIP-1 requires llm, call, and circle"
+  (testing "CANTRIP-1 requires llm, identity, and circle"
     (is (thrown-with-msg? clojure.lang.ExceptionInfo
                           #"cantrip requires llm"
                           (domain/validate-cantrip!
-                           {:call {} :circle {:medium :conversation
+                           {:identity {} :circle {:medium :conversation
                                               :gates [:done]
                                               :wards [{:max-turns 1}]}})))))
 
@@ -17,7 +17,7 @@
                           #"done gate"
                           (domain/validate-cantrip!
                            {:llm {}
-                            :call {}
+                            :identity {}
                             :circle {:medium :conversation
                                      :gates [:echo]
                                      :wards [{:max-turns 2}]}}))))
@@ -27,7 +27,7 @@
                           #"truncation ward"
                           (domain/validate-cantrip!
                            {:llm {}
-                            :call {}
+                            :identity {}
                             :circle {:medium :conversation
                                      :gates [:done]
                                      :wards []}}))))
@@ -37,7 +37,7 @@
                           #"exactly one medium"
                           (domain/validate-cantrip!
                            {:llm {}
-                            :call {}
+                            :identity {}
                             :circle {:medium :code
                                      :circle-type :tool
                                      :gates [:done]
@@ -58,7 +58,7 @@
                           #"max-batch-size must be a positive integer"
                           (domain/validate-cantrip!
                            {:llm {}
-                            :call {}
+                            :identity {}
                             :circle {:medium :conversation
                                      :gates [:done]
                                      :wards [{:max-turns 2} {:max-batch-size 0}]}})))
@@ -66,7 +66,7 @@
                           #"max-eval-ms must be a positive integer"
                           (domain/validate-cantrip!
                            {:llm {}
-                            :call {}
+                            :identity {}
                             :circle {:medium :code
                                      :gates [:done]
                                      :wards [{:max-turns 2} {:max_eval_ms "nope"}]}})))
@@ -74,7 +74,7 @@
                           #"allow-require must be boolean"
                           (domain/validate-cantrip!
                            {:llm {}
-                            :call {}
+                            :identity {}
                             :circle {:medium :code
                                      :gates [:done]
                                      :wards [{:max-turns 2} {:allow_require :yes}]}})))))

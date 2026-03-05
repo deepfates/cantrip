@@ -15,7 +15,7 @@ tests/
 ├── unit/                        # Always run, no network
 │   ├── cantrip/                 # Entity loop, cantrip construction, progress events
 │   ├── circle/                  # Circle constructor, wards, mediums, gates, raw gates
-│   ├── crystal/                 # Serializers, cost calculator, schema optimizer, usage tracker
+│   ├── llm/                     # Serializers, cost calculator, schema optimizer, usage tracker
 │   ├── loom/                    # Loom storage, folding, tree structure, entity integration
 │   ├── js.test.ts               # JsContext (QuickJS sandbox)
 │   ├── js_browser.test.ts       # Browser handle pattern in JS medium
@@ -28,7 +28,7 @@ tests/
 │   ├── spec_cantrip.test.ts     # CANTRIP-1..3
 │   ├── spec_call.test.ts        # CALL-1..5
 │   ├── spec_circle.test.ts      # CIRCLE-1..11, WARD-1
-│   ├── spec_crystal.test.ts     # CRYSTAL-1..6
+│   ├── spec_llm.test.ts         # LLM-1..6
 │   ├── spec_entity.test.ts      # ENTITY-1..6
 │   ├── spec_intent.test.ts      # INTENT-1..2
 │   ├── spec_loop.test.ts        # LOOP-1..6
@@ -103,12 +103,12 @@ Generated logs are written to `tests/evals/results/` and are ignored by git.
 
 ### Unit Tests
 
-Unit tests must not make network calls. Mock the crystal:
+Unit tests must not make network calls. Mock the LLM:
 
 ```ts
 import { describe, test, expect } from "bun:test";
 
-const mockCrystal = {
+const mockLlm = {
   model: "mock",
   provider: "mock",
   name: "mock",
@@ -138,8 +138,8 @@ const hasKey = !!process.env.ANTHROPIC_API_KEY;
 
 describe.skipIf(!hasKey)("integration: anthropic", () => {
   test("completes a prompt", async () => {
-    const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
-    const result = await crystal.query([{ role: "user", content: "Say 'test'" }]);
+    const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+    const result = await llm.query([{ role: "user", content: "Say 'test'" }]);
     expect(result.content).toContain("test");
   });
 });
@@ -151,7 +151,7 @@ When adding features:
 
 1. **New gate** → add to `tests/unit/circle/`, test execute + error cases + docs
 2. **New medium** → add to `tests/unit/circle/`, test init + execute + dispose + capabilityDocs
-3. **Crystal/provider changes** → add serializer tests + integration test
+3. **LLM/provider changes** → add serializer tests + integration test
 4. **Circle/ward changes** → add to `tests/unit/circle/circle_constructor.test.ts` or `circle_ward.test.ts`
 5. **Cantrip/entity changes** → add to `tests/unit/cantrip/`
 6. **Loom changes** → add to `tests/unit/loom/`

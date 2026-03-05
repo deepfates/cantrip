@@ -5,7 +5,7 @@
 (def acp-cantrip
   {:llm {:provider :fake
              :responses [{:content "ok"}]}
-   :call {:system-prompt "test"}
+   :identity {:system-prompt "test"}
    :circle {:medium :conversation
             :gates [:done]
             :wards [{:max-turns 2}]}})
@@ -50,7 +50,7 @@
 (deftest acp-output-redacts-secrets
   (let [cantrip {:llm {:provider :fake
                            :responses [{:content "token sk-proj-secret"}]}
-                 :call {:system-prompt "test"}
+                 :identity {:system-prompt "test"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 2}]}}
@@ -73,7 +73,7 @@
                            :responses [{:tool-calls [{:id "call_1"
                                                       :gate :done
                                                       :args {:answer "ok"}}]}]}
-                 :call {:system-prompt "test"}
+                 :identity {:system-prompt "test"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 2}]}}

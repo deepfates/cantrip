@@ -4,7 +4,7 @@ These examples are implemented in `src/cantrip/examples.clj` and mapped to patte
 
 ## Coverage
 
-1. `01` crystal + done gate primitives (`CANTRIP-1`, `LOOP-3`)
+1. `01` llm + done gate primitives (`CANTRIP-1`, `LOOP-3`)
 2. `02` gate observation ordering (`CIRCLE-7`, `LOOP-3`)
 3. `03` circle invariants (`CIRCLE-1`, `CIRCLE-2`)
 4. `04` malformed done semantics (`LOOP-7`)

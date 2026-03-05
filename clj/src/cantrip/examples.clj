@@ -10,7 +10,7 @@
                            :responses [{:tool-calls [{:id "call_1"
                                                       :gate :done
                                                       :args {:answer "ok"}}]}]}
-                 :call {:system-prompt "example-01"}
+                 :identity {:system-prompt "example-01"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 2}]}}
@@ -26,7 +26,7 @@
                                                      {:id "call_2"
                                                       :gate :done
                                                       :args {:answer "ok"}}]}]}
-                 :call {:system-prompt "example-02"}
+                 :identity {:system-prompt "example-02"}
                  :circle {:medium :conversation
                           :gates [:done :echo]
                           :wards [{:max-turns 3}]}}
@@ -36,7 +36,7 @@
   "Pattern 03: valid circle with done + truncation ward."
   []
   (runtime/new-cantrip {:llm {:provider :fake}
-                        :call {:system-prompt "example-03"}
+                        :identity {:system-prompt "example-03"}
                         :circle {:medium :conversation
                                  :gates [:done]
                                  :wards [{:max-turns 2}]}}))
@@ -51,7 +51,7 @@
                                        {:tool-calls [{:id "x2"
                                                       :gate :done
                                                       :args {:answer "fixed"}}]}]}
-                 :call {:system-prompt "example-04"}
+                 :identity {:system-prompt "example-04"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 3}]}}
@@ -60,11 +60,11 @@
 (defn example-05-ward-composition
   "Pattern 05: stricter ward envelope in child cantrip."
   []
-  (let [parent (runtime/invoke {:llm {:provider :fake
+  (let [parent (runtime/summon {:llm {:provider :fake
                                           :responses [{:tool-calls [{:id "p1"
                                                                      :gate :done
                                                                      :args {:answer "parent"}}]}]}
-                                :call {:system-prompt "example-05"}
+                                :identity {:system-prompt "example-05"}
                                 :circle {:medium :conversation
                                          :gates [:done]
                                          :wards [{:max-turns 4} {:max-depth 2}]}})
@@ -72,7 +72,7 @@
                          :responses [{:tool-calls [{:id "c1"
                                                     :gate :done
                                                     :args {:answer "child"}}]}]}
-               :call {:system-prompt "child"}
+               :identity {:system-prompt "child"}
                :circle {:medium :conversation
                         :gates [:done]
                         :wards [{:max-turns 2}]}}]
@@ -85,7 +85,7 @@
                            :responses [{:tool-calls [{:id "call_1"
                                                       :gate :done
                                                       :args {:answer "portable"}}]}]}
-                 :call {:system-prompt "example-06"}
+                 :identity {:system-prompt "example-06"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 2}]}}
@@ -98,7 +98,7 @@
                            :responses [{:tool-calls [{:id "call_1"
                                                       :gate :done
                                                       :args {:answer "conversation"}}]}]}
-                 :call {:system-prompt "example-07"}
+                 :identity {:system-prompt "example-07"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 2}]}}
@@ -109,7 +109,7 @@
   []
   (runtime/cast {:llm {:provider :fake
                            :responses [{:content "(submit-answer \"code-ok\")"}]}
-                 :call {:system-prompt "example-08"
+                 :identity {:system-prompt "example-08"
                         :require-done-tool true}
                  :circle {:medium :code
                           :gates [:done]
@@ -126,11 +126,11 @@
 (defn example-10-composition-batch
   "Pattern 10: parent entity composing child cantrips in batch."
   []
-  (let [parent (runtime/invoke {:llm {:provider :fake
+  (let [parent (runtime/summon {:llm {:provider :fake
                                           :responses [{:tool-calls [{:id "p1"
                                                                      :gate :done
                                                                      :args {:answer "parent"}}]}]}
-                                :call {:system-prompt "example-10"}
+                                :identity {:system-prompt "example-10"}
                                 :circle {:medium :conversation
                                          :gates [:done]
                                          :wards [{:max-turns 2} {:max-depth 2}]}})
@@ -139,7 +139,7 @@
                            :responses [{:tool-calls [{:id "c1"
                                                       :gate :done
                                                       :args {:answer answer}}]}]}
-                 :call {:system-prompt "child"}
+                 :identity {:system-prompt "child"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 2}]}})]
@@ -151,7 +151,7 @@
   "Pattern 11: folding policy compacts old turns in working context."
   []
   (let [invocations (atom [])
-        entity (runtime/invoke
+        entity (runtime/summon
                 {:llm {:provider :fake
                            :record-inputs true
                            :responses-by-invocation true
@@ -159,7 +159,7 @@
                            :responses [{:tool-calls [{:id "f1" :gate :done :args {:answer "1"}}]}
                                        {:tool-calls [{:id "f2" :gate :done :args {:answer "2"}}]}
                                        {:tool-calls [{:id "f3" :gate :done :args {:answer "3"}}]}]}
-                 :call {:system-prompt "example-11"}
+                 :identity {:system-prompt "example-11"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 3}]}
@@ -175,7 +175,7 @@
   []
   (runtime/cast {:llm {:provider :fake
                            :responses [{:content "(do (def x 1) (submit-answer (str \"x=\" x)))"}]}
-                 :call {:system-prompt "example-12"
+                 :identity {:system-prompt "example-12"
                         :require-done-tool true}
                  :circle {:medium :code
                           :gates [:done]
@@ -189,7 +189,7 @@
                            :responses [{:tool-calls [{:id "a1"
                                                       :gate :done
                                                       :args {:answer "acp-ok"}}]}]}
-                 :call {:system-prompt "example-13"}
+                 :identity {:system-prompt "example-13"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 2}]}}
@@ -206,11 +206,11 @@
 (defn example-14-recursive-delegation
   "Pattern 14: single-child delegation with depth ward."
   []
-  (let [parent (runtime/invoke {:llm {:provider :fake
+  (let [parent (runtime/summon {:llm {:provider :fake
                                           :responses [{:tool-calls [{:id "p1"
                                                                      :gate :done
                                                                      :args {:answer "parent"}}]}]}
-                                :call {:system-prompt "example-14"}
+                                :identity {:system-prompt "example-14"}
                                 :circle {:medium :conversation
                                          :gates [:done]
                                          :wards [{:max-turns 3} {:max-depth 1}]}})
@@ -218,7 +218,7 @@
                          :responses [{:tool-calls [{:id "c1"
                                                     :gate :done
                                                     :args {:answer "child"}}]}]}
-               :call {:system-prompt "child"}
+               :identity {:system-prompt "child"}
                :circle {:medium :conversation
                         :gates [:done]
                         :wards [{:max-turns 2}]}}]
@@ -234,7 +234,7 @@
                              :responses-by-invocation true
                              :responses [{:error {:status 429 :message "rate limited"}}
                                          {:tool-calls [{:id "r1" :gate :done :args {:answer "retried"}}]}]}
-                   :call {:system-prompt "retry"}
+                   :identity {:system-prompt "retry"}
                    :circle {:medium :conversation
                             :gates [:done]
                             :wards [{:max-turns 3}]}
@@ -247,7 +247,7 @@
   []
   (runtime/cast {:llm {:provider :fake
                            :responses [{:content "(submit-answer (str (player) \"|\" (xyz)))"}]}
-                 :call {:system-prompt "example-15"
+                 :identity {:system-prompt "example-15"
                         :require-done-tool true}
                  :circle {:medium :minecraft
                           :gates [:done]
@@ -259,12 +259,12 @@
 (defn example-16-familiar-coordinator
   "Pattern 16 (adapted): long-lived coordinator spawning minecraft-aware child entities."
   []
-  (let [parent (runtime/invoke
+  (let [parent (runtime/summon
                 {:llm {:provider :fake
                            :responses [{:tool-calls [{:id "p1"
                                                       :gate :done
                                                       :args {:answer "parent"}}]}]}
-                 :call {:system-prompt "example-16"}
+                 :identity {:system-prompt "example-16"}
                  :circle {:medium :minecraft
                           :gates [:done]
                           :dependencies {:player-fn (fn [] "Alex")
@@ -273,7 +273,7 @@
         mk-child (fn [answer]
                    {:llm {:provider :fake
                               :responses [{:content "(submit-answer \"child-ok\")"}]}
-                    :call {:system-prompt answer
+                    :identity {:system-prompt answer
                            :require-done-tool true}
                     :circle {:medium :minecraft
                              :gates [:done]

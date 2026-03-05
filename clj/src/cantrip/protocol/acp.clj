@@ -87,7 +87,7 @@
 
       (= method "session/new")
       (let [sid (new-session-id router)
-            entity (runtime/invoke (:cantrip router))
+            entity (runtime/summon (:cantrip router))
             next-router (-> router
                             (update :next-session-id inc)
                             (assoc-in [:sessions sid] {:history []

@@ -16,10 +16,10 @@
       1))
 
 (defn- require-done-tool? [cantrip]
-  (true? (get-in cantrip [:call :require-done-tool])))
+  (true? (get-in cantrip [:identity :require-done-tool])))
 
 (defn- tool-choice [cantrip]
-  (or (get-in cantrip [:call :tool-choice])
+  (or (get-in cantrip [:identity :tool-choice])
       :auto))
 
 (defn- retry-config [cantrip]
@@ -175,7 +175,7 @@
     (into [assistant-msg] tool-msgs)))
 
 (defn- build-messages [cantrip intent prior-turns current-cast-turns]
-  (let [system-prompt (get-in cantrip [:call :system-prompt])
+  (let [system-prompt (get-in cantrip [:identity :system-prompt])
         base (cond-> []
                (string? system-prompt)
                (conj {:role :system :content system-prompt})
@@ -276,7 +276,7 @@
                                               :prior-turns turns)]
                               (if execution-parent
                                 (assoc base
-                                       :call-agent-fn
+                                       :call-entity-fn
                                        (fn [request]
                                          (let [req (if (map? request)
                                                      request
@@ -297,7 +297,7 @@
                                              (throw (ex-info (or (:error response) "child call failed")
                                                              {:response response}))
                                              (:result response))))
-                                       :call-agent-batch-fn
+                                       :call-entity-batch-fn
                                        (fn [requests]
                                          (when-not (vector? requests)
                                            (throw (ex-info "call-agent-batch requires a vector of requests"
@@ -390,7 +390,7 @@
   (domain/validate-cantrip! cantrip)
   (domain/require-intent! intent)
   (let [entity-id (str (random-uuid))
-        initial-loom (loom/new-loom (:call cantrip))
+        initial-loom (loom/new-loom (:identity cantrip))
         temp-entity {:entity-id entity-id
                      :cantrip cantrip
                      :loom (atom initial-loom)
@@ -402,7 +402,7 @@
     (dissoc result
             :new-turns)))
 
-(defn invoke
+(defn summon
   "Creates a persistent entity handle for multi-cast sessions."
   [cantrip]
   (domain/validate-cantrip! cantrip)
@@ -412,7 +412,7 @@
     {:entity-id entity-id
      :cantrip cantrip
      :status :ready
-     :loom (atom (loom/new-loom (:call cantrip)))
+     :loom (atom (loom/new-loom (:identity cantrip)))
      :medium-state (atom medium-state)
      :cumulative-usage (atom {:prompt_tokens 0
                               :completion_tokens 0})
@@ -420,7 +420,7 @@
      :depth 0}))
 
 (defn cast-intent
-  "Runs one intent against an invoked entity, preserving state across casts."
+  "Runs one intent against a summoned entity, preserving state across casts."
   [entity intent]
   (domain/require-intent! intent)
   (let [cantrip (:cantrip entity)
@@ -443,7 +443,7 @@
     (dissoc result :new-turns)))
 
 (defn entity-state
-  "Returns current persistent state snapshot for an invoked entity."
+  "Returns current persistent state snapshot for a summoned entity."
   [entity]
   {:entity-id (:entity-id entity)
    :status (:status entity)

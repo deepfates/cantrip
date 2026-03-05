@@ -146,7 +146,7 @@ def build_context(case: dict[str, Any]) -> dict[str, Any]:
     cantrip = Cantrip(
         llm=main_llm,
         circle=circle,
-        call=identity,
+        identity=identity,
         folding=setup.get("folding"),
         retry=setup.get("retry"),
         llms=llms,
@@ -250,7 +250,7 @@ def execute_then(ctx: dict[str, Any], then_cfg: dict[str, Any]) -> None:
     if "mutate_identity" in then_cfg:
         mut = then_cfg["mutate_identity"]
         try:
-            setattr(ctx["cantrip"].call, "system_prompt", mut.get("system_prompt"))
+            setattr(ctx["cantrip"].identity, "system_prompt", mut.get("system_prompt"))
         except FrozenInstanceError:
             raise CantripError("identity is immutable")
 
@@ -479,7 +479,7 @@ def check_expect(ctx: dict[str, Any], expect: dict[str, Any]) -> None:
             if not coalesced_parent_turn:
                 assert got_turn_count == want_turn_count
         if "identity" in loom_cfg:
-            assert ctx["cantrip"].call.system_prompt == loom_cfg["identity"].get(
+            assert ctx["cantrip"].identity.system_prompt == loom_cfg["identity"].get(
                 "system_prompt"
             )
         if (

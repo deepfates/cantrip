@@ -7,20 +7,20 @@ defmodule Cantrip.Loom do
 
   defstruct identity: nil, turns: [], storage_module: Memory, storage_state: %{}
 
-  def new(call, opts \\ []) do
+  def new(identity, opts \\ []) do
     {storage_module, storage_opts} = normalize_storage(Keyword.get(opts, :storage))
 
     case storage_module.init(storage_opts) do
       {:ok, storage_state} ->
         %__MODULE__{
-          identity: call,
+          identity: identity,
           turns: [],
           storage_module: storage_module,
           storage_state: storage_state
         }
 
       {:error, _reason} ->
-        %__MODULE__{identity: call, turns: [], storage_module: Memory, storage_state: %{}}
+        %__MODULE__{identity: identity, turns: [], storage_module: Memory, storage_state: %{}}
     end
   end
 

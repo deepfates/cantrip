@@ -79,12 +79,12 @@
   [cantrip]
   (when-not (map? cantrip)
     (throw (ex-info "cantrip must be a map" {:rule "CANTRIP-1"})))
-  (doseq [k [:llm :call :circle]]
+  (doseq [k [:llm :identity :circle]]
     (when (or (not (contains? cantrip k))
               (nil? (get cantrip k)))
       (throw (ex-info (str "cantrip requires " (name k))
                       {:rule "CANTRIP-1" :missing k}))))
-  (when (and (true? (get-in cantrip [:call :require-done-tool]))
+  (when (and (true? (get-in cantrip [:identity :require-done-tool]))
              (not (has-done-gate? (:circle cantrip))))
     (throw (ex-info "cantrip with require_done must have a done gate"
                     {:rule "LOOP-2"})))

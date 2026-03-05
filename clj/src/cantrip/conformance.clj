@@ -182,12 +182,12 @@
   (let [circle (:circle setup)
         normalized-circle (assoc circle :medium (normalized-medium circle))
         medium (:medium normalized-circle)
-        base-call (or (:identity setup) (:call setup) {})
-        call (if (and (= :code medium)
-                      (not (contains? base-call :require-done-tool))
-                      (not (contains? base-call :require_done_tool)))
-               (assoc base-call :require-done-tool true)
-               base-call)
+        base-identity (or (:identity setup) (:call setup) {})
+        identity-cfg (if (and (= :code medium)
+                              (not (contains? base-identity :require-done-tool))
+                              (not (contains? base-identity :require_done_tool)))
+                       (assoc base-identity :require-done-tool true)
+                       base-identity)
         runtime-cfg (:folding setup)
         max-in-context (or (:trigger-after-turns runtime-cfg)
                            (:trigger_after_turns runtime-cfg))
@@ -199,7 +199,7 @@
                          (when-let [child (:child-llm llms)]
                            {:default-child-llm child}))]
     (cond-> {:llm (resolve-llm llms cast)
-             :call call
+             :identity identity-cfg
              :circle (assoc normalized-circle :dependencies base-deps)}
       (:retry setup) (assoc :retry (:retry setup))
       (or (integer? max-in-context) has-ephemeral-gate?)
@@ -572,7 +572,8 @@
         error-msg (:error execution)
         normalize-vocab (fn [s]
                           (-> (str/lower-case (str s))
-                              (str/replace #"identity" "call")))
+                              (str/replace #"\bcall\b" "identity")
+                              (str/replace #"\bidentity\b" "identity")))
         pass? (and (string? error-msg)
                    (let [expected-norm (normalize-vocab expected-error)
                          expected-tokens (remove #{"a" "an" "the"}
@@ -606,7 +607,8 @@
         acp-state (get-in execution [:ok :acp])
         normalize-vocab (fn [s]
                           (-> (str/lower-case (str s))
-                              (str/replace #"identity" "call")))
+                              (str/replace #"\bcall\b" "identity")
+                              (str/replace #"\bidentity\b" "identity")))
         invocations (if (and (empty? runs)
                              (seq (:pseudo-invocations acp-state)))
                       (:pseudo-invocations acp-state)
@@ -753,12 +755,12 @@
               true)
             (if-let [call-spec (:call loom-expect)]
               (every? (fn [[k v]]
-                        (= v (get-in loom-state [:call k])))
+                        (= v (get-in loom-state [:identity k])))
                       call-spec)
               true)
             (if-let [identity-spec (:identity loom-expect)]
               (every? (fn [[k v]]
-                        (= v (get-in loom-state [:call k])))
+                        (= v (get-in loom-state [:identity k])))
                       identity-spec)
               true)
             (if-let [turn-specs (:turns loom-expect)]

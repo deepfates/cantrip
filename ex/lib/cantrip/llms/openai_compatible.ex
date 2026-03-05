@@ -100,13 +100,13 @@ defmodule Cantrip.LLMs.OpenAICompatible do
   defp maybe_put_assistant_tool_calls(message, "assistant", tool_calls)
        when is_list(tool_calls) do
     encoded =
-      Enum.map(tool_calls, fn identity ->
+      Enum.map(tool_calls, fn tc ->
         %{
-          id: identity[:id] || identity["id"],
+          id: tc[:id] || tc["id"],
           type: "function",
           function: %{
-            name: identity[:gate] || identity["gate"],
-            arguments: Jason.encode!(identity[:args] || identity["args"] || %{})
+            name: tc[:gate] || tc["gate"],
+            arguments: Jason.encode!(tc[:args] || tc["args"] || %{})
           }
         }
       end)
@@ -173,8 +173,8 @@ defmodule Cantrip.LLMs.OpenAICompatible do
     end
   end
 
-  defp normalize_tool_call(identity) do
-    args_json = get_in(identity, ["function", "arguments"]) || "{}"
+  defp normalize_tool_call(tc) do
+    args_json = get_in(tc, ["function", "arguments"]) || "{}"
 
     args =
       case Jason.decode(args_json) do
@@ -183,8 +183,8 @@ defmodule Cantrip.LLMs.OpenAICompatible do
       end
 
     %{
-      id: identity["id"],
-      gate: get_in(identity, ["function", "name"]),
+      id: tc["id"],
+      gate: get_in(tc, ["function", "name"]),
       args: args
     }
   end

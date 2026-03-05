@@ -29,7 +29,7 @@ class Cantrip:
         self,
         llm: LLM,
         circle: Circle,
-        call: Identity | None = None,
+        identity: Identity | None = None,
         *,
         folding: dict[str, Any] | None = None,
         retry: dict[str, Any] | None = None,
@@ -44,7 +44,7 @@ class Cantrip:
             raise CantripError("cantrip requires a circle")
         self.llm = llm
         self.circle = circle
-        self.call = call or Identity()
+        self.identity = identity or Identity()
         self.folding = folding or {}
         self.retry = retry or {}
         self.loom = loom or Loom()
@@ -52,7 +52,7 @@ class Cantrip:
         self.child_llm = child_llm
         self.medium_depends = medium_depends or {}
 
-        if self.call.require_done_tool and "done" not in self.circle._gates:
+        if self.identity.require_done_tool and "done" not in self.circle._gates:
             raise CantripError("cantrip with require_done must have a done gate")
         if "done" not in self.circle._gates:
             raise CantripError("circle must have a done gate")
@@ -91,8 +91,8 @@ class Cantrip:
 
     def _context_messages(self, thread: Thread) -> list[dict[str, Any]]:
         msgs: list[dict[str, Any]] = []
-        if thread.call.system_prompt is not None:
-            msgs.append({"role": "system", "content": thread.call.system_prompt})
+        if thread.identity.system_prompt is not None:
+            msgs.append({"role": "system", "content": thread.identity.system_prompt})
         msgs.append(
             {"role": "system", "content": self._capability_message(self.circle)}
         )
@@ -440,17 +440,17 @@ class Cantrip:
 
                 child_llm = child_llm or self.llm
                 child_call = Identity(
-                    system_prompt=self.call.system_prompt,
-                    temperature=self.call.temperature,
-                    require_done_tool=self.call.require_done_tool
+                    system_prompt=self.identity.system_prompt,
+                    temperature=self.identity.temperature,
+                    require_done_tool=self.identity.require_done_tool
                     or bool(req.get("require_done_tool", False)),
-                    tool_choice=self.call.tool_choice,
-                    extra=copy.deepcopy(self.call.extra),
+                    tool_choice=self.identity.tool_choice,
+                    extra=copy.deepcopy(self.identity.extra),
                 )
                 child = Cantrip(
                     llm=child_llm,
                     circle=child_circle,
-                    call=child_call,
+                    identity=child_call,
                     folding=self.folding,
                     retry=self.retry,
                     llms=self.llms,
@@ -647,7 +647,7 @@ class Cantrip:
         llm = llm_override or self.llm
         entity_id = str(uuid.uuid4())
         thread = Thread(
-            id=str(uuid.uuid4()), entity_id=entity_id, intent=intent, call=self.call
+            id=str(uuid.uuid4()), entity_id=entity_id, intent=intent, identity=self.identity
         )
         if seed_turns:
             thread.turns.extend(copy.deepcopy(seed_turns))
@@ -724,7 +724,7 @@ class Cantrip:
                 )
             messages = self._context_messages(thread)
             tools = self._make_tools(self.circle)
-            tool_choice = medium.tool_choice(self.call.tool_choice)
+            tool_choice = medium.tool_choice(self.identity.tool_choice)
 
             try:
                 response = self._query_with_retry(
@@ -774,12 +774,12 @@ class Cantrip:
                 circle=self.circle,
                 depth=local_depth,
                 runtime=runtime,
-                require_done_tool=self.call.require_done_tool,
+                require_done_tool=self.identity.require_done_tool,
             )
 
             if (
                 self.circle.medium == "code"
-                and self.call.require_done_tool
+                and self.identity.require_done_tool
                 and not terminated
                 and (
                     (

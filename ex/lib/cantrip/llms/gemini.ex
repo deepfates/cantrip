@@ -103,11 +103,11 @@ defmodule Cantrip.LLMs.Gemini do
             else: []
 
         fc_parts =
-          Enum.map(tool_calls, fn identity ->
+          Enum.map(tool_calls, fn tc ->
             %{
               functionCall: %{
-                name: identity[:gate] || identity["gate"],
-                args: identity[:args] || identity["args"] || %{}
+                name: tc[:gate] || tc["gate"],
+                args: tc[:args] || tc["args"] || %{}
               }
             }
           end)

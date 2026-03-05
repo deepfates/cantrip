@@ -5,14 +5,14 @@
 
 (def valid-cantrip
   {:llm {:provider :fake}
-   :call {:system-prompt "test"}
+   :identity {:system-prompt "test"}
    :circle {:medium :conversation
             :gates [:done]
             :wards [{:max-turns 2}]}})
 
-(deftest invoke-returns-entity-handle
-  (testing "invoke returns an entity map with id and status"
-    (let [entity (runtime/invoke valid-cantrip)]
+(deftest summon-returns-entity-handle
+  (testing "summon returns an entity map with id and status"
+    (let [entity (runtime/summon valid-cantrip)]
       (is (string? (:entity-id entity)))
       (is (= :ready (:status entity)))
       (is (instance? clojure.lang.IAtom (:loom entity)))
@@ -57,7 +57,7 @@
 
 (deftest text-only-continues-when-done-required
   (let [cantrip (-> valid-cantrip
-                    (assoc :call {:system-prompt "test"
+                    (assoc :identity {:system-prompt "test"
                                   :require-done-tool true})
                     (assoc :llm {:provider :fake
                                      :responses [{:content "thinking"}
@@ -71,7 +71,7 @@
 
 (deftest truncates-when-max-turns-hit
   (let [cantrip (-> valid-cantrip
-                    (assoc :call {:system-prompt "test"
+                    (assoc :identity {:system-prompt "test"
                                   :require-done-tool true})
                     (assoc :llm {:provider :fake
                                      :responses [{:content "a"}
@@ -93,7 +93,7 @@
                                        {:tool-calls [{:id "call_2"
                                                       :gate :done
                                                       :args {:answer "ok"}}]}]}
-                 :call {:system-prompt "You are a test agent"}
+                 :identity {:system-prompt "You are a test agent"}
                  :circle {:medium :conversation
                           :gates [:done :echo]
                           :wards [{:max-turns 4}]}}
@@ -115,7 +115,7 @@
                            :responses [{:tool-calls [{:id "call_1"
                                                       :gate :done
                                                       :args {:answer "ok"}}]}]}
-                 :call {:system-prompt "test"}
+                 :identity {:system-prompt "test"}
                  :circle {:medium :conversation
                           :gates [{:name :done
                                    :parameters {:type "object"}}
@@ -126,16 +126,16 @@
     (is (= ["done" "read"]
            (mapv :name (-> @invocations first :tools))))))
 
-(deftest invoke-cast-intent-persists-turn-history
+(deftest summon-cast-intent-persists-turn-history
   (let [invocations (atom [])
-        entity (runtime/invoke
+        entity (runtime/summon
                 {:llm {:provider :fake
                            :record-inputs true
                            :invocations invocations
                            :responses [{:tool-calls [{:id "call_1"
                                                       :gate :done
                                                       :args {:answer "ok"}}]}]}
-                 :call {:system-prompt "test"}
+                 :identity {:system-prompt "test"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 3}]}})
@@ -162,7 +162,7 @@
                                                       :args {:answer "ok"}}]
                                         :usage {:prompt_tokens 200
                                                 :completion_tokens 30}}]}
-                 :call {:system-prompt "usage test"}
+                 :identity {:system-prompt "usage test"}
                  :circle {:medium :conversation
                           :gates [:done :echo]
                           :wards [{:max-turns 4}]}}
@@ -188,7 +188,7 @@
                                        {:tool-calls [{:id "call_1"
                                                       :gate :done
                                                       :args {:answer "ok"}}]}]}
-                 :call {:system-prompt "retry test"}
+                 :identity {:system-prompt "retry test"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 3}]}
@@ -202,7 +202,7 @@
 
 (deftest folding-limits-context-with-summary-message
   (let [invocations (atom [])
-        entity (runtime/invoke
+        entity (runtime/summon
                 {:llm {:provider :fake
                            :record-inputs true
                            :responses-by-invocation true
@@ -210,7 +210,7 @@
                            :responses [{:tool-calls [{:id "call_1" :gate :done :args {:answer "a"}}]}
                                        {:tool-calls [{:id "call_2" :gate :done :args {:answer "b"}}]}
                                        {:tool-calls [{:id "call_3" :gate :done :args {:answer "c"}}]}]}
-                 :call {:system-prompt "fold test"}
+                 :identity {:system-prompt "fold test"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 3}]}
@@ -231,7 +231,7 @@
                            :responses [{:tool-calls [{:id "call_1" :gate :echo :args {:text "one"}}]}
                                        {:tool-calls [{:id "call_2" :gate :echo :args {:text "two"}}]}
                                        {:tool-calls [{:id "call_3" :gate :done :args {:answer "ok"}}]}]}
-                 :call {:system-prompt "ephemeral test"
+                 :identity {:system-prompt "ephemeral test"
                         :require-done-tool true}
                  :circle {:medium :conversation
                           :gates [:done :echo]
@@ -249,7 +249,7 @@
                                  :responses [{:tool-calls [{:id "c1"
                                                             :gate :done
                                                             :args {:answer "child-ok"}}]}]}
-                       :call {}
+                       :identity {}
                        :circle {:medium :code
                                 :gates [:done]
                                 :wards [{:max-turns 2}]}}
@@ -258,7 +258,7 @@
                   " :intent \"child\"}))")
         cantrip {:llm {:provider :fake
                            :responses [{:content code}]}
-                 :call {:require-done-tool true}
+                 :identity {:require-done-tool true}
                  :circle {:medium :code
                           :gates [:done :call_entity]
                           :wards [{:max-turns 3} {:max-depth 1}]}}
@@ -267,18 +267,18 @@
     (is (= "child-ok" (:result result)))))
 
 (deftest call-agent-rejects-unknown-request-keys
-  (let [entity (runtime/invoke valid-cantrip)]
+  (let [entity (runtime/summon valid-cantrip)]
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo
          #"unknown keys"
          (runtime/call-agent entity {:intent "x" :bogus true})))))
 
 (deftest call-agent-batch-enforces-vector-and-max-size
-  (let [entity (runtime/invoke (assoc-in valid-cantrip [:circle :wards]
+  (let [entity (runtime/summon (assoc-in valid-cantrip [:circle :wards]
                                          [{:max-turns 2} {:max-batch-size 1}]))
         child {:cantrip {:llm {:provider :fake
                                    :responses [{:tool-calls [{:id "c1" :gate :done :args {:answer "ok"}}]}]}
-                         :call {}
+                         :identity {}
                          :circle {:medium :conversation :gates [:done] :wards [{:max-turns 1}]}}
                :intent "x"}]
     (is (thrown-with-msg?

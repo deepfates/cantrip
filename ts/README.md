@@ -6,7 +6,7 @@
 
 A framework for building autonomous LLM entities. You draw a circle, speak an intent into it, and an entity arises — it reasons, acts in an environment, observes the results, and loops until the work is done or a limit is reached.
 
-Eleven terms describe everything in the system. Three are fundamental: the **crystal** (the model), the **call** (the invocation that shapes it), and the **circle** (the environment it acts in). Everything else is what happens when you put those together and let the loop run.
+Eleven terms describe everything in the system. Three are fundamental: the **llm** (the model), the **identity** (the invocation that shapes it), and the **circle** (the environment it acts in). Everything else is what happens when you put those together and let the loop run.
 
 ---
 
@@ -40,13 +40,13 @@ The `examples/` directory has simpler starting points too — see the [examples 
 
 ## Minimal Example
 
-To build a cantrip from scratch: a crystal, a circle with gates and wards, and a call.
+To build a cantrip from scratch: an llm, a circle with gates and wards, and an identity.
 
 ```typescript
 import { cantrip, Circle, ChatAnthropic, done, max_turns, gate } from "cantrip";
 
-// Crystal — an LLM
-const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+// LLM — a language model provider
+const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
 
 // A gate — a function the entity can call
 const add = gate("Add two numbers", async ({ a, b }: { a: number; b: number }) => a + b, {
@@ -60,10 +60,10 @@ const circle = Circle({
   wards: [max_turns(10)],
 });
 
-// Cantrip — crystal + call + circle
+// Cantrip — llm + identity + circle
 const spell = cantrip({
-  crystal,
-  call: "You are a calculator. Use the add tool, then call done with the result.",
+  llm,
+  identity: "You are a calculator. Use the add tool, then call done with the result.",
   circle,
 });
 
@@ -78,15 +78,15 @@ Each `cast` creates a fresh entity — the cantrip is a reusable script. No medi
 
 ## Core Concepts
 
-### Crystal (Cognition)
+### LLM (Cognition)
 
-A crystal wraps an LLM. It takes messages and tools, returns a response. Stateless — each query is independent.
+An LLM wraps a language model provider. It takes messages and tools, returns a response. Stateless — each query is independent.
 
 ```typescript
 import { ChatAnthropic } from "cantrip";
 
-const crystal = new ChatAnthropic({ model: "claude-sonnet-4-5" });
-const result = await crystal.query([
+const llm = new ChatAnthropic({ model: "claude-sonnet-4-5" });
+const result = await llm.query([
   { role: "user", content: "What is 2 + 2? Reply with just the number." },
 ]);
 console.log(result.content); // "4"
@@ -94,18 +94,18 @@ console.log(result.content); // "4"
 
 Multiple providers: `ChatAnthropic`, `ChatOpenAI`, `ChatGoogle`, `ChatOpenRouter`, `ChatLMStudio`.
 
-### Call (Invocation)
+### Identity (Invocation)
 
-The call shapes the entity's behavior — a system prompt plus any hyperparameters. It can be a string or an object:
+The identity shapes the entity's behavior — a system prompt plus any hyperparameters. It can be a string or an object:
 
 ```typescript
 // String shorthand
-cantrip({ crystal, call: "You analyze code for bugs.", circle });
+cantrip({ llm, identity: "You analyze code for bugs.", circle });
 
 // Object form
 cantrip({
-  crystal,
-  call: { system_prompt: "You analyze code for bugs." },
+  llm,
+  identity: { system_prompt: "You analyze code for bugs." },
   circle,
 });
 ```
@@ -146,18 +146,18 @@ Two ways to create one:
 // Cast — one-shot. Entity runs, returns result, disposes.
 const result = await spell.cast("Analyze this data");
 
-// Invoke — persistent. Entity survives, accepts more intents.
-const entity = spell.invoke();
+// Summon — persistent. Entity survives, accepts more intents.
+const entity = spell.summon();
 const r1 = await entity.cast("First task");
 const r2 = await entity.cast("Follow-up task"); // remembers r1
 ```
 
-For interactive sessions, use `invoke()` with the built-in REPL:
+For interactive sessions, use `summon()` with the built-in REPL:
 
 ```typescript
 import { runRepl } from "cantrip";
 
-const entity = spell.invoke();
+const entity = spell.summon();
 await runRepl({
   entity,
   greeting: "Agent ready. Ctrl+C to exit.",
@@ -267,8 +267,8 @@ The simplest pattern. Create a cantrip, cast it, get a result.
 import { cantrip, Circle, ChatAnthropic, js, max_turns, require_done } from "cantrip";
 
 const spell = cantrip({
-  crystal: new ChatAnthropic({ model: "claude-sonnet-4-5" }),
-  call: "Explore the context variable. Use submit_answer() when you have a final answer.",
+  llm: new ChatAnthropic({ model: "claude-sonnet-4-5" }),
+  identity: "Explore the context variable. Use submit_answer() when you have a final answer.",
   circle: Circle({
     medium: js({ state: { context: { items: ["alpha", "beta", "gamma"] } } }),
     wards: [max_turns(20), require_done()],
@@ -288,14 +288,14 @@ import { runRepl, safeFsGates, getSandboxContext, SandboxContext } from "cantrip
 const fsCtx = await SandboxContext.create();
 
 const entity = cantrip({
-  crystal,
-  call: `Coding assistant. Working dir: ${fsCtx.working_dir}`,
+  llm,
+  identity: `Coding assistant. Working dir: ${fsCtx.working_dir}`,
   circle: Circle({
     gates: [...safeFsGates, done],
     wards: [max_turns(100)],
   }),
   dependency_overrides: new Map([[getSandboxContext, () => fsCtx]]),
-}).invoke();
+}).summon();
 
 await runRepl({ entity, greeting: "Agent ready." });
 ```
@@ -316,7 +316,7 @@ const circle = Circle({
 });
 
 const loom = new Loom(new MemoryStorage());
-const spell = cantrip({ crystal, call: "Delegate analysis to child entities.", circle, loom });
+const spell = cantrip({ llm, identity: "Delegate analysis to child entities.", circle, loom });
 const answer = await spell.cast("Analyze each category and summarize the trend.");
 ```
 
@@ -357,8 +357,8 @@ const circle = Circle({
 });
 
 const spell = cantrip({
-  crystal,
-  call: SYSTEM_PROMPT,
+  llm,
+  identity: SYSTEM_PROMPT,
   circle,
   dependency_overrides: new Map([
     [getRepoContextDepends, () => repoCtx],
@@ -374,14 +374,14 @@ Inside the Familiar's vm medium, the entity writes modern JS to coordinate:
 ```javascript
 // Shell work — child runs in bash
 const worker = cantrip({
-  crystal: "anthropic/claude-haiku-4.5",
-  call: "Execute the command and report output.",
+  llm: "anthropic/claude-haiku-4.5",
+  identity: "Execute the command and report output.",
   circle: { medium: "bash", gates: ["done"], wards: [{ max_turns: 5 }] }
 });
 const output = await cast(worker, "Run the test suite");
 
 // Thinking — leaf cantrip, single LLM call
-const thinker = cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "Analyze code." });
+const thinker = cantrip({ llm: "anthropic/claude-haiku-4.5", identity: "Analyze code." });
 const analysis = await cast(thinker, "What bugs do you see?\n" + code);
 
 // Compose in code — loops, conditionals, pipelines
@@ -390,7 +390,7 @@ for (const file of files) {
   const src = await repo_read(file);
   if (src.includes("TODO")) {
     const review = await cast(
-      cantrip({ crystal: "anthropic/claude-haiku-4.5", call: "Find TODOs." }),
+      cantrip({ llm: "anthropic/claude-haiku-4.5", identity: "Find TODOs." }),
       src
     );
     console.log(file + ": " + review);
@@ -439,12 +439,12 @@ The `examples/` directory walks through the concepts in order:
 
 | # | Example | What it teaches |
 |---|---------|----------------|
-| 01 | `crystal` | LLM as stateless query |
+| 01 | `llm` | LLM as stateless query |
 | 02 | `gate` | Defining callable functions |
 | 03 | `circle` | Gates + wards + validation |
-| 04 | `cantrip` | Crystal + call + circle = script |
+| 04 | `cantrip` | LLM + identity + circle = script |
 | 05 | `ward` | Constraints and safety limits |
-| 06 | `providers` | Multi-provider crystals |
+| 06 | `providers` | Multi-provider LLMs |
 | 07 | `conversation` | Conversation medium (default) |
 | 08 | `js_medium` | QuickJS sandbox |
 | 09 | `browser_medium` | Taiko browser automation |
@@ -455,7 +455,7 @@ The `examples/` directory walks through the concepts in order:
 | 14 | `recursive` | Depth-limited recursive entities |
 | 15 | `research_entity` | jsBrowser + recursion + ACP |
 | 16 | `familiar` | Cantrip construction as medium physics |
-| 17 | `leaf_cantrip` | Simplest delegation — crystal + call, one LLM call |
+| 17 | `leaf_cantrip` | Simplest delegation — llm + identity, one LLM call |
 | 18 | `vm_medium` | node:vm sandbox — full ES2024, async/await |
 | 19 | `bash_medium` | Entity works IN bash as primary medium |
 | 20 | `data_exploration` | RLM pattern — data in sandbox, explore with code |
@@ -474,7 +474,7 @@ bun run examples/04_cantrip.ts
 bun install cantrip
 ```
 
-Set your API key for your crystal provider:
+Set your API key for your LLM provider:
 ```bash
 export ANTHROPIC_API_KEY="sk-..."
 # or

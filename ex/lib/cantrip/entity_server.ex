@@ -457,12 +457,12 @@ defmodule Cantrip.EntityServer do
     end)
   end
 
-  defp initial_messages(call, circle, intent) do
+  defp initial_messages(identity, circle, intent) do
     {_tools, _tc, capability_text} = Circle.tool_view(circle)
 
     system =
-      if call.system_prompt,
-        do: [%{role: :system, content: call.system_prompt}],
+      if identity.system_prompt,
+        do: [%{role: :system, content: identity.system_prompt}],
         else: []
 
     capability =

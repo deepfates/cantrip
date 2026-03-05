@@ -95,7 +95,7 @@ class SQLiteLoomStore(LoomStore):
                 thread.id,
                 thread.entity_id,
                 thread.intent,
-                json.dumps(asdict(thread.call)),
+                json.dumps(asdict(thread.identity)),
                 json.dumps(thread.result),
                 int(thread.terminated),
                 int(thread.truncated),
@@ -162,13 +162,13 @@ class SQLiteLoomStore(LoomStore):
             return None
         from cantrip.models import Identity
 
-        call_payload = json.loads(row[3])
-        call = Identity(**call_payload)
+        identity_payload = json.loads(row[3])
+        identity = Identity(**identity_payload)
         thread = Thread(
             id=row[0],
             entity_id=row[1],
             intent=row[2],
-            call=call,
+            identity=identity,
             result=json.loads(row[4]) if row[4] is not None else None,
             terminated=bool(row[5]),
             truncated=bool(row[6]),

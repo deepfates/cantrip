@@ -386,7 +386,7 @@ defmodule Cantrip.Examples do
            Map.get(spec, :wards, []))
         |> maybe_put_ward(:max_depth, Map.get(spec, :max_depth))
 
-      call =
+      identity_config =
         Map.get(spec, :identity, %{})
         |> Map.put_new(:system_prompt, system_prompt())
         |> maybe_require_done(opts, type)
@@ -394,7 +394,7 @@ defmodule Cantrip.Examples do
       attrs = %{
         llm: llm,
         child_llm: child_llm,
-        identity: call,
+        identity: identity_config,
         circle: %{type: type, gates: gates, wards: wards},
         folding: Map.get(spec, :folding, %{}),
         loom_storage: Map.get(spec, :loom_storage)
@@ -407,13 +407,13 @@ defmodule Cantrip.Examples do
     end
   end
 
-  defp maybe_require_done(call, opts, type) do
+  defp maybe_require_done(identity_config, opts, type) do
     if Map.get(opts, :mode, :real) == :real and type == :conversation do
-      call
+      identity_config
       |> Map.put_new(:require_done_tool, true)
       |> Map.put_new(:tool_choice, "required")
     else
-      call
+      identity_config
     end
   end
 

@@ -3,8 +3,8 @@
             [clojure.string :as str]))
 
 (defn new-loom
-  [call]
-  {:call call
+  [identity-config]
+  {:identity identity-config
    :turns []})
 
 (defn append-turn

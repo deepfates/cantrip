@@ -113,12 +113,12 @@ def _build_real_cantrip(
             "for delegation. Prefer a single concise answer."
         )
 
-    call = Identity(
+    identity = Identity(
         system_prompt=system_prompt,
         tool_choice="required" if medium == "code" else None,
         require_done_tool=(medium == "code"),
     )
-    return Cantrip(llm=llm, circle=circle, call=call)
+    return Cantrip(llm=llm, circle=circle, identity=identity)
 
 
 def _build_fake_cantrip(
