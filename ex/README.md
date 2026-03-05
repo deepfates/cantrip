@@ -195,14 +195,14 @@ Default scripted runs are pattern-specific and meaningful (not shared `"ok"` stu
 - `15` demonstrates dependency-injected `read` in code medium.
 - `16` demonstrates familiar-style delegation with persistent loom storage.
 
-## Real Crystals (.env)
+## Real LLMs (.env)
 
 You can run with real providers (or local OpenAI-compatible servers) via env vars.
 
 Example `.env`:
 
 ```bash
-CANTRIP_CRYSTAL_PROVIDER=openai_compatible
+CANTRIP_LLM_PROVIDER=openai_compatible
 CANTRIP_MODEL=gpt-4.1-mini
 CANTRIP_API_KEY=sk-...
 CANTRIP_BASE_URL=https://api.openai.com/v1
@@ -224,5 +224,5 @@ Then construct with:
 
 - The runtime threads llm state through the cantrip value for deterministic fake-llm tests.
 - Code-circle snippets are Elixir (`done.(...)`, `call_entity.(...)`, `compile_and_load.(...)`).
-- `FakeCrystal` supports `record_inputs: true` to assert context/tool contracts in tests.
-- Current test count: 102 green tests (`mix verify`).
+- `FakeLLM` supports `record_inputs: true` to assert context/tool contracts in tests.
+- Current test count: 150+ tests (`mix verify`).

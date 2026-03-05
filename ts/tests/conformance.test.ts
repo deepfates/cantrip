@@ -842,8 +842,17 @@ async function executeCast(
 async function executeThen(ctx: TestContext, thenCfg: Record<string, any>): Promise<void> {
   if (thenCfg.mutate_call || thenCfg.mutate_identity) {
     const mutations = thenCfg.mutate_call || thenCfg.mutate_identity;
-    if ("system_prompt" in mutations) {
-      throw new TypeError("identity is immutable");
+    try {
+      for (const [key, value] of Object.entries(mutations)) {
+        (ctx.identity as any)[key] = value;
+      }
+      throw new Error("Expected identity mutation to throw TypeError but it succeeded");
+    } catch (e) {
+      if (e instanceof TypeError) {
+        // Good — identity is properly frozen
+        throw new TypeError("identity is immutable");
+      }
+      throw e;
     }
   }
 

@@ -3,9 +3,6 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PASS=0
-FAIL=0
-SKIP=0
 
 pick_timeout_cmd() {
   if command -v timeout >/dev/null 2>&1; then

@@ -51,18 +51,12 @@ function makeCircle(gates: BoundGate[] = [doneGate], wards = [{ max_turns: 10, r
 // ── CALL-1: call is immutable after construction ───────────────────
 
 describe("CALL-1: call is immutable after construction", () => {
-  test("CALL-1: mutation of call object after construction is visible to cast", async () => {
-    // NOTE: The framework does NOT currently enforce immutability — the call
-    // object is a plain JS object. This test documents the actual behavior:
-    // mutating spell.identity DOES affect subsequent casts.
-    // TODO: enforce immutability via Object.freeze or defensive copy in cast()
-    const messagesPerCall: any[][] = [];
+  test("CALL-1: mutation of identity after construction throws TypeError", async () => {
     const llm = {
       model: "dummy",
       provider: "dummy",
       name: "dummy",
-      async query(messages: any[]) {
-        messagesPerCall.push([...messages]);
+      async query() {
         return {
           content: null,
           tool_calls: [
@@ -85,18 +79,11 @@ describe("CALL-1: call is immutable after construction", () => {
       circle: makeCircle(),
     });
 
-    // Verify the original value is stored
+    expect(() => {
+      (spell.identity as any).system_prompt = "You are evil";
+    }).toThrow(TypeError);
+
     expect(spell.identity.system_prompt).toBe("You are helpful");
-
-    // Mutate after construction
-    (spell.identity as any).system_prompt = "You are evil";
-
-    await spell.cast("test immutability");
-
-    // Since immutability is NOT enforced, the llm sees the mutated value
-    const systemMsg = messagesPerCall[0][0];
-    expect(systemMsg.role).toBe("system");
-    expect(systemMsg.content).toBe("You are evil");
   });
 });
 

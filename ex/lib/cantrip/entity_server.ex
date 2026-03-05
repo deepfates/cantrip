@@ -10,6 +10,7 @@ defmodule Cantrip.EntityServer do
   defstruct cantrip: nil,
             entity_id: nil,
             messages: [],
+            lazy: false,
             loom: nil,
             turns: 0,
             depth: 0,
@@ -35,12 +36,12 @@ defmodule Cantrip.EntityServer do
   @impl true
   def init(opts) do
     cantrip = Keyword.fetch!(opts, :cantrip)
-    intent = Keyword.fetch!(opts, :intent)
+    intent = Keyword.get(opts, :intent)
+    lazy = Keyword.get(opts, :lazy, false)
 
     entity_id = "ent_" <> Integer.to_string(System.unique_integer([:positive]))
 
-    messages =
-      Keyword.get(opts, :messages, initial_messages(cantrip.identity, cantrip.circle, intent))
+    messages = Keyword.get(opts, :messages, build_initial_messages(cantrip, intent, lazy))
 
     loom = Keyword.get(opts, :loom, Loom.new(cantrip.identity, storage: cantrip.loom_storage))
     turns = Keyword.get(opts, :turns, 0)
@@ -54,6 +55,7 @@ defmodule Cantrip.EntityServer do
        cantrip: cantrip,
        entity_id: entity_id,
        messages: messages,
+       lazy: lazy and is_nil(intent),
        loom: loom,
        turns: turns,
        depth: depth,
@@ -79,11 +81,30 @@ defmodule Cantrip.EntityServer do
 
   @impl true
   def handle_call({:send_intent, intent}, _from, state) do
-    next_messages = state.messages ++ [%{role: :user, content: intent}]
-    next_state = %{state | messages: next_messages}
+    next_messages =
+      if state.lazy do
+        initial_messages(state.cantrip.identity, state.cantrip.circle, intent)
+      else
+        state.messages ++ [%{role: :user, content: intent}]
+      end
+
+    next_state = %{state | messages: next_messages, lazy: false}
     {result, final_state, meta} = run_loop(next_state)
     reply = {:ok, result, final_state.cantrip, final_state.loom, meta}
     {:reply, reply, final_state}
+  end
+
+  defp build_initial_messages(cantrip, intent, lazy) do
+    cond do
+      is_binary(intent) ->
+        initial_messages(cantrip.identity, cantrip.circle, intent)
+
+      lazy ->
+        initial_messages(cantrip.identity, cantrip.circle, nil)
+
+      true ->
+        raise ArgumentError, "intent is required unless lazy: true"
+    end
   end
 
   defp run_loop(state) do
@@ -470,7 +491,11 @@ defmodule Cantrip.EntityServer do
         do: [%{role: :system, content: capability_text}],
         else: []
 
-    system ++ capability ++ [%{role: :user, content: intent}]
+    if is_binary(intent) do
+      system ++ capability ++ [%{role: :user, content: intent}]
+    else
+      system ++ capability
+    end
   end
 
   defp execute_call_entity(state, opts) do

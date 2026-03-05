@@ -6,7 +6,7 @@ This note translates the TypeScript examples into the spec's language-neutral co
 
 | Example | Pattern focus | Spec terms to anchor | Productionization hook |
 |---------|---------------|----------------------|------------------------|
-| 01–02 | Crystal and gate primitives | `CRYSTAL`, `GATE`, `done` | Swap-in provider, unit-test gates directly |
+| 01–02 | LLM and gate primitives | `LLM-*`, `GATE`, `done` | Swap-in provider, unit-test gates directly |
 | 03–05 | Circle invariants and wards | `CIRCLE-1`, `CIRCLE-2`, `Ward` | Enforce `done`, compose safeguards before run |
 | 06 | Provider portability | `LlmProvider` | Treat the LLM as configuration, not code |
 | 07–09 | Medium selection | `Medium`, `llmView()` | Bind one medium per circle; advertise capabilities |

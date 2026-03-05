@@ -188,22 +188,29 @@ defmodule Cantrip do
   def extract_thread(%__MODULE__{}, loom), do: Loom.extract_thread(loom)
 
   @doc """
-  ENTITY-5: Start a persistent entity that can receive multiple intents.
-  Returns `{:ok, pid, result, cantrip, loom, meta}` after the first cast completes.
-  The entity remains alive — send additional intents with `send/2`.
+  ENTITY-5: Create a persistent entity without running any intent.
+  Returns `{:ok, pid}`. Use `send/2` to run intents.
+  """
+  @spec summon(t()) :: {:ok, pid()} | {:error, term()}
+  def summon(%__MODULE__{} = cantrip) do
+    spec = {EntityServer, cantrip: cantrip, lazy: true}
+    DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec)
+  end
+
+  @doc """
+  ENTITY-5: Create a persistent entity and immediately run the first intent.
+  Convenience wrapper: equivalent to `summon/1` followed by `send/2`.
   """
   @spec summon(t(), String.t()) ::
           {:ok, pid(), term(), t(), Loom.t(), map()} | {:error, term(), t()}
   def summon(%__MODULE__{} = cantrip, intent) when is_binary(intent) do
-    spec = {EntityServer, cantrip: cantrip, intent: intent}
-
-    with {:ok, pid} <- DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec) do
-      case EntityServer.run_persistent(pid) do
+    with {:ok, pid} <- summon(cantrip) do
+      case send(pid, intent) do
         {:ok, result, next_cantrip, loom, meta} ->
           {:ok, pid, result, next_cantrip, loom, meta}
 
-        {:error, reason, next_cantrip} ->
-          {:error, reason, next_cantrip}
+        {:error, reason} ->
+          {:error, reason, cantrip}
       end
     end
   end

@@ -6,9 +6,9 @@ This note translates the TypeScript examples into the spec's language-neutral co
 
 | Example | Pattern focus | Spec terms to anchor | Productionization hook |
 |---------|---------------|----------------------|------------------------|
-| 01–02 | Crystal and gate primitives | `CRYSTAL`, `GATE`, `done` | Swap-in provider, unit-test gates directly |
+| 01–02 | LLM and gate primitives | `LLM-*`, `GATE`, `done` | Swap-in provider, unit-test gates directly |
 | 03–05 | Circle invariants and wards | `CIRCLE-1`, `CIRCLE-2`, `Ward` | Enforce `done`, compose safeguards before run |
-| 06 | Provider portability | `CrystalProvider` | Treat the llm as configuration, not code |
+| 06 | Provider portability | `LlmProvider` | Treat the llm as configuration, not code |
 | 07–09 | Medium selection | `Medium`, `tool_view()` | Bind one medium per circle; advertise capabilities |
 | 10 | Parallel delegation | `call_entity_batch`, `loom` | Capture tree-structured work for audit + retries |
 | 11 | Folding | `Loom`, `folding_config` | Apply summaries before the context ceiling |

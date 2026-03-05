@@ -8,3 +8,22 @@ _investigation/
 SPEC.md.bak
 .uv-cache
 .venv_check
+# TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+# Python
+__pycache__/
+*.pyc
+.venv/
+# Clojure
+.cpcache/
+target/
+classes/
+# Elixir
+_build/
+deps/
+*.beam
+# Editors
+*.swp
+*~

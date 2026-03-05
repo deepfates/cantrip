@@ -1,4 +1,4 @@
-# Real Crystal Testing
+# Real LLM Testing
 
 Use this to run integration tests against real OpenAI-compatible endpoints
 (hosted APIs or local model servers).

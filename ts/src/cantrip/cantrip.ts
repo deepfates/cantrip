@@ -44,6 +44,16 @@ function resolveIdentity(input: CantripInput): Identity {
   };
 }
 
+function deepFreeze<T extends object>(obj: T): T {
+  Object.freeze(obj);
+  for (const val of Object.values(obj)) {
+    if (val && typeof val === "object" && !Object.isFrozen(val)) {
+      deepFreeze(val);
+    }
+  }
+  return obj;
+}
+
 export function cantrip(input: CantripInput): Cantrip {
   if (!input.llm) {
     throw new Error("cantrip: llm is required");
@@ -56,6 +66,7 @@ export function cantrip(input: CantripInput): Cantrip {
   }
 
   const identity = resolveIdentity(input);
+  deepFreeze(identity);
   const { llm, circle } = input;
 
   // Circle already validates done gate (CIRCLE-1) and termination ward (CIRCLE-2)

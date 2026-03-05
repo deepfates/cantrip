@@ -11,11 +11,17 @@ ROOT = Path(__file__).resolve().parent.parent
 # Explicitly tracked uncovered MUST rules from SPEC.md.
 # This list should only shrink as executable coverage expands.
 EXPECTED_UNCOVERED_MUST_RULES: set[str] = {
+    # Covered by LOOP-2 (same invariant: "must have termination ward")
     "CIRCLE-2",
+    # Structural: can't create entity without cantrip in any implementation
     "ENTITY-1",
+    # Covered by LOOP-5 (context growth across turns)
     "ENTITY-3",
+    # Requires summon action support in conformance framework
     "ENTITY-6",
+    # Meta-rule: implicitly verified by every gate-using test
     "MEDIUM-2",
+    # Requires dual-path execution (direct + protocol adapter)
     "PROD-1",
 }
 
