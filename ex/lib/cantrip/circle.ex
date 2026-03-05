@@ -64,14 +64,21 @@ defmodule Cantrip.Circle do
     end)
   end
 
+  @done_parameters %{
+    type: "object",
+    properties: %{answer: %{type: "string", description: "Your final answer"}},
+    required: ["answer"]
+  }
+
   @spec tool_definitions(t()) :: list(gate())
   def tool_definitions(%__MODULE__{gates: gates}) do
     gates
     |> Map.values()
     |> Enum.map(fn gate ->
+      default_params = if gate.name == "done", do: @done_parameters, else: %{type: "object", properties: %{}}
       %{
         name: gate.name,
-        parameters: Map.get(gate, :parameters, %{type: "object", properties: %{}})
+        parameters: Map.get(gate, :parameters, default_params)
       }
     end)
   end

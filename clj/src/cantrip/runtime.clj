@@ -19,6 +19,9 @@
 
 (defn- tool-choice [cantrip]
   (or (get-in cantrip [:identity :tool-choice])
+      (when (and (require-done-tool? cantrip)
+                 (= :conversation (get-in cantrip [:circle :medium])))
+        :required)
       :auto))
 
 (defn- retry-config [cantrip]
@@ -146,18 +149,39 @@
 
 (defn- turn->messages [turn compact-observation?]
   (let [utterance (:utterance turn)
+        obs (:observation turn)
+        ;; For code medium: utterance has :content (code) but no :tool-calls.
+        ;; Observations may or may not have :tool-call-id. Synthesize tool-calls
+        ;; in the assistant message so OpenAI doesn't reject orphan tool messages.
+        needs-synth? (and (empty? (:tool-calls utterance)) (seq obs))
+        obs-with-ids (if needs-synth?
+                       (map-indexed (fn [idx record]
+                                      (if (:tool-call-id record)
+                                        record
+                                        (assoc record :tool-call-id (str "synth_" (:id turn) "_" idx))))
+                                    obs)
+                       obs)
+        synth-tool-calls (when needs-synth?
+                           (mapv (fn [record]
+                                   {:id (:tool-call-id record)
+                                    :gate (:gate record)
+                                    :args {}})
+                                 obs-with-ids))
+        effective-tool-calls (or (seq (:tool-calls utterance)) synth-tool-calls)
         assistant-msg (cond-> {:role :assistant}
                         (string? (:content utterance))
                         (assoc :content (:content utterance))
-                        (seq (:tool-calls utterance))
-                        (assoc :tool-calls (vec (:tool-calls utterance))))
+                        (seq effective-tool-calls)
+                        (assoc :tool-calls (vec effective-tool-calls)))
         tool-msgs (map-indexed (fn [idx record]
-                                 {:role :tool
-                                  :name (:gate record)
-                                  :content (if compact-observation?
-                                             (str "[ephemeral-ref:" (:id turn) ":" idx "]")
-                                             (str (:result record)))})
-                               (:observation turn))]
+                                 (cond-> {:role :tool
+                                          :name (:gate record)
+                                          :content (if compact-observation?
+                                                     (str "[ephemeral-ref:" (:id turn) ":" idx "]")
+                                                     (str (:result record)))}
+                                   (:tool-call-id record)
+                                   (assoc :tool-call-id (:tool-call-id record))))
+                               obs-with-ids)]
     (into [assistant-msg] tool-msgs)))
 
 (defn- build-messages [cantrip intent prior-turns current-cast-turns]

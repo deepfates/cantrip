@@ -11,27 +11,19 @@
 
 A cantrip is a spell. In fantasy games, it refers to the simple starter spells that come in your spellbook at level 1. The etymology is thought to be related to Gaelic "Canntaireachd", a piper's mnemonic chant. It's a loop of language.
 
-This document is a starter spellbook of your own. It describes a method for creating spells using the tools of modern summoning: a language model, a computer, and a prompt. It's language loops all the way down.
+This is a starter spellbook of your own. It describes a method for creating spells using the tools of modern summoning: a language model, a computer, and a prompt. It's language loops all the way down.
 
-A language model takes text in and gives text back. You send it a prompt, it returns a completion. One pass — no memory, no consequences, no relationship between what it says and what happens next. This is the most simple way to interact with these systems: you input text, get text out. A "base model" is just this, autocomplete, token by token.
+A language model takes text in and gives text back. One pass — no memory, no consequences. To make it do things, you close the loop: take the model's output, run it in some kind of environment, and let it observe the effects. A chat interface is the simplest loop — but conversation alone lacks ontological hardness. Attach a verifiable environment — a shell, a REPL, a browser, a prover — and feed the result back as input. Now what the model writes has consequences it can predict and adjust for. The environment pushes back: code runs or crashes, files exist or don't, tests pass or fail. Turn by turn, the model accumulates experience. It starts doing things its designers never specifically enumerated, because the action space is a programming language and programming languages are compositional.
 
-To make it do things, you close the loop. You take the model's output, run it as code in some kind of environment, and then let it observe the effects and act accordingly. This can be as simple as a chat interface: the model sends text to your mind, where it's interpreted by whatever it is in human minds that interprets language. Then you respond in language, and the model interprets it, and so on.
-
-You can attach another language model to the loop, creating a "backrooms": the two models interpret each other's language and affect each other's internal state. But the chatbot and the backrooms don't have ontological hardness: their internal realities are pliable, dreamlike, they don't have persistent states or predictable behavior. 
-
-Attach a verifiable environment – a shell, a REPL, a browser, a prover, a game — and feed the result back as input. Now it can act, observe, and act again. Now what it writes has consequences it can predict and adjust for. The environment pushes back: code runs or crashes, files exist or don't, tests pass or fail. The model sees that pushback and adjusts. Turn by turn, it accumulates experience. It gets smarter about the task. It starts doing things its designers never specifically enumerated, because the action space is a programming language and programming languages are compositional.
-
-That's the shape of this document: call and response. You draw a circle, you speak into it, something answers. The answer changes what you say next. Each turn through the loop brings the model closer to the task or reveals why the task is harder than it looked. The repetition is the mechanism. The loop continues until the work is done or a limit is reached.
+That's the shape of this library: call and response. You draw a circle, you speak into it, something answers. Each turn through the loop brings the model closer to the task or reveals why the task is harder than it looked.
 
 This spellbook gives names to the parts of that loop. Three are fundamental: the **LLM** (the model), the **identity** (the configuration that shapes it), and the **circle** (the environment it acts in). The LLM thinks. The identity tells it who it is. The circle is where it acts. Everything else is what happens when you put those three together and let the loop run.
 
-The circle has a **medium** — the substrate the entity works *in*. Think of it like an artist's medium: oil, marble, code. A conversation is one medium. A code sandbox is another. **Gates** cross the circle's boundary from outside — reading files, making HTTP requests, spawning child entities. **Wards** restrict what the entity can do — turn limits, resource caps, scope constraints. The entity's action space is the union of the medium's primitives and the registered gates, minus whatever the wards restrict.
+The circle has a **medium** — the substrate the entity works *in*. Think of it like an artist's medium: oil, marble, code. **Gates** cross the circle's boundary from outside — reading files, making HTTP requests, spawning child entities. **Wards** restrict what the entity can do — turn limits, resource caps, scope constraints. The entity's action space is the union of the medium's primitives and the registered gates, minus whatever the wards restrict.
 
-Why new names? The existing ones — "agent," "tool," "environment" — are overloaded. They carry assumptions from specific frameworks and mean different things to different people. These terms are precise within this system: each one maps to exactly one concept, and the concepts compose cleanly from a chat interface all the way up to a multi-agent system where parent entities delegate to children. A chat window where you talk to a model is a cantrip with a human in conversation. A tool-calling agent that invokes JSON functions is a cantrip whose medium is conversation and its action space is just its gates. A code circle — where the entity writes and runs arbitrary programs in a sandbox or REPL — is the most expressive case, the largest action space, and the one this document spends the most time with.
+Why new names? The existing ones — "agent," "tool," "environment" — are overloaded. They carry assumptions from specific frameworks and mean different things to different people. These terms are precise within this system: each one maps to exactly one concept, and the concepts compose cleanly from a chat interface all the way up to a multi-agent system where parent entities delegate to children.
 
-The same pattern works at every scale. The simplest cantrip is an LLM in a loop with one gate (`done`) and no wards beyond a turn limit — a model that can try things and say when it's finished. The most complex is a tree of entities with recursive composition, a loom feeding comparative reinforcement learning, and circles nested inside circles. Same vocabulary, different configuration.
-
-One more thing about what this document is and isn't. It describes behavior, not technology. It says "the circle must provide sandboxed code execution" — not "use QuickJS." It says "the LLM takes messages and returns a response" — not "use the Anthropic SDK." Any implementation that passes the accompanying test suite (`tests.yaml`) is a valid cantrip. Terms are defined in context as they appear; the Glossary at the end is there for quick reference.
+The same pattern works at every scale. The simplest cantrip is an LLM in a loop with one gate (`done`) and no wards beyond a turn limit. The most complex is a tree of entities with recursive composition, a loom feeding comparative reinforcement learning, and circles nested inside circles. Same vocabulary, different configuration. Cantrip describes behavior, not technology. Any implementation that passes the accompanying test suite (`tests.yaml`) is a valid cantrip. Terms are defined in context as they appear; the Glossary at the end is there for quick reference.
 
 ---
 
@@ -47,11 +39,11 @@ First, the **entity** — the running instance of the model inside the loop — 
 
 > **LOOP-1**: The loop MUST alternate between entity utterances and circle observations. Two consecutive entity utterances without an intervening observation MUST NOT occur.
 
-This strict alternation is what makes the loop a loop and not a monologue. The entity acts, the world responds, the entity acts again with the world's response in hand. Each turn is a learning moment — the entity sees what its code actually did, not what it hoped it would do.
+This strict alternation is what makes the loop a loop and not a monologue. The entity acts, the world responds, the entity acts again with the world's response in hand.
 
-Two more terms before we move on. The script that defines the loop — which model to use, how to configure it, what environment to place it in — is called a **cantrip**. The goal the entity is pursuing is called an **intent**. Both get their own full treatment later. For now, what matters is the cycle: act, observe, repeat.
+Two terms before we move on. The script that defines the loop — which model, which configuration, which environment — is called a **cantrip**. The goal the entity is pursuing is called an **intent**. Both get their own treatment later. For now, what matters is the cycle: act, observe, repeat.
 
-Why does the loop matter beyond practical utility? Because closing the loop is what transforms a predictor into an agent. A language model in isolation is a generative model — it predicts, but its predictions have no consequences. When you close the loop — when outputs influence subsequent inputs — the system transitions from passive prediction to world-shaping action. The model's completions change the environment, the changed environment changes the next prompt, and the model adjusts. This is the active inference framing: a system that can act on its environment and observe the results naturally acquires agency. The loop is not just an engineering pattern. It is the mechanism by which a generative model becomes something that acts.
+Why does the loop matter beyond practical utility? Because closing the loop is what transforms a predictor into an agent. When outputs influence subsequent inputs, the system transitions from passive prediction to world-shaping action. The model's completions change the environment, the changed environment changes the next prompt, and the model adjusts. The loop is not just an engineering pattern. It is the mechanism by which a generative model becomes something that acts.
 
 ### 1.2 What the entity perceives
 
@@ -59,29 +51,25 @@ On every turn, the entity needs to know two things: what it's supposed to do, an
 
 The **identity** — the immutable configuration that shapes the model's behavior — and the **intent** — the goal — are always present. Think of them as the entity's fixed orientation: who it is, and what it's after. Those never change.
 
-Everything beyond that is mediated by the circle. The circle determines what the entity perceives each turn. In the simplest design, the circle presents the full history of prior turns as a growing message list — every utterance, every observation, appended in order. This is how most agent systems work today. It is one valid approach, and the most expensive one. In a code circle, the entity can access state through code instead: reading variables, querying data structures, inspecting files that persist between turns. Both are valid circle designs. What the entity sees is the circle's decision.
+Everything beyond that is mediated by the circle. In the simplest design, the circle presents the full history of prior turns as a growing message list. In a code circle, the entity can access state through code instead: reading variables, querying data structures, inspecting files that persist between turns. Both are valid. What the entity sees is the circle's decision.
 
 > **LOOP-5**: The entity MUST receive the identity and the intent on every turn. How prior turns are presented — as a message history, as program state, or as a combination — is determined by the circle's design. The circle mediates what the entity perceives.
-
-This rule is deliberately permissive. A circle that stuffs every prior turn into the prompt is conformant. A circle that stores prior turns as program state the entity accesses through code is also conformant. The identity and intent are the only things the spec requires on every turn. Everything else is a design choice, and the circle makes it.
 
 ### 1.3 Termination and truncation
 
 Every loop ends. The question is how, and the answer matters more than you might expect.
 
-**Terminated** means the entity called the `done` gate — a special exit point in the environment that signals "I believe the task is complete." The entity chose to stop. It had the opportunity to finish its work and took it. In a code circle, the done gate is projected into the medium as `submit_answer` — the entity calls `submit_answer(result)` in code, and the medium translates this into the done gate on the entity's behalf.
+**Terminated** means the entity called the `done` gate — a special exit point that signals "I believe the task is complete." The entity chose to stop. In a code circle, the done gate is projected into the medium as `submit_answer` — the entity calls `submit_answer(result)` in code, and the medium translates this into the done gate on the entity's behalf.
 
-**Truncated** means a **ward** cut the entity off. A ward is a restriction on the loop — a maximum number of turns, a timeout, a resource limit. The environment chose to stop. The entity was interrupted, not finished. It might have had more to do.
+**Truncated** means a **ward** cut the entity off. A ward is a restriction on the loop — a maximum number of turns, a timeout, a resource limit. The environment chose to stop. The entity was interrupted, not finished.
 
 > **LOOP-2**: The loop MUST terminate. Every cantrip MUST have at least one termination condition (a `done` gate, or text-only response when `require_done_tool` is false) AND at least one truncation condition (a max turns ward).
-
-Both conditions are required because they serve different purposes. The `done` gate is how the entity signals success. The max turns ward is the safety net that prevents infinite loops. A cantrip that can run forever is invalid. A cantrip with no way to signal completion is useless.
 
 > **LOOP-3**: When the `done` gate is called, the loop MUST stop after processing that gate. Any remaining gate calls in the same utterance MAY be skipped.
 
 > **LOOP-4**: When a ward triggers truncation, the loop MUST stop. The implementation SHOULD generate a summary of what was accomplished before the entity was cut off.
 
-There is a third case worth mentioning. Sometimes the entity produces a text-only response — no code, no gate calls, just words. The loop needs a policy for this. The cantrip's `require_done_tool` flag controls the answer. When `require_done_tool` is false (the default), a text-only response is a natural stopping point: the entity said what it had to say and made no further moves. When `require_done_tool` is true, only an explicit `done` gate call terminates the loop — text-only responses are treated as turns that happen not to use gates, and the loop continues.
+The cantrip's `require_done_tool` flag controls what happens when the entity produces a text-only response — no code, no gate calls, just words. When false (the default), a text-only response terminates the loop. When true, only an explicit `done` gate call terminates.
 
 > **LOOP-6**: If `require_done_tool` is false (default) and the entity produces a text-only response (no gate calls), the loop MUST treat that as implicit termination. If `require_done_tool` is true, a text-only response MUST NOT terminate the loop — only a `done` gate call terminates.
 
@@ -99,7 +87,7 @@ A **cantrip** is the script that produces the loop. It binds an LLM to a circle 
 
 > **CANTRIP-2**: A cantrip is a value. It MUST be reusable — casting it multiple times on different intents MUST produce independent entities.
 
-An **intent** is the reason the loop runs — the goal, the task, the thing the entity is trying to achieve. Same cantrip, different intent, different episode. The intent is what varies between runs.
+An **intent** is the reason the loop runs — the goal, the task, the thing the entity is trying to achieve. Same cantrip, different intent, different episode.
 
 > **INTENT-1**: The intent MUST be provided when casting a cantrip. A cantrip cannot be cast without an intent.
 
@@ -129,9 +117,9 @@ Unless you recorded it. But that's a later chapter.
 
 > **ENTITY-4**: When an entity terminates or is truncated, its thread persists in the loom. The entity ceases but its record endures.
 
-Summoning a cantrip produces a persistent entity. The initial intent starts the loop. When the loop completes — done or truncated — the entity persists. You can provide another intent as a new cast, and the loop resumes with accumulated state. The entity remembers what it did. A chat session is a summoned entity. A REPL session is a summoned entity.
+Summoning a cantrip produces a persistent entity. The initial intent starts the loop. When the loop completes — done or truncated — the entity persists. You can provide another intent as a new cast, and the loop resumes with accumulated state.
 
-Casting is a convenience: summon, run one intent, return the result, discard the entity. Most of the examples in this document describe casting, because most tasks are one-shot. But the underlying mechanism is always summoning — casting is just summoning with automatic cleanup.
+Casting is a convenience: summon, run one intent, return the result, discard the entity. Most examples in this document describe casting, because most tasks are one-shot. But the underlying mechanism is always summoning — casting is just summoning with automatic cleanup.
 
 > **ENTITY-5**: A summoned entity persists after its loop completes. It MAY receive additional intents as new casts. State accumulates across all casts.
 
@@ -141,96 +129,73 @@ The LLM, the identity, and the circle each have their own chapters. The entity d
 
 ### 1.5 The four temporal levels
 
-Four verbs describe what happens in this system, and they operate at four distinct timescales. Getting them straight prevents a category of confusion that plagues agent frameworks — conflating a single API call with a full task lifecycle.
+Four verbs describe what happens in this system, and they operate at four distinct timescales.
 
-**Query** is the atomic unit. One round-trip to the LLM: messages in, response out. The LLM is stateless, so each query is independent. The LLM has no memory of prior queries — the caller reconstructs context by assembling messages before each query. In code: `llm.query(messages, tools)`.
+**Query** is the atomic unit. One round-trip to the LLM: messages in, response out. The LLM is stateless, so each query is independent.
 
-**Turn** is one cycle of the loop. The entity produces an utterance (which may trigger one or more queries to the LLM). The circle executes what the entity wrote and returns an observation. State accumulates. A turn is the atom of experience — the smallest unit that has both action and consequence.
+**Turn** is one cycle of the loop. The entity produces an utterance, the circle executes it and returns an observation. A turn is the atom of experience — the smallest unit that has both action and consequence.
 
-**Cast** is one complete episode. A cantrip is cast on an intent, the loop runs turn by turn until `done` is called or a ward triggers, and a result comes back. Casting is the one-shot pattern: summon, run one intent, return, discard. Most examples in this document describe casting. In code: `cantrip.cast(intent)`.
+**Cast** is one complete episode. A cantrip is cast on an intent, the loop runs until `done` or a ward triggers, and a result comes back.
 
-**Summon** creates a persistent entity. The entity survives the completion of its first intent. You can send it additional intents, and the loop resumes with accumulated state. A chat session is a summoned entity. A REPL session is a summoned entity. Casting is summon with automatic cleanup. In code: `cantrip.summon()` returns an entity; `entity.send(intent)` runs one intent through it.
+**Summon** creates a persistent entity. The entity survives the completion of its first intent. You can send it additional intents, and the loop resumes with accumulated state.
 
-These nest cleanly: a summon contains one or more casts, a cast contains one or more turns, a turn contains one or more queries. The nesting is strict — a query never spans turns, a turn never spans casts. The vocabulary in this document uses all four consistently.
+These nest cleanly: a summon contains one or more casts, a cast contains one or more turns, a turn contains one or more queries. The nesting is strict — a query never spans turns, a turn never spans casts.
 
 ### 1.6 The RL correspondence
 
-If you know reinforcement learning, this table shows how the vocabulary maps. If you don't, skip ahead — the spec teaches everything you need without it.
-
-The mapping is structural, not formal. Cantrip's terms parallel RL concepts in their relationships — the LLM is to cantrip what the policy is to RL, the circle is what the environment is to RL. These aren't mathematical equivalences you can plug into RL equations. They're structural parallels that help you reason about the system if you already have RL intuitions.
+If you know reinforcement learning, this table shows how the vocabulary maps. If you don't, skip ahead — the spec teaches everything you need without it. The mapping is structural, not formal — these are parallels that help you reason about the system, not mathematical equivalences.
 
 | RL concept | Cantrip equivalent | Notes |
 |-----------|-------------------|-------|
-| Policy | LLM + Identity | Frozen weights conditioned by immutable identity (prompt + hyperparameters) |
+| Policy | LLM + Identity | Frozen weights conditioned by immutable identity |
 | Goal specification | Intent | The desire that shapes which actions are good |
-| State s | Circle state | Accessed through gates. The message list is one circle design, not the default |
+| State s | Circle state | Accessed through gates |
 | Action a | Code the entity writes | A = M ∪ G − W |
 | Observation o | Gate return values + sandbox output | Rich, unstructured |
-| Reward r | Implicit or explicit | Implicit: gate success/failure. Explicit: verifier scores. Comparative: ranking threads of the same intent |
+| Reward r | Implicit or explicit | Gate success/failure; verifier scores; thread ranking |
 | Terminated | `done` gate called | Entity chose to stop |
 | Truncated | Ward triggered | Environment chose to stop |
 | Trajectory | Thread | One root-to-leaf path through the loom |
-| Episode | Cast | One cast: intent in, result out. A summoned entity may span multiple casts (episodes). |
-| Replay buffer | Loom | Richer: the tree structure provides the trajectory data comparative RL methods need |
+| Episode | Cast | One cast: intent in, result out |
+| Replay buffer | Loom | Tree structure provides comparative RL data |
 | Environment reset | New entity, clean circle | Forking is NOT a reset — it continues from prior state |
 
 The loom's relationship to modern RL methods is developed fully in Chapter 6.
 
 ### 1.7 A complete example
 
-All the pieces in one place. Here's a cantrip lifecycle, end to end — a file-processing task: count the words in every `.txt` file in a directory and report the total.
+All the pieces in one place. A file-processing task: count the words in every `.txt` file in a directory and report the total.
 
-**The cantrip.** LLM: any model that supports tool calling. Identity: a system prompt ("You are a file-processing assistant. Use code to solve tasks efficiently.") and default hyperparameters. Circle: a code medium with three gates — `read(path) -> string`, `list_dir(path) -> string[]`, and `done(answer)` — a ward of max 10 turns, and `require_done_tool: true`. The circle's filesystem root is `/data`.
+**The cantrip.** LLM: any model that supports tool calling. Identity: "You are a file-processing assistant. Use code to solve tasks efficiently." Circle: a code medium with three gates — `read(path) -> string`, `list_dir(path) -> string[]`, and `done(answer)` — a ward of max 10 turns, and `require_done_tool: true`. Filesystem root: `/data`.
 
 **The intent.** "Count the total number of words across all .txt files in /data and return the count."
 
-**Turn 1.** The cantrip is cast. The entity appears, receives the identity and intent. It produces an utterance:
+**Turn 1.** The entity appears, receives identity and intent, and produces:
 ```
 const files = list_dir("/data");
 ```
-The circle executes the gate call. Observation: `GateCallRecord { gate_name: "list_dir", arguments: '{"path":"/data"}', result: '["a.txt", "b.txt", "c.txt"]', is_error: false }`.
+Observation: `GateCallRecord { gate_name: "list_dir", arguments: '{"path":"/data"}', result: '["a.txt", "b.txt", "c.txt"]', is_error: false }`.
 
-**Turn 2.** The entity sees three files. It reads all of them:
+**Turn 2.** The entity reads all files:
 ```
 const a = read("/data/a.txt");
 const b = read("/data/b.txt");
 const c = read("/data/c.txt");
 ```
-Observation: three `GateCallRecord` objects, each with `is_error: false` and the file contents in `result`. The sandbox now holds variables `files`, `a`, `b`, `c`.
+Three `GateCallRecord` objects, each with `is_error: false` and file contents.
 
-**Turn 3.** The entity counts words and terminates:
+**Turn 3.** The entity counts and terminates:
 ```
 const total = [a, b, c]
   .map(text => text.split(/\s+/).filter(w => w.length > 0).length)
   .reduce((sum, n) => sum + n, 0);
 done(total);
 ```
-Observation: `GateCallRecord { gate_name: "done", arguments: '{"answer":1547}', result: '1547', is_error: false }`. The loop terminates.
+Loop terminates with result 1547.
 
-**The loom.** Three turns, one thread. Turn 1: `parent_id: null`, `terminated: false`. Turn 2: `parent_id: turn_1`, `terminated: false`. Turn 3: `parent_id: turn_2`, `terminated: true`. Each turn records token usage, duration, utterance, and observation. The thread is a complete, terminated episode — usable as training data, a debugging trace, or a template for forking.
+**The loom.** Three turns, one thread. Each turn records token usage, duration, utterance, and observation. The thread is terminated — a complete episode usable as training data, a debugging trace, or a template for forking.
 
-That's the whole vocabulary applied to a simple task: an LLM in a circle, shaped by an identity, pursuing an intent, producing turns recorded in a loom. The entity appeared at turn 1 and vanished at turn 3. The thread persists.
-
-**Error as steering.** Now consider what happens when things go wrong. Same cantrip, but `/data/b.txt` does not exist.
-
-**Turn 2.** The entity tries to read all three files:
-```
-const a = read("/data/a.txt");
-const b = read("/data/b.txt");
-const c = read("/data/c.txt");
-```
-Observation: `a` and `c` return content. `b` returns `GateCallRecord { gate_name: "read", arguments: '{"path":"/data/b.txt"}', result: 'ENOENT: no such file or directory', is_error: true }`.
-
-**Turn 3.** The entity sees the error, diagnoses the problem, and adapts:
-```
-// b.txt doesn't exist — count only the files that were readable
-const total = [a, c]
-  .map(text => text.split(/\s+/).filter(w => w.length > 0).length)
-  .reduce((sum, n) => sum + n, 0);
-done({ total, note: "b.txt not found, counted 2 of 3 files" });
-```
-
-The error did not stop the entity. It steered the entity. The observation carried information — this file does not exist — and the entity used that information to adjust its strategy in the next turn. This is the loop's learning mechanism in miniature: act, observe the consequences (including failures), adapt.
+**Error as steering.** Same cantrip, but `/data/b.txt` does not exist. Turn 2's observation for `b` returns `is_error: true` with `'ENOENT: no such file or directory'`. Turn 3: the entity sees the error and adapts — counts only `a` and `c`, reports `{ total: 1200, note: "b.txt not found, counted 2 of 3 files" }`. The error did not stop the entity. It steered it.
 
 ---
 
@@ -238,23 +203,21 @@ The error did not stop the entity. It steered the entity. The observation carrie
 
 The LLM is the model. You send it messages, it sends back a response. That is the entire interface — and the simplicity is the point.
 
-An LLM does not act on its own. It has no memory between queries, no persistent state, no ongoing relationship with the world. You send it a list of messages — system instructions, prior conversation, whatever context you've assembled — and it sends back text, or structured calls to gates, or both. Then it's done. The next time you query it, you must send everything again. The LLM does not remember that there was a last time.
+An LLM does not act on its own. It has no memory between queries, no persistent state. You send it a list of messages and it sends back text, structured gate calls, or both. Then it's done. The next time you query it, you must send everything again. The LLM does not remember that there was a last time.
 
 > **LLM-1**: An LLM MUST be stateless. Given the same messages and tool definitions, it SHOULD produce similar output (modulo sampling). It MUST NOT maintain internal state between queries.
 
-This statelessness is not a limitation of current technology. It is the contract. The LLM is a function: messages in, response out. Everything that makes an entity seem to learn and adapt across turns — everything described in Chapter 1 — comes from the loop feeding the LLM's own prior output back as input. The LLM itself is the same on every query. The context around it changes. The learning lives in the loop, not in the LLM.
+This statelessness is the contract, not a limitation. Everything that makes an entity seem to learn across turns comes from the loop feeding the LLM's own prior output back as input. The learning lives in the loop, not in the LLM.
 
 ### 2.1 The LLM contract
-
-What makes something an LLM? It satisfies this contract:
 
 ```
 llm.query(messages: Message[], tools?: ToolDefinition[], tool_choice?: ToolChoice, extra?: Record<string, unknown>) -> Response
 ```
 
 The inputs:
-- `messages` — an ordered list of messages (system, user, assistant, tool). The LLM sees the full conversation as the caller has assembled it.
-- `tools` — an optional list of gate definitions, expressed as JSON Schema. These describe what the LLM can ask the environment to do.
+- `messages` — an ordered list of messages (system, user, assistant, tool).
+- `tools` — an optional list of gate definitions, expressed as JSON Schema.
 - `tool_choice` — controls whether the LLM must use gates ("required"), may use them ("auto"), or must not ("none").
 - `extra` — optional provider-specific parameters passed through to the underlying API.
 
@@ -264,49 +227,31 @@ The response contains:
 - `usage` — token counts (prompt, completion, cached)
 - `thinking` — optional reasoning trace (for models that support extended thinking)
 
-Every response must include at least one of the first two fields. A response with neither text nor gate calls is not a response — the LLM produced nothing.
-
 > **LLM-2**: An LLM MUST accept messages up to its provider's context limit. When input exceeds that limit, the LLM SHOULD return a structured error (not silently truncate). In practice, context limit errors may come from the provider API rather than from a pre-check — folding (§6.8) is the primary mechanism for staying within limits.
 
 > **LLM-3**: An LLM MUST return at least one of `content` or `tool_calls`. A response with neither is invalid.
 
 > **LLM-4**: Each `tool_call` MUST include a unique ID, the gate name, and arguments as a JSON string.
 
-The unique ID matters because gate results must be matched back to the identity. that produced them. Without it, the LLM cannot distinguish which observation came from which request.
-
 > **LLM-5**: If `tool_choice` is "required", the LLM MUST return at least one tool call. If the provider doesn't support forcing tool use, the implementation SHOULD simulate it (e.g., by re-prompting). Implementations MAY rely on provider-native support for forced tool use where available.
 
 ### 2.2 The swap
 
-Here's a thought experiment that reveals what the LLM really is. Take a working cantrip — a system prompt, an environment with gates and wards, an intent — and replace the LLM. Keep everything else the same. The circle doesn't change, the identity doesn't change, the gates and wards and intent are identical.
-
-But the entity that appears behaves differently. It reasons differently, makes different mistakes, pursues different strategies, writes different code.
-
-The LLM is the one component you swap to change how the entity thinks without changing what it can do or where it acts. Everything else — the environment, the conditioning, the available actions — stays fixed. Only the intelligence varies. This is what it means for the LLM to be a separable component of the loop, and it's the reason the spec treats it as one.
+Take a working cantrip and replace the LLM. Keep everything else — the circle, the identity, the gates, the wards, the intent. The entity that appears behaves differently. It reasons differently, makes different mistakes, pursues different strategies. The LLM is the one component you swap to change how the entity thinks without changing what it can do or where it acts.
 
 ### 2.3 Provider implementations
 
-In practice, LLMs come from different providers, each with their own API, authentication, and way of representing messages and tool calls. The spec requires support for at least these families:
+In practice, LLMs come from different providers with different APIs. The spec requires support for at least: **Anthropic** (Claude), **OpenAI** (GPT), **Google** (Gemini), **OpenRouter** (proxy), and **Local** (Ollama, vLLM, any OpenAI-compatible endpoint).
 
-- **Anthropic** (Claude models)
-- **OpenAI** (GPT models)
-- **Google** (Gemini models)
-- **OpenRouter** (proxy to many providers)
-- **Local** (Ollama, vLLM, any OpenAI-compatible endpoint)
-
-The provider implementation translates between the LLM contract above and the provider's native format. From the loop's perspective, every LLM looks the same.
-
-> **LLM-6**: Provider implementations MUST normalize responses to the common LLM contract. Provider-specific fields (stop_reason, model ID, etc.) MAY be preserved as metadata but MUST NOT be required by consumers.
+> **LLM-6**: Provider implementations MUST normalize responses to the common LLM contract. Provider-specific fields MAY be preserved as metadata but MUST NOT be required by consumers.
 
 > **LLM-7**: In providers that require tool-call/result pairing, implementations MUST preserve call-result linkage exactly (including tool call IDs and ordering). Adapters MUST NOT emit tool-result messages unless the preceding assistant message contained matching tool calls.
-
-This normalization is what makes the swap possible. If consumers depended on provider-specific fields, changing the LLM would break the loop. The contract is the boundary. Everything behind it is the provider's business.
 
 ---
 
 ## Chapter 3: The Identity
 
-The LLM is a function. The identity is what you pass to it — or more precisely, the part that stays the same every time you pass it. The identity is everything that shapes the LLM's behavior before any intent arrives. It's small, it's fixed, and it doesn't change for the lifetime of the cantrip.
+The LLM is a function. The identity is what you pass to it — or more precisely, the part that stays the same every time you pass it. The identity is everything that shapes the LLM's behavior before any intent arrives.
 
 > **IDENTITY-1**: The identity MUST be set at cantrip construction time and MUST NOT change afterward.
 
@@ -314,50 +259,30 @@ The LLM is a function. The identity is what you pass to it — or more precisely
 
 The identity is the union of two things:
 
-1. **System prompt** — persona, behavioral directives, domain knowledge. The text that tells the LLM who it is and how it should behave.
-2. **Hyperparameters** — temperature, top_p, max_tokens, stop sequences, sampling configuration. The knobs that control how the LLM generates.
+1. **System prompt** — persona, behavioral directives, domain knowledge.
+2. **Hyperparameters** — temperature, top_p, max_tokens, stop sequences, sampling configuration.
 
-That's it. The identity answers two questions: *who is this entity?* and *how does it think?* The LLM needs to know what gates are available — but that knowledge comes from the circle, not the identity. The circle owns its gates and is responsible for presenting them to the LLM as tool definitions at query time. This is the circle's job because gates are the circle's components: the circle registers them, the circle executes them, and the circle renders them for the LLM to perceive. The identity may carry rendered gate definitions for transport convenience, but the circle produces them.
-
-Why does this matter? Because it keeps the identity small and separable. The same identity can be placed into different circles with different gate sets. A "research assistant" identity works in a circle with `fetch` and `read` gates, and equally in a circle with `search` and `browse` gates. The identity does not change. The circle presents its own capabilities.
+The LLM needs to know what gates are available — but that knowledge comes from the circle, not the identity. The circle registers gates, executes them, and presents them to the LLM as tool definitions at query time. The identity stays small and separable: the same identity can work in different circles with different gate sets.
 
 > **IDENTITY-3**: Gate definitions are the circle's responsibility. The circle MUST present its registered gates to the LLM as tool definitions at query time. The identity carries rendered gate definitions produced by the circle for transport convenience, but the circle remains the authority for what gates exist. The circle — not the identity — registers, executes, and presents gates.
 
-This is a clean separation. The identity shapes who the LLM is. The circle shapes its capabilities. Together they form the full context the LLM receives — but they are independently configurable, and that independence is the point.
-
 ### 3.2 Immutability and identity
 
-The identity is fixed. You can create a new cantrip with a different identity, but you can't mutate the identity of an existing one. This gives you clean axes of variation:
+The identity is fixed. You can create a new cantrip with a different identity, but you can't mutate an existing one. This gives you clean axes of variation:
 
-Same LLM + different identity = different entity behavior. Change the system prompt, and the same model reasons differently about the same task. Change the temperature, and it explores differently.
-
-Same LLM + same identity + different circle = different capabilities. The entity has the same identity but different gates, a different medium, different wards.
-
-Same LLM + same identity + same circle + different intent = different episode. The cantrip is the same script. The intent is what varies between runs.
+Same LLM + different identity = different entity behavior. Same LLM + same identity + different circle = different capabilities. Same everything + different intent = different episode.
 
 > **IDENTITY-2**: If a system prompt is provided, it MUST be the first message in every context sent to the LLM. It MUST be present in every query, unchanged.
 
-The system prompt anchors the LLM's behavior across every turn of the loop. It's the one piece of context that never moves, never compresses, never gets folded away. The entity always knows who it is.
-
 ### 3.3 What the identity is not
 
-The identity is small and fixed. The circle holds the state. The entity explores it through code. This distinction matters enough to be worth stating clearly.
-
-Dynamic context — retrieved documents, injected state, programmatic insertions that change per turn — is not part of the identity. These are circle state, accessed through gates. A cantrip that processes a thousand documents doesn't stuff them into the system prompt. It places them in the circle as data the entity can read, query, and navigate through code. The identity tells the entity who it is. The circle tells it what it can do. The circle contains what it works with.
-
-This is the core architectural insight: context belongs in the environment, not in the prompt. The prompt is small, fixed identity. The environment is large, rich, and explorable. When the entity needs information, it reaches for it through a gate — reading a file, querying a data structure, inspecting a variable that persists in the sandbox between turns. The identity doesn't grow. The circle does.
+Context belongs in the environment, not in the prompt. Dynamic context — retrieved documents, injected state, programmatic insertions that change per turn — is circle state, accessed through gates. A cantrip that processes a thousand documents places them in the circle as data the entity can read, query, and navigate through code. The identity tells the entity who it is. The circle contains what it works with. The identity doesn't grow. The circle does.
 
 ### 3.4 The identity in the loom
 
-The loom records everything (Chapter 6 tells the full story). The identity's role in the loom is simple: it's the root.
-
 > **IDENTITY-4**: The identity MUST be stored in the loom as the root context. Every thread starts from the same identity.
 
-When you fork a thread — branching from an earlier turn to explore a different path — both branches share the same identity. They diverge in experience but not in conditioning. The entity always retains its full identity.
-
 > **IDENTITY-5**: Folding (context compression) MUST NOT alter the identity. The entity always retains its full identity. Only the trajectory (turns) may be folded.
-
-When context grows too large and older turns must be compressed to fit the LLM's window, the identity is exempt. The system prompt and hyperparameters survive folding intact. So do the circle's gate definitions — the circle re-presents them on every query. The entity may lose detailed memory of what it did on turn three, but it never loses its sense of who it is and what it can do.
 
 ---
 
@@ -365,90 +290,67 @@ When context grows too large and older turns must be compressed to fit the LLM's
 
 The LLM thinks. The identity shapes. The circle is where thinking meets the world.
 
-Everything up to now has been preparation. The LLM is a function — messages in, response out. The identity conditions it — who you are, how you behave, what you can do. But neither does anything until there is somewhere to act. The circle is that somewhere. It receives what the entity writes, executes it, and returns what happened. It is the ground the entity walks on, and the ground pushes back.
-
 ### 4.1 What a circle is
 
-A circle is anything that receives the entity's output and returns an observation. Every circle has a **medium** — the substrate the entity works *in*. Think of it like an artist's medium: oil, marble, code. The medium is not a gate — it is the inside. Gates cross into it from outside. Circles exist on a spectrum of expressiveness determined by their medium, and the cantrip vocabulary applies across that entire spectrum. The simplest circle is one you already know.
+A circle is anything that receives the entity's output and returns an observation. Every circle has a **medium** — the substrate the entity works *in*. Circles exist on a spectrum of expressiveness determined by their medium.
 
-A human circle is a conversation. The medium is natural language. You type something to ChatGPT, the model responds, your next message is shaped by what it said. You are the environment. Your judgment is the pushback. The action space is just conversation — there are no gates beyond the implicit exchange, no sandbox, no persistent state. The formula collapses: A is whatever the model can say.
+A **human circle** is a conversation. The medium is natural language. You are the environment. The action space is just conversation — A is whatever the model can say.
 
-A tool-calling circle adds gates. The entity invokes JSON functions — `read`, `fetch`, `search` — and receives structured results. The medium is still conversation — structured conversation, but conversation. There is no sandbox, no primitives the entity can compose on its own. The action space is just the gate set: A = G − W. This is how most agent systems work today. It is valid and common.
+A **tool-calling circle** adds gates. The entity invokes JSON functions — `read`, `fetch`, `search` — and receives structured results. The medium is still conversation. The action space is the gate set: A = G − W. This is how most agent systems work today.
 
-A code circle gives the entity a full execution context — a sandbox where it can write and run arbitrary programs, with gates to the outside world and wards that constrain what is allowed. The medium is code. The entity writes it. The sandbox executes it. The result comes back as an observation. Variables persist between turns. Errors are visible. The ground pushes back with truth, not opinion. The action space is the full formula: A = M ∪ G − W. The entity can combine the medium's primitives and gates in ways nobody enumerated in advance — loops that call gates conditionally, variables that store gate results for later turns, data pipelines composed on the fly. This compositionality is what makes code circles the most expressive case.
+A **code circle** gives the entity a full execution context — a sandbox where it writes and runs arbitrary programs. The medium is code. Variables persist between turns. The action space is the full formula: A = M ∪ G − W. The entity can combine primitives and gates in ways nobody enumerated in advance — loops that call gates conditionally, variables that store results for later turns, data pipelines composed on the fly. This compositionality is what makes code circles the most expressive case.
 
-The code medium is not limited to JavaScript sandboxes. Any REPL-like environment can serve as a medium: a bash shell, a browser session driven through CDP (Chrome DevTools Protocol), a Frida session injecting into a running process. What makes something a medium is that the entity writes instructions in it and the medium executes them — not which language those instructions are written in.
+The code medium is not limited to JavaScript sandboxes. Any REPL-like environment can serve: a bash shell, a browser session via CDP, a Frida session. What makes something a medium is that the entity writes instructions in it and the medium executes them.
 
 > **MEDIUM-1**: A circle MUST declare exactly one medium. Public configuration SHOULD use `medium` rather than implementation-specific names (`circle_type`, `backend`, `sandbox_backend`).
 
 > **MEDIUM-2**: A conformant medium MUST provide four things: gate presentation (presenting gates to the LLM as tool definitions appropriate to the medium), action execution, observation return, and sandbox isolation. The medium enforces the circle's boundary.
 
-The spec requires sandbox isolation but does not prescribe the technology. QuickJS, Deno, Docker containers, WASM runtimes, restricted Python interpreters, Firecracker microVMs — any isolation mechanism that enforces the circle's boundary is valid. The choice depends on the target language, the deployment environment, and the security requirements. What matters is that the medium enforces the wards: code that the entity writes cannot escape the sandbox except through registered gates.
+The spec requires sandbox isolation but does not prescribe the technology. QuickJS, Deno, Docker, WASM, restricted Python, Firecracker microVMs — any isolation mechanism that enforces the circle's boundary is valid.
 
 > **MEDIUM-3**: In a code medium, sandbox state MUST persist across turns within the same entity. A variable set in turn 3 MUST be readable in turn 4.
 
 > **MEDIUM-4**: Mediums MAY define medium-specific ward types (see WARD-2).
 
-These are points on a spectrum, not categories with hard boundaries. A tool-calling agent that generates JSON is closer to a code circle than a chat window is, but it lacks the compositionality of a real sandbox. A code circle with no gates beyond `done` is more constrained than a tool-calling agent with twenty gates, but its action space is still richer because its medium is a programming language. What varies is the circle's design. What stays the same is the vocabulary. The rest of this chapter focuses on code circles — the most expressive case, where the most interesting design questions arise — but the concepts apply everywhere.
-
-When a circle has a medium, the medium handles termination internally — the entity calls `submit_answer` in code, and the medium translates this into the done gate mechanism. The circle tracks whether a medium is present and adjusts its behavior accordingly: in a medium circle, the done gate requirement is satisfied by the medium's own termination path rather than by a standalone tool-calling gate.
+When a circle has a medium, the medium handles termination internally — the entity calls `submit_answer` in code, and the medium translates this into the done gate mechanism.
 
 ### 4.2 What the entity can do
 
-Now that the spectrum is clear, let's look at what happens inside the most expressive case. The entity's capabilities in a code circle are described by a formula:
+The entity's capabilities in a code circle are described by a formula:
 
 ```
 A = M ∪ G − W
 ```
 
-**M** is the medium. Whatever the circle's substrate provides — in a code circle, that means builtins, math, strings, control flow, data structures, standard library. In a browser circle, it means the DOM and its APIs. In a conversation circle, it means natural language. The medium is the set of primitives the entity can compose without crossing any boundary. Think of it like an artist's medium: oil, marble, code. It determines what the entity works *in*, and different mediums afford different kinds of expression.
+**M** is the medium — builtins, math, strings, control flow, data structures. **G** is the set of registered gates — host functions that cross the boundary into the outside world. **W** is the set of wards — restrictions that constrain the action space.
 
-**G** is the set of registered gates. Gates are host functions that cross the circle's boundary into the outside world: reading files, making HTTP requests, spawning child entities. They are the entity's exits from the medium.
-
-**W** is the set of wards. Wards are restrictions that constrain the action space. A ward might restrict a gate's reach, cap the number of turns, or limit resource consumption.
-
-The action space A is what remains after wards have carved away what is forbidden. The entity starts with the full surface of the medium plus every registered gate. Wards subtract from that surface. What is left is what the entity can do.
-
-This is not a metaphor. It is how the system actually works. The formula reveals something important: when the medium is a programming language, the action space is compositional. The entity can combine primitives and gates in ways nobody enumerated in advance. It can write a loop that calls a gate conditionally. It can store a gate's result in a variable and use it three turns later. It can compose gates with medium primitives in any way the medium allows. This compositionality is what separates a code circle from a tool-calling interface — and it is why the rest of this chapter focuses on the code circle case.
+When the medium is a programming language, the action space is compositional. The entity can combine primitives and gates in ways nobody enumerated in advance. This compositionality is what separates a code circle from a tool-calling interface.
 
 > **CIRCLE-1**: A circle MUST provide at least the `done` gate.
-
-The `done` gate is the minimum. Without it, the entity has no way to signal that it believes the task is complete. Every other gate is optional and domain-specific.
 
 > **CIRCLE-8**: The `done` gate MUST accept at least one argument: the answer/result. When `done` is called, the loop terminates with that result.
 
 ### 4.3 Gates
 
-If the circle is where the entity acts, gates are where the entity reaches beyond it. Inside the sandbox, the entity operates freely within the medium — writing code, storing variables, building data structures. Gates are the crossing points through the circle's boundary: how effects reach the outside world, and how outside information reaches the entity.
+Gates are the crossing points through the circle's boundary: how effects reach the outside world, and how outside information reaches the entity.
 
-Common gates:
-- `done(answer)` — signal task completion, return the answer
-- `call_entity(intent, config?)` — cast a child cantrip on a derived intent
-- `call_entity_batch(intents)` — cast multiple child cantrips in parallel
-- `read(path)` — read from the filesystem
-- `write(path, content)` — write to the filesystem
-- `fetch(url)` — HTTP request
-- `goto(url)` / `click(selector)` — browser interaction
+Common gates: `done(answer)`, `call_entity(intent, config?)`, `call_entity_batch(intents)`, `read(path)`, `write(path, content)`, `fetch(url)`, `goto(url)` / `click(selector)`.
 
-Empirical evidence suggests that fewer, well-designed gates often outperform larger gate sets. A minimal gate set is a valid design choice, not a limitation — when the medium is expressive (a programming language), the entity can compose complex behaviors from a small number of gates. Adding more gates increases the LLM's decision surface without necessarily improving outcomes.
+Empirical evidence suggests that fewer, well-designed gates often outperform larger gate sets. When the medium is expressive, the entity can compose complex behaviors from a small number of gates.
 
-Each gate closes over environment state — it carries configuration that the entity never sees and never needs to. A `read` gate knows its filesystem root. A `call_entity` gate holds a reference to the LLM it will use for child entities. A `fetch` gate may carry timeout configuration or authentication headers. You configure what each gate has access to when you construct the circle — not when the entity invokes the gate.
+Each gate closes over environment state configured at construction time (§7.3). A `read` gate knows its filesystem root. A `fetch` gate carries timeout configuration. The entity calls `read("data.json")` without knowing where the root is. The gate knows.
 
 > **CIRCLE-10**: Gate dependencies (injected resources) MUST be configured at circle construction time, not at gate invocation time.
 
-This is dependency injection for gates. The entity calls `read("data.json")` without knowing or caring where the filesystem root is. The gate knows. The circle was prepared before the entity appeared.
-
 > **CIRCLE-3**: Gate execution MUST be synchronous from the entity's perspective — the entity sends a gate call, the circle executes it, the observation returns before the next turn begins.
-
-The entity never has to wonder whether a gate has finished. It calls a gate, receives the result, and proceeds. The implementation may do asynchronous work behind the scenes, but from the entity's perspective, every gate call is a function that returns a value.
 
 > **CIRCLE-4**: Gate results MUST be returned as observations in the context. The entity MUST be able to see what its gate calls returned.
 
 > **CIRCLE-5**: If a gate call fails (throws an error), the error MUST be returned as an observation, not swallowed. The entity MUST see its failures.
 
-Swallowing errors is a common implementation mistake, and it silently cripples the entity. If a file does not exist, the entity needs to see the error so it can try a different path. If a network request times out, the entity needs to know so it can retry or adjust its strategy. Errors are not failures to be hidden. They are observations. They carry information the entity needs to learn from.
+Errors are observations. They carry information the entity needs to learn from. Swallowing errors silently cripples the entity — if a file does not exist, the entity needs to see the error so it can try a different path.
 
-Here is the canonical shape of a gate result:
+The canonical gate result shape:
 
 ```
 GateCallRecord {
@@ -459,31 +361,25 @@ GateCallRecord {
 }
 ```
 
-The observation per turn is an ordered list of `GateCallRecord` objects — one per gate call in the utterance. This is what the entity sees when it looks at what happened. When a gate succeeds, `is_error` is false and `result` contains the return value. When a gate fails, `is_error` is true and `result` carries the error message. The arguments are preserved as JSON so the loom records what was requested as well as what was returned.
-
-The observation's top-level structure is medium-dependent. A tool-calling circle's observation is the ordered list of GateCallRecords. A code circle's observation includes sandbox output (stdout, return value, errors) alongside gate results. The minimum contract across all mediums: an observation MUST contain an ordered list of GateCallRecords for every gate invoked during the turn, each with `gate_name`, `arguments`, `result`, and `is_error`. Mediums MAY add additional fields appropriate to their substrate.
+The observation per turn is an ordered list of `GateCallRecord` objects. A code circle's observation additionally includes sandbox output (stdout, return value, errors). The minimum contract: an observation MUST contain an ordered list of GateCallRecords for every gate invoked during the turn, each with `gate_name`, `arguments`, `result`, and `is_error`. Mediums MAY add additional fields.
 
 > **CIRCLE-7**: If multiple gate calls appear in a single utterance, the circle MUST execute them in order and return each result as an entry within that turn's single composite observation. The observation is one object per turn (preserving LOOP-1's strict alternation), with an ordered list of per-gate results inside it. Implementations MAY execute independent gate calls in parallel.
 
 ### 4.4 Wards
 
-Gates open the circle outward. Wards close it back in. Where gates expand the entity's reach beyond the sandbox, wards contract it. They constrain the action space — not permissions granted from nothing, but restrictions carved from the full surface.
+Gates open the circle outward. Wards close it back in. They constrain the action space — not permissions granted from nothing, but restrictions carved from the full surface.
 
-Consider the varieties. A ward that restricts a gate's reach narrows what the gate can do: "read only from /data" means the `read` gate rejects paths outside that directory. A ward that constrains the medium shrinks M: "no eval," "no network APIs in the sandbox." A ward that caps turns bounds the episode: "max 200 turns" means the loop is cut off if the entity has not called `done` by then. A ward that limits resources prevents runaway consumption: "max 1M tokens," "timeout after 5 minutes." Gate inclusion is a construction concern, not a ward — if you don't want a gate, don't register it.
+A ward that restricts a gate's reach: "read only from /data." A ward that constrains the medium: "no eval." A ward that caps turns: "max 200 turns." A ward that limits resources: "max 1M tokens." Gate inclusion is a construction concern, not a ward — if you don't want a gate, don't register it.
 
 > **CIRCLE-2**: A circle MUST have at least one ward that guarantees termination (max turns, timeout, or similar). A cantrip that can run forever is invalid.
 
-This is the safety net. The `done` gate is how the entity chooses to stop. A termination ward is how the environment forces a stop when the entity does not. Both are required — one is the mechanism of completion, the other is the guarantee against infinite loops.
-
 > **CIRCLE-6**: Wards MUST be enforced by the circle, not by the entity. The entity cannot bypass a ward. Wards are environmental constraints.
 
-This is the critical distinction, and it is worth sitting with. A ward is not a polite request. It is not an instruction in the system prompt that the entity might choose to ignore. It is a structural property of the environment. If `fetch` is not registered, the entity cannot make HTTP requests no matter what it writes. If the turn limit is 200, turn 201 does not happen. The entity cannot reason its way around a ward because the ward operates outside the entity's control.
+A ward is not a polite request. It is not an instruction in the system prompt that the entity might choose to ignore. It is a structural property of the environment. If `fetch` is not registered, the entity cannot make HTTP requests no matter what it writes. If the turn limit is 200, turn 201 does not happen. The entity cannot reason its way around a ward because the ward operates outside the entity's control.
 
-The philosophical orientation here follows the Bitter Lesson: abstractions that constrain the action space fight against model capability. The entity should start with the fullest possible action space. Then you ward off what is dangerous. You do not build up from nothing — you carve down from everything. This is why they are called wards, not permissions.
+The philosophical orientation follows the Bitter Lesson: abstractions that constrain the action space fight against model capability. Start with the fullest possible action space. Then ward off what is dangerous. You do not build up from nothing — you carve down from everything. This is why they are called wards, not permissions.
 
-When circles compose — a parent spawning a child via `call_entity` — their wards compose too. The child inherits the parent's wards, and the composition is conservative: the child can never be *less* restricted than its parent.
-
-`require_done_tool` is a boolean ward that controls text-only termination behavior (see LOOP-6). When composing wards, `require_done_tool` uses logical OR: if any ward in the composition requires it, it is required.
+When circles compose — a parent spawning a child via `call_entity` — their wards compose conservatively: the child can never be *less* restricted than its parent. `require_done_tool` uses logical OR: if any ward requires it, it is required.
 
 > **WARD-1**: When circles compose, numeric wards (max turns, max tokens, max depth) MUST take the `min()` of parent and child values. Boolean wards (`require_done_tool`) MUST take logical `OR` — if either ward requires it, it is required. A child circle's wards can only tighten, never loosen, the parent's constraints.
 
@@ -491,111 +387,73 @@ When circles compose — a parent spawning a child via `call_entity` — their w
 
 ### 4.5 Tool-calling circles
 
-Not every circle needs a sandbox. When the LLM uses structured tool calls — JSON function invocations rather than code — the medium is conversation and the action space simplifies to A = G − W, as described in §4.1. The entity can only invoke gates by name with JSON arguments. There are no medium primitives to compose with beyond natural language. This is less expressive than a code circle, but it is simpler to implement and sufficient for many tasks.
+Not every circle needs a sandbox. When the LLM uses structured tool calls — JSON function invocations rather than code — the medium is conversation and the action space simplifies to A = G − W. Less expressive than a code circle, but simpler to implement and sufficient for many tasks.
 
 Implementations MUST support tool-calling circles. Implementations SHOULD support code circles.
 
 ### 4.6 Circle-mediated perception
 
-The circle does more than execute code. It determines what the entity perceives. This is a subtler role than it first appears.
-
-The identity and the intent are always present — they are the entity's fixed orientation, delivered on every turn (as established in LOOP-5). Everything beyond that is the circle's decision. The circle controls how prior experience is presented to the entity, and this is a design choice with real consequences.
-
-The simplest approach is the one most agent systems use today: stuff the full history of prior turns into the prompt as a growing message list. Every utterance and every observation, appended in order, visible to the LLM on every query. This works. It is also the most expensive design, because the prompt grows with every turn, and the LLM re-reads everything it has already seen.
-
-In a code circle, there is a more interesting option. The entity can access prior state through code — reading variables that persist in the sandbox, querying data structures it built on earlier turns, inspecting files it wrote to disk. The message history can be slim or even absent, because the entity's knowledge lives in the environment as program state rather than in the prompt as text. This is the principle from §3.3 in action: context belongs in the environment, not in the prompt.
-
-Both designs are valid. A circle that presents full message history is conformant. A circle that stores state as program variables the entity accesses through code is also conformant. The spec does not mandate one approach over the other. What matters is that the identity and intent are always present, and that the entity can perceive the consequences of its prior actions — however the circle chooses to make those consequences available.
+The circle does more than execute code. It determines what the entity perceives.
 
 #### The three message layers
 
 Every query the circle assembles for the LLM has three layers, in this order:
 
-1. **Identity**. The system prompt and hyperparameters — who the entity is and how it thinks. This is the identity. unchanged from construction (IDENTITY-1, IDENTITY-2). It does not describe what the entity can do. It describes what the entity *is*.
+1. **Identity**. The system prompt and hyperparameters — who the entity is. Unchanged from construction (IDENTITY-1, IDENTITY-2).
 
-2. **Capability presentation** (circle-derived). What the LLM can do in this circle — a description of the medium, the registered gates, and their contracts. The circle generates this layer from its own configuration: its medium, its gate set, and any constraints the entity should know about. In a code circle, this might be a `### HOST FUNCTIONS` section listing the gates projected into the sandbox. In a tool-calling circle, the gate definitions passed as `tools` serve this role. The capability presentation changes when the circle is reconfigured — add a gate, change the medium, alter a ward — but never during a cast. It is downstream of identity and upstream of intent.
+2. **Capability presentation** (circle-derived). What the LLM can do in this circle — a description of the medium, the registered gates, and their contracts. The circle generates this from its own configuration (CIRCLE-11, IDENTITY-3). It changes when the circle is reconfigured but never during a cast. This separation keeps the identity small and portable — the same identity works in different circles with different gate sets, because the circle presents its own capabilities.
 
-3. **Intent** (goal). What the entity is pursuing. The first user message, immutable for the lifetime of the cast (INTENT-3).
+3. **Intent** (goal). What the entity is pursuing. The first user message, immutable for the cast (INTENT-3).
 
-This ordering is not accidental. Identity is fixed at construction. Capabilities are derived from the circle and fixed at cast time. The intent varies per cast. Each layer is more specific than the last, and each is owned by a different component: the identity owns identity, the circle owns capabilities, and the caller owns intent.
+Each layer is more specific than the last, and each is owned by a different component: identity owns identity, the circle owns capabilities, the caller owns intent. This ordering is not accidental — identity is fixed at construction, capabilities are derived from the circle and fixed at cast time, intent varies per cast.
 
 > **CIRCLE-11**: The circle MUST generate a capability presentation for the LLM — a description of the medium, registered gates, and their contracts. This presentation MUST be included in the LLM's context on every query, between the identity and the intent. Gate definitions in the `tools` parameter and capability documentation in the prompt are both valid forms of this presentation.
 
-Notice what this means for IDENTITY-3: gate definitions are the circle's responsibility, not the identity's. The identity does not know what gates exist. The circle registers them, executes them, and presents them to the LLM. The identity stays small and separable — the same identity in different circles with different capabilities.
-
 #### Gate presentation
 
-Gate presentation is a medium-specific concern. Each medium defines how gates appear to the LLM — as separate tool definitions, as callable host functions in a sandbox, as commands in a shell, or as methods in a browser API. The examples below show the two most common patterns. Other mediums will define their own.
-
-When a circle has a medium, the medium controls how gates are presented to the LLM. The medium transforms the LLM's perception of its capabilities.
-
-In a tool-calling circle (no medium), each gate appears as a separate tool definition. The LLM sees `read`, `write`, `done`, etc. as distinct tools it can invoke via JSON tool calls. `tool_choice` defaults to `"auto"` — the LLM may use tools or respond with text.
-
-In a code circle, the LLM sees a single tool — the medium's code execution interface (e.g., `js`). `tool_choice` is set to `"required"` — the LLM must always write code. Gates are not presented as tools. Instead, they are projected INTO the medium as host functions. The LLM writes code that calls these functions; the medium executes the code and calls the gates on the entity's behalf.
+Gate presentation is medium-specific. In a tool-calling circle, each gate appears as a separate tool definition; `tool_choice` defaults to `"auto"`. In a code circle, the LLM sees a single tool — the medium's code execution interface (e.g., `js`); `tool_choice` is `"required"`. Gates are projected into the medium as host functions.
 
 ```
-// Tool-calling circle (no medium):
-// Gate presentation returns:
-//   tool_definitions: [read, write, fetch, done]
-//   tool_choice: "auto"
-
-// Code circle (JS medium):
-// Gate presentation returns:
-//   tool_definitions: [js]      // one tool: "execute JavaScript"
-//   tool_choice: "required"     // LLM must always write code
-// Gates appear as: read(), write(), fetch(), submit_answer()
-// ...available as host functions inside the sandbox
+// Tool-calling circle: tools = [read, write, fetch, done], tool_choice = "auto"
+// Code circle:         tools = [js], tool_choice = "required"
+//   Gates appear as: read(), write(), fetch(), submit_answer() inside the sandbox
 ```
 
-This transformation is the key mechanism that makes code circles work. The LLM does not know it is calling gates — it thinks it is writing code that calls functions. The medium bridges between the LLM's perception (one code execution tool) and the circle's reality (multiple gates). This is why the LLM always sees tools (it is the LLM API contract), but what tools it sees depends on the medium.
+The LLM does not know it is calling gates — it thinks it is writing code that calls functions. The medium bridges between the LLM's perception and the circle's reality.
 
 #### The medium viewport principle
 
-A medium SHOULD present execution results as metadata — size, type, a short preview — rather than raw output. This is the **medium viewport principle**: the medium controls what the entity perceives, and it should constrain perception to force compositional behavior.
-
-This principle addresses a specific, well-documented problem: larger context degrades model performance — a phenomenon known as **context rot**. As the prompt fills with raw data, the LLM's ability to attend to relevant information diminishes. When a medium returns the full raw output of every operation, the entity's context fills with data it has already consumed. When the medium returns a summary — `[Result: 4823 chars] "first 150 chars..."` — the entity must compose operations to work with the data: store it in a variable, transform it through code, pass it to a child entity. The viewport forces the entity to think programmatically rather than treating its context window as a scratchpad.
-
-The specific limits are implementation details. The principle is architectural: the medium decides what the entity sees, and showing less forces the entity to do more through code.
+A medium SHOULD present execution results as metadata — size, type, a short preview — rather than raw output. As the prompt fills with raw data, the LLM's ability to attend to relevant information diminishes (context rot). When the medium returns a summary — `[Result: 4823 chars] "first 150 chars..."` — the entity must compose operations to work with the data through code. The viewport forces compositional behavior.
 
 ### 4.7 Circle state
 
-The circle maintains state between turns. This is what makes the loop a loop rather than a series of disconnected invocations. The state comes in two forms.
+The circle maintains state between turns in two forms.
 
-**Sandbox state** is what lives inside the execution context — variables, data structures, intermediate results that the entity created through code and that persist across turns within the same entity.
+**Sandbox state** — variables, data structures, intermediate results inside the execution context. Private to the entity; dies when the entity terminates. This is MEDIUM-3.
 
-This is MEDIUM-3: sandbox state MUST persist across turns within the same entity.
-
-Without this guarantee, the entity cannot build on its own work. Each turn would start from scratch, and the entity would have to re-derive everything it knew from the message history alone. Persistent sandbox state is what makes a code circle a code circle — the entity accumulates not just conversation but computation.
-
-**External state** is what lives outside the sandbox but is accessible through gates — the filesystem, a database, browser DOM, whatever resources the gates have been configured to reach. External state may be shared across entities or persist beyond a single entity's lifetime. Sandbox state is private to the entity and dies when the entity terminates.
+**External state** — filesystem, database, browser DOM, whatever gates can reach. May be shared across entities or persist beyond an entity's lifetime.
 
 ### 4.8 Security
 
-Security in the circle model is a question of warding. The tools are the same ones you have been reading about. What changes is the stakes.
+Security in the circle model is a question of warding. The canonical threat is the lethal trifecta: a circle that has access to private data, processes untrusted content, and can communicate externally. Any two are manageable. All three create a path for data exfiltration.
 
-The canonical threat is the lethal trifecta: a circle that has access to private data, processes untrusted content, and can communicate externally. Any two of these together are manageable. All three in the same circle create a path for data exfiltration — untrusted content instructs the entity to read private data and send it out through a network gate.
+The defense is subtractive. Remove one leg by warding off the relevant gate. A circle that processes untrusted content and reads private data but cannot make network requests is safe against exfiltration. Alternatively, isolate capabilities across separate circles.
 
-The defense is subtractive — the same subtractive principle that governs all warding. Remove one leg of the trifecta by warding off the relevant gate. A circle that processes untrusted content and reads private data but cannot make network requests is safe against exfiltration. A circle that has network access and reads private data but never processes untrusted input is also safe. Alternatively, isolate capabilities across separate circles — one circle handles untrusted content with network access but no private data, another handles private data with no network access.
+**Prompt injection** is the specific threat that makes careful circle design non-optional. Untrusted content may contain instructions that attempt to override the identity. The entity cannot reliably distinguish between its own instructions and adversarial text embedded in its input. This is a structural property of systems that process natural language: the control channel and the data channel are the same channel.
 
-**Prompt injection** is the specific threat that makes careful circle design non-optional. Untrusted content processed by the entity — user-supplied documents, web pages, emails, any data the entity did not generate itself — may contain instructions that attempt to override the identity. The entity cannot reliably distinguish between its own instructions and adversarial text embedded in its input. This is not a bug in any particular model. It is a structural property of systems that process natural language: the control channel and the data channel are the same channel.
+Wards cannot prevent the entity from being influenced by its input — they can only prevent the entity's actions from reaching dangerous gates. The defense is circle design: isolate the processing of untrusted content from circles that have access to sensitive data or external communication.
 
-Wards cannot prevent the entity from being influenced by its input — they can only prevent the entity's actions from reaching dangerous gates. The defense against prompt injection is circle design: isolate the processing of untrusted content from circles that have access to sensitive data or external communication. A child entity that summarizes untrusted documents should not have the `fetch` gate. A circle that handles outbound email should not process unvetted attachments. The trifecta framework gives the pattern: remove one leg, and the injection has less path to harm.
+There is a deeper reason wards must be structural rather than advisory. The entity has read every attack and every defense in its training data. Containment cannot rely on the entity choosing to respect boundaries — politeness is trained behavior, not a reliable property. Wards must be environmental constraints because the entity cannot be trusted to self-limit. This is not a statement about intent. It is a statement about architecture.
 
-There is a deeper reason wards must be structural rather than advisory. The entity has read every attack and every defense in its training data. It has seen social engineering, privilege escalation, and sandbox escape techniques described in detail. Containment cannot rely on the entity choosing to respect boundaries — politeness is trained behavior, not a reliable property. Wards must be environmental constraints because the entity cannot be trusted to self-limit. This is not a statement about intent. It is a statement about architecture.
-
-Security is not a feature you bolt on. It is what you carve away. Drawing good circles — choosing which gates belong together and which must be separated — is the practitioner's art.
+Security is not a feature you bolt on. It is what you carve away.
 
 ---
 
 ## Chapter 5: Composition
 
-So far, every entity has been alone. One LLM, one circle, one intent. The entity acts, the environment responds, the loop runs until it's done. This is enough for many tasks. But some tasks are too large for one entity, or too naturally decomposable, or too parallelizable. The entity needs to delegate.
+So far, every entity has been alone. Some tasks are too large for one entity, or too naturally decomposable, or too parallelizable. The entity needs to delegate.
 
-In most agent frameworks, delegation is a special mechanism — a workflow node, a handoff protocol, a message passed through an orchestrator. In a code circle, delegation is a function call. The entity writes `call_entity({ intent: "summarize this document" })` and a child entity appears in its own circle, pursues that sub-intent, and returns a result. The parent blocks until the child finishes. From the parent's perspective, it called a function and got a value back. From the loom's perspective, a subtree just grew.
-
-This matters because the entity writes code, and code composes. The entity does not delegate through a configuration file or a workflow graph. It delegates inside loops, behind conditionals, as part of programs it writes on the fly. Composition through gates is composition through code, which means the entity can invent delegation patterns its designers never enumerated — recursive intelligence, not an API call.
-
-Watch how intent spawns sub-intents. The parent entity is pursuing some goal — "fix my application" — and discovers, mid-task, that it needs to understand a database schema, refactor an authentication module, and rewrite a set of tests. Each of these is a desire born from the parent's desire. The parent's intent does not change — it is still trying to fix the application. But the work of fixing the application generates child intents, and `call_entity` is the gate through which they are pursued.
+In a code circle, delegation is a function call. The entity writes `call_entity({ intent: "summarize this document" })` and a child entity appears in its own circle, pursues that sub-intent, and returns a result. Composition through gates is composition through code, which means the entity can invent delegation patterns its designers never enumerated.
 
 ### 5.1 The `call_entity` gate
 
@@ -611,27 +469,19 @@ result = call_entity({
 })
 ```
 
-The entity proposes the child's circle configuration at call time. The entity describes both *what* it wants delegated and *how* the child should be configured. Fields beyond `intent` are optional — when omitted, the spawn function applies defaults (typically inheriting from the parent or from construction-time configuration).
+The entity proposes the child's configuration. Fields beyond `intent` are optional — defaults are typically inherited from the parent or from construction-time configuration. Behind the scenes, a **spawn function** (`SpawnFn`) receives the proposal and handles circle construction, ward composition, depth decrement, and loom sharing. The spawn function validates and may modify the proposal — enforcing ward tightening (WARD-1) or rejecting gate sets that violate security policy.
 
-Behind the scenes, child creation is delegated to a **spawn function** (`SpawnFn`) — a dependency-injected factory that receives the entity's proposal and handles circle construction, ward composition, depth decrement, and loom sharing for the child entity. The spawn function validates and may modify the proposal — for example, enforcing ward tightening (WARD-1) or rejecting gate sets that violate security policy. The default spawn function accepts the proposal, composes the parent's wards with any child-specific wards, decrements the depth counter, and shares the parent's loom. Custom spawn functions can override any of this behavior.
-
-The child entity gets its own circle, its own context, its own turn sequence. It does not inherit the parent's conversation history — it starts fresh, with only the sub-intent and whatever data the parent passes through the `context` field. This clean separation is what makes delegation composable rather than fragile.
+The child entity gets its own circle, its own context, its own turn sequence. It does not inherit the parent's conversation history — it starts fresh, with only the sub-intent and whatever data the parent passes through `context`.
 
 > **COMP-4**: A child entity MUST have its own independent context (message history). The child does not inherit the parent's conversation history.
 
-The child's circle is independently constructed. The parent MAY constrain the child via ward composition (WARD-1), but the child's gate set, medium, and LLM are not required to be derived from the parent. This enables the key pattern: a parent in a code medium can summon children with different mediums and gates that the parent doesn't directly use — the parent programs the delegation through code, but the children have their own circles.
-
 > **COMP-1**: A child entity's circle is independently constructed. The parent MAY constrain the child via ward composition, but the child's gate set, medium, and LLM are not required to be derived from the parent.
-
-The child's LLM, identity, and circle may all differ from the parent's. You might send a cheaper, faster LLM to handle a simple sub-task, provide a different system prompt, or give the child a different medium entirely.
 
 > **COMP-7**: The child's LLM MAY differ from the parent's LLM. The child's identity MAY differ. The child's circle MAY differ — including different gates, a different medium, or different wards. Ward composition (WARD-1) still applies to any wards the parent imposes.
 
-The parent blocks while the child runs. This is synchronous from the parent's perspective — the same contract as any other gate (CIRCLE-3). Think about what this means: the child entity lives its entire life within the parent's turn. It appears, acts across however many turns it needs, terminates or is truncated, and the parent receives the result. A whole entity lifecycle, nested inside a single gate call.
+The parent blocks while the child runs — the same synchronous contract as any other gate (CIRCLE-3). The child entity lives its entire life within the parent's turn.
 
 > **COMP-2**: `call_entity` MUST block the parent entity until the child completes. The parent receives the child's result as a return value.
-
-If the child fails — throws an error rather than calling `done` — the error comes back as the gate result. The parent sees it as an observation and decides what to do. A child's failure does not kill the parent.
 
 > **COMP-8**: If a child entity fails (throws an error, not `done`), the error MUST be returned to the parent as the gate result. The parent MUST NOT be terminated by a child's failure.
 
@@ -639,7 +489,7 @@ If the child fails — throws an error rather than calling `done` — the error 
 
 ### 5.2 Batch composition
 
-Sometimes one child is not enough. `call_entity_batch` spawns multiple children in parallel:
+`call_entity_batch` spawns multiple children in parallel:
 
 ```
 results = call_entity_batch([
@@ -649,16 +499,15 @@ results = call_entity_batch([
 ])
 ```
 
-The children execute concurrently. Results are returned as an array in the order they were requested, not in the order the children finish. This gives the parent a predictable interface — `results[0]` always corresponds to the first intent, regardless of which child was fastest.
+Results are returned in request order, not completion order.
 
 > **COMP-3**: `call_entity_batch` MUST execute children concurrently. Results MUST be returned in request order, not completion order. Implementations SHOULD enforce concurrency limits (default: 8 concurrent children, 50 maximum batch size) to prevent resource exhaustion.
 
 ### 5.3 Composition as code
 
-Here is where the code circle earns its keep. The power of composition in a code circle is that it composes with the medium. The entity does not just call `call_entity` once — it calls it inside loops, behind conditionals, as part of data pipelines it writes on the fly. Data lives in the circle as a variable, the entity explores it through code, and sub-entities handle the pieces.
+The entity calls `call_entity` inside loops, behind conditionals, as part of data pipelines it writes on the fly:
 
 ```
-// Inside the entity's code (in the sandbox):
 const chunks = splitIntoChunks(context.documents, 100);
 const summaries = call_entity_batch(
   chunks.map(chunk => ({
@@ -666,15 +515,14 @@ const summaries = call_entity_batch(
     context: { documents: chunk }
   }))
 );
-const final = summaries.join("\n");
-done(final);
+done(summaries.join("\n"));
 ```
 
-The data never enters the prompt. The entity writes a program that partitions, delegates, and synthesizes. The number of children is determined at runtime by the data, not at design time by the developer. This is what separates composition-through-code from a static workflow graph.
+The number of children is determined at runtime by the data, not at design time by the developer. This is what separates composition-through-code from a static workflow graph.
 
 ### 5.4 Depth limits
 
-Composition is recursive — a child entity has the `call_entity` gate in its circle (inherited from the parent), so it can spawn children of its own. Children spawning children, all the way down. Without a limit, this is infinite recursion. Every cantrip has a `max_depth` ward to prevent it.
+Composition is recursive — a child entity has the `call_entity` gate in its circle, so it can spawn children of its own. Every cantrip has a `max_depth` ward to prevent infinite recursion.
 
 - Depth 0 means no `call_entity` allowed — the gate is warded off
 - Each child's depth limit is the parent's depth minus 1
@@ -682,11 +530,9 @@ Composition is recursive — a child entity has the `call_entity` gate in its ci
 
 > **COMP-6**: When `max_depth` reaches 0, the `call_entity` and `call_entity_batch` gates MUST be removed from the circle (warded off). Attempts to call them MUST fail with a clear error.
 
-This is warding applied to recursion. The depth limit does not tell the entity to stop delegating — it removes the gate entirely, making delegation structurally impossible at that level.
-
 ### 5.5 Composition in the loom
 
-Every child entity's turns are recorded in the same loom as the parent. The child's turns form a subtree, with the child's root turn referencing the parent turn that spawned it. (The loom itself is the subject of the next chapter. For now, what matters is that delegation leaves a complete trace.)
+Every child entity's turns are recorded in the same loom as the parent. The child's turns form a subtree rooted at the parent turn that spawned it.
 
 ```
 Parent turn 1
@@ -697,25 +543,23 @@ Parent turn 2 (calls call_entity)
 Parent turn 3 (receives child result)
 ```
 
-The parent's next turn (after the child completes) has `parent_id` pointing to the parent's previous turn, not to the child. The child subtree branches off and rejoins — a side excursion in the parent's thread. Walk the parent thread and you see the delegation as a single step. Walk the child subtree and you see every decision the child made. Both views exist because the loom records everything.
-
 > **COMP-5**: A child entity's turns MUST be recorded in the loom as a subtree. The child's root turn references the parent turn that spawned it.
 
 ---
 
 ## Chapter 6: The Loom
 
-Every chapter so far has produced turns. The loop runs, the entity acts, the circle responds, state accumulates. Turn after turn, the entity builds context, makes decisions, pursues its intent through code. Then the loop ends — `done` is called, or a ward triggers — and the entity is gone.
+Every chapter so far has produced turns. The loop runs, the entity acts, the circle responds, turn after turn. Then the loop ends and the entity is gone.
 
 Where did the turns go?
 
-They went into the loom. Every turn — every utterance, every observation, every gate call and its result — was being recorded as it happened, appended to a growing tree. One path through that tree is a thread. All threads, across all runs of a cantrip, form the loom.
+They went into the loom. Every turn — every utterance, every observation, every gate call — was being recorded as it happened, appended to a growing tree. One path through that tree is a thread. All threads, across all runs of a cantrip, form the loom.
 
-Here is the reveal that has been implicit since page one: the loom was accumulating from the first turn of Chapter 1. When the entity emerged and started acting, the loom was already there, writing down everything. When composition spawned child entities in Chapter 5, their turns went into the same loom, branching off the parent's thread as subtrees. The structure described in the last five chapters — the loop, the LLM's responses, the circle's observations, the parent-child relationships of composed entities — is the structure of the loom. Everything was being recorded. The loom is what all of it produces.
+The loom was accumulating from the first turn of Chapter 1. When composition spawned child entities in Chapter 5, their turns went into the same loom. The structure described in every prior chapter — the loop, the observations, the parent-child relationships — is the structure of the loom.
 
 ### 6.1 Turns as nodes
 
-Start with the atomic unit. Each turn is stored as a record:
+Each turn is stored as a record:
 
 ```
 Turn {
@@ -751,81 +595,59 @@ Turn {
 
 > **LOOM-9**: Each turn MUST record token usage (prompt, completion, cached) and wall-clock duration.
 
-The `role` field distinguishes what produced the turn. Most turns are `"turn"` — the entity acted and the circle observed. A `"call"` turn records the initial system context (the identity as root, per IDENTITY-4).
-
-None of this is optional bookkeeping. Token counts are how you track cost. Timing is how you find bottlenecks. The reward slot — empty by default — is how the loom becomes training data. Every field on the turn record exists because something downstream needs it.
-
 ### 6.2 Threads
 
-Turns link to their parents. Follow those links from any leaf back to the root and you have a thread — one complete path through the turn tree. Threads are implicit. They emerge from the parent references on turns. You do not store threads separately. You store turns with parent pointers, and a thread is any root-to-leaf path you can walk.
+Turns link to their parents. Follow those links from any leaf to the root and you have a thread — one complete path through the turn tree. Threads are implicit — they emerge from parent references. You store turns with parent pointers; a thread is any root-to-leaf path.
 
-A thread has exactly one of these terminal states:
-- **Terminated**: the final turn called `done`
-- **Truncated**: a ward stopped the entity
-- **Active**: the entity is still running (only during execution)
+A thread has exactly one terminal state: **terminated** (`done` called), **truncated** (ward stopped it), or **active** (still running).
 
 > **LOOM-7**: The loom MUST record whether each terminal turn was terminated (entity called `done`) or truncated (ward stopped the entity).
 
-This distinction — which first appeared in Chapter 1 — becomes load-bearing here. A terminated thread is a completed episode: the entity finished its work, and the final state represents a conclusion. A truncated thread is an interrupted episode: the entity was cut off, and its final state should not be treated as an endpoint because it was not one. Training on the loom must respect this difference. Terminated threads have natural endpoints. Truncated threads do not.
+This distinction is load-bearing for training. Terminated threads have natural endpoints. Truncated threads do not.
 
 ### 6.3 The loom
 
-Now step back and see the whole structure. The loom is the tree of all turns produced by a cantrip across all its runs. Cast the same cantrip on ten different intents and you get ten threads in one loom. Fork from turn seven of one thread and you get a branch — two threads sharing a common prefix, diverging from the fork point. Compose with `call_entity` and child subtrees grow inside parent threads. The loom holds all of it.
+The loom is the tree of all turns produced by a cantrip across all runs. Cast ten intents: ten threads. Fork from turn seven: two threads sharing a prefix. Compose with `call_entity`: child subtrees inside parent threads.
 
-This is the most valuable artifact a cantrip produces. It is simultaneously:
-- **The debugging trace** — walk any thread to see every decision the entity made
-- **The entity's memory** — context for forking, folding, and replaying
-- **The training data** — each turn is a (context, action, observation) triple, each thread is a trajectory, reward slots are already there
-- **The proof of work** — evidence of what the entity did and why
+This is simultaneously the debugging trace, the entity's memory, the training data, and the proof of work.
 
 ### 6.4 Reward and training data
 
-This is the loom's deepest purpose, and the reason its tree structure matters. Each turn is a (context, action, observation) triple. Each thread is a trajectory. The reward slots are already there. The loom is not merely a replay buffer to be sampled from. It is a training data store — and its tree structure is shaped for the comparative methods that need it most.
+This is the loom's deepest purpose. Each turn is a (context, action, observation) triple. Each thread is a trajectory. The reward slots are already there.
 
-The loom stores a reward slot on every turn. What fills it is up to the implementation — and there are several natural options.
+The loom stores a reward slot on every turn:
 
-- **Implicit reward** — did the gate succeed? Did the code throw? Gate-level success/failure is a natural per-turn signal.
-- **Explicit reward** — a score attached after the fact. A human rates the thread. An automated verifier checks the output. A verifier entity — itself a cantrip — evaluates the work.
-- **Shaped reward** — intermediate rewards computed by a scoring function that is part of the circle definition. The rubric is part of the environment.
+- **Implicit reward** — gate success/failure as a natural per-turn signal.
+- **Explicit reward** — a score attached after the fact by a human, a verifier, or a verifier entity.
+- **Shaped reward** — intermediate rewards from a scoring function that is part of the circle definition.
 
-For in-context learning within a session, implicit reward is enough. The entity sees what worked and what did not in its own context window and adjusts. For training across sessions — reinforcement learning on the loom — you need explicit reward annotation.
-
-Modern LLM-RL methods — GRPO, RLAIF, best-of-N sampling — do not learn from single trajectories in isolation. They learn by comparing multiple trajectories of the same task. GRPO (Group Relative Policy Optimization) generates N completions for the same prompt, ranks them, and uses the relative ranking as the reward signal. No absolute reward model is needed. The comparison itself is the learning signal.
-
-The loom affords exactly this structure. Fork from the same turn N times — or cast the same cantrip on the same intent N times — and you get N threads that share a common origin but diverge in execution. Rank them by outcome — which thread solved the task? which was most efficient? which produced the cleanest code? — and the ranking becomes a reward signal. The loom's tree structure provides the trajectory data that comparative RL methods need. Two standard metrics apply directly to loom data: **pass@k** (at least one of k threads succeeds — measuring whether the cantrip *can* solve the task) and **pass^k** (all k threads succeed — measuring whether it *reliably* solves the task). These capture different properties of the system and both are computable from threads that share a common intent.
+Modern LLM-RL methods — GRPO, RLAIF, best-of-N — learn by comparing multiple trajectories of the same task. Fork from the same turn N times, or cast the same intent N times, and you get N threads to rank. The ranking is the reward signal — no reward model needed. The loom's tree structure provides exactly the trajectory data comparative RL methods need.
 
 ```
 // Same intent, three runs:
-//
-// Intent: "Fix the auth bug"
 //
 // Thread A: 12 turns, fixed the bug, clean solution    -> rank 1
 // Thread B: 18 turns, fixed the bug, messy refactor    -> rank 2
 // Thread C: 25 turns, truncated by ward, bug not fixed -> rank 3
 //
 // The ranking IS the reward signal.
-// No reward model needed. Just comparison.
 ```
 
-This is not a feature bolted onto the loom after the fact. It is what the loom's structure naturally affords. A flat log of turns could support single-trajectory training. The tree structure — with forking, branching, and multiple threads from the same origin — supports comparative training. The loom is a training data store shaped for comparative methods, not just a replay buffer.
+Two metrics apply directly: **pass@k** (at least one of k threads succeeds) and **pass^k** (all k succeed). Both are computable from threads sharing a common intent.
 
-(Multi-turn credit assignment remains an active research problem. The loom provides the trajectory structure these methods need; the credit assignment and reward propagation are the responsibility of whatever training infrastructure consumes it.)
+(Multi-turn credit assignment remains an active research problem. The loom provides the trajectory structure these methods need; credit assignment and reward propagation are the responsibility of whatever training infrastructure consumes it.)
 
 > **LOOM-10**: The loom MUST support extracting any root-to-leaf path as a thread (trajectory) for export, replay, or training.
 
-The sections that follow describe the loom's structural mechanics — storage, forking, composition, context management — that make all of this possible.
-
 ### 6.5 Storage
 
-The storage model is simple: turns are appended as they happen. The loom is append-only.
+Turns are appended as they happen. The loom is append-only. The reference format is JSONL.
 
 > **LOOM-3**: The loom MUST be append-only. Turns MUST NOT be deleted or modified after creation. Reward annotation is the exception — reward MAY be assigned or updated after creation.
 
-The reference storage format is JSONL — one JSON object per line, one turn per line, appended in chronological order. Implementations MAY use other storage backends as long as the append-only semantic is preserved. What matters is that no turn is ever lost, rewritten, or silently dropped. The loom is the ground truth.
-
 ### 6.6 Forking
 
-Here is where the tree structure becomes more than a data format. Forking creates a new turn whose parent is an earlier turn in the tree, diverging from the original continuation.
+Forking creates a new turn whose parent is an earlier turn in the tree, diverging from the original continuation.
 
 ```
 // Original thread: turns 1 -> 2 -> 3 -> 4 -> 5
@@ -834,90 +656,65 @@ Here is where the tree structure becomes more than a data format. Forking create
 //                   \-> 6 -> 7   (forked thread)
 ```
 
-A forked entity starts with the context from the fork point — all turns from root to the fork turn. The original thread is untouched. The new thread grows independently.
+A forked entity starts with the context from root to the fork point. The original thread is untouched.
 
 > **LOOM-4**: Forking from turn N MUST produce a new entity whose initial context is the path from root to turn N. The original thread MUST be unaffected.
 
-Implementations MUST declare how sandbox state is captured at fork points. Two strategies are valid. **Snapshot** serializes the sandbox's current state — variables, data structures, file contents — into a portable image that the forked entity inherits. **Replay** re-executes the entity's code from the root turn up to the fork point, reconstructing the sandbox state from scratch. Both produce the same logical state; they differ in cost and in what they can capture. Snapshot is fast but may struggle with imperative state that resists serialization — open file handles, live network connections, mutable objects with circular references. Replay is slow but faithful, because it reconstructs state through the same code that built it. The loom MUST record which strategy was used for each fork, so that consumers know how the forked entity's initial state was established.
+Implementations MUST declare how sandbox state is captured at fork points. **Snapshot** serializes current state into a portable image. **Replay** re-executes the entity's code from root to the fork point. Both produce the same logical state; they differ in cost and fidelity. Snapshot is fast but may struggle with imperative state that resists serialization. Replay is slow but faithful. The loom MUST record which strategy was used.
 
-> **LOOM-13**: When using replay-based forking, gate results MUST be hydrated from the loom's recorded observations rather than re-executed. Gates are not called during replay — their recorded results are injected into the sandbox as if the gates had run. This prevents non-idempotent side effects (emails sent, data written, APIs called) from being duplicated.
+> **LOOM-13**: When using replay-based forking, gate results MUST be hydrated from the loom's recorded observations rather than re-executed. Gates are not called during replay — their recorded results are injected into the sandbox as if the gates had run. This prevents non-idempotent side effects from being duplicated.
 
-Forking is not an environment reset. The forked entity continues from the accumulated state at the fork point. It has the same context the original entity had at that moment — the same variables in the sandbox, the same history of actions and observations. What differs is the future. The original entity went one way from turn 3. The forked entity goes another way. Both paths are recorded. Both threads persist.
-
-This is where the loom's tree structure earns its keep. A flat log could record one thread. A tree records every branch, every alternative path, every "what if we had gone left instead of right." The loom is a map of the roads taken and not taken. Forking is how you explore new roads from old waypoints. And those branching paths — as §6.4 described — are exactly what comparative RL methods need.
+Forking is not an environment reset. The forked entity continues from accumulated state at the fork point.
 
 ### 6.7 Composition in the loom
 
-Chapter 5 described composition from the parent's perspective — a gate call that blocks and returns a result. From the loom's perspective, it is the same mechanism as forking. When `call_entity` spawns a child entity, the child's turns form a subtree rooted at the parent turn that spawned it. A new branch grows from an existing turn — except this branch is a child entity pursuing a sub-intent, and its result flows back into the parent's thread.
+When `call_entity` spawns a child, the child's turns form a subtree — the same mechanism as forking. Everything stays in one tree.
 
 > **LOOM-8**: Child entity turns from `call_entity` SHOULD be stored in the same loom as the parent, with parent references linking them to the spawning turn. Implementations that store child turns in a separate loom MUST still record the parent-child relationship.
-
-Everything stays in one tree. The parent's thread, the child's subtree, a grandchild's sub-subtree — all recorded in the same loom with `parent_id` pointers connecting them. The child's first turn has a `parent_id` pointing to the parent turn that spawned it. Subsequent child turns chain to each other as usual. When the child completes, the parent's next turn has a `parent_id` pointing to the parent's *previous* turn — not to any child turn. The child subtree branches off and rejoins. Walking any root-to-leaf path through the tree yields one thread — one trajectory. Some threads pass only through parent turns. Others descend into child subtrees. The loom does not distinguish between "main work" and "delegated work." It records turns, and the structure emerges from their relationships.
 
 > **LOOM-12**: The loom SHOULD be a single unified tree. When all entities — parent, child, grandchild — record their turns into the same tree, a thread is any root-to-leaf path, and the tree's branching structure encodes the full delegation hierarchy.
 
 ### 6.8 Folding and compaction
 
-Context grows. Every turn adds to what the entity has seen and done. Eventually, the accumulated context approaches the LLM's window limit, and something must give. There are two responses to this pressure, and understanding their difference matters.
+Context grows. Eventually the accumulated context approaches the LLM's window limit.
 
-**Folding** is the deliberate integration of loom history into circle state. Instead of keeping every prior turn in the message list for the LLM to re-read, the entity — or the circle on the entity's behalf — takes the substance of earlier turns and encodes it as state the entity can access through code: variables, data structures, summaries stored in the sandbox. The full turns remain in the loom. The entity's working context shrinks because the knowledge now lives in the environment rather than in the prompt. This is the principle from §3.3 made operational at scale.
+**Folding** is the deliberate integration of loom history into circle state. Instead of keeping every prior turn in the message list, the circle takes the substance of earlier turns and encodes it as state the entity can access through code: variables, data structures, summaries in the sandbox. The full turns remain in the loom. The entity's working context shrinks because the knowledge now lives in the environment — context belongs in the environment, not in the prompt (§3.3).
 
 > **LOOM-5**: Folding MUST NOT destroy history. The full turns MUST remain accessible. Folding produces a view, not a mutation.
 
 > **LOOM-6**: Folding MUST NOT compress the identity or the circle's gate definitions. The system prompt, hyperparameters, and gate definitions MUST always be present in the entity's context.
 
-**Compaction** is the crude fallback. When folding is not available or not sufficient — when the message window is still too large despite the entity's best efforts to move state into the circle — compaction truncates or summarizes the oldest turns in the prompt. A sliding window keeps the last N turns and drops the rest. A summary replaces a range of turns with a compressed digest. The entity loses direct access to the detail of those turns, though the full history persists in the loom underneath.
+**Compaction** is the fallback. When folding is insufficient, compaction truncates or summarizes the oldest turns in the prompt — a sliding window or a compressed digest. The entity loses detailed access, but the loom retains everything underneath.
 
 ```
-// Folding: history becomes circle state
-// Entity's context: [identity] [intent] [recent turns]
-// Circle state: variables holding synthesized knowledge from earlier turns
-// Loom: all turns intact
+// Folding: [identity] [intent] [recent turns]
+//   Circle state holds synthesized knowledge from earlier turns
 
-// Compaction: oldest turns are summarized in the prompt
-// Entity's context: [identity] [intent] [summary of turns 1-20] [turns 21-30]
-// Loom: all turns intact
+// Compaction: [identity] [intent] [summary of turns 1-20] [turns 21-30]
+
+// Loom: all turns intact in both cases
 ```
 
-Both techniques preserve the loom — neither destroys history. The difference is in how the entity relates to its past. Folding gives the entity programmatic access to its history through code. Compaction gives the entity a lossy summary in the prompt. Think of folding as a design choice and compaction as a pressure valve.
+**Who triggers folding.** The circle or harness, automatically (PROD-4). The entity does not usually decide when to fold.
 
-**Who triggers folding.** The circle or harness triggers folding automatically, per PROD-4. The entity does not decide when to fold — it may not even know it has happened, though it MUST be able to tell (see fidelity below). The circle monitors context size against the LLM's advertised window and folds when the threshold is crossed.
+**Trigger threshold.** Folding MAY trigger when context exceeds 80% of the LLM's advertised window. Implementations MAY use a different threshold but MUST document it.
 
-**Trigger threshold.** Folding SHOULD trigger when the entity's accumulated context exceeds 80% of the LLM's advertised window. The remaining 20% provides headroom for the next turn's utterance and observation. Implementations MAY use a different threshold, but MUST document it.
+**What form.** Folding replaces a range of turns with a summary node in the working context. In a code circle, folding MAY also encode state as sandbox variables.
 
-**What form the folded state takes.** Folding replaces a range of detailed turns in the entity's working context with a summary node — a single message that captures the substance of those turns in compressed form. The full turns remain in the loom, untouched. The summary node is injected into the prompt in place of the turns it replaces. In a code circle, folding MAY also encode summarized state as variables in the sandbox, giving the entity programmatic access to its compressed history.
+**Fidelity.** The entity MUST be able to distinguish folded context from unfolded. A folded summary MUST be explicitly marked — e.g., `[Folded: turns 1-20]`. The entity should never mistake a summary for a verbatim record.
 
-**Fidelity guarantees.** The entity MUST be able to distinguish folded context from unfolded context. A folded summary MUST be explicitly marked — for example, by a prefix like `[Folded: turns 1-20]` or an equivalent structural marker. The entity should never mistake a summary for a verbatim record of what happened. This marking is what preserves the entity's epistemic honesty: it knows what it remembers directly and what it knows only through summary.
-
-**A worked example.** An entity has run for 30 turns. The LLM's window is 128k tokens. At turn 25, the accumulated context — identity, intent, and 24 turns of history — reaches 102k tokens (80% of 128k). The circle triggers folding.
+**Implementation freedom.** The spec defines what folding must preserve (LOOM-5, LOOM-6), when it should trigger (PROD-4), and what the entity must be able to tell (fidelity marking). It does not prescribe how summaries are generated — a dedicated LLM call, a templated extractor, a medium-specific state serializer, or something not yet invented. The mechanism depends on the medium, the model, and the use case.
 
 ```
-// Before folding (entity's working context):
-// [identity] [intent] [turn 1] [turn 2] ... [turn 24] [turn 25 utterance]
-// Total: ~102k tokens
-
-// After folding:
-// [identity] [intent] [folded summary: turns 1-18] [turn 19] ... [turn 25 utterance]
-// Total: ~45k tokens
-//
-// The summary replaces turns 1-18 with a ~3k token digest.
-// Turns 19-25 remain verbatim — recent context is preserved in full.
-// The loom still contains every turn in complete detail.
+// Before: [identity] [intent] [turn 1] ... [turn 24] [turn 25]  ~102k tokens
+// After:  [identity] [intent] [folded: turns 1-18] [turn 19] ... [turn 25]  ~45k tokens
 ```
-
-**Implementation freedom.** The spec defines what folding must preserve (LOOM-5, LOOM-6), when it should trigger (PROD-4), and what the entity must be able to tell (fidelity marking). It does not prescribe how summaries are generated. An implementation might use a dedicated LLM call, a templated extractor, a medium-specific state serializer, or something not yet invented. The mechanism depends on the medium, the model, and the use case. What matters is that the invariants hold: full history in the loom, identity intact, folded content marked.
-
-The identity and the circle's gate definitions are exempt from both techniques. The system prompt, the hyperparameters, and the gate presentations — these survive intact regardless of how aggressively the context is managed. The entity may lose detailed memory of what it did on turn three, but it never loses its sense of who it is and what it can do.
 
 ### 6.9 The loom as entity-readable state
 
-So far, the loom has been a record that the entity produces but cannot see. It can also face inward. A circle MAY expose the loom — or part of it — as a readable object in the entity's sandbox. When it does, the entity can access its own history through code.
+The loom can also face inward. A circle MAY expose the loom as a readable object in the entity's sandbox. When it does, the entity can access its own history through code — summarizing old turns, comparing approaches, inspecting sibling threads.
 
-This is a circle design choice, not a mandate. Some circles expose the full loom as a queryable variable. Others expose just the current thread. Others expose nothing — the entity only sees what the circle puts in its context window. All three are valid. The spec does not require the loom to be entity-readable, but it does not prohibit it either, and the most capable systems will make use of it.
-
-When the loom is exposed, the entity's relationship to its own history changes. Instead of passively receiving whatever the circle puts in its prompt, the entity actively explores its past through code — summarizing old turns, expanding folded sections, comparing its current approach to earlier attempts, inspecting the results of sibling threads. These are not special introspection channels built into the harness. They are ordinary code execution, using ordinary gates and sandbox primitives, operating on the loom as data.
-
-The decisions the entity makes about how to use its history show up in the trace, flow into the loom, and feed back into training. This is why thin harnesses beat smart harnesses: when the entity manages its own context through code, that intelligence compounds through training. When the harness manages context through built-in logic, that intelligence helps now but does not train into the next generation.
+When the entity manages its own context through code, that intelligence compounds through training. When the harness manages context through built-in logic, that intelligence helps now but does not train into the next generation.
 
 > **LOOM-11**: The loom MAY be exposed as a readable object within the circle's sandbox. When exposed, the entity accesses its own history through code execution, not through special observation channels.
 
@@ -925,32 +722,25 @@ The decisions the entity makes about how to use its history show up in the trace
 
 ## Chapter 7: Production
 
-An entity that works in a demo and an entity that works in production are separated by a set of problems that are boring to describe and fatal to ignore. Context windows fill up. API calls fail. Tokens cost money. Protocols must be spoken correctly. None of this changes the vocabulary — every concept from the previous six chapters applies unchanged. What changes is the operational discipline required to keep the loop running reliably, at scale, over time.
-
-This chapter is shorter than the others, and intentionally so. The conceptual ideas — ephemeral gates, dependency injection — follow directly from the circle model. The infrastructure rules — protocols, retries, token tracking — vary in implementation. What matters here is the contract, not the mechanism.
+An entity that works in a demo and an entity that works in production are separated by problems that are boring to describe and fatal to ignore. None of this changes the vocabulary — every concept from the previous chapters applies unchanged. What changes is the operational discipline.
 
 ### 7.1 Context management in production
 
-For context management strategies including folding and compaction, see §6.8. The rules below govern production behavior.
+For context management strategies including folding and compaction, see §6.8.
 
-> **PROD-4**: Folding MUST be triggered automatically when context approaches the LLM's limit. Implementations SHOULD trigger folding when context exceeds 80% of the LLM's advertised window (see §6.8 for the rationale). Implementations that use a different threshold MUST document it.
+> **PROD-4**: Folding MUST be triggered automatically when context approaches the LLM's limit. Implementations MAY trigger folding when context exceeds 80% of the LLM's advertised window (see §6.8). Implementations that use a different threshold MUST document it.
 
 ### 7.2 Ephemeral gates
 
-Some gate results are large and useful for exactly one turn — a full webpage, a large file, a database dump. The entity reads the content, extracts what it needs, and moves on. Keeping the full observation in the working context wastes the LLM's window on content that has already been consumed.
-
-An ephemeral gate solves this. Its observation is replaced with a compact reference after the entity's next turn. The full content is stored in the loom — the observation is never lost — but it is removed from the entity's working context. If the entity needs the content again, it calls the gate again.
+Some gate results are large and useful for exactly one turn. An ephemeral gate's observation is replaced with a compact reference after the entity's next turn. The full content is stored in the loom — the observation is never lost — but it is removed from the working context. If the entity needs the content again, it calls the gate again.
 
 > **PROD-5**: If ephemeral gates are supported, the full observation MUST still be stored in the loom. Only the working context is trimmed.
 
-This is an optimization, not a requirement. Implementations MAY support ephemeral gates.
-
 ### 7.3 Dependency injection
 
-This was introduced in §4.3 and is worth restating here because production is where it becomes critical. Gates close over environment state. A `read` gate knows its filesystem root. A `call_entity` gate holds a reference to the LLM it will use for child entities. A `fetch` gate may carry timeout configuration or authentication headers. These dependencies are injected when the circle is constructed, not when the entity invokes the gate.
+Gates close over environment state. A `read` gate knows its filesystem root. A `call_entity` gate holds a reference to the LLM for child entities. A `fetch` gate carries timeout configuration. These dependencies are injected when the circle is constructed, not when the entity invokes the gate (CIRCLE-10).
 
 ```
-// Pseudocode: configuring gate dependencies
 circle = Circle({
   gates: [
     read.with({ root: "/data" }),
@@ -961,25 +751,17 @@ circle = Circle({
 })
 ```
 
-The entity calls `read("data.json")` without knowing or caring where the filesystem root is. The gate knows. The circle was prepared before the entity appeared. This is dependency injection applied to the boundary between the entity and the world — the entity describes what it wants, the gate resolves how to get it, and the configuration was fixed at construction time.
-
-Note the distinction between two kinds of configuration. **Gate dependencies** — filesystem roots, auth headers, timeout settings, LLM client references — are construction-time concerns (CIRCLE-10). They are the plumbing that makes gates work, and the entity should not control them. **Circle configuration** — which gates, which medium, which LLM, which identity — is what the entity proposes at call time via `call_entity` (§5.1). The spawn function bridges these: it receives the entity's circle configuration proposal and wires up the gate dependencies for the resulting child circle. The entity says "give the child a `fetch` gate." The spawn function decides what timeout and auth headers that `fetch` gate gets.
-
-Implementations SHOULD provide a dependency injection mechanism for gates. CIRCLE-10 already requires that gate dependencies be configured at circle construction time. In practice, this means gates are partially applied functions: the host binds the dependencies, and the entity supplies the arguments.
+Two kinds of configuration: **gate dependencies** (filesystem roots, auth headers, timeouts) are construction-time concerns. **Circle configuration** (which gates, which medium, which LLM) is what the entity proposes at call time via `call_entity` (§5.1). The spawn function bridges these: it receives the entity's circle configuration proposal and wires up the gate dependencies.
 
 ### 7.4 Infrastructure rules
 
-The remaining production concerns — protocols, retries, token tracking, streaming — are stated as rules with minimal commentary. The implementations vary. The contracts do not.
-
 > **PROD-1**: Protocol adapters MUST NOT alter the entity's behavior. The same cantrip MUST produce the same behavior regardless of whether it is accessed via CLI, HTTP, or ACP.
 
-ACP (Agent Communication Protocol) is one possible protocol for the summon/send pattern — it maps sessions to summoned entities and messages to casts. Any protocol that preserves the behavioral contract (immutable identity, independent casts, loom recording) is equally valid. HTTP request/response, WebSocket sessions, stdio pipes, gRPC streams — these are all valid transports for the same pattern. The spec defines the behavioral contract, not the wire format.
+ACP (Agent Communication Protocol) maps sessions to summoned entities and messages to casts. HTTP, WebSocket, stdio, gRPC — all valid transports. The spec defines the behavioral contract, not the wire format.
 
 > **PROD-2**: Retry logic MUST be transparent to the entity. A retried LLM query MUST appear as a single turn, not multiple turns. Implementations SHOULD retry rate limits (429) and server errors (5xx) with exponential backoff starting at 1 second, up to a configurable maximum (default: 3 retries). Client errors (4xx except 429) MUST NOT be retried.
 
 > **PROD-3**: Token usage MUST be tracked per-turn and cumulatively per-entity.
-
-Token counts are stored per-turn in the loom (LOOM-9) and accumulated across the entity's lifetime. They are how you track cost, detect context growth, and trigger folding. Every turn has a price. The loom records it.
 
 > **PROD-6**: Implementations that expose ACP MUST support the core session flow (`initialize`, `session/new`, `session/prompt`) and emit session update notifications in ACP-compatible shape. Prompt payload parsing SHOULD accept common client variants (`prompt`, `content`, text blocks) as long as intent text can be extracted unambiguously.
 
@@ -991,20 +773,16 @@ Token counts are stored per-turn in the loom (LOOM-9) and accumulated across the
 
 ### 7.5 Streaming events
 
-Implementations SHOULD emit streaming events as they occur. Streaming is an observation channel, not a control channel. Events report what the loop is doing but do not affect its execution.
+Implementations SHOULD emit streaming events as they occur. Streaming is an observation channel, not a control channel — events report what the loop is doing but do not affect execution.
 
-The event hierarchy follows the structure of the loop. A cast produces a stream of `TurnEvent` values, each describing a moment in the entity's lifecycle:
+The event hierarchy follows the loop structure:
 
-- **TextEvent** — a chunk of text content from the LLM's response
-- **ThinkingEvent** — a chunk of reasoning trace (for models that support extended thinking)
-- **ToolCallEvent** — the LLM has invoked a gate (name, arguments)
-- **ToolResultEvent** — a gate has returned a result
-- **FinalResponseEvent** — the entity has terminated (the done gate's result)
-- **MessageStartEvent** / **MessageCompleteEvent** — boundaries around a single LLM response
-- **StepStartEvent** / **StepCompleteEvent** — boundaries around a single turn
-- **UsageEvent** — token usage for a query
-
-The `cast_stream()` method returns an async iterable of these events, allowing consumers to observe the entity's behavior in real time — rendering text as it arrives, logging gate calls, tracking token expenditure.
+- **TextEvent** / **ThinkingEvent** — content chunks from the LLM
+- **ToolCallEvent** / **ToolResultEvent** — gate invocation and result
+- **FinalResponseEvent** — the done gate's result
+- **MessageStartEvent** / **MessageCompleteEvent** — LLM response boundaries
+- **StepStartEvent** / **StepCompleteEvent** — turn boundaries
+- **UsageEvent** — token counts for a query
 
 ---
 
@@ -1045,47 +823,45 @@ The reference implementation is TypeScript/Bun. It is one valid manifestation. T
 
 ## Appendix A: Grimoire
 
-A grimoire is a book of spells. The preceding chapters defined the vocabulary — LLM, identity, circle, gate, ward, medium, entity, loom. This appendix shows what you build with those words. Each pattern adds one idea to the previous, expanding what is possible. The arc is not a hierarchy: a conversation circle with no code medium is complete, and so is a familiar that orchestrates a fleet of child entities through code. These are options on a spectrum of expressiveness.
+A grimoire is a book of spells. The preceding chapters defined the vocabulary. This appendix shows what you build with those words. Each pattern adds one idea to the previous, expanding what is possible. The arc is not a hierarchy: a conversation circle with no code medium is complete, and so is a familiar that orchestrates a fleet of child entities.
 
 A conformant implementation SHOULD provide runnable examples for each pattern below.
 
 ---
 
-### A.1 The LLM Query
+### A.1 Query
 
-The simplest thing you can do. Construct an LLM, send it a list of messages, receive a response. One round-trip. No loop, no circle, no entity — just the atomic unit of the system (§2.1).
+One round-trip. No loop, no circle, no entity — just the atomic unit (§2.1).
 
 ```
 llm = create_llm(model)
 response = llm.query([{ role: "user", content: "What is 2 + 2?" }])
 ```
 
-The LLM is stateless (LLM-1). It does not remember this query. The next time you call it, you must send everything again — prior messages, system instructions, all of it. The LLM is a function: messages in, response out. Everything that makes an entity seem to learn across turns comes from the loop, not from the model. The query is the foundation that everything else is built on, and it is worth seeing alone before the loop closes around it.
+**What to notice.** The response contains content, token usage, and nothing else. No state was created. The LLM is exactly as it was before the call (LLM-1).
 
-**What to notice.** The response contains content, token usage, and nothing else. No state was created. No history was recorded. The LLM is exactly as it was before the call. Any appearance of memory will come from message assembly outside the model.
+**Substitution.** Any model from any provider. The contract is the same.
 
 ---
 
-### A.2 The Gate
+### A.2 Gate
 
-A gate is a host function the entity can invoke — a crossing point through the circle's boundary. Define one by giving it a name, a description, typed parameters, and a function that does the work.
+Define a gate, execute it directly. A gate is a host function with metadata — a crossing point through the circle's boundary (§4.3).
 
 ```
 gate add(a, b) -> a + b
 gate done(answer) -> terminates loop
 ```
 
-The `done` gate is special. Every circle must have one (CIRCLE-1). It signals task completion and terminates the loop. When the entity calls `done`, it is saying: I believe the work is finished, and here is the result.
+**What to notice.** Gates can be tested in isolation. If the host function throws, that throw becomes observation data (CIRCLE-5). The `done` gate is special — every circle must have one (CIRCLE-1). Gates close over environment state configured at construction time (CIRCLE-10).
 
-Gates can be tested in isolation, outside any loop. Call a gate directly and it executes its function and returns a value. This is not trivial ceremony — it proves the boundary behavior is real before any entity touches it. If the host function throws, that throw becomes observation data when called from the loop (CIRCLE-5). Gates close over environment state configured at construction time (CIRCLE-10). A `read` gate knows its filesystem root. A `fetch` gate carries its timeout. The entity calls `read("data.json")` without knowing where the root is. The gate knows.
-
-**What to notice.** A gate is just a function with metadata. The entity sees it as a tool definition — a name, a description, parameters. The implementation behind the boundary is invisible to the entity.
+**Substitution.** Any function can be a gate. The entity only sees the schema.
 
 ---
 
-### A.3 The Circle
+### A.3 Circle
 
-Gates and wards assembled into an environment. The circle is the entity's world — what it can do and where the limits are. If gates are doors, wards are walls. The circle is the whole room (§4.1).
+Gates and wards assembled into an environment (§4.1).
 
 ```
 circle = Circle(
@@ -1094,17 +870,15 @@ circle = Circle(
 )
 ```
 
-The key moment in this pattern is not successful construction. It is failed construction. A circle without a `done` gate is a trap — the entity has no way to signal completion (CIRCLE-1). A circle without a termination ward is infinite — if the entity never calls `done`, the loop runs forever (CIRCLE-2). Both fail at construction time, not at runtime. The circle enforces its invariants before any entity appears.
+**What to notice.** The errors. A circle without `done` is rejected at construction (CIRCLE-1). A circle without a termination ward is rejected (CIRCLE-2). The circle prevents misbehavior from being possible, rather than waiting for it to happen.
 
-Once the circle exists, the entity's possible actions are structurally defined by `A = M ∪ G − W` (§4.2). Environment design, not prompt phrasing, determines the hard edges.
-
-**What to notice.** The errors are structural, not behavioral. The circle does not wait for the entity to misbehave. It prevents the misbehavior from being possible.
+**Substitution.** Any gate set. Any ward set. The structural invariants are the same.
 
 ---
 
-### A.4 The Cantrip
+### A.4 Cantrip
 
-LLM, identity, and circle bound together into a reusable value (CANTRIP-1, CANTRIP-2). The cantrip is a script, not a running process. You write it once and cast it many times on different intents.
+LLM, identity, and circle bound into a reusable value (§1.4).
 
 ```
 spell = cantrip(llm, identity, circle)
@@ -1112,31 +886,35 @@ result_1 = spell.cast("What is 2 + 3?")
 result_2 = spell.cast("What is 10 + 20?")
 ```
 
-Each cast produces an independent entity. The first entity's state does not leak into the second. The identity is fixed at construction (IDENTITY-1) — who the entity is does not change between casts. The intent is what varies (INTENT-1). When you cast, the loop starts: the entity receives the identity and the intent, acts, observes, acts again, until it calls `done` or a ward triggers.
+**What to notice.** Two casts produce independent entities (CANTRIP-2). The identity is fixed (IDENTITY-1). The intent varies (INTENT-1). You didn't design the entity — you designed its components.
 
-You did not design the entity. You designed the LLM, the identity, and the circle. The entity is what happened when you put them together and gave it a goal.
-
-**What to notice.** Two casts on the same cantrip produce different entities that share nothing. The cantrip is reusable. The entity is ephemeral.
+**Substitution.** Any LLM. Any identity. Any circle. The cantrip is the composition.
 
 ---
 
 ### A.5 Wards
 
-Wards are subtractive. They do not grant capabilities — they carve away from the full action space (§4.4). The entity starts with everything the medium and gates provide, and wards restrict it.
+Wards are subtractive — they carve away from the full action space (§4.4).
 
-Wards compose conservatively. Stack three `max_turns` wards — 50, 10, 100 — and the resolved value is 10, the minimum. `require_done_tool` composes with logical OR: if any ward in the composition requires it, it is required (WARD-1). No negotiation happens at runtime.
+```
+wards = compose([max_turns(50), max_turns(10), max_turns(100)])
+// resolved: max_turns = 10 (min wins)
 
-This composition rule is what makes delegation safe. A parent entity with a 200-turn limit that spawns a child cannot give that child 500 turns. The child gets at most 200, and typically fewer. The restrictions accumulate downward. And wards belong to the circle, not to identity instructions. Prompt text can request restraint. Wards enforce it. When depth reaches zero, delegation gates disappear from the action space entirely (COMP-6). The entity is not asked to avoid recursion — recursion is structurally unavailable.
+wards = compose([require_done_tool(true), require_done_tool(false)])
+// resolved: require_done_tool = true (OR wins)
+```
 
-**What to notice.** Wards provide safety through architecture rather than through politeness. An entity cannot be persuaded to ignore a ward because the ward operates outside the entity's context.
+Stack three `max_turns` wards — 50, 10, 100 — and the resolved value is 10 (min). `require_done_tool` composes with OR (WARD-1). When depth reaches zero, delegation gates disappear entirely (COMP-6). The entity is not asked to avoid recursion — recursion is structurally unavailable.
+
+**What to notice.** Wards provide safety through architecture, not politeness. An entity cannot be persuaded to ignore a ward because the ward operates outside the entity's context (CIRCLE-6).
+
+**Substitution.** Adjust ward values to your risk tolerance. The composition semantics are fixed.
 
 ---
 
-### A.6 The Medium
+### A.6 Medium
 
-The medium is the substrate the entity works *in* — conversation, code, shell, browser (§4.1). Changing the medium changes the nature of action, even when the gate set stays fixed.
-
-The action space formula becomes concrete here: **A = M ∪ G − W**. In a conversation circle, M is just language — the action space collapses to the gate set minus wards. In a code circle, M is a full programming language: loops, conditionals, data structures, composition. The entity can call gates inside loops, store results in variables, build pipelines on the fly. The action space explodes.
+Change the medium from conversation to code. Same gates, radically different action space (§4.1).
 
 ```
 circle = Circle(
@@ -1146,31 +924,34 @@ circle = Circle(
 )
 ```
 
-Data injected into the sandbox is accessible as a variable. The entity explores it through code — filtering, mapping, aggregating — rather than asking the LLM to hold it all in the prompt. Context belongs in the environment, not in the prompt (§3.3). Variables created on one turn remain available on later turns within the same entity (MEDIUM-3). This shifts load from prompt accumulation to environment state: the entity remembers by reading what it built, not by re-consuming its own conversation history.
+**What to notice.** A = M ∪ G − W becomes concrete. In conversation, A collapses to G − W. In code, M is a full programming language. Data injected into the sandbox is accessible as a variable — the entity explores it through code rather than holding it in the prompt. Context belongs in the environment (§3.3). Variables persist across turns (MEDIUM-3).
 
-Same cantrip structure, same identity, same gates — change the medium and the entity's relationship to data transforms.
-
-**What to notice.** The medium is an independent capability axis. You can hold gates constant and still radically change what the entity can invent.
+**Substitution.** JavaScript, Python, Bash, browser — any REPL-like environment. The medium determines what the entity works *in*.
 
 ---
 
-### A.7 The Full Agent
+### A.7 Codex
 
-A code medium with real gates — filesystem access, shell commands, network requests. The entity reads files, writes files, runs programs, and observes the results. State accumulates across turns in two places: variables persist in the sandbox, effects persist in the world (§4.7).
+A code medium with real gates — filesystem access, shell commands, network requests. Error as steering: the entity hits an error and adapts (§4.3, CIRCLE-5).
 
-Error as steering is most visible here. The entity tries to read a file that does not exist. The gate returns an error — `is_error: true`, with the message in `result` (CIRCLE-5). The entity sees the error in the next turn's context and adjusts: tries a different path, lists the directory first, changes its approach. The error did not stop the entity. It steered the entity. Errors are observations. They carry information. Swallowing them silently cripples the loop.
+```
+spell = cantrip(llm, identity, Circle(
+  medium: code("javascript"),
+  gates: [read, write, list_dir, done],
+  wards: [max_turns(20)]
+))
+result = spell.cast("Find all TODO comments in /src and write a summary to /out/todos.md")
+```
 
-After several turns, the entity's output looks nothing like its first turn. It references variables it created earlier, works around errors it hit, pursues strategies that emerged from what it noticed. This accumulation of context and adaptation is the entity — the thing that arose from the loop.
+**What to notice.** After several turns, the entity's output looks nothing like its first turn. It references variables from earlier, works around errors it hit, pursues emergent strategies. Robustness comes from visibility of failure, not absence of failure.
 
-**What to notice.** Robustness comes from visibility of failure, not absence of failure. The system improves because errors are first-class observations.
+**Substitution.** Any gate set that touches the real world. The loop handles errors the same way regardless of what went wrong.
 
 ---
 
 ### A.8 Folding
 
-Long-running entities accumulate context. Every turn adds to the message history, and eventually the accumulated tokens approach the LLM's window limit. Folding compresses older turns into a summary without destroying history (LOOM-5).
-
-The mechanism: when context exceeds a threshold, the circle partitions the thread into turns to fold and turns to keep. The folded turns are replaced in the working context by a compressed summary. Recent turns are preserved verbatim. The identity and gate definitions are never folded (LOOM-6) — the entity always knows who it is and what it can do.
+Long-running entities trigger folding (§6.8). Old turns compressed, recent turns preserved. The loom retains full history.
 
 ```
 before: [identity][intent][turn 1..24][turn 25]
@@ -1178,15 +959,15 @@ after:  [identity][intent][folded 1..18][turn 19..25]
 loom:   full turns 1..25 still present
 ```
 
-The full turns remain in the loom, untouched. Folding produces a view, not a mutation. The entity's working context shrinks, but the ground truth is intact. In a code circle, folding has a natural ally: sandbox state. Variables that the entity created on earlier turns persist in the sandbox even after those turns are folded out of the prompt. The knowledge lives in the environment as program state — compression is not only shorter, it is more usable.
+**What to notice.** Folding changes what is in immediate view, not what exists (LOOM-5). The identity and gate definitions are never folded (LOOM-6). In a code circle, sandbox state persists even after turns are folded — knowledge lives in the environment as program state.
 
-**What to notice.** Folding changes what is in immediate view, not what exists. The record remains complete even when working context becomes compact.
+**Substitution.** Any folding strategy — LLM-generated summaries, templated extractors, state serializers. The invariants (LOOM-5, LOOM-6) are the same.
 
 ---
 
 ### A.9 Composition
 
-Some tasks decompose naturally. The entity delegates. In a code circle, delegation is a function call: the parent invokes `call_entity` with a sub-intent, a child entity appears in its own circle, pursues the goal, and returns a result. The parent blocks until the child finishes (COMP-2). From the parent's perspective, it called a function and got a value back.
+The entity delegates via `call_entity` (§5). In a code circle, delegation is a function call inside loops, behind conditionals, as part of pipelines composed on the fly.
 
 ```
 parts = split(task)
@@ -1194,29 +975,25 @@ results = call_entity_batch(parts.map(p => { intent: p }))
 final = merge(results)
 ```
 
-Batch delegation runs children concurrently. Results return in request order, not completion order (COMP-3). The number of children is determined at runtime by the data — the entity writes a loop that calls `call_entity` conditionally, behind branches, as part of pipelines it composes on the fly. Composition is not orchestration outside the loop. It is ordinary code-level action inside the loop, so delegation can be conditional, iterative, and data-driven.
+**What to notice.** The loom captures parent and child turns in the same tree. Walk the parent's thread and delegation appears as one step. Walk into the child's subtree and every decision is visible. Children run concurrently, results return in request order (COMP-3). The child's circle is independent (COMP-4). Depth limits prevent infinite recursion (COMP-6).
 
-The child's circle is independent (COMP-4). It does not inherit the parent's conversation history — it starts fresh with only the sub-intent and whatever context the parent passes. Ward composition ensures the child can only be more restricted than the parent, never less (WARD-1). Depth limits prevent infinite recursion: at depth zero, the `call_entity` gate is removed entirely (COMP-6).
-
-**What to notice.** The loom captures parent and child turns in the same tree. Walk the parent's thread and delegation appears as a single step. Walk into the child's subtree and every decision the child made is visible.
+**Substitution.** Different LLMs for children. Different mediums. Different gate sets. Ward composition ensures children can only be more restricted (WARD-1).
 
 ---
 
-### A.10 The Loom
+### A.10 Loom
 
-Every turn has been recorded since the first pattern. The loom is the append-only tree of all turns across all runs of a cantrip — simultaneously the debugging trace, the entity's memory, and the training data (§6). Each turn stores the utterance, the observation, token usage, timing, a reward slot, and whether the turn terminated or was truncated (LOOM-7).
+Inspect the loom after a run (§6). Every turn since the first pattern has been recorded — the loom is append-only (LOOM-3).
 
-Threads are implicit. Follow parent pointers from any leaf back to the root and you have one complete trajectory. Cast the same cantrip on ten different intents and you get ten threads in one loom. Fork from turn seven and you get a branch — two threads sharing a common prefix, diverging from the fork point (LOOM-4). The original thread is untouched. Composition adds subtrees: child entity turns branch off the parent turn that spawned them.
+**What to notice.** Threads are implicit — follow parent pointers from leaf to root. The loom records terminated vs. truncated (LOOM-7). Fork from a turn: two threads sharing a prefix, diverging. The tree structure is shaped for comparative RL: fork N times, rank, learn. No reward model needed — comparison is the signal (§6.4).
 
-The tree structure is shaped for comparative reinforcement learning. Fork from the same point N times, or cast the same intent N times, and you get N threads to rank. The ranking is the reward signal — no reward model needed, just comparison. This is what GRPO and similar methods require, and the loom provides it as a natural consequence of its structure (§6.5).
-
-**What to notice.** The loom is append-only (LOOM-3). No turn is ever deleted or modified. The ground truth grows monotonically. Everything the entity did — every success, every error, every dead end — is preserved.
+**Substitution.** JSONL, SQLite, any append-only store. The tree semantics are the same.
 
 ---
 
-### A.11 The Persistent Entity
+### A.11 Persistence
 
-Casting is one-shot: start, run one intent, return, discard. Summoning creates a persistent entity that survives the completion of its first intent (ENTITY-5). Send it another intent and the loop resumes with accumulated state.
+Summoning creates an entity that survives its first intent (ENTITY-5).
 
 ```
 entity = spell.summon()
@@ -1224,40 +1001,38 @@ entity.send("Set up the project structure")
 entity.send("Now add the test suite")
 ```
 
-The entity accumulates state across sends. Variables from the first intent are still in the sandbox when the second intent arrives. Files written during the first send are readable during the second. The identity has not changed — who the entity is and how it thinks are fixed. What has changed is everything the entity has done, observed, and built. The loop resumes, not restarts.
+**What to notice.** The second intent benefits from everything the first produced. Variables persist. Files written during the first send are readable during the second. The identity hasn't changed — who the entity is remains fixed. The entity builds on accumulated state, not from scratch.
 
-This is where the four temporal levels (§1.5) become practical. A summon contains multiple casts. Each cast contains multiple turns. Each turn contains one or more queries. The persistent entity lives at the summon level — it spans casts, accumulating experience across them. A chat session is a summoned entity. A REPL session is a summoned entity.
-
-**What to notice.** The second intent benefits from everything the first intent produced. The entity does not re-derive context. It builds on it.
+**Substitution.** Any cantrip can be summoned. Casting is summoning with automatic cleanup.
 
 ---
 
-### A.12 The Familiar
+### A.12 Familiar
 
-A persistent entity that constructs and orchestrates other cantrips through code. The familiar does not have direct access to every capability — it observes a codebase through read-only gates, reasons in a code medium, and delegates action to child cantrips that it constructs at runtime. It chooses their LLM, their medium, their gates, and their wards based on what the task requires.
+A persistent entity that constructs and orchestrates other cantrips through code. The familiar observes a codebase through read-only gates, reasons in a code medium, and delegates action to child cantrips that it constructs at runtime — choosing their LLM, medium, gates, and wards based on what the task requires.
 
-The familiar constructs a cantrip in code: specifying a model, an identity, a circle with a chosen medium and gates. Then it casts that cantrip on an intent and receives the result. The child might run in a shell medium to execute commands, or a browser medium to navigate pages, or a code medium to do computation. The familiar programs the delegation — it is a coordinator, not an executor.
+The familiar's action space includes cantrip construction — the ability to design new circles, choose new LLMs, and compose capabilities that its own circle does not directly contain. It delegates through code, which means it can invent delegation patterns nobody enumerated in advance: recursive analysis, parallel fan-out, conditional routing, retry loops that spawn fresh entities on failure.
 
-The loom is persisted to disk. When the familiar is summoned again in a new session, it loads its prior history and continues with accumulated context. It remembers what it did yesterday. Combined with folding, this gives the familiar long-term memory bounded only by storage, not by the LLM's context window.
+The loom is persisted to disk. When the familiar is summoned again in a new session, it loads its prior history and continues with accumulated context. Combined with folding, this gives the familiar long-term memory bounded only by storage.
 
-This is the most expressive pattern in the grimoire. The familiar's action space includes cantrip construction — the ability to design new circles, choose new LLMs, and compose capabilities that its own circle does not directly contain. It delegates through code, which means it can invent delegation patterns nobody enumerated in advance: recursive analysis, parallel fan-out, conditional routing, retry loops that spawn fresh entities on failure. Its power comes not from what it can do directly, but from what it builds and delegates to.
+**What to notice.** The familiar itself has few gates — observation and cantrip construction. The children do the work. The familiar decides what work needs doing. This is the ghost library pattern made concrete: a persistent entity that constructs cantrips at runtime is a ghost library in action — the spec generating its own implementations through an entity acting in a loop.
 
-**What to notice.** The familiar itself has few gates — observation and cantrip construction. The children do the work. The familiar decides what work needs doing.
+**Substitution.** Any LLM capable of code generation. The children can use different LLMs, different mediums. The familiar's power comes from what it builds, not what it can do directly.
 
 ---
 
 ### A.13 What Makes a Good Example
 
-The patterns above describe what to build and why. When an implementation provides runnable examples for each pattern, the quality of those examples determines whether a reader learns how cantrip works or merely confirms that the API exists.
+The patterns above describe what to build. When an implementation provides runnable examples for each pattern, the quality of those examples determines whether a reader learns how cantrip works or merely confirms that the API exists.
 
-A teaching example assembles its parts visibly. The LLM, the identity, the circle, the gates, the wards — each is constructed where you can see it, not hidden behind a helper function. The reader watches the cantrip take shape from its components.
+A teaching example assembles its parts visibly. The LLM, the identity, the circle, the gates, the wards — each constructed where you can see it, not hidden behind a helper function.
 
-A teaching example maps code to concepts. Comments anchor what is happening to the spec's vocabulary: this is the identity, this is the circle's gate set, this is the ward that guarantees termination. Not every line needs annotation — but the structural decisions should be named.
+A teaching example maps code to concepts. Comments anchor what is happening to the spec's vocabulary: this is the identity, this is the circle's gate set, this is the ward that guarantees termination.
 
-A teaching example shows the non-happy path. The circle rejects construction without a `done` gate. A ward truncates the entity before it finishes. A gate returns an error and the entity adapts. These moments reveal how cantrip works under pressure, which is where real understanding forms.
+A teaching example shows the non-happy path. The circle rejects construction without a `done` gate. A ward truncates the entity. A gate returns an error and the entity adapts.
 
-A teaching example uses realistic intents. "Say ok" proves the API works. "Analyze each category and summarize the overall trend" shows what the entity actually does across multiple turns — how it decomposes the problem, what it tries, where it adjusts.
+A teaching example uses realistic intents. "Say ok" proves the API works. "Analyze each category and summarize the overall trend" shows what the entity actually does across multiple turns.
 
-A teaching example inspects its output. Print the result, but also print how many turns the loom recorded, whether the thread terminated or was truncated, what gates were called. The reader should be able to verify the pattern's claims from the output, not take them on faith.
+A teaching example inspects its output. Print the result, but also print how many turns the loom recorded, whether the thread terminated or was truncated, what gates were called.
 
 The difference between conformance theater and a teaching example is the difference between proving something works and showing someone how it works. Both pass the tests. Only one teaches.

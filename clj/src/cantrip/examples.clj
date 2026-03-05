@@ -5,29 +5,70 @@
             [cantrip.llm :as llm]
             [cantrip.medium :as medium]
             [cantrip.protocol.acp :as acp]
-            [cantrip.runtime :as runtime]))
+            [cantrip.runtime :as runtime]
+            [clojure.java.io :as io]
+            [clojure.string :as str]))
+
+(defn- load-dotenv!
+  "Load KEY=VALUE pairs from a .env file into system properties
+   (accessible via System/getProperty). Only sets vars not already
+   present in the real environment."
+  [path]
+  (let [f (io/file path)]
+    (when (.exists f)
+      (doseq [line (str/split-lines (slurp f))
+              :let [trimmed (str/trim line)]
+              :when (and (seq trimmed)
+                         (not (str/starts-with? trimmed "#"))
+                         (str/includes? trimmed "="))
+              :let [[k v] (str/split trimmed #"=" 2)
+                    k (str/trim k)
+                    v (-> (or v "") str/trim (str/replace #"^\"|\"$" ""))]
+              :when (and (seq k)
+                         (nil? (System/getenv k)))]
+        (System/setProperty k v)))))
+
+(defonce ^:private _dotenv-loaded
+  (load-dotenv! (str (System/getProperty "user.dir") "/.env")))
+
+(defn- env
+  "Read an environment variable, falling back to system property (from .env)."
+  [k]
+  (or (System/getenv k) (System/getProperty k)))
 
 (defn- resolve-llm-config
   "Resolve LLM config. :scripted mode uses :fake provider.
-   Default mode reads env vars and raises if missing."
+   Default mode reads env vars + .env fallback and raises if missing.
+   :real mode reads only real env vars (no .env) — used by tests to verify
+   the no-silent-fallback requirement."
   [opts scripted-responses]
-  (if (= :scripted (:mode opts))
-    {:provider :fake :responses scripted-responses}
-    (let [model (or (System/getenv "OPENAI_MODEL")
-                    (System/getenv "CANTRIP_OPENAI_MODEL"))
-          api-key (or (System/getenv "OPENAI_API_KEY")
-                      (System/getenv "CANTRIP_OPENAI_API_KEY"))
-          base-url (or (System/getenv "OPENAI_BASE_URL")
-                       (System/getenv "CANTRIP_OPENAI_BASE_URL")
+  (case (:mode opts)
+    :scripted {:provider :fake :responses scripted-responses}
+    :real (let [model (or (System/getenv "OPENAI_MODEL")
+                          (System/getenv "CANTRIP_OPENAI_MODEL"))
+                api-key (or (System/getenv "OPENAI_API_KEY")
+                            (System/getenv "CANTRIP_OPENAI_API_KEY"))
+                base-url (or (System/getenv "OPENAI_BASE_URL")
+                             (System/getenv "CANTRIP_OPENAI_BASE_URL")
+                             "https://api.openai.com/v1")]
+            (when-not model
+              (throw (ex-info "Missing OPENAI_MODEL env var" {:rule "ENV-1"})))
+            (when-not api-key
+              (throw (ex-info "Missing OPENAI_API_KEY env var" {:rule "ENV-1"})))
+            {:provider :openai :model model :api-key api-key :base-url base-url})
+    ;; default: use env vars + .env fallback
+    (let [model (or (env "OPENAI_MODEL")
+                    (env "CANTRIP_OPENAI_MODEL"))
+          api-key (or (env "OPENAI_API_KEY")
+                      (env "CANTRIP_OPENAI_API_KEY"))
+          base-url (or (env "OPENAI_BASE_URL")
+                       (env "CANTRIP_OPENAI_BASE_URL")
                        "https://api.openai.com/v1")]
       (when-not model
-        (throw (ex-info "Missing OPENAI_MODEL env var" {:rule "ENV-1"})))
+        (throw (ex-info "Missing OPENAI_MODEL env var. Set it in .env or environment." {:rule "ENV-1"})))
       (when-not api-key
-        (throw (ex-info "Missing OPENAI_API_KEY env var" {:rule "ENV-1"})))
-      {:provider :openai
-       :model model
-       :api-key api-key
-       :base-url base-url})))
+        (throw (ex-info "Missing OPENAI_API_KEY env var. Set it in .env or environment." {:rule "ENV-1"})))
+      {:provider :openai :model model :api-key api-key :base-url base-url})))
 
 (defn example-01-llm-query
   "Pattern 01: one raw LLM query. Stateless round-trip only (LLM-1, LLM-3)."
@@ -119,15 +160,16 @@
   ([{:as opts :keys [llm-config]}]
    (let [llm-cfg (if llm-config
                    llm-config
-                   (resolve-llm-config opts [{:tool-calls [{:id "c1" :gate :done :args {:answer "north region leads"}}]}
-                                             {:tool-calls [{:id "c2" :gate :done :args {:answer "services segment lags"}}]}]))
+                   (resolve-llm-config opts [{:tool-calls [{:id "c1" :gate :done :args {:answer "Paris"}}]}
+                                             {:tool-calls [{:id "c2" :gate :done :args {:answer "Tokyo"}}]}]))
          cantrip {:llm llm-cfg
-                  :identity {:system-prompt "You are a helpful assistant. You have one gate: done. Call the done gate with your answer when ready."}
+                  :identity {:system-prompt "You are a helpful assistant. You have one tool: done(answer). Call done(answer) with a one-sentence answer."
+                             :require-done-tool true}
                   :circle {:medium :conversation
                            :gates [:done]
-                           :wards [{:max-turns 3}]}}
-         first-run (runtime/cast cantrip "What is the capital of France? Answer in one word.")
-         second-run (runtime/cast cantrip "What is the capital of Japan? Answer in one word.")]
+                           :wards [{:max-turns 4}]}}
+         first-run (runtime/cast cantrip "What is the capital of France? Call done(answer) with a one-word answer.")
+         second-run (runtime/cast cantrip "What is the capital of Japan? Call done(answer) with a one-word answer.")]
      (println "04 cast statuses:" (:status first-run) (:status second-run))
      {:pattern 4
       :cantrip cantrip
@@ -178,7 +220,7 @@
                     (resolve-llm-config opts [{:tool-calls [{:id "m1" :gate :done :args {:answer "conversation solved"}}]}]))
          code-llm (if code-llm-config
                     code-llm-config
-                    (resolve-llm-config opts [{:content "(do (def trend \"upward\") (submit-answer trend))"}]))
+                    (resolve-llm-config opts [{:content "(submit-answer (str (+ 3 4)))"}]))
          conversation-run (runtime/cast
                            {:llm conv-llm
                             :identity {:system-prompt "You have two gates: echo and done. Call done with your answer when ready."}

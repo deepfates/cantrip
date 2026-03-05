@@ -324,9 +324,12 @@
   (let [tool-name (or (:name tool) (when (keyword? tool) (name tool)) (str tool))
         desc (or (:description tool) "")
         params (or (:parameters tool) {})
-        schema (if (and (map? params) (contains? params "type"))
-                 params
-                 (merge {"type" "object"} params))]
+        schema (cond-> (if (and (map? params) (or (contains? params "type") (contains? params :type)))
+                         params
+                         (merge {"type" "object"} params))
+                 ;; OpenAI requires "properties" for object schemas
+                 (not (or (contains? params "properties") (contains? params :properties)))
+                 (assoc "properties" {}))]
     {"type" "function"
      "function" {"name" tool-name
                  "description" desc
@@ -446,5 +449,7 @@
                        :fake (query-fake llm params)
                        (:openai :openai-compatible) (query-openai llm params)
                        (throw (ex-info (str "unknown llm provider: " provider)
-                                       {:provider provider})))]
-    (validate-and-normalize raw-response tool-choice previous-tool-call-ids)))
+                                       {:provider provider})))
+        ;; Skip tool_choice enforcement for :fake — real APIs enforce it server-side
+        effective-tool-choice (if (= :fake provider) :auto tool-choice)]
+    (validate-and-normalize raw-response effective-tool-choice previous-tool-call-ids)))

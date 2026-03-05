@@ -3,15 +3,16 @@
             [clojure.string :as str]))
 
 (defn- done-observation [args]
-  (if (contains? args :answer)
-    {:gate "done"
-     :arguments (pr-str args)
-     :result (:answer args)
-     :is-error false}
-    {:gate "done"
-     :arguments (pr-str args)
-     :result "missing required answer"
-     :is-error true}))
+  (let [answer (or (:answer args) (get args "answer"))]
+    (if (some? answer)
+      {:gate "done"
+       :arguments (pr-str args)
+       :result answer
+       :is-error false}
+      {:gate "done"
+       :arguments (pr-str args)
+       :result "missing required answer"
+       :is-error true})))
 
 (defn- gate-spec
   [circle gate]
@@ -92,30 +93,33 @@
              gate (gates/gate-keyword (:gate call))
              args (:args call)
              gate-name (name gate)]
-         (cond
-           (not (gates/gate-available? (:gates circle) gate))
-           (recur (rest calls)
-                  (conj observation
-                        {:gate gate-name
-                         :arguments (pr-str args)
-                         :result "gate not available"
-                         :is-error true})
-                  false
-                  nil)
-
-           (= gate :done)
-           (let [rec (done-observation args)]
-             (if (:is-error rec)
-               (recur (rest calls) (conj observation rec) false nil)
-               (recur (rest calls) (conj observation rec) true (:result rec))))
-
-           :else
-           (let [{:keys [result is-error]} (gate-observation circle gate args dependencies)]
+         (let [call-id (:id call)]
+           (cond
+             (not (gates/gate-available? (:gates circle) gate))
              (recur (rest calls)
                     (conj observation
                           {:gate gate-name
+                           :tool-call-id call-id
                            :arguments (pr-str args)
-                           :result result
-                           :is-error is-error})
+                           :result "gate not available"
+                           :is-error true})
                     false
-                    nil))))))))
+                    nil)
+
+             (= gate :done)
+             (let [rec (assoc (done-observation args) :tool-call-id call-id)]
+               (if (:is-error rec)
+                 (recur (rest calls) (conj observation rec) false nil)
+                 (recur (rest calls) (conj observation rec) true (:result rec))))
+
+             :else
+             (let [{:keys [result is-error]} (gate-observation circle gate args dependencies)]
+               (recur (rest calls)
+                      (conj observation
+                            {:gate gate-name
+                             :tool-call-id call-id
+                             :arguments (pr-str args)
+                             :result result
+                             :is-error is-error})
+                      false
+                      nil)))))))))

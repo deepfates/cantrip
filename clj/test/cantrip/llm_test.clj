@@ -29,16 +29,17 @@
                                         :tool-choice :auto
                                         :previous-tool-call-ids []}))))
 
-(deftest llm-enforces-required-tool-choice
-  (is (thrown-with-msg? clojure.lang.ExceptionInfo
-                        #"tool_choice required"
-                        (llm/query {:provider :fake
-                                        :responses [{:content "hello"}]}
-                                       {:turn-index 0
-                                        :messages []
-                                        :tools []
-                                        :tool-choice :required
-                                        :previous-tool-call-ids []}))))
+(deftest llm-fake-skips-tool-choice-enforcement
+  ;; FakeLLM should NOT enforce tool_choice :required — real APIs do this server-side.
+  ;; FakeLLM needs to return scripted responses regardless of tool_choice for testing.
+  (let [result (llm/query {:provider :fake
+                           :responses [{:content "hello"}]}
+                          {:turn-index 0
+                           :messages []
+                           :tools []
+                           :tool-choice :required
+                           :previous-tool-call-ids []})]
+    (is (= "hello" (:content result)))))
 
 (deftest llm-enforces-tool-result-linkage
   (is (thrown-with-msg? clojure.lang.ExceptionInfo
