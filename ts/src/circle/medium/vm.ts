@@ -125,7 +125,7 @@ export function vm(opts?: VmMediumOptions): Medium {
 
         const exec = (a: Record<string, unknown>) => gate.execute(a, overrides);
 
-        context[sandboxName] = async (...args: unknown[]) => {
+        const asyncFn = async (...args: unknown[]) => {
           // Single plain object arg → pass directly as args map
           if (args.length === 1 && typeof args[0] === "object" && args[0] !== null && !Array.isArray(args[0])) {
             return await exec(args[0] as Record<string, unknown>);
@@ -139,6 +139,26 @@ export function vm(opts?: VmMediumOptions): Medium {
             return await exec(argMap);
           }
           return await exec({ args });
+        };
+
+        // Wrap with a Proxy so that if entity forgets `await`, property access
+        // on the bare Promise gives a helpful error instead of silent `{}`.
+        context[sandboxName] = (...args: unknown[]) => {
+          const promise = asyncFn(...args);
+          return new Proxy(promise, {
+            get(target, prop, _receiver) {
+              if (prop === "then" || prop === "catch" || prop === "finally") {
+                return (target as any)[prop].bind(target);
+              }
+              if (typeof prop === "symbol") {
+                return Reflect.get(target, prop);
+              }
+              throw new Error(
+                `${sandboxName}() is async — you must use \`await ${sandboxName}(...)\`. ` +
+                `Got a Promise instead of a value because \`await\` was missing.`
+              );
+            },
+          });
         };
       }
 

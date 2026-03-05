@@ -120,7 +120,7 @@ The host functions section above documents cantrip(), cast(), cast_batch(), and 
 Each cast() invokes an LLM — be cost-aware. Here are the patterns:
 
   // Shell work — child runs in bash, you get the result back
-  const worker = cantrip({
+  const worker = await cantrip({
     llm: "anthropic/claude-haiku-4.5",
     identity: "Execute the command and report output. Use submit_answer <result> when done.",
     circle: { medium: "bash", medium_opts: { cwd: "${repoRoot}" }, gates: ["done"], wards: [{ max_turns: 5 }] }
@@ -128,7 +128,7 @@ Each cast() invokes an LLM — be cost-aware. Here are the patterns:
   const output = await cast(worker, "Run the test suite and summarize failures");
 
   // Thinking — leaf cantrip, no medium, single LLM call
-  const thinker = cantrip({ llm: "anthropic/claude-haiku-4.5", identity: "You analyze code." });
+  const thinker = await cantrip({ llm: "anthropic/claude-haiku-4.5", identity: "You analyze code." });
   const analysis = await cast(thinker, "Here's a function:\\n" + code + "\\nWhat bugs do you see?");
 
   // Compose in code — loops, conditionals, pipelines
@@ -136,17 +136,18 @@ Each cast() invokes an LLM — be cost-aware. Here are the patterns:
   for (const file of files) {
     const src = await repo_read(file);
     if (src.includes("TODO")) {
-      const reviewer = cantrip({ llm: "anthropic/claude-haiku-4.5", identity: "Find TODOs and assess priority." });
+      const reviewer = await cantrip({ llm: "anthropic/claude-haiku-4.5", identity: "Find TODOs and assess priority." });
       const review = await cast(reviewer, file + ":\\n" + src);
       console.log(file + ": " + review);
     }
   }
 
   // Parallel fan-out — cast_batch fires N cantrips concurrently on the host
-  const handles = files.map(f => ({
-    cantrip: cantrip({ llm: "anthropic/claude-haiku-4.5", identity: "Summarize this file." }),
-    intent: f  // or pre-read content
-  }));
+  const handles = [];
+  for (const f of files) {
+    const h = await cantrip({ llm: "anthropic/claude-haiku-4.5", identity: "Summarize this file." });
+    handles.push({ cantrip: h, intent: f });
+  }
   const summaries = await cast_batch(handles);  // all N run in parallel, returns string[]
 
 **Available llms:** Any model ID — "anthropic/claude-haiku-4.5", "anthropic/claude-sonnet-4-5", etc.
