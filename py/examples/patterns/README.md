@@ -1,21 +1,19 @@
-# Pattern Examples
+# Grimoire Teaching Examples
 
-Run all examples through tests:
+12 examples following the grimoire progression (SPEC.md Appendix A).
 
-```bash
-pytest -q tests/patterns/test_pattern_examples.py
-```
-
-Run all pattern modules directly:
+## Run tests
 
 ```bash
-bash scripts/run_patterns.sh
+cd py && uv run pytest tests/patterns/test_grimoire_examples.py -q
 ```
 
-Run one or more specific patterns:
+## Run a single example
 
 ```bash
-bash scripts/run_patterns.sh 01_primitive_loop 16_familiar_pattern
+cd py && uv run python -m examples.patterns.01_llm_query
 ```
 
-Each module exposes `run()` and returns a small dictionary describing the pattern result.
+Each module exposes `run(llm=None)` and returns a dict with pattern results and metadata.
+Set `CANTRIP_OPENAI_MODEL` and `CANTRIP_OPENAI_BASE_URL` env vars for real LLM mode;
+otherwise falls back to FakeLLM with scripted responses.
