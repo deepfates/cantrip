@@ -8,7 +8,7 @@
             [cantrip.runtime :as runtime]))
 
 (defn example-01-llm-query
-  "Pattern 01: one raw LLM query. Stateless round-trip only."
+  "Pattern 01: one raw LLM query. Stateless round-trip only (LLM-1, LLM-3)."
   ([] (example-01-llm-query {}))
   ([{:keys [llm-config]}]
    (let [llm-cfg (or llm-config
@@ -27,7 +27,7 @@
       :response response})))
 
 (defn example-02-gate
-  "Pattern 02: gates are callable functions with metadata; done is special."
+  "Pattern 02: gates are callable functions with metadata; done is special (CIRCLE-1, LOOP-3, LOOP-7)."
   []
   (let [gate-list [{:name :echo
                     :parameters {:type "object"
@@ -55,7 +55,7 @@
      :malformed-done malformed-done}))
 
 (defn example-03-circle
-  "Pattern 03: circle construction and invariant failures (CIRCLE-1, CIRCLE-2)."
+  "Pattern 03: circle construction and invariant failures (CIRCLE-1, CIRCLE-2, CANTRIP-1)."
   []
   (let [valid-cantrip {:llm {:provider :fake :responses []}
                        :identity {:system-prompt "Circle validator"}
@@ -89,7 +89,7 @@
      :missing-wards missing-wards}))
 
 (defn example-04-cantrip
-  "Pattern 04: cantrip = llm + identity + circle; each cast is independent."
+  "Pattern 04: cantrip = llm + identity + circle; each cast is independent (CANTRIP-1, CANTRIP-2, INTENT-1)."
   ([] (example-04-cantrip {}))
   ([{:keys [llm-config]}]
    (let [llm-cfg (or llm-config
@@ -110,7 +110,7 @@
       :independent-entity-ids (not= (:entity-id first-run) (:entity-id second-run))})))
 
 (defn example-05-wards
-  "Pattern 05: ward composition law (min for numeric, OR for boolean) + truncation."
+  "Pattern 05: ward composition law (min for numeric, OR for boolean) + truncation (WARD-1, CIRCLE-2)."
   ([] (example-05-wards {}))
   ([{:keys [llm-config]}]
    (let [ward-stack [{:max-turns 50}
@@ -137,7 +137,7 @@
       :run run})))
 
 (defn example-06-medium
-  "Pattern 06: same gates, different medium; action space changes (A = M ∪ G − W)."
+  "Pattern 06: same gates, different medium; action space changes A = M ∪ G − W (CIRCLE-12, MEDIUM-1, MEDIUM-2)."
   ([] (example-06-medium {}))
   ([{:keys [conversation-llm-config code-llm-config]}]
    (let [gates [:done :echo]
@@ -166,7 +166,7 @@
       :code {:view code-view :run code-run}})))
 
 (defn example-07-full-agent
-  "Pattern 07: code medium + real gates; error steers next turn and state accumulates."
+  "Pattern 07: code medium + real gates; error steers next turn and state accumulates (MEDIUM-2, LOOP-1, LOOP-3)."
   ([] (example-07-full-agent {}))
   ([{:keys [llm-config]}]
    (let [llm-cfg (or llm-config
@@ -194,7 +194,7 @@
       :observations observations})))
 
 (defn example-08-folding
-  "Pattern 08: folding compresses old turns in context; loom still keeps full history."
+  "Pattern 08: folding compresses old turns in context; loom still keeps full history (LOOM-5, LOOM-6, PROD-4)."
   ([] (example-08-folding {}))
   ([{:keys [llm-config]}]
    (let [invocations (atom [])
@@ -226,23 +226,30 @@
       :folding-markers (vec folding-markers)})))
 
 (defn example-09-composition
-  "Pattern 09: parent delegates to children; batch delegation runs multiple child casts."
-  []
-  (let [parent (runtime/summon
-                {:llm {:provider :fake
-                       :responses [{:tool-calls [{:id "p1" :gate :done :args {:answer "parent ready"}}]}]}
+  "Pattern 09: parent delegates to children; batch delegation runs multiple child casts (COMP-1, COMP-3, LOOM-8)."
+  ([] (example-09-composition {}))
+  ([{:keys [llm-config]}]
+  (let [parent-llm (or llm-config
+                       {:provider :fake
+                        :responses [{:tool-calls [{:id "p1" :gate :done :args {:answer "parent ready"}}]}]})
+        child-conv-llm (or llm-config
+                           {:provider :fake
+                            :responses [{:tool-calls [{:id "c1" :gate :done :args {:answer "child-conversation"}}]}]})
+        child-code-llm (or llm-config
+                           {:provider :fake
+                            :responses [{:content "(submit-answer \"child-code\")"}]})
+        parent (runtime/summon
+                {:llm parent-llm
                  :identity {:system-prompt "Parent coordinator"}
                  :circle {:medium :conversation
                           :gates [:done]
                           :wards [{:max-turns 3} {:max-depth 3}]}})
-        child-conversation {:llm {:provider :fake
-                                  :responses [{:tool-calls [{:id "c1" :gate :done :args {:answer "child-conversation"}}]}]}
+        child-conversation {:llm child-conv-llm
                             :identity {:system-prompt "Child conversation identity"}
                             :circle {:medium :conversation
                                      :gates [:done]
                                      :wards [{:max-turns 2}]}}
-        child-code {:llm {:provider :fake
-                          :responses [{:content "(submit-answer \"child-code\")"}]}
+        child-code {:llm child-code-llm
                     :identity {:system-prompt "Child code identity"
                                :require-done-tool true}
                     :circle {:medium :code
@@ -254,10 +261,10 @@
     (println "09 composition child statuses:" (:status single) (mapv :status batch))
     {:single single
      :batch batch
-     :parent-state (runtime/entity-state parent)}))
+     :parent-state (runtime/entity-state parent)})))
 
 (defn example-10-loom
-  "Pattern 10: inspect loom as the key artifact after a run."
+  "Pattern 10: inspect loom as the key artifact after a run (LOOM-1, LOOM-3, LOOM-7)."
   ([] (example-10-loom {}))
   ([{:keys [llm-config]}]
    (let [run (runtime/cast {:llm (or llm-config
@@ -287,7 +294,7 @@
       :run run})))
 
 (defn example-11-persistent-entity
-  "Pattern 11: summon once, send twice; state accumulates across sends."
+  "Pattern 11: summon once, send twice; state accumulates across sends (ENTITY-5, ENTITY-6)."
   ([] (example-11-persistent-entity {}))
   ([{:keys [llm-config]}]
    (let [entity (runtime/summon
@@ -309,7 +316,7 @@
       :state state})))
 
 (defn example-12-familiar
-  "Pattern 12: familiar delegates to child cantrips with different mediums/llms and keeps memory."
+  "Pattern 12: familiar delegates to child cantrips with different mediums/llms and keeps memory (COMP-7, LOOM-8, LOOM-12)."
   ([] (example-12-familiar {}))
   ([{:keys [llm-config]}]
    (let [parent-llm (or llm-config
@@ -343,14 +350,16 @@
       :state state})))
 
 (defn example-13-acp
-  "Optional adapter pattern: ACP router on summon/send lifecycle."
-  []
-  (let [cantrip {:llm {:provider :fake
-                       :responses [{:tool-calls [{:id "a1" :gate :done :args {:answer "acp-result"}}]}]}
-                 :identity {:system-prompt "ACP demo"}
-                 :circle {:medium :conversation
-                          :gates [:done]
-                          :wards [{:max-turns 2}]}}
+  "Optional adapter pattern: ACP router on summon/send lifecycle (PROD-6, PROD-7)."
+  ([] (example-13-acp {}))
+  ([{:keys [llm-config]}]
+   (let [cantrip {:llm (or llm-config
+                            {:provider :fake
+                             :responses [{:tool-calls [{:id "a1" :gate :done :args {:answer "acp-result"}}]}]})
+                  :identity {:system-prompt "ACP demo"}
+                  :circle {:medium :conversation
+                           :gates [:done]
+                           :wards [{:max-turns 2}]}}
         [router-1 _ _] (acp/handle-request (acp/new-router cantrip)
                                            {:jsonrpc "2.0" :id "1" :method "initialize" :params {:protocolVersion 1}})
         [router-2 session-res _] (acp/handle-request router-1
@@ -361,7 +370,7 @@
                                               :params {:sessionId session-id
                                                        :prompt "Analyze regional trend and respond."}})]
     {:session-id session-id
-     :response prompt-res}))
+     :response prompt-res})))
 
 (def pattern-notes
   {"01" {:fn #'example-01-llm-query :rules ["LLM-1" "LLM-3"]}
