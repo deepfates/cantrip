@@ -1,5 +1,5 @@
 (ns cantrip.runtime
-  (:refer-clojure :exclude [cast])
+  (:refer-clojure :exclude [cast send])
   (:require [cantrip.llm :as llm]
             [cantrip.domain :as domain]
             [cantrip.gates :as gates]
