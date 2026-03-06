@@ -17,19 +17,15 @@ import { TaskComplete } from "../entity/errors";
 import { executeToolCall, extractScreenshot } from "../entity/runtime";
 import type { Medium } from "./medium";
 import { done, done_for_medium } from "./gate/builtin/done";
+import type { GateCallRecord } from "../loom/turn";
 
-/** A gate call record produced by circle.execute(). */
-export type CircleGateCall = {
-  gate_name: string;
-  arguments: string;
-  result: string;
-  is_error: boolean;
-};
+/** @deprecated Use GateCallRecord instead. */
+export type CircleGateCall = GateCallRecord;
 
 /** Result of circle.execute(). */
 export type CircleExecuteResult = {
   messages: ToolMessage[];
-  gate_calls: CircleGateCall[];
+  gate_calls: GateCallRecord[];
   done?: string;
 };
 
@@ -228,7 +224,7 @@ export function Circle(opts: {
       const emit = on_event ?? (() => {});
 
       const messages: ToolMessage[] = [];
-      const gate_calls: CircleGateCall[] = [];
+      const gate_calls: GateCallRecord[] = [];
       const observationParts: string[] = [];
 
       let stepNumber = 0;

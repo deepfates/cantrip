@@ -5,13 +5,6 @@
 (defn- has-done-gate? [circle]
   (gates/gate-available? (:gates circle) :done))
 
-(defn- has-truncation-ward? [circle]
-  (boolean
-   (some #(or (contains? % :max-turns)
-              (contains? % :timeout-ms)
-              (contains? % :max-tokens))
-         (:wards circle))))
-
 (defn- ward-value
   [ward k]
   (or (get ward k)
@@ -21,6 +14,13 @@
   [ward k]
   (or (contains? ward k)
       (contains? ward (keyword (str/replace (name k) "-" "_")))))
+
+(defn- has-truncation-ward? [circle]
+  (boolean
+   (some #(or (ward-has-key? % :max-turns)
+              (ward-has-key? % :timeout-ms)
+              (ward-has-key? % :max-tokens))
+         (:wards circle))))
 
 (defn- positive-int?
   [n]

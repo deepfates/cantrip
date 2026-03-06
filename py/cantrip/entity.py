@@ -6,6 +6,7 @@ import copy
 from typing import Any
 from uuid import uuid4
 
+from ._utils import compose_intent as _compose_intent
 from .models import Thread, Turn
 
 
@@ -25,16 +26,11 @@ class Entity:
 
     def send(self, intent: str, *, compose_intent: bool = True, **kwargs: Any) -> Any:
         """Send an intent to this entity. State accumulates across calls."""
-        composed_intent = intent
-        if compose_intent and self._transcript:
-            lines = ["Conversation so far:"]
-            for user_msg, assistant_msg in self._transcript[-8:]:
-                lines.append(f"User: {user_msg}")
-                if assistant_msg:
-                    lines.append(f"Assistant: {assistant_msg}")
-            lines.append(f"User: {intent}")
-            lines.append("Assistant:")
-            composed_intent = "\n".join(lines)
+        composed_intent = (
+            _compose_intent(self._transcript, intent)
+            if compose_intent
+            else intent
+        )
 
         result, thread = self._cantrip.cast_with_thread(
             intent=composed_intent, seed_turns=self._seed_turns, **kwargs

@@ -4,6 +4,7 @@ defmodule Cantrip.EntityServer do
   """
 
   alias Cantrip.{Circle, CodeMedium, LLM, Loom}
+  alias Cantrip.LLMs.Helpers
 
   use GenServer, restart: :temporary
 
@@ -155,8 +156,8 @@ defmodule Cantrip.EntityServer do
               utterance: %{content: nil, tool_calls: []},
               observation: [%{gate: "llm", result: message, is_error: true}],
               gate_calls: ["llm"],
-              terminated: true,
-              truncated: false,
+              terminated: false,
+              truncated: true,
               metadata: %{
                 tokens_prompt: 0,
                 tokens_completion: 0,
@@ -168,7 +169,7 @@ defmodule Cantrip.EntityServer do
           meta = %{
             entity_id: state.entity_id,
             turns: state.turns + 1,
-            terminated: true,
+            truncated: true,
             cumulative_usage: state.usage
           }
 
@@ -499,7 +500,8 @@ defmodule Cantrip.EntityServer do
   end
 
   defp execute_call_entity(state, opts) do
-    requested = opts[:gates] || opts["gates"] || Circle.gate_names(state.cantrip.circle)
+    opts = Helpers.atomize_known_keys(opts)
+    requested = opts[:gates] || Circle.gate_names(state.cantrip.circle)
     requested = Enum.map(requested, &to_string/1)
     maybe_call_child(state, opts, requested)
   end
@@ -513,7 +515,18 @@ defmodule Cantrip.EntityServer do
         observation: %{gate: "call_entity", result: "max_depth exceeded", is_error: true}
       }
     else
-      child_intent = opts[:intent] || opts["intent"] || ""
+      raw_intent = opts[:intent] || ""
+      # If context is provided, prepend it to the intent so the child sees it.
+      context = opts[:context]
+      child_intent =
+        if context do
+          ctx_str = if is_binary(context), do: context, else: Jason.encode!(context)
+          "Context: #{ctx_str}\n\nTask: #{raw_intent}"
+        else
+          raw_intent
+        end
+      # If system_prompt is provided, override child identity.
+      child_system_prompt = opts[:system_prompt]
       child_wards = normalize_child_wards(opts)
       composed_wards = Circle.compose_wards(state.cantrip.circle.wards, child_wards)
       requested_gates = Enum.uniq(requested_gates ++ ["done"])
@@ -539,6 +552,13 @@ defmodule Cantrip.EntityServer do
           llm_state: child_state,
           circle: child_circle
       }
+      # Use request's system_prompt if provided; otherwise give children
+      # a generic prompt so they don't inherit parent's delegation instructions.
+      effective_child_prompt =
+        child_system_prompt ||
+        "You are a child entity. Pursue the intent and call done with the result."
+      child_cantrip =
+        %{child_cantrip | identity: %{child_cantrip.identity | system_prompt: effective_child_prompt}}
 
       cancel_on_parent = [self() | state.cancel_on_parent] |> Enum.uniq()
 
@@ -580,7 +600,7 @@ defmodule Cantrip.EntityServer do
   end
 
   defp choose_child_llm(state, opts) do
-    case opts[:llm] || opts["llm"] do
+    case opts[:llm] do
       {module, child_state} when is_atom(module) -> {module, child_state}
       _ -> current_child_llm(state)
     end
@@ -603,14 +623,17 @@ defmodule Cantrip.EntityServer do
       msg = "batch too large: #{length(opts_list)} > #{max_batch}"
       %{value: msg, observation: %{gate: "call_entity_batch", result: msg, is_error: true}}
     else
+      # Normalize all opts in the batch so downstream code sees atom keys.
+      opts_list = Enum.map(opts_list, &Helpers.atomize_known_keys/1)
+
       payloads =
-        if Enum.all?(opts_list, &(Map.has_key?(&1, :llm) or Map.has_key?(&1, "llm"))) do
+        if Enum.all?(opts_list, &Map.has_key?(&1, :llm)) do
           opts_list
           |> Task.async_stream(
             fn opts -> execute_call_entity(state, opts) end,
             ordered: true,
             max_concurrency: max_concurrency,
-            timeout: 30_000
+            timeout: 120_000
           )
           |> Enum.map(fn
             {:ok, payload} ->
@@ -782,7 +805,7 @@ defmodule Cantrip.EntityServer do
   defp normalize_cancel_parents(_), do: []
 
   defp normalize_child_wards(opts) do
-    case opts[:wards] || opts["wards"] do
+    case opts[:wards] do
       wards when is_list(wards) -> wards
       _ -> []
     end

@@ -22,20 +22,33 @@
     (sequential? gates) (mapv gate-name gates)
     :else []))
 
+(def ^:private done-parameters
+  "Default schema for the done gate so LLMs know answer is required."
+  {:type "object"
+   :properties {:answer {:type "string" :description "Your final answer"}}
+   :required ["answer"]})
+
+(defn- default-parameters [gate-id]
+  (if (= "done" gate-id) done-parameters {}))
+
 (defn gate-tools
   "Projects gate definitions into llm tool metadata."
   [gates]
   (cond
     (map? gates) (mapv (fn [[k v]]
-                         (merge {:name (gate-name k)}
-                                (when (map? v)
-                                  {:parameters (or (:parameters v) {})})))
+                         (let [gname (gate-name k)]
+                           {:name gname
+                            :parameters (if (map? v)
+                                          (or (:parameters v) (default-parameters gname))
+                                          (default-parameters gname))}))
                        gates)
     (sequential? gates) (mapv (fn [gate]
-                                (cond
-                                  (map? gate) {:name (gate-name gate)
-                                               :parameters (or (:parameters gate) {})}
-                                  :else {:name (gate-name gate)}))
+                                (let [gname (gate-name gate)]
+                                  (if (map? gate)
+                                    {:name gname
+                                     :parameters (or (:parameters gate) (default-parameters gname))}
+                                    {:name gname
+                                     :parameters (default-parameters gname)})))
                               gates)
     :else []))
 

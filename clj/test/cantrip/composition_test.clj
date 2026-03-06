@@ -65,4 +65,3 @@
     (is (= :error (:status child-result)))
     (is (= :terminated (:status parent-result)))
     (is (= "parent-1" (:result parent-result)))))
-(ns cantrip.composition-test)

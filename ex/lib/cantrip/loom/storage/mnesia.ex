@@ -2,6 +2,7 @@ defmodule Cantrip.Loom.Storage.Mnesia do
   @moduledoc false
 
   @behaviour Cantrip.Loom.Storage
+  import Cantrip.LLMs.Helpers, only: [normalize_opts: 1]
 
   @impl true
   def init(opts) do
@@ -113,9 +114,6 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     end
   end
 
-  defp normalize_opts(opts) when is_map(opts), do: opts
-  defp normalize_opts(opts) when is_list(opts), do: Map.new(opts)
-  defp normalize_opts(_), do: %{}
 
   defp default_table do
     :"cantrip_loom_mnesia_#{System.unique_integer([:positive])}"

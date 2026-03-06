@@ -5,6 +5,8 @@ defmodule Cantrip.LLMs.Gemini do
   Supports Gemini models via the AI Studio `generativelanguage.googleapis.com` endpoint.
   """
 
+  alias Cantrip.LLMs.Helpers
+
   @behaviour Cantrip.LLM
 
   @default_base_url "https://generativelanguage.googleapis.com"
@@ -20,7 +22,7 @@ defmodule Cantrip.LLMs.Gemini do
         {:ok, normalize_body(body), state}
 
       {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, %{status: status, message: extract_error(body)}, state}
+        {:error, %{status: status, message: Helpers.extract_error(body)}, state}
 
       {:error, reason} ->
         {:error, %{status: nil, message: inspect(reason)}, state}
@@ -85,15 +87,16 @@ defmodule Cantrip.LLMs.Gemini do
 
   defp normalize_contents(messages) do
     messages
+    |> Enum.map(&Helpers.normalize_message/1)
     |> Enum.map(&format_content/1)
     |> merge_consecutive_roles()
   end
 
   defp format_content(message) do
     role = content_role(message)
-    tool_calls = Map.get(message, :tool_calls) || []
-    tool_call_id = Map.get(message, :tool_call_id)
-    content = Map.get(message, :content)
+    tool_calls = message[:tool_calls] || []
+    tool_call_id = message[:tool_call_id]
+    content = message[:content]
 
     cond do
       role == "model" and tool_calls != [] ->
@@ -106,8 +109,8 @@ defmodule Cantrip.LLMs.Gemini do
           Enum.map(tool_calls, fn tc ->
             %{
               functionCall: %{
-                name: tc[:gate] || tc["gate"],
-                args: tc[:args] || tc["args"] || %{}
+                name: tc[:gate],
+                args: tc[:args] || %{}
               }
             }
           end)
@@ -115,7 +118,7 @@ defmodule Cantrip.LLMs.Gemini do
         %{role: "model", parts: text_parts ++ fc_parts}
 
       is_binary(tool_call_id) ->
-        gate = Map.get(message, :gate) || tool_call_id
+        gate = message[:gate] || tool_call_id
 
         %{
           role: "user",
@@ -135,16 +138,10 @@ defmodule Cantrip.LLMs.Gemini do
   end
 
   defp content_role(message) do
-    role = Map.get(message, :role) || Map.get(message, "role") || :user
-
-    case role do
+    case message[:role] do
       :assistant -> "model"
       :tool -> "user"
       :system -> "user"
-      "assistant" -> "model"
-      "tool" -> "user"
-      "system" -> "user"
-      "model" -> "model"
       _ -> "user"
     end
   end
@@ -160,10 +157,12 @@ defmodule Cantrip.LLMs.Gemini do
 
   defp normalize_tools(tools) do
     Enum.map(tools, fn tool ->
+      tool = Helpers.normalize_tool_spec(tool)
+
       %{
-        name: tool[:name] || tool["name"],
-        description: tool[:description] || tool["description"] || "",
-        parameters: tool[:parameters] || tool["parameters"] || %{type: "object", properties: %{}}
+        name: tool[:name],
+        description: tool[:description] || "",
+        parameters: tool[:parameters] || %{type: "object", properties: %{}}
       }
     end)
   end
@@ -205,7 +204,7 @@ defmodule Cantrip.LLMs.Gemini do
 
     %{
       content: content,
-      code: extract_code(content),
+      code: Helpers.extract_code(content),
       tool_calls: tool_calls,
       usage: %{
         prompt_tokens: usage["promptTokenCount"] || 0,
@@ -216,17 +215,4 @@ defmodule Cantrip.LLMs.Gemini do
     }
   end
 
-  defp extract_code(content) when not is_binary(content), do: nil
-
-  defp extract_code(content) do
-    text = String.trim(content)
-
-    case Regex.run(~r/```(?:elixir)?\s*\n([\s\S]*?)\n```/i, text) do
-      [_, code] -> String.trim(code)
-      _ -> text
-    end
-  end
-
-  defp extract_error(%{"error" => %{"message" => message}}) when is_binary(message), do: message
-  defp extract_error(body), do: inspect(body)
 end

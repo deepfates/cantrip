@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from cantrip._utils import compose_intent
 from cantrip.entity import Entity
 from cantrip.runtime import Cantrip
 
@@ -54,7 +55,7 @@ class CantripACPServer:
             raise KeyError(f"unknown session: {session_id}")
 
         prior_turn_count = len(state.entity.turns)
-        composed_intent = self._compose_intent(state, intent)
+        composed_intent = compose_intent(state.transcript, intent)
         state.cancel_requested = False
         started = time.perf_counter()
         result = state.entity.send(
@@ -155,19 +156,6 @@ class CantripACPServer:
             return False
         state.cancel_requested = True
         return True
-
-    def _compose_intent(self, state: _SessionState, intent: str) -> str:
-        if not state.transcript:
-            return intent
-
-        lines = ["Conversation so far:"]
-        for user_msg, assistant_msg in state.transcript[-8:]:
-            lines.append(f"User: {user_msg}")
-            if assistant_msg:
-                lines.append(f"Assistant: {assistant_msg}")
-        lines.append(f"User: {intent}")
-        lines.append("Assistant:")
-        return "\n".join(lines)
 
     def _events_from_thread(
         self, thread, result: Any, *, start_turn_index: int = 0

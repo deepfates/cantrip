@@ -8,12 +8,11 @@ defmodule Cantrip.CodeMedium do
   """
 
   alias Cantrip.Circle
+  import Cantrip.LLMs.Helpers, only: [normalize_opts: 1]
 
   @reserved_bindings [
     :done,
     :call_entity,
-    :call_entity,
-    :call_entity_batch,
     :call_entity_batch,
     :compile_and_load
   ]
@@ -89,7 +88,6 @@ defmodule Cantrip.CodeMedium do
       user_binding
       |> Keyword.put(:done, done_fun)
       |> Keyword.put(:call_entity, call_entity_fun)
-      |> Keyword.put(:call_entity, call_entity_fun)
       |> put_circle_gate_bindings(runtime)
 
     binding =
@@ -104,9 +102,7 @@ defmodule Cantrip.CodeMedium do
             payload.value
           end
 
-          binding
-          |> Keyword.put(:call_entity_batch, call_entity_batch_fun)
-          |> Keyword.put(:call_entity_batch, call_entity_batch_fun)
+          Keyword.put(binding, :call_entity_batch, call_entity_batch_fun)
       end
 
     case Map.get(runtime, :compile_and_load) do
@@ -161,9 +157,6 @@ defmodule Cantrip.CodeMedium do
     end
   end
 
-  defp normalize_opts(opts) when is_map(opts), do: opts
-  defp normalize_opts(opts) when is_list(opts), do: Map.new(opts)
-  defp normalize_opts(_), do: %{}
 
   defp normalize_batch(opts) when is_list(opts) do
     Enum.map(opts, &normalize_opts/1)

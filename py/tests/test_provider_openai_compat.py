@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from cantrip.errors import CantripError
+from cantrip.errors import CantripError, ProviderError, ProviderTimeout, ProviderTransportError
 from cantrip.providers.openai_compat import OpenAICompatLLM
 
 
@@ -70,8 +70,10 @@ def test_openai_compat_raises_provider_error(monkeypatch: pytest.MonkeyPatch) ->
         model="gpt-test", base_url="https://example.com", api_key="x"
     )
 
-    with pytest.raises(CantripError, match=r"provider_error:429:rate limit"):
+    with pytest.raises(ProviderError) as exc_info:
         c.query(messages=[{"role": "user", "content": "x"}], tools=[], tool_choice=None)
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.message == "rate limit"
 
 
 def test_openai_compat_raises_provider_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -85,8 +87,9 @@ def test_openai_compat_raises_provider_timeout(monkeypatch: pytest.MonkeyPatch) 
         model="gpt-test", base_url="https://example.com", api_key="x"
     )
 
-    with pytest.raises(CantripError, match=r"provider_timeout:timed out"):
+    with pytest.raises(ProviderTimeout) as exc_info:
         c.query(messages=[{"role": "user", "content": "x"}], tools=[], tool_choice=None)
+    assert "timed out" in exc_info.value.message
 
 
 def test_openai_compat_raises_provider_transport_error(
@@ -102,8 +105,9 @@ def test_openai_compat_raises_provider_transport_error(
         model="gpt-test", base_url="https://example.com", api_key="x"
     )
 
-    with pytest.raises(CantripError, match=r"provider_transport_error:conn reset"):
+    with pytest.raises(ProviderTransportError) as exc_info:
         c.query(messages=[{"role": "user", "content": "x"}], tools=[], tool_choice=None)
+    assert "conn reset" in exc_info.value.message
 
 
 def test_tool_description_is_sent(monkeypatch) -> None:

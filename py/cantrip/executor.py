@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -24,6 +25,153 @@ class CodeExecutor:
         self, source: str, call_gate: Callable[[str, Any], Any]
     ) -> CodeExecResult:
         raise NotImplementedError
+
+
+# Builtins ward for InProcessPythonExecutor.
+# Per the spec, wards are subtractive: start with everything, remove what's
+# dangerous.  This set is subtracted from Python's full builtins.
+_BUILTIN_WARDS: set[str] = {
+    "__import__",   # module loading — primary host-escape vector
+    "open",         # filesystem access
+    "eval",         # code evaluation (entity already has exec via the medium)
+    "exec",         # code execution
+    "compile",      # code compilation
+    "input",        # stdin access
+    "breakpoint",   # debugger
+    "exit",         # process termination
+    "quit",         # process termination
+    "help",         # interactive help (blocks on stdin)
+    "globals",      # frame introspection
+    "locals",       # frame introspection
+    "vars",         # frame introspection
+    "copyright",    # interactive repl artifact
+    "credits",      # interactive repl artifact
+    "license",      # interactive repl artifact
+}
+_raw_builtins: dict[str, Any] = (
+    __builtins__ if isinstance(__builtins__, dict)  # type: ignore[union-attr]
+    else {k: getattr(__builtins__, k) for k in dir(__builtins__)}
+)
+_WARDED_BUILTINS: dict[str, Any] = {
+    k: v for k, v in _raw_builtins.items() if k not in _BUILTIN_WARDS
+}
+
+
+class _DoneSignal(BaseException):
+    """Internal signal raised when done() is called to stop execution."""
+
+    pass
+
+
+class InProcessPythonExecutor(CodeExecutor):
+    """Runs entity-written Python via exec() with gate functions injected.
+
+    Not a security boundary — builtins are warded (see _BUILTIN_WARDS) but
+    CPython exec() is escapable via subclass traversal.  For process-level
+    isolation use SubprocessPythonExecutor (which trades away delegation gates).
+
+    Available functions in entity code: done(answer), call_entity(req_dict),
+    call_entity_batch(req_list), call_gate(name, args).  Variables persist
+    across turns via self.env.
+
+    Timeout is best-effort: on expiry the turn stops but the background thread
+    may continue until process exit (CPython threads cannot be killed).
+    """
+
+    def __init__(self, timeout_s: float = 5.0) -> None:
+        self.env: dict[str, Any] = {}
+        self.timeout_s = timeout_s
+
+    def execute(
+        self, source: str, call_gate: Callable[[str, Any], Any]
+    ) -> CodeExecResult:
+        obs: list[Any] = []
+        result = None
+        is_done = False
+
+        def done(answer: Any) -> Any:
+            nonlocal result, is_done
+            rec = call_gate("done", {"answer": answer})
+            obs.append(rec)
+            if rec.is_error:
+                raise RuntimeError(rec.content)
+            result = rec.result
+            is_done = True
+            raise _DoneSignal()
+
+        def call_entity(req: dict[str, Any]) -> Any:
+            rec = call_gate("call_entity", req)
+            obs.append(rec)
+            if rec.is_error:
+                raise RuntimeError(rec.content)
+            return rec.result
+
+        def call_entity_batch(reqs: list[dict[str, Any]]) -> Any:
+            rec = call_gate("call_entity_batch", reqs)
+            obs.append(rec)
+            if rec.is_error:
+                raise RuntimeError(rec.content)
+            return rec.result
+
+        # Capture print() output
+        captured_print = io.StringIO()
+
+        def safe_print(*args: Any, **kwargs: Any) -> None:
+            kwargs.pop("file", None)
+            print(*args, file=captured_print, **kwargs)
+
+        def _call_gate(gate_name: str, arguments: Any = None) -> Any:
+            rec = call_gate(gate_name, arguments or {})
+            obs.append(rec)
+            if rec.is_error:
+                raise RuntimeError(rec.content)
+            return rec.result
+
+        namespace: dict[str, Any] = {
+            **self.env,
+            "done": done,
+            "call_entity": call_entity,
+            "call_entity_batch": call_entity_batch,
+            "call_gate": _call_gate,
+            "print": safe_print,
+        }
+
+        warded_builtins = dict(_WARDED_BUILTINS)
+        warded_builtins["print"] = safe_print
+        namespace["__builtins__"] = warded_builtins
+
+        error_holder: dict[str, BaseException] = {}
+        finished = threading.Event()
+
+        def _run() -> None:
+            try:
+                exec(source, namespace)  # noqa: S102
+            except _DoneSignal:
+                pass
+            except BaseException as e:  # noqa: BLE001
+                error_holder["error"] = e
+            finally:
+                finished.set()
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+        thread.join(timeout=self.timeout_s)
+
+        if not finished.is_set():
+            raise RuntimeError(
+                f"code execution timed out after {self.timeout_s:.1f}s"
+            )
+
+        if "error" in error_holder:
+            raise error_holder["error"]  # type: ignore[misc]
+
+        # Persist variables for next turn (exclude injected functions)
+        _injected = {"done", "call_entity", "call_entity_batch", "call_gate", "print", "__builtins__"}
+        for k, v in namespace.items():
+            if k not in _injected:
+                self.env[k] = v
+
+        return CodeExecResult(observation=obs, result=result, done=is_done)
 
 
 class MiniCodeExecutor(CodeExecutor):

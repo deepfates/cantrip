@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 import yaml
 
-from cantrip.core import Identity, Cantrip, CantripError, Circle, FakeLLM
+from cantrip import Identity, Cantrip, CantripError, Circle, FakeLLM
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -145,6 +145,11 @@ def build_context(case: dict[str, Any]) -> dict[str, Any]:
         tool_choice=identity_cfg.get("tool_choice"),
     )
 
+    # Conformance tests use JS-like code syntax; force the mini executor.
+    medium_depends = None
+    if circle.medium == "code":
+        medium_depends = {"code": {"runner": "mini"}}
+
     cantrip = Cantrip(
         llm=main_llm,
         circle=circle,
@@ -153,6 +158,7 @@ def build_context(case: dict[str, Any]) -> dict[str, Any]:
         retry=setup.get("retry"),
         llms=llms,
         child_llm=llms.get("child_llm"),
+        medium_depends=medium_depends,
     )
 
     return {

@@ -5,6 +5,8 @@ defmodule Cantrip.LLMs.OpenAICompatible do
   Supports providers that expose a `/v1/chat/completions` endpoint.
   """
 
+  alias Cantrip.LLMs.Helpers
+
   @behaviour Cantrip.LLM
 
   @impl true
@@ -18,7 +20,7 @@ defmodule Cantrip.LLMs.OpenAICompatible do
         {:ok, normalize_body(body), state}
 
       {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, %{status: status, message: extract_error(body)}, state}
+        {:error, %{status: status, message: Helpers.extract_error(body)}, state}
 
       {:error, reason} ->
         {:error, %{status: nil, message: inspect(reason)}, state}
@@ -32,7 +34,7 @@ defmodule Cantrip.LLMs.OpenAICompatible do
       model: Map.get(state, :model),
       api_key: normalize_blank(Map.get(state, :api_key)),
       base_url: Map.get(state, :base_url, "https://api.openai.com/v1"),
-      timeout_ms: Map.get(state, :timeout_ms, 30_000),
+      timeout_ms: Map.get(state, :timeout_ms, 120_000),
       temperature: Map.get(state, :temperature)
     }
   end
@@ -52,10 +54,12 @@ defmodule Cantrip.LLMs.OpenAICompatible do
   end
 
   defp normalize_messages(messages) do
-    Enum.map(messages, fn message ->
+    messages
+    |> Enum.map(&Helpers.normalize_message/1)
+    |> Enum.map(fn message ->
       role = message_role(message)
-      content = Map.get(message, :content)
-      tool_calls = Map.get(message, :tool_calls, [])
+      content = message[:content]
+      tool_calls = message[:tool_calls] || []
 
       base =
         %{
@@ -70,28 +74,24 @@ defmodule Cantrip.LLMs.OpenAICompatible do
   end
 
   defp message_role(message) do
-    role = Map.get(message, :role) || Map.get(message, "role") || :user
-
-    case role do
+    case message[:role] do
       :assistant -> "assistant"
       :system -> "system"
       :tool -> "tool"
-      "assistant" -> "assistant"
-      "system" -> "system"
-      "tool" -> "tool"
       _ -> "user"
     end
   end
 
   defp normalize_tools(tools) do
     Enum.map(tools, fn tool ->
+      tool = Helpers.normalize_tool_spec(tool)
+
       %{
         type: "function",
         function: %{
-          name: tool[:name] || tool["name"],
-          description: tool[:description] || tool["description"] || "",
-          parameters:
-            tool[:parameters] || tool["parameters"] || %{type: "object", properties: %{}}
+          name: tool[:name],
+          description: tool[:description] || "",
+          parameters: tool[:parameters] || %{type: "object", properties: %{}}
         }
       }
     end)
@@ -102,11 +102,11 @@ defmodule Cantrip.LLMs.OpenAICompatible do
     encoded =
       Enum.map(tool_calls, fn tc ->
         %{
-          id: tc[:id] || tc["id"],
+          id: tc[:id],
           type: "function",
           function: %{
-            name: tc[:gate] || tc["gate"],
-            arguments: Jason.encode!(tc[:args] || tc["args"] || %{})
+            name: tc[:gate],
+            arguments: Jason.encode!(tc[:args] || %{})
           }
         }
       end)
@@ -121,7 +121,7 @@ defmodule Cantrip.LLMs.OpenAICompatible do
   defp maybe_put_assistant_tool_calls(message, _role, _tool_calls), do: message
 
   defp maybe_put_tool_call_id(message, "tool", source_message) do
-    tool_call_id = source_message[:tool_call_id] || source_message["tool_call_id"]
+    tool_call_id = source_message[:tool_call_id]
 
     if is_binary(tool_call_id) do
       Map.put(message, :tool_call_id, tool_call_id)
@@ -149,7 +149,7 @@ defmodule Cantrip.LLMs.OpenAICompatible do
 
     %{
       content: content,
-      code: extract_code(content),
+      code: Helpers.extract_code(content),
       tool_calls: tool_calls,
       usage: %{
         prompt_tokens: usage["prompt_tokens"] || 0,
@@ -157,20 +157,6 @@ defmodule Cantrip.LLMs.OpenAICompatible do
       },
       raw_response: body
     }
-  end
-
-  defp extract_code(content) when not is_binary(content), do: nil
-
-  defp extract_code(content) do
-    text = String.trim(content)
-
-    case Regex.run(~r/```(?:elixir)?\s*\n([\s\S]*?)\n```/i, text) do
-      [_, code] ->
-        String.trim(code)
-
-      _ ->
-        text
-    end
   end
 
   defp normalize_tool_call(tc) do
@@ -188,9 +174,6 @@ defmodule Cantrip.LLMs.OpenAICompatible do
       args: args
     }
   end
-
-  defp extract_error(%{"error" => %{"message" => message}}) when is_binary(message), do: message
-  defp extract_error(body), do: inspect(body)
 
   defp normalize_blank(value) when value in [nil, ""], do: nil
   defp normalize_blank(value), do: value

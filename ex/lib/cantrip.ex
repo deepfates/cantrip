@@ -52,7 +52,7 @@ defmodule Cantrip do
          child_llm: normalize_child_llm(Map.get(attrs, :child_llm), llm),
          identity: identity,
          circle: circle,
-         loom_storage: normalize_loom_storage(Map.get(attrs, :loom_storage)),
+         loom_storage: Map.get(attrs, :loom_storage),
          retry: normalize_retry(Map.get(attrs, :retry, %{})),
          folding: Map.get(attrs, :folding, %{})
        }}
@@ -101,7 +101,7 @@ defmodule Cantrip do
               api_key: env_first(["OPENAI_API_KEY", "CANTRIP_API_KEY"]),
               base_url:
                 env_first(["OPENAI_BASE_URL", "CANTRIP_BASE_URL"]) || "https://api.openai.com/v1",
-              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000)
+              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 120_000)
             }}}
         end
 
@@ -118,7 +118,7 @@ defmodule Cantrip do
               api_key: env_first(["ANTHROPIC_API_KEY", "CANTRIP_API_KEY"]),
               base_url:
                 System.get_env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com",
-              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000),
+              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 120_000),
               max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), 4096)
             }}}
         end
@@ -136,7 +136,7 @@ defmodule Cantrip do
               api_key: env_first(["GEMINI_API_KEY", "CANTRIP_API_KEY"]),
               base_url:
                 System.get_env("GEMINI_BASE_URL") || "https://generativelanguage.googleapis.com",
-              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000)
+              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 120_000)
             }}}
         end
 
@@ -170,13 +170,6 @@ defmodule Cantrip do
         {:error, reason, %{cantrip | llm_state: next_state}}
     end
   end
-
-  @doc """
-  M1 exposes the immutability contract as an explicit error path.
-  """
-  def mutate_identity(_cantrip, _attrs), do: {:error, "identity is immutable"}
-
-  def delete_turn(_cantrip, loom, turn_index), do: Loom.delete_turn(loom, turn_index)
 
   def annotate_reward(%__MODULE__{} = cantrip, loom, turn_index, reward) do
     case Loom.annotate_reward(loom, turn_index, reward) do
@@ -416,9 +409,6 @@ defmodule Cantrip do
     do: {module, state}
 
   defp normalize_child_llm(_, llm), do: llm
-
-  defp normalize_loom_storage(nil), do: nil
-  defp normalize_loom_storage(storage), do: storage
 
   defp parse_int(nil, default), do: default
 

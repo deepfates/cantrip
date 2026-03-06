@@ -46,7 +46,7 @@ class InMemoryLoomStore(LoomStore):
 class SQLiteLoomStore(LoomStore):
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = str(db_path)
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.execute("PRAGMA journal_mode=WAL")
         self._init_schema()
         self.threads: list[Thread] = []

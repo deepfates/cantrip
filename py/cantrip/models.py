@@ -27,6 +27,14 @@ class Gate:
     ephemeral: bool = False
 
 
+# Default schema for the "done" gate so LLMs know `answer` is required.
+_DONE_PARAMETERS: dict[str, Any] = {
+    "type": "object",
+    "properties": {"answer": {"type": "string", "description": "Your final answer"}},
+    "required": ["answer"],
+}
+
+
 @dataclass
 class Circle:
     gates: list[Any]
@@ -39,11 +47,17 @@ class Circle:
         self._gates: dict[str, Gate] = {}
         for g in self.gates:
             if isinstance(g, str):
-                self._gates[g] = Gate(name=g)
+                self._gates[g] = Gate(
+                    name=g,
+                    parameters=_DONE_PARAMETERS if g == "done" else None,
+                )
             else:
+                params = g.get("parameters")
+                if params is None and g["name"] == "done":
+                    params = _DONE_PARAMETERS
                 self._gates[g["name"]] = Gate(
                     name=g["name"],
-                    parameters=g.get("parameters"),
+                    parameters=params,
                     behavior=g.get("behavior"),
                     delay_ms=g.get("delay_ms"),
                     result=g.get("result"),

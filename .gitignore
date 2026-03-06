@@ -5,6 +5,7 @@
 .clj-kondo/
 .lsp/
 _investigation/
+_review/
 SPEC.md.bak
 .uv-cache
 .venv_check

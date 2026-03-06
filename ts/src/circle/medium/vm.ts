@@ -7,6 +7,7 @@ import type { TurnEvent } from "../../entity/events";
 import type { CircleExecuteResult } from "../circle";
 import type { Medium } from "../medium";
 import { formatSandboxMetadata } from "./js";
+import { getParameterNames, describeStateEntry } from "./format";
 import { TaskComplete } from "../../entity/errors";
 import {
   StepStartEvent,
@@ -21,38 +22,6 @@ export type VmMediumOptions = {
   state?: Record<string, unknown>;
 };
 
-/** Extract parameter names from a gate definition's JSON schema properties. */
-function getParameterNames(definition: GateDefinition): string[] {
-  const props = definition.parameters?.properties;
-  if (!props || typeof props !== "object") return [];
-  return Object.keys(props as Record<string, unknown>);
-}
-
-/** Produce a rich one-line description of a state entry for capabilityDocs(). */
-function describeStateEntry(val: unknown): string {
-  if (typeof val === "string") {
-    const preview = val.slice(0, 100).replace(/\n/g, " ");
-    return `string(${val.length} chars) — "${preview}${val.length > 100 ? "..." : ""}"`;
-  }
-  if (Array.isArray(val)) {
-    const elemType = val.length > 0 ? typeof val[0] : "empty";
-    let preview: string;
-    try { preview = JSON.stringify(val.slice(0, 3)); } catch { preview = "[...]"; }
-    if (preview.length > 200) preview = preview.slice(0, 200) + "...";
-    return `Array(${val.length} items, ${elemType}) — ${preview}`;
-  }
-  if (typeof val === "object" && val !== null) {
-    const keys = Object.keys(val);
-    let preview: string;
-    try { preview = JSON.stringify(val); } catch { preview = "{...}"; }
-    if (preview.length > 200) preview = preview.slice(0, 200) + "...";
-    return `Object{${keys.length} keys: ${keys.join(", ")}} — ${preview}`;
-  }
-  if (typeof val === "number" || typeof val === "boolean") {
-    return `${typeof val}(${val})`;
-  }
-  return typeof val;
-}
 
 /**
  * Creates a vm medium — a node:vm sandbox that the entity works in.

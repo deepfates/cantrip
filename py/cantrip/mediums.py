@@ -18,6 +18,9 @@ class Medium(ABC):
     def tool_choice(self, requested: str | None) -> str | None:
         return requested
 
+    def capability_text(self, circle: Circle) -> str | None:
+        return None
+
     @abstractmethod
     def process_response(
         self,
@@ -105,6 +108,38 @@ class CodeMedium(Medium):
 
     def tool_choice(self, requested: str | None) -> str | None:
         return "required" if requested is None else requested
+
+    def capability_text(self, circle: Circle) -> str | None:
+        gate_lines = []
+        for name in sorted(circle.available_gates().keys()):
+            if name == "done":
+                gate_lines.append("- done(answer) — complete the task and return the answer")
+            elif name == "echo":
+                gate_lines.append('- call_gate("echo", {"text": "..."}) — echo text back')
+            elif name == "read":
+                gate_lines.append('- call_gate("read", {"path": "filename"}) — read a file')
+            elif name == "call_entity":
+                gate_lines.append(
+                    '- call_gate("call_entity", {"intent": "task", ...}) — delegate to a child entity'
+                )
+            elif name == "call_entity_batch":
+                gate_lines.append(
+                    '- call_gate("call_entity_batch", [...]) — delegate multiple tasks'
+                )
+            else:
+                gate_lines.append(f'- call_gate("{name}", {{...}}) — invoke the {name} gate')
+        gates_block = "\n".join(gate_lines)
+        return (
+            "You write Python code that executes in a sandboxed exec() environment.\n"
+            "Respond ONLY with code in the code tool. Do not write prose or markdown.\n\n"
+            "### SANDBOX PHYSICS\n"
+            "1. All host functions are synchronous and blocking.\n"
+            "2. Variables persist across turns (shared globals dict).\n"
+            "3. Limited builtins: no file I/O, no imports, no os/sys.\n\n"
+            "### HOST FUNCTIONS\n"
+            f"{gates_block}\n\n"
+            "Call done(answer) when finished. This is the ONLY way to complete the task."
+        )
 
     def process_response(
         self,

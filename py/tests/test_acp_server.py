@@ -180,10 +180,10 @@ def test_acp_server_provides_fallback_assistant_text_when_result_is_none() -> No
 
     payload = server.cast(session_id=sid, intent="hi")
 
-    assert payload["result"] == ""
+    assert payload["result"] is None
     assert (
         payload["assistant_text"]
-        == "No final answer produced. Last error: gate not available"
+        == "No final answer produced before max_turns. Last error: gate not available"
     )
 
 
@@ -207,7 +207,7 @@ def test_acp_server_stops_after_unavailable_gate_turn_instead_of_spinning() -> N
     step_starts = [e for e in payload["events"] if e["type"] == "step_start"]
     tool_results = [e for e in payload["events"] if e["type"] == "tool_result"]
 
-    assert payload["result"] == ""
+    assert payload["result"] is None
     assert len(step_starts) == 1
     assert len(tool_results) == 1
     assert tool_results[0]["is_error"] is True
@@ -305,7 +305,7 @@ def test_acp_server_fails_fast_on_stagnant_code_loop() -> None:
     tool_results = [e for e in payload["events"] if e["type"] == "tool_result"]
 
     assert payload["stop_reason"] == "end_turn"
-    assert payload["assistant_text"].startswith("No final answer produced. Last error:")
+    assert payload["assistant_text"].startswith("No final answer produced before max_turns.")
     assert "non-terminal code loop detected" in payload["assistant_text"]
     assert any(
         ev.get("is_error") is True

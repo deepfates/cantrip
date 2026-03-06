@@ -4,6 +4,7 @@ defmodule Cantrip.Loom.Storage.Auto do
   @behaviour Cantrip.Loom.Storage
 
   alias Cantrip.Loom.Storage.{Dets, Mnesia}
+  import Cantrip.LLMs.Helpers, only: [normalize_opts: 1]
 
   @impl true
   def init(opts) do
@@ -64,9 +65,6 @@ defmodule Cantrip.Loom.Storage.Auto do
 
   def read_events(_), do: {:error, "invalid auto storage state"}
 
-  defp normalize_opts(opts) when is_map(opts), do: opts
-  defp normalize_opts(opts) when is_list(opts), do: Map.new(opts)
-  defp normalize_opts(_), do: %{}
 
   defp default_mnesia_table do
     :"cantrip_loom_auto_#{System.unique_integer([:positive])}"

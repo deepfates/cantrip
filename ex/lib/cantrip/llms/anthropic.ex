@@ -5,6 +5,8 @@ defmodule Cantrip.LLMs.Anthropic do
   Supports Claude models via the native `/v1/messages` endpoint.
   """
 
+  alias Cantrip.LLMs.Helpers
+
   @behaviour Cantrip.LLM
 
   @default_base_url "https://api.anthropic.com"
@@ -21,7 +23,7 @@ defmodule Cantrip.LLMs.Anthropic do
         {:ok, normalize_body(body), state}
 
       {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, %{status: status, message: extract_error(body)}, state}
+        {:error, %{status: status, message: Helpers.extract_error(body)}, state}
 
       {:error, reason} ->
         {:error, %{status: nil, message: inspect(reason)}, state}
@@ -63,13 +65,13 @@ defmodule Cantrip.LLMs.Anthropic do
   defp extract_system(messages) do
     case messages do
       [%{role: :system, content: prompt} | rest] -> {prompt, rest}
-      [%{role: "system", content: prompt} | rest] -> {prompt, rest}
       _ -> {nil, messages}
     end
   end
 
   defp normalize_messages(messages) do
     messages
+    |> Enum.map(&Helpers.normalize_message/1)
     |> Enum.chunk_by(&message_role/1)
     |> Enum.map(&merge_consecutive/1)
   end
@@ -94,9 +96,9 @@ defmodule Cantrip.LLMs.Anthropic do
 
   defp message_content_blocks(message) do
     role = message_role(message)
-    content = Map.get(message, :content) || Map.get(message, "content") || ""
-    tool_calls = Map.get(message, :tool_calls) || Map.get(message, "tool_calls") || []
-    tool_call_id = Map.get(message, :tool_call_id) || Map.get(message, "tool_call_id")
+    content = message[:content] || ""
+    tool_calls = message[:tool_calls] || []
+    tool_call_id = message[:tool_call_id]
 
     cond do
       role == "assistant" and tool_calls != [] ->
@@ -109,9 +111,9 @@ defmodule Cantrip.LLMs.Anthropic do
           Enum.map(tool_calls, fn tc ->
             %{
               type: "tool_use",
-              id: tc[:id] || tc["id"],
-              name: tc[:gate] || tc["gate"],
-              input: tc[:args] || tc["args"] || %{}
+              id: tc[:id],
+              name: tc[:gate],
+              input: tc[:args] || %{}
             }
           end)
 
@@ -132,26 +134,22 @@ defmodule Cantrip.LLMs.Anthropic do
   end
 
   defp message_role(message) do
-    role = Map.get(message, :role) || Map.get(message, "role") || :user
-
-    case role do
+    case message[:role] do
       :assistant -> "assistant"
       :tool -> "user"
       :system -> "user"
-      "assistant" -> "assistant"
-      "tool" -> "user"
-      "system" -> "user"
       _ -> "user"
     end
   end
 
   defp normalize_tools(tools) do
     Enum.map(tools, fn tool ->
+      tool = Helpers.normalize_tool_spec(tool)
+
       %{
-        name: tool[:name] || tool["name"],
-        description: tool[:description] || tool["description"] || "",
-        input_schema:
-          tool[:parameters] || tool["parameters"] || %{type: "object", properties: %{}}
+        name: tool[:name],
+        description: tool[:description] || "",
+        input_schema: tool[:parameters] || %{type: "object", properties: %{}}
       }
     end)
   end
@@ -202,7 +200,7 @@ defmodule Cantrip.LLMs.Anthropic do
 
     %{
       content: content,
-      code: extract_code(content),
+      code: Helpers.extract_code(content),
       tool_calls: normalized_tool_calls,
       usage: %{
         prompt_tokens: usage["input_tokens"] || 0,
@@ -211,20 +209,6 @@ defmodule Cantrip.LLMs.Anthropic do
       raw_response: body
     }
   end
-
-  defp extract_code(content) when not is_binary(content), do: nil
-
-  defp extract_code(content) do
-    text = String.trim(content)
-
-    case Regex.run(~r/```(?:elixir)?\s*\n([\s\S]*?)\n```/i, text) do
-      [_, code] -> String.trim(code)
-      _ -> text
-    end
-  end
-
-  defp extract_error(%{"error" => %{"message" => message}}) when is_binary(message), do: message
-  defp extract_error(body), do: inspect(body)
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

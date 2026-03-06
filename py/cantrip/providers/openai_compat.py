@@ -10,7 +10,7 @@ try:
 except Exception:  # pragma: no cover
     requests = None
 
-from cantrip.errors import CantripError
+from cantrip.errors import CantripError, ProviderError, ProviderTimeout, ProviderTransportError
 from cantrip.models import LLMResponse, ToolCall
 from cantrip.providers.base import LLM
 
@@ -18,7 +18,7 @@ from cantrip.providers.base import LLM
 class OpenAICompatLLM(LLM):
     """OpenAI-compatible chat completions client.
 
-    Works with OpenAI, Ollama, vLLM and other compatible servers.
+    Works with OpenAI, LM Studio,vLLM and other compatible servers.
     """
 
     def __init__(
@@ -38,9 +38,7 @@ class OpenAICompatLLM(LLM):
         self.timeout_s = timeout_s
         self.extra = extra or {}
         if requests is None:
-            raise CantripError(
-                "requests dependency is required for OpenAICompatLLM"
-            )
+            raise CantripError("requests dependency is required for OpenAICompatLLM")
 
     def query(self, messages, tools, tool_choice):
         payload = {
@@ -75,15 +73,15 @@ class OpenAICompatLLM(LLM):
                 timeout=self.timeout_s,
             )
         except requests.exceptions.Timeout as e:
-            raise CantripError(f"provider_timeout:{e}") from e
+            raise ProviderTimeout(str(e)) from e
         except requests.exceptions.RequestException as e:
-            raise CantripError(f"provider_transport_error:{e}") from e
+            raise ProviderTransportError(str(e)) from e
         if resp.status_code >= 400:
             try:
                 msg = resp.json().get("error", {}).get("message", resp.text)
             except Exception:  # noqa: BLE001
                 msg = resp.text
-            raise CantripError(f"provider_error:{resp.status_code}:{msg}")
+            raise ProviderError(resp.status_code, msg)
 
         data = resp.json()
         choice = data["choices"][0]

@@ -10,16 +10,12 @@
 (declare call-agent)
 (declare call-agent-batch)
 
-(defn- max-turns [cantrip]
-  (or (some :max-turns (get-in cantrip [:circle :wards]))
-      1))
-
 (defn- require-done-tool? [cantrip]
   (true? (get-in cantrip [:identity :require-done-tool])))
 
 (defn- tool-choice [cantrip]
-  (or (get-in cantrip [:identity :tool-choice])
-      :auto))
+  (let [{:keys [tool-choice]} (medium/tool-view (:circle cantrip) (:identity cantrip))]
+    tool-choice))
 
 (defn- retry-config [cantrip]
   (let [cfg (:retry cantrip)]
@@ -52,7 +48,7 @@
   (some #(or (get % k) (get % (keyword (str/replace (name k) "-" "_"))))
         (get-in cantrip [:circle :wards])))
 
-(defn- max-turns-ward [cantrip]
+(defn- max-turns [cantrip]
   (or (ward-value cantrip :max-turns)
       1))
 
@@ -89,7 +85,7 @@
         (get named-llms (keyword (str "child_llm_l" child-level))))))
 
 (def ^:private allowed-call-agent-request-keys
-  #{:intent :cantrip :llm :gates})
+  #{:intent :cantrip :llm :gates :context :system-prompt})
 
 (defn- validate-call-agent-request!
   [request]
@@ -110,6 +106,9 @@
   [cantrip]
   (ward-value cantrip :max-batch-size))
 
+(def ^:private default-child-system-prompt
+  "You are a child entity. Pursue the intent and return the result. If you have a submit-answer or done function, call it with your answer.")
+
 (defn- derive-child-cantrip
   [parent-cantrip request dependencies parent-depth]
   (let [named-llms (:named-llms dependencies)
@@ -125,13 +124,31 @@
                                       default-child-llm)
                              default-child-llm)
                            depth-derived-llm
-                           (:llm parent-cantrip))]
+                           (:llm parent-cantrip))
+        ;; Strip delegation gates from child (prevents runaway recursion).
+        ;; Child keeps done + parent's non-delegation gates.
+        parent-gates (get-in parent-cantrip [:circle :gates])
+        child-gates (when (and (seq parent-gates) (nil? requested-gates))
+                      (vec (remove #{:call-entity :call-entity-batch
+                                     "call_entity" "call_entity_batch"
+                                     :call_entity :call_entity_batch}
+                                   parent-gates)))
+        ;; Cap child max-turns at 3 (prevents exponential blowup from error cascading)
+        parent-max-turns (ward-value parent-cantrip :max-turns)
+        child-max-turns (when parent-max-turns (min (long parent-max-turns) 3))]
     (cond-> (assoc parent-cantrip :llm chosen-llm)
+      ;; Use requested gates if provided, otherwise strip delegation gates
       (seq requested-gates)
-      (assoc-in [:circle :gates] (normalize-request-gates requested-gates)))))
+      (assoc-in [:circle :gates] (normalize-request-gates requested-gates))
+      (and (seq child-gates) (nil? requested-gates))
+      (assoc-in [:circle :gates] child-gates)
+      ;; Cap child turns
+      child-max-turns
+      (assoc-in [:circle :wards] (conj (vec (get-in parent-cantrip [:circle :wards]))
+                                        {:max-turns child-max-turns})))))
 
-(defn- circle-tools [circle]
-  (gates/gate-tools (:gates circle)))
+(defn- circle-tools [circle identity-config]
+  (:tools (medium/tool-view circle identity-config)))
 
 (defn- folding-config [cantrip]
   (get-in cantrip [:runtime :folding]))
@@ -144,25 +161,82 @@
 (defn- ephemeral-observations? [cantrip]
   (true? (get-in cantrip [:runtime :ephemeral-observations])))
 
+(defn- code-medium-turn?
+  "Returns true if this turn used the single-tool code medium pattern."
+  [utterance]
+  (let [tool-calls (:tool-calls utterance)]
+    (and (= 1 (count tool-calls))
+         (= "clojure" (name (or (:gate (first tool-calls)) ""))))))
+
+(defn- format-observations-as-result
+  "Combines multiple gate observations into a single result string for code medium."
+  [obs compact-observation? turn]
+  (if (empty? obs)
+    "no output"
+    (str/join "\n"
+              (map-indexed (fn [idx record]
+                             (let [content (if compact-observation?
+                                            (str "[ephemeral-ref:" (:id turn) ":" idx "]")
+                                            (str (:result record)))]
+                               (if (:is-error record)
+                                 (str "[" (:gate record) " ERROR] " content)
+                                 (str "[" (:gate record) "] " content))))
+                           obs))))
+
 (defn- turn->messages [turn compact-observation?]
   (let [utterance (:utterance turn)
-        assistant-msg (cond-> {:role :assistant}
-                        (string? (:content utterance))
-                        (assoc :content (:content utterance))
-                        (seq (:tool-calls utterance))
-                        (assoc :tool-calls (vec (:tool-calls utterance))))
-        tool-msgs (map-indexed (fn [idx record]
-                                 {:role :tool
-                                  :name (:gate record)
-                                  :content (if compact-observation?
-                                             (str "[ephemeral-ref:" (:id turn) ":" idx "]")
-                                             (str (:result record)))})
-                               (:observation turn))]
-    (into [assistant-msg] tool-msgs)))
+        obs (:observation turn)]
+    (if (code-medium-turn? utterance)
+      ;; Code medium: single tool_call → single tool response with combined observations
+      (let [tool-call (first (:tool-calls utterance))
+            assistant-msg {:role :assistant
+                           :tool-calls [tool-call]}
+            combined-result (format-observations-as-result obs compact-observation? turn)
+            tool-msg {:role :tool
+                      :name "clojure"
+                      :tool-call-id (:id tool-call)
+                      :content combined-result}]
+        [assistant-msg tool-msg])
+      ;; Conversation medium: one tool response per tool_call
+      (let [needs-synth? (and (empty? (:tool-calls utterance)) (seq obs))
+            obs-with-ids (if needs-synth?
+                           (map-indexed (fn [idx record]
+                                          (if (:tool-call-id record)
+                                            record
+                                            (assoc record :tool-call-id (str "synth_" (:id turn) "_" idx))))
+                                        obs)
+                           obs)
+            synth-tool-calls (when needs-synth?
+                               (mapv (fn [record]
+                                       {:id (:tool-call-id record)
+                                        :gate (:gate record)
+                                        :args {}})
+                                     obs-with-ids))
+            effective-tool-calls (or (seq (:tool-calls utterance)) synth-tool-calls)
+            assistant-msg (cond-> {:role :assistant}
+                            (string? (:content utterance))
+                            (assoc :content (:content utterance))
+                            (seq effective-tool-calls)
+                            (assoc :tool-calls (vec effective-tool-calls)))
+            tool-msgs (map-indexed (fn [idx record]
+                                     (cond-> {:role :tool
+                                              :name (:gate record)
+                                              :content (if compact-observation?
+                                                         (str "[ephemeral-ref:" (:id turn) ":" idx "]")
+                                                         (str (:result record)))}
+                                       (:tool-call-id record)
+                                       (assoc :tool-call-id (:tool-call-id record))))
+                                   obs-with-ids)]
+        (into [assistant-msg] tool-msgs)))))
 
 (defn- build-messages [cantrip intent prior-turns current-cast-turns]
   (let [system-prompt (get-in cantrip [:identity :system-prompt])
+        cap-text (medium/capability-text (:circle cantrip))
         base (cond-> []
+               ;; Capability text first (medium physics + gate descriptions)
+               (string? cap-text)
+               (conj {:role :system :content cap-text})
+               ;; Then developer's system prompt
                (string? system-prompt)
                (conj {:role :system :content system-prompt})
                :always
@@ -202,8 +276,8 @@
   ([entity-id cantrip intent prior-turns initial-loom initial-usage {:keys [first-parent-id parent-entity]}]
    (let [turn-limit (max-turns cantrip)
          done-required? (require-done-tool? cantrip)
-         selected-tool-choice (tool-choice cantrip)
-         tools (circle-tools (:circle cantrip))
+         {:keys [tools tool-choice capability-text]} (medium/tool-view (:circle cantrip) (:identity cantrip))
+         selected-tool-choice tool-choice
          max-child-calls-per-turn (max-child-calls-per-turn-ward cantrip)
          max-batch-size (max-batch-size-ward cantrip)
          local-loom (atom initial-loom)
@@ -442,11 +516,20 @@
   "Composes a child cast from a parent entity while preserving parent continuity."
   [parent-entity request]
   (validate-call-agent-request! request)
-  (let [{:keys [cantrip intent]} request
+  (let [{:keys [cantrip intent context system-prompt]} request
+        ;; If context is provided, prepend it to the intent so the child sees it.
+        intent (if (some? context)
+                 (let [ctx-str (if (string? context) context (pr-str context))]
+                   (str "Context: " ctx-str "\n\nTask: " (or intent "")))
+                 intent)
         parent-cantrip (:cantrip parent-entity)
         parent-depth (long (or (:depth parent-entity) 0))
         max-depth (max-depth-ward parent-cantrip)
-        child-cantrip (or cantrip parent-cantrip)]
+        child-cantrip (or cantrip parent-cantrip)
+        ;; Use request's system-prompt if provided; otherwise give children
+        ;; a generic prompt so they don't inherit parent's delegation instructions.
+        child-system-prompt (or system-prompt default-child-system-prompt)
+        child-cantrip (assoc-in child-cantrip [:identity :system-prompt] child-system-prompt)]
     (cond
       (and (some? max-depth) (>= parent-depth (long max-depth)))
       {:status :error

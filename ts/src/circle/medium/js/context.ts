@@ -7,6 +7,7 @@ import {
   type QuickJSWASMModule,
 } from "quickjs-emscripten-core";
 import { Depends } from "../../gate/depends";
+import { formatOutput } from "../format";
 
 const DEFAULT_EXECUTION_TIMEOUT_MS = 2000;
 const DEFAULT_MEMORY_LIMIT_BYTES = 64 * 1024 * 1024;
@@ -151,49 +152,6 @@ export class JsContext {
   }
 }
 
-function formatOutput(value: unknown, logs: string[] | null): string {
-  const logText = logs && logs.length ? logs.join("\n") : "";
-  const valueText =
-    value === undefined
-      ? "undefined"
-      : value === null
-        ? "null"
-        : formatDumpedValue(value);
-
-  if (logText && valueText === "undefined") return logText;
-  if (logText) return `${logText}\n${valueText}`;
-  return valueText;
-}
-
-function formatDumpedValue(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (value === undefined) return "undefined";
-  if (value === null) return "null";
-  const json = safeStringify(value);
-  return json ?? String(value);
-}
-
-function safeStringify(value: unknown): string | null {
-  try {
-    return JSON.stringify(
-      value,
-      (_key, val) => {
-        if (typeof val === "bigint") return val.toString();
-        if (typeof val === "symbol") return val.toString();
-        if (typeof val === "function") {
-          return `[Function ${val.name || "anonymous"}]`;
-        }
-        if (val instanceof Error) {
-          return { name: val.name, message: val.message, stack: val.stack };
-        }
-        return val;
-      },
-      2,
-    );
-  } catch {
-    return null;
-  }
-}
 
 const MAX_STACK_FRAMES = 5;
 const MAX_ERROR_CHARS = 512;

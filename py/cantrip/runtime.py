@@ -13,10 +13,11 @@ from typing import Any
 
 from cantrip.browser import browser_driver_from_name
 from cantrip.code_runner import (
+    InProcessPythonRunnerFactory,
     SubprocessPythonRunnerFactory,
     code_runner_from_name,
 )
-from cantrip.errors import CantripError
+from cantrip.errors import CantripError, ProviderError, ProviderTimeout, ProviderTransportError
 from cantrip.entity import Entity
 from cantrip.loom import InMemoryLoomStore, Loom
 from cantrip.mediums import medium_for
@@ -92,11 +93,16 @@ class Cantrip:
 
     def _context_messages(self, thread: Thread) -> list[dict[str, Any]]:
         msgs: list[dict[str, Any]] = []
+        medium = medium_for(self.circle.medium)
+        cap_text = medium.capability_text(self.circle)
+        if cap_text is not None:
+            msgs.append({"role": "system", "content": cap_text})
         if thread.identity.system_prompt is not None:
             msgs.append({"role": "system", "content": thread.identity.system_prompt})
-        msgs.append(
-            {"role": "system", "content": self._capability_message(self.circle)}
-        )
+        if cap_text is None:
+            msgs.append(
+                {"role": "system", "content": self._capability_message(self.circle)}
+            )
         msgs.append({"role": "user", "content": thread.intent})
 
         for t in thread.turns:
@@ -323,16 +329,24 @@ class Cantrip:
                 req = args if isinstance(args, dict) else {}
                 allowed_req_keys = {
                     "intent",
+                    "context",
                     "gates",
                     "wards",
                     "llm",
                     "require_done_tool",
                     "medium",
                     "depends",
+                    "system_prompt",
                 }
                 for k in req.keys():
                     if k not in allowed_req_keys:
                         raise CantripError(f"unknown call_entity arg: {k}")
+                # If context is provided, prepend it to the intent so the child sees it.
+                if req.get("context") is not None:
+                    ctx = req["context"]
+                    ctx_str = json.dumps(ctx) if not isinstance(ctx, str) else ctx
+                    req = dict(req)
+                    req["intent"] = f"Context: {ctx_str}\n\nTask: {req.get('intent', '')}"
 
                 requested_wards = req.get("wards") or []
                 if not isinstance(requested_wards, list):
@@ -431,8 +445,16 @@ class Cantrip:
                     child_llm = self.child_llm
 
                 child_llm = child_llm or self.llm
+                # Use request's system_prompt if provided; otherwise give children
+                # a generic prompt so they don't inherit parent's delegation instructions
+                # (which reference gates unavailable at lower depths).
+                child_system_prompt = req.get("system_prompt") or (
+                    "You are a helpful assistant. Complete the task and return your answer. "
+                    "If you have a code tool, write Python code that calls done(answer) with the result. "
+                    "If you have a done tool, call done with your answer."
+                )
                 child_call = Identity(
-                    system_prompt=self.identity.system_prompt,
+                    system_prompt=child_system_prompt,
                     temperature=self.identity.temperature,
                     require_done_tool=self.identity.require_done_tool
                     or bool(req.get("require_done_tool", False)),
@@ -575,24 +597,13 @@ class Cantrip:
                 if cancel_check is not None and cancel_check():
                     raise CantripError("cancelled")
                 return _query_once()
-            except CantripError as e:
-                msg = str(e)
-                if msg == "cancelled":
-                    raise
-                if msg.startswith("provider_timeout:") or msg.startswith(
-                    "provider_transport_error:"
-                ):
-                    if attempts < max_retries:
-                        attempts += 1
-                        continue
-                    raise
-                if not msg.startswith("provider_error:"):
-                    raise
-                parts = msg.split(":", 2)
-                status = (
-                    int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
-                )
-                if attempts < max_retries and status in retryable:
+            except (ProviderTimeout, ProviderTransportError):
+                if attempts < max_retries:
+                    attempts += 1
+                    continue
+                raise
+            except ProviderError as e:
+                if attempts < max_retries and e.status_code in retryable:
                     attempts += 1
                     continue
                 raise
@@ -654,15 +665,26 @@ class Cantrip:
                 runner = (
                     code_dep.get("runner")
                     if isinstance(code_dep, dict) and code_dep.get("runner")
-                    else "mini"
+                    else "inprocess"
+                )
+                timeout_s = (
+                    float(code_dep.get("timeout_s"))
+                    if isinstance(code_dep, dict) and code_dep.get("timeout_s") is not None
+                    else None
                 )
                 if (
                     str(runner) in {"python-subprocess", "subprocess-python", "python"}
-                    and isinstance(code_dep, dict)
-                    and code_dep.get("timeout_s") is not None
+                    and timeout_s is not None
                 ):
                     runtime = SubprocessPythonRunnerFactory(
-                        timeout_s=float(code_dep.get("timeout_s"))
+                        timeout_s=timeout_s
+                    ).create_executor()
+                elif (
+                    str(runner) in {"inprocess", "inprocess-python", "python-inprocess"}
+                    and timeout_s is not None
+                ):
+                    runtime = InProcessPythonRunnerFactory(
+                        timeout_s=timeout_s
                     ).create_executor()
                 else:
                     runtime = code_runner_from_name(str(runner)).create_executor()
@@ -693,6 +715,7 @@ class Cantrip:
             thread.turns[-1].id if thread.turns else None
         )
         stagnant_code_turns = 0
+        truncation_reason: str | None = None
 
         while sequence < max_turns:
             if cancel_check is not None and cancel_check():
@@ -717,6 +740,8 @@ class Cantrip:
             messages = self._context_messages(thread)
             tools = self._make_tools(self.circle)
             tool_choice = medium.tool_choice(self.identity.tool_choice)
+            if self.identity.require_done_tool and tool_choice is None:
+                tool_choice = "required"
 
             try:
                 response = self._query_with_retry(
@@ -801,8 +826,7 @@ class Cantrip:
                         content="non-terminal code loop detected",
                     )
                 )
-                terminated = True
-                result = ""
+                truncation_reason = "stagnation_guard"
             if event_sink is not None:
                 for rec in observation:
                     event_sink(
@@ -821,14 +845,14 @@ class Cantrip:
             # This avoids spinning through max_turns with no actionable progress.
             if (
                 not terminated
+                and truncation_reason is None
                 and observation
                 and all(
                     rec.is_error and rec.content == "gate not available"
                     for rec in observation
                 )
             ):
-                terminated = True
-                result = ""
+                truncation_reason = "gate_not_available"
 
             dt_ms = max(1, int((time.perf_counter() - t0) * 1000))
             usage = response.usage or {"prompt_tokens": 0, "completion_tokens": 0}
@@ -875,6 +899,8 @@ class Cantrip:
                 thread.terminated = True
                 thread.result = result
                 break
+            if truncation_reason is not None:
+                break
 
         if not thread.terminated:
             was_cancelled = bool(thread.__dict__.get("cancelled"))
@@ -882,7 +908,9 @@ class Cantrip:
                 thread.turns[-1].truncated = True
                 thread.turns[-1].metadata = dict(thread.turns[-1].metadata)
                 if not was_cancelled:
-                    thread.turns[-1].metadata["truncation_reason"] = "max_turns"
+                    thread.turns[-1].metadata["truncation_reason"] = (
+                        truncation_reason or "max_turns"
+                    )
             thread.truncated = True
         if self.circle.medium == "browser" and runtime is not None:
             try:

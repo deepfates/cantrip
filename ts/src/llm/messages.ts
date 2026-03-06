@@ -1,6 +1,5 @@
 /*
   Message and content-part types.
-  Modeled after bu_agent_sdk.llm.messages.
 */
 
 export type SupportedImageMediaType =
