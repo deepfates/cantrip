@@ -18,8 +18,8 @@ from cantrip.mediums import medium_for
 from ._llm import resolve_llm
 
 SCRIPTED_RESPONSES: list[dict[str, Any]] = [
-    {"tool_calls": [{"gate": "done", "args": {"answer": "tool medium answer"}}]},
-    {"code": "done('code medium answer')"},
+    {"tool_calls": [{"gate": "done", "args": {"answer": "Revenue grew 14% QoQ while churn fell 2 points — strong retention signal."}}]},
+    {"code": "done('Margin expanded 3.2pp driven by lower support costs and higher ARPU.')"},
 ]
 
 
@@ -72,10 +72,10 @@ def run(mode: str | None = None) -> dict[str, Any]:
 
     # ── Run both ─────────────────────────────────────────────────────────
     tool_result, tool_thread = tool_cantrip.cast_with_thread(
-        "What is the capital of France? Call done(answer) with your response."
+        "Summarize: revenue +14%, churn -2 pts, support cost flat."
     )
     code_result, code_thread = code_cantrip.cast_with_thread(
-        "Compute 7 * 8 and return the result by calling done() with the answer."
+        "Analyze margin impact: ARPU up 8%, support cost -3%, infra cost +2%."
     )
 
     print(f"Tool medium result: {tool_result}")

@@ -126,7 +126,15 @@ defmodule Cantrip.Circle do
     Respond ONLY with the elixir tool containing valid Elixir code. \
     Do not write prose or markdown.
 
-    Available host functions:
+    CRITICAL: NEVER use defmodule. Module definitions create a new scope \
+    where host function bindings are invisible, causing "undefined variable" errors. \
+    Write ALL code at the top level as a script. Use anonymous functions if you need helpers:
+
+      summarize = fn text -> String.split(text, "\\n") |> length() end
+      result = summarize.(data)
+      done.(result)
+
+    Available host functions (closure bindings, top-level only):
     #{gate_lines}
 
     Variables persist across turns. Call done.(result) when finished.\

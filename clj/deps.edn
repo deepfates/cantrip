@@ -1,6 +1,7 @@
 {:paths ["src" "test"]
  :deps {org.clojure/clojure {:mvn/version "1.12.0"}
-        org.babashka/sci {:mvn/version "0.10.48"}}
+        org.babashka/sci {:mvn/version "0.10.48"}
+        org.clojure/data.json {:mvn/version "2.5.1"}}
  :aliases
  {:test {:extra-paths ["test"]
          :main-opts ["-m" "cantrip.test-runner"]}}}

@@ -1,5 +1,6 @@
 (ns cantrip.llm
-  (:require [clojure.string :as str])
+  (:require [clojure.data.json :as json]
+            [clojure.string :as str])
   (:import [java.net URI]
            [java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers]
            [java.time Duration]))
@@ -101,173 +102,12 @@
 ;; Minimal JSON encoder / decoder (no external deps)
 ;; ---------------------------------------------------------------------------
 
-(declare json-encode)
-
-(defn- json-encode-string [^String s]
-  (let [sb (StringBuilder. "\"")]
-    (doseq [^char c s]
-      (case c
-        \" (.append sb "\\\"")
-        \\ (.append sb "\\\\")
-        \newline (.append sb "\\n")
-        \return (.append sb "\\r")
-        \tab (.append sb "\\t")
-        \backspace (.append sb "\\b")
-        \formfeed (.append sb "\\f")
-        (if (< (int c) 0x20)
-          (.append sb (format "\\u%04x" (int c)))
-          (.append sb c))))
-    (.append sb "\"")
-    (str sb)))
-
 (defn- json-encode [v]
-  (cond
-    (nil? v) "null"
-    (true? v) "true"
-    (false? v) "false"
-    (integer? v) (str (long v))
-    (number? v) (str (double v))
-    (string? v) (json-encode-string v)
-    (keyword? v) (json-encode-string (name v))
-    (symbol? v) (json-encode-string (str v))
-    (map? v) (str "{"
-                  (str/join ","
-                            (map (fn [[k val]]
-                                   (let [key-str (cond (keyword? k) (name k)
-                                                       (string? k) k
-                                                       :else (str k))]
-                                     (str (json-encode-string key-str) ":" (json-encode val))))
-                                 v))
-                  "}")
-    (sequential? v) (str "[" (str/join "," (map json-encode v)) "]")
-    :else (json-encode-string (str v))))
-
-;; Minimal recursive-descent JSON parser
-(defn- json-skip-ws [^String s ^long i]
-  (loop [i i]
-    (if (and (< i (.length s))
-             (let [c (.charAt s i)]
-               (or (= c \space) (= c \tab) (= c \newline) (= c \return))))
-      (recur (inc i))
-      i)))
-
-(declare json-parse-value)
-
-(defn- json-parse-string [^String s ^long i]
-  ;; i points at opening "
-  (let [sb (StringBuilder.)
-        len (.length s)]
-    (loop [j (inc i)]
-      (when (>= j len)
-        (throw (ex-info "unterminated JSON string" {:pos i})))
-      (let [c (.charAt s j)]
-        (cond
-          (= c \")
-          [(str sb) (inc j)]
-
-          (= c \\)
-          (let [next-j (inc j)]
-            (when (>= next-j len)
-              (throw (ex-info "unterminated JSON escape" {:pos j})))
-            (let [esc (.charAt s next-j)]
-              (case esc
-                \" (do (.append sb \") (recur (inc next-j)))
-                \\ (do (.append sb \\) (recur (inc next-j)))
-                \/ (do (.append sb \/) (recur (inc next-j)))
-                \n (do (.append sb \newline) (recur (inc next-j)))
-                \r (do (.append sb \return) (recur (inc next-j)))
-                \t (do (.append sb \tab) (recur (inc next-j)))
-                \b (do (.append sb \backspace) (recur (inc next-j)))
-                \f (do (.append sb \formfeed) (recur (inc next-j)))
-                \u (let [hex (subs s (inc next-j) (+ next-j 5))
-                         cp (Integer/parseInt hex 16)]
-                     (.append sb (char cp))
-                     (recur (+ next-j 5)))
-                (do (.append sb esc) (recur (inc next-j))))))
-
-          :else
-          (do (.append sb c)
-              (recur (inc j))))))))
-
-(defn- json-parse-number [^String s ^long i]
-  (let [len (.length s)]
-    (loop [j i has-dot false]
-      (if (and (< j len)
-               (let [c (.charAt s j)]
-                 (or (Character/isDigit c) (= c \.) (= c \-) (= c \+) (= c \e) (= c \E))))
-        (recur (inc j) (or has-dot (= (.charAt s j) \.)))
-        (let [num-str (subs s i j)]
-          (if has-dot
-            [(Double/parseDouble num-str) j]
-            [(Long/parseLong num-str) j]))))))
-
-(defn- json-parse-array [^String s ^long i]
-  ;; i points at [
-  (let [len (.length s)]
-    (loop [j (json-skip-ws s (inc i))
-           acc []]
-      (when (>= j len)
-        (throw (ex-info "unterminated JSON array" {:pos i})))
-      (if (= (.charAt s j) \])
-        [acc (inc j)]
-        (let [[val next-j] (json-parse-value s j)
-              next-j (json-skip-ws s next-j)]
-          (when (>= next-j len)
-            (throw (ex-info "unterminated JSON array" {:pos i})))
-          (if (= (.charAt s next-j) \,)
-            (recur (json-skip-ws s (inc next-j)) (conj acc val))
-            (recur next-j (conj acc val))))))))
-
-(defn- json-parse-object [^String s ^long i]
-  ;; i points at {
-  (let [len (.length s)]
-    (loop [j (json-skip-ws s (inc i))
-           acc {}]
-      (when (>= j len)
-        (throw (ex-info "unterminated JSON object" {:pos i})))
-      (if (= (.charAt s j) \})
-        [acc (inc j)]
-        (let [_ (when-not (= (.charAt s j) \")
-                  (throw (ex-info "expected string key in JSON object" {:pos j})))
-              [k next-j] (json-parse-string s j)
-              next-j (json-skip-ws s next-j)
-              _ (when (or (>= next-j len) (not= (.charAt s next-j) \:))
-                  (throw (ex-info "expected : in JSON object" {:pos next-j})))
-              next-j (json-skip-ws s (inc next-j))
-              [v next-j] (json-parse-value s next-j)
-              next-j (json-skip-ws s next-j)]
-          (when (>= next-j len)
-            (throw (ex-info "unterminated JSON object" {:pos i})))
-          (if (= (.charAt s next-j) \,)
-            (recur (json-skip-ws s (inc next-j)) (assoc acc k v))
-            (recur next-j (assoc acc k v))))))))
-
-(defn- json-parse-value [^String s ^long i]
-  (let [i (json-skip-ws s i)
-        len (.length s)]
-    (when (>= i len)
-      (throw (ex-info "unexpected end of JSON" {:pos i})))
-    (let [c (.charAt s i)]
-      (cond
-        (= c \") (json-parse-string s i)
-        (= c \{) (json-parse-object s i)
-        (= c \[) (json-parse-array s i)
-        (= c \t) (if (and (<= (+ i 4) len) (= (subs s i (+ i 4)) "true"))
-                   [true (+ i 4)]
-                   (throw (ex-info "invalid JSON token" {:pos i})))
-        (= c \f) (if (and (<= (+ i 5) len) (= (subs s i (+ i 5)) "false"))
-                   [false (+ i 5)]
-                   (throw (ex-info "invalid JSON token" {:pos i})))
-        (= c \n) (if (and (<= (+ i 4) len) (= (subs s i (+ i 4)) "null"))
-                   [nil (+ i 4)]
-                   (throw (ex-info "invalid JSON token" {:pos i})))
-        (or (Character/isDigit c) (= c \-))
-        (json-parse-number s i)
-        :else (throw (ex-info (str "unexpected JSON character: " c) {:pos i :char c}))))))
+  (json/write-str v :key-fn #(if (keyword? %) (name %) (str %))))
 
 (defn- json-decode [^String s]
-  (let [[v _] (json-parse-value s 0)]
-    v))
+  (json/read-str s))
+
 
 ;; ---------------------------------------------------------------------------
 ;; OpenAI-compatible provider
@@ -347,7 +187,8 @@
 
 (defn- build-openai-request-body [llm messages tools tool-choice]
   (let [body {"model" (openai-model llm)
-              "messages" (mapv message->openai messages)}
+              "messages" (mapv message->openai messages)
+              "max_completion_tokens" (or (:max-tokens llm) (:max_tokens llm) 16384)}
         body (if (seq tools)
                (assoc body "tools" (mapv tool->openai tools))
                body)

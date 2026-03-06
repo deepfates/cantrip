@@ -550,12 +550,13 @@ defmodule Cantrip.EntityServer do
           llm_state: child_state,
           circle: child_circle
       }
+      # Use request's system_prompt if provided; otherwise give children
+      # a generic prompt so they don't inherit parent's delegation instructions.
+      effective_child_prompt =
+        child_system_prompt ||
+        "You are a child entity. Pursue the intent and call done with the result."
       child_cantrip =
-        if child_system_prompt do
-          put_in(child_cantrip, [:identity, :system_prompt], child_system_prompt)
-        else
-          child_cantrip
-        end
+        %{child_cantrip | identity: %{child_cantrip.identity | system_prompt: effective_child_prompt}}
 
       cancel_on_parent = [self() | state.cancel_on_parent] |> Enum.uniq()
 

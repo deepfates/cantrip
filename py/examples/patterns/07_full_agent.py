@@ -1,3 +1,13 @@
+"""Pattern 07: Codex — code medium + filesystem gate + error steering.
+
+The entity writes Python code in a sandboxed exec() environment. Gates like
+repo_read and done are available as host functions. When repo_read hits a
+missing file, the error observation steers the entity to adapt — no crash,
+no human intervention.
+
+Spec ref: A.7 (Codex), CIRCLE-3 (error observations steer the entity),
+          GATE-2 (gate errors are observations, not crashes).
+"""
 from __future__ import annotations
 
 import json
@@ -9,31 +19,33 @@ from cantrip import Cantrip, Circle, Identity
 
 from ._llm import resolve_llm
 
-# Scripted responses simulate: bad path → error → correct path → done.
-# This is the error-steering pattern (SPEC A.7): the agent adapts when a gate
-# returns an error observation, without any human intervention.
+# Scripted responses simulate code medium: entity writes Python code.
+# Turn 1: try to read a nonexistent file → error observation
+# Turn 2: read the real file → success observation
+# Turn 3: call done with findings
 SCRIPTED_RESPONSES: list[dict[str, Any]] = [
-    {"tool_calls": [{"gate": "repo_read", "args": {"path": "missing.txt"}}]},
-    {"tool_calls": [{"gate": "repo_read", "args": {"path": "metrics.txt"}}]},
-    {"tool_calls": [{"gate": "done", "args": {"answer": "Recovered after read error; metrics reviewed."}}]},
+    {"code": 'result = call_gate("repo_read", {"path": "missing.txt"})'},
+    {"code": 'result = call_gate("repo_read", {"path": "metrics.txt"})'},
+    {"code": "done('Recovered after read error. Metrics: revenue +14%, churn -2 pts.')"},
 ]
 
 
 def run(mode: str | None = None) -> dict[str, Any]:
-    """Pattern 7: Full Agent — code medium + filesystem gate + error recovery.
+    """Pattern 7: Codex — code medium + filesystem gate + error steering.
 
-    The agent tries to read a file that doesn't exist, gets an error observation,
-    then adapts by reading a different file. This demonstrates error steering:
-    the circle doesn't crash on gate errors; it feeds them back as observations
-    and the entity decides what to do next (CIRCLE-3, GATE-2).
+    The entity writes Python code that executes in a sandbox. Gates are
+    host functions. When repo_read hits a missing file, the error feeds
+    back as an observation and the entity adapts (CIRCLE-3, GATE-2).
+    This is A.7: code medium with real gates.
     """
-    print("=== Pattern 07: Full Agent (Error Steering) ===")
-    print("An agent with repo_read and done gates. It will hit an error and recover.")
+    print("=== Pattern 07: Codex (Code Medium + Error Steering) ===")
+    print("A = M ∪ G − W where M = code (Python sandbox), G = {repo_read, done}.")
+    print("The entity writes Python code; gates are host functions in the sandbox.")
     print()
 
     # Set up a workspace with one real file. The agent will first try a
     # nonexistent file and get an error, then find the real one.
-    workspace = Path(tempfile.mkdtemp(prefix="cantrip-full-agent-"))
+    workspace = Path(tempfile.mkdtemp(prefix="cantrip-codex-"))
     metrics_content = "Q1 revenue +14%\nQ1 support cost +1%\nQ1 churn -2 pts\n"
     (workspace / "metrics.txt").write_text(metrics_content, encoding="utf-8")
     print(f"Workspace: {workspace}")
@@ -41,20 +53,21 @@ def run(mode: str | None = None) -> dict[str, Any]:
     print(f"  missing.txt exists: False")
     print()
 
-    # Visible construction: identity, circle, gates, wards — all inline (CANTRIP-1).
+    # Visible construction: code medium, real gates, wards — all inline (CANTRIP-1).
     spell = Cantrip(
         llm=resolve_llm(mode, scripted_responses=SCRIPTED_RESPONSES),
         identity=Identity(
             system_prompt=(
-                "You are a file analyst. You have two tools: repo_read(path) to read files, "
-                "and done(answer) to finish. If a read fails, you'll get an error — try a different path. "
-                "Call done(answer) with your findings when ready."
+                "You write Python code to analyze files. "
+                "Available host functions: call_gate('repo_read', {'path': '...'}) to read files, "
+                "done(answer) to finish. If a read fails, adapt and try a different path."
             ),
-            require_done_tool=True,  # WARD: agent must call done() to terminate
+            require_done_tool=True,  # WARD: entity must call done() to terminate
         ),
         circle=Circle(
             gates=["done", {"name": "repo_read", "depends": {"root": str(workspace)}}],
             wards=[{"max_turns": 5}],  # WARD-1: safety bound on loop iterations
+            medium="code",  # A.7: code medium — entity writes Python, not JSON tool calls
         ),
     )
 

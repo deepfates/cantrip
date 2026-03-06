@@ -1,3 +1,12 @@
+"""Pattern 08: Folding — compress older turns to keep context small.
+
+When a thread exceeds trigger_after_turns, early turns are replaced with
+a '[folded context]' marker in the LLM's context window. The loom keeps
+the full uncompressed history. The identity (system prompt) is always
+preserved — folding never touches it.
+
+Spec ref: FOLD-1 (folding compresses context), LOOM-2 (loom keeps full history).
+"""
 from __future__ import annotations
 
 import json

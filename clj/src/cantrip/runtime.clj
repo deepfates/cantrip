@@ -110,6 +110,9 @@
   [cantrip]
   (ward-value cantrip :max-batch-size))
 
+(def ^:private default-child-system-prompt
+  "You are a child entity. Pursue the intent and return the result. If you have a submit-answer or done function, call it with your answer.")
+
 (defn- derive-child-cantrip
   [parent-cantrip request dependencies parent-depth]
   (let [named-llms (:named-llms dependencies)
@@ -125,10 +128,28 @@
                                       default-child-llm)
                              default-child-llm)
                            depth-derived-llm
-                           (:llm parent-cantrip))]
+                           (:llm parent-cantrip))
+        ;; Strip delegation gates from child (prevents runaway recursion).
+        ;; Child keeps done + parent's non-delegation gates.
+        parent-gates (get-in parent-cantrip [:circle :gates])
+        child-gates (when (and (seq parent-gates) (nil? requested-gates))
+                      (vec (remove #{:call-entity :call-entity-batch
+                                     "call_entity" "call_entity_batch"
+                                     :call_entity :call_entity_batch}
+                                   parent-gates)))
+        ;; Cap child max-turns at 3 (prevents exponential blowup from error cascading)
+        parent-max-turns (ward-value parent-cantrip :max-turns)
+        child-max-turns (when parent-max-turns (min (long parent-max-turns) 3))]
     (cond-> (assoc parent-cantrip :llm chosen-llm)
+      ;; Use requested gates if provided, otherwise strip delegation gates
       (seq requested-gates)
-      (assoc-in [:circle :gates] (normalize-request-gates requested-gates)))))
+      (assoc-in [:circle :gates] (normalize-request-gates requested-gates))
+      (and (seq child-gates) (nil? requested-gates))
+      (assoc-in [:circle :gates] child-gates)
+      ;; Cap child turns
+      child-max-turns
+      (assoc-in [:circle :wards] (conj (vec (get-in parent-cantrip [:circle :wards]))
+                                        {:max-turns child-max-turns})))))
 
 (defn- circle-tools [circle identity-config]
   (:tools (medium/tool-view circle identity-config)))
@@ -509,10 +530,10 @@
         parent-depth (long (or (:depth parent-entity) 0))
         max-depth (max-depth-ward parent-cantrip)
         child-cantrip (or cantrip parent-cantrip)
-        ;; If system-prompt is provided, override child identity.
-        child-cantrip (if system-prompt
-                        (assoc-in child-cantrip [:identity :system-prompt] system-prompt)
-                        child-cantrip)]
+        ;; Use request's system-prompt if provided; otherwise give children
+        ;; a generic prompt so they don't inherit parent's delegation instructions.
+        child-system-prompt (or system-prompt default-child-system-prompt)
+        child-cantrip (assoc-in child-cantrip [:identity :system-prompt] child-system-prompt)]
     (cond
       (and (some? max-depth) (>= parent-depth (long max-depth)))
       {:status :error

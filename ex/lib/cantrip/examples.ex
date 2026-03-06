@@ -437,7 +437,7 @@ defmodule Cantrip.Examples do
              llm: code_llm,
              identity: %{
                system_prompt:
-                 "You write Elixir code to compute SaaS metrics. Available host functions: echo.(opts) and done.(answer). Compute the requested value and call done.(answer) with the result string.",
+                 "You write Elixir code to compute SaaS metrics. Write all code at the top level — do NOT use defmodule. Available host functions: echo.(opts) and done.(answer). Compute the requested value and call done.(answer) with the result string.",
                require_done_tool: true,
                tool_choice: "required"
              },
@@ -526,7 +526,7 @@ defmodule Cantrip.Examples do
         llm: llm,
         identity: %{
           system_prompt:
-            "You write Elixir code to analyze quarterly revenue data. Available host functions: read.(%{path: \"file.txt\"}), compile_and_load.(%{module: \"Name\", source: \"code\"}), and done.(answer). If a gate returns an error, recover gracefully by trying an alternative file.",
+            "You write Elixir code to analyze quarterly revenue data. Write all code at the top level as a simple script — do NOT use defmodule or guard clauses. Use anonymous functions for helpers (e.g., parse = fn text -> ... end). Available host functions (closure bindings):\n- read.(%{path: \"file.txt\"}) — read a file, returns content string or error\n- compile_and_load.(%{module: \"Name\", source: \"code\"}) — compile an Elixir module\n- done.(answer) — finish and return the answer\n\nIf a read returns an error, recover by trying an alternative file. Keep code simple and direct.",
           require_done_tool: true,
           tool_choice: "required"
         },
@@ -701,7 +701,7 @@ defmodule Cantrip.Examples do
         child_llm: child_llm,
         identity: %{
           system_prompt:
-            "You write Elixir code to coordinate a SaaS portfolio review. Available host functions: call_entity.(%{intent: \"task\", gates: [\"done\"]}), call_entity_batch.([%{intent: \"task\", gates: [\"done\"]}]), and done.(answer). Delegate analysis to specialist children, collect their findings, and call done with the combined result.",
+            "You write Elixir code to coordinate a SaaS portfolio review. Write all code at the top level as a script — do NOT use defmodule, Task, spawn, or any concurrency primitives. Host functions are closure bindings only accessible at top level. Use ONLY these host functions:\n- call_entity.(%{intent: \"task\", gates: [\"done\"]}) — delegate to one child\n- call_entity_batch.([%{intent: \"task\", gates: [\"done\"]}]) — delegate to multiple children in parallel (returns a list of results in order)\n- done.(answer) — finish and return the answer\n\nExample:\nsingle = call_entity.(%{intent: \"analyze X\", gates: [\"done\"]})\nbatch = call_entity_batch.([%{intent: \"analyze Y\", gates: [\"done\"]}, %{intent: \"analyze Z\", gates: [\"done\"]}])\ndone.(%{single: single, batch: batch})",
           require_done_tool: true,
           tool_choice: "required"
         },
@@ -714,9 +714,7 @@ defmodule Cantrip.Examples do
 
     case Cantrip.cast(cantrip, "Conduct a full portfolio review: revenue risk, support trends, and growth velocity.") do
       {:ok, result, next_cantrip, loom, meta} ->
-        IO.puts("Single child (revenue risk): #{inspect(result.single)}")
-        IO.puts("Batch child 1 (support):     #{inspect(Enum.at(result.batch, 0))}")
-        IO.puts("Batch child 2 (growth):      #{inspect(Enum.at(result.batch, 1))}")
+        IO.puts("Result: #{inspect(result)}")
         IO.puts("Parent loom turns: #{length(loom.turns)}")
         IO.puts("\nEach child ran in its own circle with its own identity.")
         IO.puts("The parent collected and combined results. Batch results")
@@ -850,7 +848,7 @@ defmodule Cantrip.Examples do
         llm: llm,
         identity: %{
           system_prompt:
-            "You write Elixir code to build a regional SaaS performance model. Variables persist across turns and across sends. Define variables to accumulate metrics, then call done.(answer) with a summary map. Available host function: done.(answer).",
+            "You write Elixir code to build a regional SaaS performance model. Write all code at the top level — do NOT use defmodule, because host functions are closure bindings only accessible at top level. Variables persist across turns and across sends. Define variables to accumulate metrics, then call done.(answer) with a summary map. Available host function: done.(answer).",
           require_done_tool: true,
           tool_choice: "required"
         },
@@ -912,28 +910,8 @@ defmodule Cantrip.Examples do
         )
       )
 
-    # Resolve child LLM the same way as parent: env -> fallback
-    child_llm_tuple =
-      cond do
-        Map.has_key?(opts, :child_llm) ->
-          inspect(Map.fetch!(opts, :child_llm))
-
-        scripted_mode?(opts) ->
-          # In scripted mode, children get their own FakeLLM instances
-          :scripted
-
-        true ->
-          case Cantrip.llm_from_env() do
-            {:ok, {mod, state}} ->
-              inspect({mod, state})
-
-            {:error, reason} ->
-              raise "Cannot resolve LLM from environment: #{reason}. Set OPENAI_API_KEY and OPENAI_MODEL in .env or environment, or pass mode: :scripted."
-          end
-      end
-
-    # Build the code for send 1 based on LLM resolution
-    {send1_code, _scripted_parent} = build_familiar_send1(child_llm_tuple)
+    # Build the code for send 1 — uses call_entity.() which handles LLM wiring
+    {send1_code, _scripted_parent} = build_familiar_send1(opts)
 
     scripted = [
       %{code: send1_code},
@@ -945,12 +923,27 @@ defmodule Cantrip.Examples do
 
     llm = choose_llm(opts, scripted)
 
+    # Children spawned via call_entity use child_llm — in scripted mode, give them FakeLLM responses.
+    # Children inherit the code medium, so responses must use code format (done.(answer)).
+    child_llm =
+      if scripted_mode?(opts) do
+        child_responses = [
+          %{code: "done.(\"child-conversation\")"},
+          %{code: "done.(\"child-code\")"}
+        ]
+
+        {FakeLLM, FakeLLM.new(child_responses)}
+      else
+        nil
+      end
+
     {:ok, cantrip} =
       Cantrip.new(%{
         llm: llm,
+        child_llm: child_llm,
         identity: %{
           system_prompt:
-            "You write Elixir code to coordinate SaaS analysis. Variables persist across turns and sends. You can construct child Cantrip instances using Cantrip.new/1 and Cantrip.cast/2 for specialized sub-analyses. Use Process.put/get for cross-send memory. Call done.(answer) when finished.",
+            "You write Elixir code to coordinate SaaS analysis. Write all code at the top level — do NOT use defmodule.\n\nAvailable host functions:\n- call_entity.(%{intent: \"task description\"}) — delegate to a child entity, returns the child's answer as a string\n- call_entity_batch.([%{intent: \"task1\"}, %{intent: \"task2\"}]) — delegate multiple tasks in parallel, returns list of answers\n- done.(answer) — finish and return your final answer\n\nOptional keys for call_entity: :context (data map), :system_prompt, :gates, :wards\n\nVariables persist across turns and sends. Use Process.put/get for cross-send memory.\n\nYour job: break the request into subtasks, delegate via call_entity, combine results, call done.",
           require_done_tool: true,
           tool_choice: "required"
         },
@@ -1038,75 +1031,20 @@ defmodule Cantrip.Examples do
   end
 
   # Build the familiar's first send code. Children use same LLM resolution.
-  defp build_familiar_send1(:scripted) do
+  defp build_familiar_send1(_llm_mode) do
     code = """
     Process.put(:example_memory, ["familiar-start"])
 
-    conversation_llm =
-      {Cantrip.FakeLLM,
-       Cantrip.FakeLLM.new([
-         %{tool_calls: [%{gate: "done", args: %{answer: "child-conversation"}}]}
-       ])}
+    # Delegate to children via call_entity — the framework handles LLM wiring
+    convo_result = call_entity.(%{
+      intent: "Analyze customer retention risk by segment. Focus on enterprise vs SMB churn rates.",
+      system_prompt: "You are a retention analyst. Call done with a one-sentence finding."
+    })
 
-    {:ok, child_conversation} =
-      Cantrip.new(%{
-        llm: conversation_llm,
-        identity: %{system_prompt: "You are a retention analyst. You have one tool: done. Analyze customer retention risk by segment and call done with your finding.", require_done_tool: true, tool_choice: "required"},
-        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 2}]}
-      })
-
-    {:ok, convo_result, _, _, _} =
-      Cantrip.cast(child_conversation, "Analyze customer retention risk by segment.")
-
-    code_llm =
-      {Cantrip.FakeLLM,
-       Cantrip.FakeLLM.new([
-         %{code: "done.(\\\"child-code\\\")"}
-       ])}
-
-    {:ok, child_code} =
-      Cantrip.new(%{
-        llm: code_llm,
-        identity: %{system_prompt: "You write Elixir code to detect metric anomalies. Call done.(answer) with the anomaly score."},
-        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 2}]}
-      })
-
-    {:ok, code_result, _, _, _} =
-      Cantrip.cast(child_code, "Compute an anomaly score for the Q3 churn spike.")
-
-    memory = (Process.get(:example_memory) || []) ++ [convo_result, code_result]
-    Process.put(:example_memory, memory)
-    done.(memory)
-    """
-
-    {code, true}
-  end
-
-  defp build_familiar_send1(llm_str) do
-    code = """
-    Process.put(:example_memory, ["familiar-start"])
-
-    child_llm = #{llm_str}
-
-    {:ok, child_conversation} =
-      Cantrip.new(%{
-        llm: child_llm,
-        identity: %{system_prompt: "You are a retention analyst. You have one tool: done. Analyze customer retention risk by segment and call done with your finding.", require_done_tool: true, tool_choice: "required"},
-        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 2}]}
-      })
-
-    {:ok, convo_result, _, _, _} =
-      Cantrip.cast(child_conversation, "Analyze customer retention risk by segment.")
-
-    {:ok, child_code} =
-      Cantrip.new(%{
-        llm: child_llm,
-        identity: %{system_prompt: "You write Elixir code to detect metric anomalies. Call done.(answer) with the anomaly score."},
-        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 2}]}
-      })
-
-    {:ok, code_result, _, _, _} =
-      Cantrip.cast(child_code, "Compute an anomaly score for the Q3 churn spike.")
+    code_result = call_entity.(%{
+      intent: "Compute an anomaly score for the Q3 churn spike of 4.0%.",
+      system_prompt: "You are a risk scoring agent. Call done with the anomaly score."
+    })
 
     memory = (Process.get(:example_memory) || []) ++ [convo_result, code_result]
     Process.put(:example_memory, memory)

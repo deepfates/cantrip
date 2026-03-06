@@ -288,7 +288,7 @@
 ;; ── Example 06: Medium ─────────────────────────────────────────────────────
 
 (defn example-06-medium
-  "Pattern 06: same gates, different medium; action space changes A = M U G - W (CIRCLE-12, MEDIUM-1, MEDIUM-2).
+  "Pattern 06: same gates, different medium; action space changes A = M U G - W (CIRCLE-11, MEDIUM-1, MEDIUM-2).
    Conversation medium uses tool-call messages; code medium writes and executes Clojure."
   ([] (example-06-medium {}))
   ([{:as opts :keys [conversation-llm-config code-llm-config]}]
@@ -361,19 +361,25 @@
                            :wards [{:max-turns 4}]}}
          run (runtime/cast cantrip "Read the quarterly data file and return its contents. Try read-report first with q4.md, and if that fails, use read with q4.txt.")
          observations (mapcat :observation (:turns run))
-         gate-seq (mapv :gate observations)]
+         gate-seq (mapv :gate observations)
+         error-count (count (filter :is-error observations))
+         success-count (count (remove :is-error observations))]
      ;; ── Narrative ──
      (println "=== Pattern 07: Error Steering (Code Agent) ===")
      (println "A code-medium agent tries to read Q4 data. The first approach fails,")
      (println "and the error observation steers the LLM to recover on the next turn.\n")
-     (println "Turn 1: Agent calls :read-report with q4.md")
-     (println "  -> Error: report format unavailable")
-     (println "Turn 2: Agent calls :read with q4.txt (recovery)")
-     (println "  -> Success: reads the quarterly data")
-     (println "  -> Calls done with the result\n")
-     (println "Total turns:" (count (:turns run)))
+     ;; Inspect actual turns — show what really happened, not a hardcoded story
+     (doseq [[idx turn] (map-indexed vector (:turns run))]
+       (let [obs (:observation turn)
+             gates-this-turn (mapv :gate obs)
+             errors? (seq (filter :is-error obs))]
+         (println (str "  Turn " (inc idx) ": gates=" gates-this-turn
+                       (when errors? " [errors observed]")))))
+     (println "\nTotal turns:" (count (:turns run)))
      (println "Gate sequence:" gate-seq)
+     (println "Errors:" error-count "| Successes:" success-count)
      (println "Status:" (:status run))
+     (println "Result:" (:result run))
      (println "\nThis is the loop at work (LOOP-1): error -> observation -> next turn -> recovery.")
      {:pattern 7
       :run run
@@ -422,7 +428,10 @@
      (println "Send 3: Q3 analysis (Q1+Q2 folded, only Q2 turn visible in full)\n")
      (println "Folding markers observed:" (count folding-markers))
      (println "Total turns in loom:" (:turn-count state))
+     (println "Identity preserved through folding (LOOM-6):"
+              (some? (get-in state [:loom :identity :system-prompt])))
      (println "\nThe loom keeps ALL turns permanently (LOOM-5).")
+     (println "Identity and gate definitions are never folded (LOOM-6).")
      (println "Folding only affects what the LLM sees in its context window (PROD-4).")
      (println "This is how long-running analysis stays within token limits.")
      {:pattern 8
@@ -492,48 +501,66 @@
 
 (defn example-10-loom
   "Pattern 10: inspect loom as the key artifact after a run (LOOM-1, LOOM-3, LOOM-7).
-   The loom records every turn: what the LLM said, what gates were called, what was observed."
+   The loom records every turn: what the LLM said, what gates were called, what was observed.
+   Shows both terminated and truncated runs to demonstrate LOOM-7."
   ([] (example-10-loom {}))
   ([{:as opts :keys [llm-config]}]
-   (let [run (runtime/cast {:llm (if llm-config
-                                   llm-config
-                                   (resolve-llm-config opts [{:tool-calls [{:id "l1" :gate :echo :args {:text "Processing: MRR $4.2M, churn 3.1%, NRR 118%"}}]}
-                                                             {:tool-calls [{:id "l2" :gate :done :args {:answer "SaaS metrics are healthy: strong NRR indicates net expansion exceeds churn"}}]}]))
-                            :identity {:system-prompt "You are a SaaS metrics analyst. First echo your observations about the data, then call done with your conclusion."}
-                            :circle {:medium :conversation
-                                     :gates [:done :echo]
-                                     :wards [{:max-turns 4}]}}
-                           "Analyze these SaaS metrics: MRR $4.2M, churn 3.1%, NRR 118%. Echo your observations first, then call done with your conclusion.")
-         turns (:turns run)
-         loom-turns (get-in run [:loom :turns])
+   (let [;; Run A: terminated — agent echoes then calls done within turn limit
+         terminated-run (runtime/cast {:llm (if llm-config
+                                              llm-config
+                                              (resolve-llm-config opts [{:tool-calls [{:id "l1" :gate :echo :args {:text "Processing: MRR $4.2M, churn 3.1%, NRR 118%"}}]}
+                                                                        {:tool-calls [{:id "l2" :gate :done :args {:answer "SaaS metrics are healthy: strong NRR indicates net expansion exceeds churn"}}]}]))
+                                       :identity {:system-prompt "You are a SaaS metrics analyst. First echo your observations about the data, then call done with your conclusion."}
+                                       :circle {:medium :conversation
+                                                :gates [:done :echo]
+                                                :wards [{:max-turns 4}]}}
+                                      "Analyze these SaaS metrics: MRR $4.2M, churn 3.1%, NRR 118%. Echo your observations first, then call done with your conclusion.")
+         ;; Run B: truncated — agent wants to echo many times but ward cuts it at 1 turn
+         truncated-run (runtime/cast {:llm (resolve-llm-config {:mode :scripted}
+                                                               [{:tool-calls [{:id "t1" :gate :echo :args {:text "Starting analysis..."}}]}])
+                                      :identity {:system-prompt "Echo each metric individually before concluding."}
+                                      :circle {:medium :conversation
+                                               :gates [:done :echo]
+                                               :wards [{:max-turns 1}]}}
+                                     "Analyze all quarterly metrics one by one.")
+         ;; Inspect the terminated run's loom
+         turns (:turns terminated-run)
+         loom-turns (get-in terminated-run [:loom :turns])
          terminated-count (count (filter :terminated loom-turns))
          truncated-count (count (filter :truncated loom-turns))
-         token-usage (:cumulative-usage run)
+         token-usage (:cumulative-usage terminated-run)
          gate-calls (mapcat :observation turns)]
      ;; ── Narrative ──
      (println "=== Pattern 10: Loom Inspection ===")
      (println "The loom is the permanent record of everything that happened (LOOM-1).")
      (println "It captures turns, gate calls, observations, and token usage.\n")
-     (println "Run status:" (:status run))
-     (println "Result:" (:result run))
-     (println "\nLoom contents:")
-     (println "  Total turns:" (count loom-turns))
+     (println "--- Run A: Terminated (agent reached done) ---")
+     (println "  Status:" (:status terminated-run))
+     (println "  Result:" (:result terminated-run))
+     (println "  Loom turns:" (count loom-turns))
      (println "  Gates called:" (mapv :gate gate-calls))
-     (println "  Terminated turns:" terminated-count)
-     (println "  Truncated turns:" truncated-count)
+     (println "  Terminated turns:" terminated-count "| Truncated turns:" truncated-count)
      (println "  Token usage:" token-usage)
-     (println "\nThe loom is append-only (LOOM-3). Once a turn is recorded, it cannot be modified.")
+     (println "\n--- Run B: Truncated (ward stopped the loop before done) ---")
+     (println "  Status:" (:status truncated-run))
+     (println "  Result:" (:result truncated-run))
+     (let [trunc-loom-turns (get-in truncated-run [:loom :turns])]
+       (println "  Loom turns:" (count trunc-loom-turns))
+       (println "  Last turn truncated?" (:truncated (last trunc-loom-turns))))
+     (println "\nTerminated vs truncated (LOOM-7): the loom records which outcome occurred.")
+     (println "The loom is append-only (LOOM-3). Once a turn is recorded, it cannot be modified.")
      (println "This is the audit trail for every decision the agent made.")
      {:pattern 10
-      :status (:status run)
-      :result (:result run)
+      :status (:status terminated-run)
+      :result (:result terminated-run)
       :turn-count (count turns)
       :loom-turn-count (count loom-turns)
       :terminated-count terminated-count
       :truncated-count truncated-count
       :token-usage token-usage
       :gates-called (mapv :gate gate-calls)
-      :run run})))
+      :run terminated-run
+      :truncated-run truncated-run})))
 
 ;; ── Example 11: Persistent Entity ──────────────────────────────────────────
 
@@ -586,27 +613,25 @@
    (let [parent-llm (if llm-config
                       llm-config
                       (resolve-llm-config opts [{:content "(do
-  (def convo-child {:llm {:provider :fake
-                          :responses [{:tool-calls [{:id \"fc1\" :gate :done :args {:answer \"child-a-result\"}}]}]}
-                     :identity {:system-prompt \"Revenue analyst. Call done with your findings.\"}
-                     :circle {:medium :conversation :gates [:done] :wards [{:max-turns 2}]}})
-  (def code-child {:llm {:provider :fake
-                         :responses [{:content \"(submit-answer \\\"child-b-result\\\")\"}]}
-                   :identity {:system-prompt \"Risk computation agent.\" :require-done-tool true}
-                   :circle {:medium :code :gates [:done] :wards [{:max-turns 2}]}})
-  (def a (call-agent {:intent \"Analyze Q3 revenue drivers\" :cantrip convo-child}))
-  (def b (call-agent {:intent \"Compute weighted churn risk score\" :cantrip code-child}))
-  (submit-answer (str \"Results: \" a \" and \" b)))"}
+  (def a (call-agent {:intent \"Analyze Q3 revenue drivers and list top 3\" :system-prompt \"You are a revenue analyst. Answer concisely. Call (submit-answer your-answer) when done.\"}))
+  (def b (call-agent {:intent \"Compute weighted churn risk score from Q3 data\" :system-prompt \"You are a risk analyst. Answer concisely. Call (submit-answer your-answer) when done.\"}))
+  (submit-answer (str \"Revenue drivers: \" a \"\\nChurn risk: \" b)))"}
                                      {:content "(submit-answer \"second familiar send\")"}]))
+         ;; Children use their own FakeLLM in scripted mode, parent's LLM in real mode
+         child-llm (when (= :scripted (:mode opts))
+                     {:provider :fake
+                      :responses [{:tool-calls [{:id "fc1" :gate :done :args {:answer "child-a-result"}}]}
+                                  {:tool-calls [{:id "fc2" :gate :done :args {:answer "child-b-result"}}]}]})
          entity (runtime/summon
                  {:llm parent-llm
-                  :identity {:system-prompt "You write Clojure code to coordinate SaaS analysis. Available functions:\n- (call-agent {:intent \"task\" :cantrip cantrip-map}) - delegate a task to a child agent, returns the child's answer as a string\n- (call-agent-batch [{:intent \"task1\" :cantrip c1} {:intent \"task2\" :cantrip c2}]) - delegate multiple tasks, returns a vector of answers\n- (submit-answer value) - return your final answer\nA cantrip map has keys :llm, :identity, :circle. Write Clojure code to construct child cantrips, delegate work, and combine results."
+                  :identity {:system-prompt "You are a coordinator. Delegate work to children and combine results.\n\nONLY these functions exist:\n- (call-agent {:intent \"task\" :system-prompt \"child role\"}) — delegate to a child, returns answer string\n- (submit-answer value) — finish and return your combined answer\n\nRULES:\n- ALWAYS include :system-prompt in call-agent so children know their role.\n- Do NOT define functions, macros, or error handling. Just call-agent and submit-answer.\n- Keep intents short and specific.\n- You MUST call (submit-answer ...) in every response.\n\nExample:\n(def trends (call-agent {:intent \"List top 3 Q3 revenue trends\" :system-prompt \"You are a revenue analyst. Answer concisely. Call (submit-answer answer) when done.\"}))\n(def risks (call-agent {:intent \"List top 2 risks from Q3 data\" :system-prompt \"You are a risk analyst. Answer concisely. Call (submit-answer answer) when done.\"}))\n(submit-answer (str \"Trends: \" trends \"\\nRisks: \" risks))"
                              :require-done-tool true}
                   :circle {:medium :code
                            :gates [:done]
-                           :wards [{:max-turns 6} {:max-depth 4}]}})
-         ;; First send: delegate to revenue analyst + risk computation agent
-         first-send (runtime/send entity "Delegate two analyses: (1) Q3 revenue driver analysis to a conversation-medium analyst, (2) weighted churn risk computation to a code-medium agent. Combine their results.")
+                           :wards [{:max-turns 4} {:max-depth 2}]
+                           :dependencies (when child-llm {:default-child-llm child-llm})}})
+         ;; First send: delegate two analyses to children
+         first-send (runtime/send entity "Delegate two analyses: (1) Q3 revenue drivers, (2) churn risk score. Combine their results.")
          ;; Second send: entity remembers the delegation from first send
          second-send (runtime/send entity "Submit a summary of the analyses you coordinated in the previous task.")
          state (runtime/entity-state entity)]
@@ -674,7 +699,7 @@
    "03" {:fn #'example-03-circle :rules ["CIRCLE-1" "CIRCLE-2" "CANTRIP-1"]}
    "04" {:fn #'example-04-cantrip :rules ["CANTRIP-1" "CANTRIP-2" "INTENT-1"]}
    "05" {:fn #'example-05-wards :rules ["WARD-1" "CIRCLE-2"]}
-   "06" {:fn #'example-06-medium :rules ["CIRCLE-12" "MEDIUM-1" "MEDIUM-2"]}
+   "06" {:fn #'example-06-medium :rules ["CIRCLE-11" "MEDIUM-1" "MEDIUM-2"]}
    "07" {:fn #'example-07-full-agent :rules ["MEDIUM-2" "LOOP-1" "LOOP-3"]}
    "08" {:fn #'example-08-folding :rules ["LOOM-5" "LOOM-6" "PROD-4"]}
    "09" {:fn #'example-09-composition :rules ["COMP-1" "COMP-3" "LOOM-8"]}
