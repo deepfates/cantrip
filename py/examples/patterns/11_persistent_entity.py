@@ -1,65 +1,111 @@
+"""Pattern 11: Persistent Entity — summon once, send repeatedly, state accumulates.
+
+The entity remembers prior exchanges. The second send benefits from the first
+because Entity.send() composes a transcript of prior turns into the intent (ENTITY-1).
+This is the summon/send pattern: one cantrip, one entity, multiple intents over time.
+"""
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 from typing import Any
 
-from cantrip import Cantrip, Circle, Entity, FakeLLM, Identity, OpenAICompatLLM
-from cantrip.env import load_dotenv_if_present
-from cantrip.providers.base import LLM
+from cantrip import Cantrip, Circle, Identity
 
+from ._llm import resolve_llm
+
+# --- Scripted responses for CI (FakeLLM) ---
+# First send: entity gathers key metrics from the data.
+# Second send: entity builds on the first answer to give a recommendation.
 SCRIPTED_RESPONSES: list[dict[str, Any]] = [
-    {"tool_calls": [{"gate": "done", "args": {"answer": "1) No atmosphere, 2) 1/6 Earth gravity, 3) Formed from giant impact."}}]},
-    {"tool_calls": [{"gate": "done", "args": {"answer": "The giant impact origin is most surprising because it implies the Moon is made of Earth material."}}]},
+    {
+        "tool_calls": [
+            {
+                "gate": "done",
+                "args": {
+                    "answer": (
+                        "Key metrics: Revenue grew 14% QoQ to $4.2M. "
+                        "Churn dropped from 6.1% to 4.0%. "
+                        "Net new ARR is $580K. CAC payback improved to 11 months."
+                    ),
+                },
+            }
+        ]
+    },
+    {
+        "tool_calls": [
+            {
+                "gate": "done",
+                "args": {
+                    "answer": (
+                        "Recommendation: Double down on the current acquisition channel. "
+                        "The 14% revenue growth combined with the 2-point churn improvement "
+                        "means net retention is accelerating. With CAC payback at 11 months, "
+                        "increasing spend is ROI-positive within the fiscal year."
+                    ),
+                },
+            }
+        ]
+    },
 ]
 
 
-def _resolve_llm(mode: str | None = None) -> LLM:
-    if mode == "scripted":
-        return FakeLLM({"responses": SCRIPTED_RESPONSES})
-    load_dotenv_if_present(str(Path(__file__).resolve().parents[2] / ".env"))
-    model = os.environ.get("OPENAI_MODEL") or os.environ.get("CANTRIP_OPENAI_MODEL")
-    base_url = os.environ.get("OPENAI_BASE_URL", os.environ.get("CANTRIP_OPENAI_BASE_URL", "https://api.openai.com/v1"))
-    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("CANTRIP_OPENAI_API_KEY")
-    if not model:
-        raise RuntimeError("Missing OPENAI_MODEL (or CANTRIP_OPENAI_MODEL). Set it in .env or environment.")
-    if not api_key:
-        raise RuntimeError("Missing OPENAI_API_KEY (or CANTRIP_OPENAI_API_KEY). Set it in .env or environment.")
-    return OpenAICompatLLM(model=model, base_url=base_url, api_key=api_key)
-
-
 def run(mode: str | None = None) -> dict[str, Any]:
-    # Pattern 11: summon once, send repeatedly, state accumulates.
-    active_llm = _resolve_llm(mode)
+    """Pattern 11: summon once, send repeatedly, state accumulates (ENTITY-1)."""
+
+    llm = resolve_llm(mode, scripted_responses=SCRIPTED_RESPONSES)
+
+    # -- Construct the cantrip: done gate + max_turns ward (CIRCLE-1, WARD-1) --
     spell = Cantrip(
-        llm=active_llm,
+        llm=llm,
         circle=Circle(gates=["done"], wards=[{"max_turns": 3}]),
         identity=Identity(
             system_prompt=(
-                "You are a helpful assistant. Answer questions concisely. "
-                "You have one tool: done(answer). Always call done(answer) with your response. "
-                "Remember context from previous exchanges."
+                "You are a SaaS metrics analyst. "
+                "When given data, extract key metrics. "
+                "When asked for recommendations, reference your prior analysis. "
+                "Always finish by calling done(answer)."
             )
         ),
     )
 
-    entity: Entity = spell.summon()
-    first = entity.send("List 3 interesting facts about the Moon. Call done(answer).")
-    second = entity.send("Based on your previous answer, which fact is most surprising and why? Call done(answer).")
+    # -- Summon: creates a persistent entity (ENTITY-1) --
+    entity = spell.summon()
 
-    invocations = getattr(active_llm, "invocations", [])
-    second_prompt = ""
-    if len(invocations) >= 2:
-        second_prompt = invocations[1]["messages"][2]["content"]
+    print("=== Pattern 11: Persistent Entity ===")
+    print("Summon once, send repeatedly. State accumulates across sends.\n")
+
+    # -- First send: gather metrics --
+    data = (
+        "Q3 results: Revenue $4.2M (up 14% QoQ), churn 4.0% (was 6.1%), "
+        "net new ARR $580K, CAC payback 11 months."
+    )
+    print(f"[Send 1] Analyze this data:\n  {data}")
+    first = entity.send(f"Extract the key metrics from this data: {data}")
+    print(f"  -> {first}\n")
+
+    # -- State check: entity has accumulated turns --
+    turns_after_first = len(entity.turns)
+    print(f"  Accumulated turns after first send: {turns_after_first}")
+
+    # -- Second send: build on the first answer --
+    print("\n[Send 2] Now ask for a recommendation based on the prior analysis:")
+    second = entity.send(
+        "Based on the metrics you just extracted, what is your top recommendation?"
+    )
+    print(f"  -> {second}\n")
+
+    turns_after_second = len(entity.turns)
+    print(f"  Accumulated turns after second send: {turns_after_second}")
+    print(f"  Last thread turns: {len(entity.last_thread.turns) if entity.last_thread else 0}")
+    print("\nThe second answer references the first because Entity.send() composes")
+    print("a transcript of prior exchanges into each new intent (ENTITY-1).")
 
     return {
         "pattern": 11,
         "first": first,
         "second": second,
-        "accumulated_turns": len(entity.turns),
+        "accumulated_turns": turns_after_second,
         "last_thread_turns": len(entity.last_thread.turns) if entity.last_thread else 0,
-        "remembers_prior_turn": "Conversation so far:" in second_prompt,
     }
 
 

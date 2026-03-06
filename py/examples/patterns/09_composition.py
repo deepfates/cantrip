@@ -1,70 +1,83 @@
+"""Pattern 09: Composition — batch delegation via call_entity_batch.
+
+A parent entity splits financial document analysis across child entities
+that run in parallel. Each child gets independent context and a fresh circle.
+Medium: code | LLM: Yes | Recursion: Yes (depth 1)
+"""
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 from typing import Any
 
-from cantrip import Cantrip, Circle, FakeLLM, Identity, OpenAICompatLLM
-from cantrip.env import load_dotenv_if_present
-from cantrip.providers.base import LLM
+from cantrip import Cantrip, Circle, Identity
 
-# Parent uses code medium: writes Python code that calls call_entity_batch().
-# Children inherit code medium, so their responses are also code tool calls.
-SCRIPTED_RESPONSES: list[dict[str, Any]] = [
+from ._llm import resolve_llm_pair
+
+# Financial documents for analysis — three documents, each handled by a focused child.
+DOCUMENTS = [
+    {"id": 1, "title": "Q1 Revenue", "content": "Revenue grew 15% YoY to $4.2M. SaaS ARR reached $3.1M. Enterprise deals drove 60% of new bookings."},
+    {"id": 2, "title": "Q1 Costs", "content": "Total OpEx was $3.8M, up 8%. Headcount grew from 42 to 47. Infrastructure costs fell 12% after migration."},
+    {"id": 3, "title": "Q1 Outlook", "content": "Pipeline is $12M, up 25%. Two enterprise deals expected to close in Q2. Hiring plan: 5 engineers, 2 sales."},
+]
+
+# Parent uses code medium: writes Python that calls call_entity_batch() (COMP-3).
+# Children inherit code medium, analyze one document each, and call done().
+PARENT_RESPONSES: list[dict[str, Any]] = [
     {
         "tool_calls": [{
             "gate": "code",
             "args": {
                 "code": (
-                    "results = call_entity_batch(["
-                    '{"intent": "List 3 benefits of exercise"}, '
-                    '{"intent": "List 3 benefits of sleep"}'
+                    "results = call_entity_batch([\n"
+                    '  {"intent": "Summarize the Q1 Revenue document: Revenue grew 15% YoY to $4.2M. SaaS ARR reached $3.1M. Enterprise deals drove 60% of new bookings."},\n'
+                    '  {"intent": "Summarize the Q1 Costs document: Total OpEx was $3.8M, up 8%. Headcount grew from 42 to 47. Infrastructure costs fell 12% after migration."},\n'
+                    '  {"intent": "Summarize the Q1 Outlook document: Pipeline is $12M, up 25%. Two enterprise deals expected to close in Q2. Hiring plan: 5 engineers, 2 sales."}\n'
                     "])\n"
-                    "done('combined: ' + str(results))"
+                    "done('Financial Summary:\\n' + '\\n'.join(str(r) for r in results))"
                 )
             },
         }]
     },
 ]
 
-CHILD_SCRIPTED_RESPONSES: list[dict[str, Any]] = [
-    {"tool_calls": [{"gate": "code", "args": {"code": "done('Exercise: cardiovascular health, mood, strength.')"}}]},
-    {"tool_calls": [{"gate": "code", "args": {"code": "done('Sleep: memory consolidation, immune function, recovery.')"}}]},
+CHILD_RESPONSES: list[dict[str, Any]] = [
+    {"tool_calls": [{"gate": "code", "args": {"code": "done('Revenue: 15% YoY growth to $4.2M, SaaS ARR $3.1M, enterprise-led bookings.')"}}]},
+    {"tool_calls": [{"gate": "code", "args": {"code": "done('Costs: OpEx $3.8M (+8%), 5 new hires, infra costs down 12% post-migration.')"}}]},
+    {"tool_calls": [{"gate": "code", "args": {"code": "done('Outlook: $12M pipeline (+25%), 2 enterprise deals near close, 7 hires planned.')"}}]},
 ]
 
 
-def _resolve_llm(mode: str | None = None) -> tuple[LLM, bool]:
-    if mode == "scripted":
-        return FakeLLM({"responses": SCRIPTED_RESPONSES}), False
-    load_dotenv_if_present(str(Path(__file__).resolve().parents[2] / ".env"))
-    model = os.environ.get("OPENAI_MODEL") or os.environ.get("CANTRIP_OPENAI_MODEL")
-    base_url = os.environ.get("OPENAI_BASE_URL", os.environ.get("CANTRIP_OPENAI_BASE_URL", "https://api.openai.com/v1"))
-    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("CANTRIP_OPENAI_API_KEY")
-    if not model:
-        raise RuntimeError("Missing OPENAI_MODEL (or CANTRIP_OPENAI_MODEL). Set it in .env or environment.")
-    if not api_key:
-        raise RuntimeError("Missing OPENAI_API_KEY (or CANTRIP_OPENAI_API_KEY). Set it in .env or environment.")
-    return OpenAICompatLLM(model=model, base_url=base_url, api_key=api_key), True
-
-
 def run(mode: str | None = None) -> dict[str, Any]:
-    # Pattern 9: parent delegates via call_entity_batch in code medium (COMP-3).
-    parent_llm, using_real = _resolve_llm(mode)
-    child_llm: LLM = parent_llm if using_real else FakeLLM({"responses": CHILD_SCRIPTED_RESPONSES})
+    """Pattern 9: parent delegates via call_entity_batch in code medium (COMP-3)."""
+    parent_llm, child_llm = resolve_llm_pair(
+        mode,
+        parent_responses=PARENT_RESPONSES,
+        child_responses=CHILD_RESPONSES,
+    )
 
+    print("=== Pattern 09: Composition ===")
+    print("A parent entity delegates document analysis to children via call_entity_batch.")
+    print("Children run in parallel, each with independent context and a fresh circle.\n")
+
+    print("Documents to analyze:")
+    for doc in DOCUMENTS:
+        print(f"  [{doc['id']}] {doc['title']}: {doc['content'][:60]}...")
+    print()
+
+    # COMP-1: Parent circle includes call_entity_batch gate for delegation.
+    # COMP-2: max_depth ward limits recursion depth.
     spell = Cantrip(
         llm=parent_llm,
         child_llm=child_llm,
         identity=Identity(
             system_prompt=(
-                "You are a coordinator. Use the code tool to write Python.\n"
+                "You are a financial analyst coordinator. Use the code tool to write Python.\n"
                 "Available functions:\n"
-                "  call_entity_batch(list_of_dicts) — delegate tasks to children in parallel\n"
-                "  done(answer) — finish with your final answer\n"
-                "Each dict needs an 'intent' key with a clear description of what the child should do.\n"
-                "Children will return string results.\n"
-                "Combine their results and call done()."
+                "  call_entity_batch(list_of_dicts) -- delegate tasks to children in parallel\n"
+                "  done(answer) -- finish with your final answer\n"
+                "Each dict needs an 'intent' key describing what the child should analyze.\n"
+                "Children will return string summaries.\n"
+                "Combine their results and call done() with the synthesis."
             ),
             require_done_tool=True,
         ),
@@ -76,13 +89,26 @@ def run(mode: str | None = None) -> dict[str, Any]:
         medium_depends={"code": {"timeout_s": 60}},
     )
 
+    print("Parent delegates: call_entity_batch with 3 document summaries...")
     result, parent_thread = spell.cast_with_thread(
-        "Delegate two tasks: (1) list 3 benefits of exercise, (2) list 3 benefits of sleep. "
-        "Use call_entity_batch, then combine the results with done(answer)."
+        "Analyze these financial documents by delegating each to a child entity via "
+        "call_entity_batch, then synthesize an overall summary:\n"
+        + "\n".join(f"- {doc['title']}: {doc['content']}" for doc in DOCUMENTS)
     )
+
+    # Inspect the loom tree: parent + child threads (LOOM-5).
     all_threads = spell.loom.list_threads()
     child_threads = [t for t in all_threads if t.id != parent_thread.id]
     batch_record = parent_thread.turns[0].observation[0] if parent_thread.turns else None
+
+    print(f"\nParent answer: {result}")
+    print(f"\nLoom tree:")
+    print(f"  Parent thread: {parent_thread.id} ({len(parent_thread.turns)} turns)")
+    for ct in child_threads:
+        print(f"  Child thread:  {ct.id} ({len(ct.turns)} turns)")
+    print(f"\n  Total threads: {len(all_threads)} (1 parent + {len(child_threads)} children)")
+    if batch_record and isinstance(getattr(batch_record, 'result', None), list):
+        print(f"  Batch results: {len(batch_record.result)} documents summarized")
 
     return {
         "pattern": 9,
@@ -90,7 +116,7 @@ def run(mode: str | None = None) -> dict[str, Any]:
         "parent_turns": len(parent_thread.turns),
         "child_threads": len(child_threads),
         "child_thread_ids": [t.id for t in child_threads],
-        "batch_result_count": len(batch_record.result) if batch_record and isinstance(batch_record.result, list) else 0,
+        "batch_result_count": len(batch_record.result) if batch_record and isinstance(getattr(batch_record, 'result', None), list) else 0,
     }
 
 

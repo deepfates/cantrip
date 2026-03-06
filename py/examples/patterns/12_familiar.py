@@ -1,7 +1,17 @@
+"""Pattern 12: The Familiar — persistent coordinator that delegates via code medium.
+
+The capstone pattern. A long-running entity with:
+  - Code medium: thinks in Python, calls gates as functions (MEDIUM-1)
+  - call_entity gate: delegates tasks to child entities (COMPOSE-1)
+  - Persistent SQLite loom: remembers across sessions (LOOM-1)
+  - Two sends: first gathers information, second builds on it (ENTITY-1)
+
+The familiar doesn't do leaf work itself. It writes code that delegates to
+children via call_entity, combines their results, and calls done().
+"""
 from __future__ import annotations
 
 import json
-import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -9,80 +19,111 @@ from typing import Any
 from cantrip import (
     Cantrip,
     Circle,
-    Entity,
-    FakeLLM,
     Identity,
     Loom,
-    OpenAICompatLLM,
     SQLiteLoomStore,
 )
-from cantrip.env import load_dotenv_if_present
-from cantrip.providers.base import LLM
 
-# Simplified code medium delegation: children inherit parent's medium (code).
-# No need to specify llm/medium in call_entity args.
-SCRIPTED_RESPONSES: list[dict[str, Any]] = [
+from ._llm import resolve_llm_pair
+
+# --- Scripted responses for the parent (coordinator) ---
+# Send 1: parent writes code that delegates a research task to a child,
+#          then delegates a second task, and combines results.
+# Send 2: parent builds on send 1, delegating a synthesis task.
+PARENT_RESPONSES: list[dict[str, Any]] = [
     {
-        "tool_calls": [{
-            "gate": "code",
-            "args": {
-                "code": (
-                    'a = call_entity({"intent": "Compute 2+3 and call done(answer)"})\n'
-                    'b = call_entity({"intent": "What is the capital of Japan? Call done(answer)"})\n'
-                    "done(str(a) + ' | ' + str(b))"
-                )
-            },
-        }]
+        "tool_calls": [
+            {
+                "gate": "code",
+                "args": {
+                    "code": (
+                        "# Delegate two research tasks to children (COMPOSE-1)\n"
+                        'trends = call_entity({"intent": "Identify the top 3 trends in this Q3 data: '
+                        "Revenue $4.2M (+14% QoQ), churn 4.0% (was 6.1%), "
+                        'net new ARR $580K, CAC payback 11mo. Call done(answer)."})\n'
+                        'risks = call_entity({"intent": "What are the 2 biggest risks given: '
+                        "churn improved but still 4%, CAC payback 11mo, "
+                        'heavy reliance on single channel. Call done(answer)."})\n'
+                        "done('TRENDS: ' + str(trends) + ' | RISKS: ' + str(risks))"
+                    )
+                },
+            }
+        ]
     },
     {
-        "tool_calls": [{
-            "gate": "code",
-            "args": {
-                "code": (
-                    'a = call_entity({"intent": "Compute 10*5 and call done(answer)"})\n'
-                    'b = call_entity({"intent": "What is the capital of Germany? Call done(answer)"})\n'
-                    "done(str(a) + ' | ' + str(b))"
-                )
-            },
-        }]
+        "tool_calls": [
+            {
+                "gate": "code",
+                "args": {
+                    "code": (
+                        "# Build on prior analysis — synthesize a recommendation (ENTITY-1)\n"
+                        'plan = call_entity({"intent": "Given these findings — revenue +14%, churn dropping, '
+                        "CAC payback 11mo — draft a 2-sentence action plan for Q4. "
+                        'Call done(answer)."})\n'
+                        "done('Q4 ACTION PLAN: ' + str(plan))"
+                    )
+                },
+            }
+        ]
     },
 ]
 
-# Children also use code medium (inherited), so they respond with code tool calls.
+# --- Scripted responses for children ---
+# Children use code medium (inherited from parent), so they respond with code calls.
 CHILD_RESPONSES: list[dict[str, Any]] = [
-    {"tool_calls": [{"gate": "code", "args": {"code": "done('5')"}}]},
-    {"tool_calls": [{"gate": "code", "args": {"code": "done('Tokyo')"}}]},
-    {"tool_calls": [{"gate": "code", "args": {"code": "done('50')"}}]},
-    {"tool_calls": [{"gate": "code", "args": {"code": "done('Berlin')"}}]},
+    {
+        "tool_calls": [
+            {
+                "gate": "code",
+                "args": {
+                    "code": "done('1) Revenue acceleration (+14% QoQ), 2) Churn improvement (6.1->4.0%), 3) Efficient growth (11mo CAC payback)')"
+                },
+            }
+        ]
+    },
+    {
+        "tool_calls": [
+            {
+                "gate": "code",
+                "args": {
+                    "code": "done('1) Channel concentration risk — single acquisition channel, 2) Churn floor uncertainty — 4% may be structural')"
+                },
+            }
+        ]
+    },
+    {
+        "tool_calls": [
+            {
+                "gate": "code",
+                "args": {
+                    "code": "done('Increase acquisition spend 30% on the proven channel while investing 15% of marketing budget in a second channel to reduce concentration risk.')"
+                },
+            }
+        ]
+    },
 ]
-
-
-def _resolve_llm(mode: str | None = None) -> tuple[LLM, bool]:
-    if mode == "scripted":
-        return FakeLLM({"responses": SCRIPTED_RESPONSES}), False
-    load_dotenv_if_present(str(Path(__file__).resolve().parents[2] / ".env"))
-    model = os.environ.get("OPENAI_MODEL") or os.environ.get("CANTRIP_OPENAI_MODEL")
-    base_url = os.environ.get("OPENAI_BASE_URL", os.environ.get("CANTRIP_OPENAI_BASE_URL", "https://api.openai.com/v1"))
-    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("CANTRIP_OPENAI_API_KEY")
-    if not model:
-        raise RuntimeError("Missing OPENAI_MODEL (or CANTRIP_OPENAI_MODEL). Set it in .env or environment.")
-    if not api_key:
-        raise RuntimeError("Missing OPENAI_API_KEY (or CANTRIP_OPENAI_API_KEY). Set it in .env or environment.")
-    return OpenAICompatLLM(model=model, base_url=base_url, api_key=api_key), True
 
 
 def run(mode: str | None = None) -> dict[str, Any]:
-    # Pattern 12: familiar coordinates child cantrips and keeps a persistent loom (FAM-1).
-    parent_llm, using_real = _resolve_llm(mode)
+    """Pattern 12: familiar — persistent coordinator with code medium (FAM-1)."""
 
-    if using_real:
-        child_llm: LLM = parent_llm
-    else:
-        child_llm = FakeLLM({"responses": CHILD_RESPONSES})
+    parent_llm, child_llm = resolve_llm_pair(
+        mode,
+        parent_responses=PARENT_RESPONSES,
+        child_responses=CHILD_RESPONSES,
+    )
 
+    # -- Persistent loom: SQLite on disk survives across runs (LOOM-1) --
     loom_path = Path(tempfile.mkdtemp(prefix="cantrip-familiar-")) / "loom.db"
     loom = Loom(store=SQLiteLoomStore(loom_path))
 
+    print("=== Pattern 12: The Familiar ===")
+    print("A persistent coordinator that delegates to children via code medium.\n")
+    print(f"Loom path: {loom_path}")
+
+    # -- Construct the familiar's cantrip --
+    # Code medium + call_entity gate + done gate (MEDIUM-1, COMPOSE-1)
+    # Wards: max_turns=6 prevents runaway, max_depth=2 limits child nesting (WARD-1)
     familiar_spell = Cantrip(
         llm=parent_llm,
         child_llm=child_llm,
@@ -91,50 +132,71 @@ def run(mode: str | None = None) -> dict[str, Any]:
             gates=["done", "call_entity"],
             wards=[{"max_turns": 6}, {"max_depth": 2}],
         ),
-        medium_depends={"code": {"timeout_s": 60}},
+        medium_depends={"code": {"timeout_s": 120}},
         identity=Identity(
             system_prompt=(
-                "You are a coordinator that delegates tasks to child entities.\n"
-                "Use the code tool to write Python. Available functions:\n"
+                "You are a coordinator entity — the Familiar.\n"
+                "You work IN code. Python is your medium.\n\n"
+                "Available functions:\n"
                 "  done(answer)  -- finish and return your final answer\n"
                 "  call_entity(config_dict)  -- delegate a task to a child entity\n"
-                "Each call_entity takes a dict with an 'intent' key describing what the child should do.\n"
-                "The child will return its result as a string.\n"
-                "After all children return, combine results and call done().\n"
+                "    config_dict keys: intent (required), context (optional data for child),\n"
+                "    system_prompt, gates, wards, medium\n"
+                "    The child returns its result as a string.\n\n"
                 "Example:\n"
-                '  result1 = call_entity({"intent": "What is 2+2?"})\n'
-                '  result2 = call_entity({"intent": "Name the largest planet"})\n'
-                "  done(result1 + ' | ' + result2)\n"
-                "IMPORTANT: Replace the example intents with the ACTUAL tasks from the user's request."
+                '  result = call_entity({"intent": "Analyze revenue trends", "context": {"revenue": 4.2}})\n\n'
+                "Your job:\n"
+                "1. Break the user's request into subtasks\n"
+                "2. Delegate each subtask to a child via call_entity\n"
+                "3. Combine children's results in code\n"
+                "4. Call done() with the combined answer\n\n"
+                "Remember context from prior exchanges — you are persistent."
             ),
             require_done_tool=True,
         ),
         loom=loom,
     )
 
-    familiar: Entity = familiar_spell.summon()
-    first = familiar.send(
-        "Delegate two tasks to child entities: one to compute 2+3 "
-        "and one to find the capital of Japan. Combine results with done()."
-    )
-    second = familiar.send(
-        "Delegate two more tasks: compute 10*5 "
-        "and find the capital of Germany. Combine results with done()."
-    )
+    # -- Summon: creates a persistent familiar entity (ENTITY-1) --
+    familiar = familiar_spell.summon()
 
+    # -- Send 1: research phase — delegate trend + risk analysis to children --
+    print("\n[Send 1] Research phase: delegate trend and risk analysis")
+    first = familiar.send(
+        "Analyze our Q3 SaaS metrics: Revenue $4.2M (+14% QoQ), churn 4.0% "
+        "(was 6.1%), net new ARR $580K, CAC payback 11 months. "
+        "Identify key trends and risks by delegating to specialist children."
+    )
+    print(f"  Result: {first}\n")
+
+    # -- Send 2: synthesis phase — builds on the research from send 1 --
+    print("[Send 2] Synthesis phase: draft Q4 action plan based on prior analysis")
+    second = familiar.send(
+        "Based on the trends and risks from your prior analysis, "
+        "draft an action plan for Q4. Delegate the drafting to a child."
+    )
+    print(f"  Result: {second}\n")
+
+    # -- Inspect the loom: threads from parent + children --
     thread_ids = [t.id for t in loom.list_threads()]
+    print(f"Loom threads: {len(thread_ids)} (parent + child threads)")
+    print(f"Entity accumulated turns: {len(familiar.turns)}")
+
+    # -- Verify persistence: reload from the same SQLite file --
     reloaded = Loom(store=SQLiteLoomStore(loom_path))
-    persisted_any = bool(thread_ids and reloaded.get_thread(thread_ids[0]) is not None)
+    persisted = bool(thread_ids and reloaded.get_thread(thread_ids[0]) is not None)
+    print(f"Loom persisted to disk: {persisted}")
+
+    print("\nThe familiar delegates work through code, not tools.")
+    print("Children do the leaf work. The loom records everything (LOOM-1).")
 
     return {
         "pattern": 12,
         "first": first,
         "second": second,
-        "loom_threads": len(loom.list_threads()),
+        "loom_threads": len(thread_ids),
         "entity_turns": len(familiar.turns),
-        "persisted_loom": persisted_any,
-        "child_code_calls": len(getattr(child_llm, "invocations", [])),
-        "child_tool_calls": 0,  # No tool-medium children in simplified version
+        "persisted_loom": persisted,
     }
 
 
