@@ -27,49 +27,33 @@ class CodeExecutor:
         raise NotImplementedError
 
 
-# Safe builtins allowlist for InProcessPythonExecutor
-_SAFE_BUILTINS: dict[str, Any] = {
-    "len": len,
-    "range": range,
-    "str": str,
-    "int": int,
-    "float": float,
-    "list": list,
-    "dict": dict,
-    "tuple": tuple,
-    "set": set,
-    "bool": bool,
-    "enumerate": enumerate,
-    "zip": zip,
-    "map": map,
-    "filter": filter,
-    "sorted": sorted,
-    "min": min,
-    "max": max,
-    "sum": sum,
-    "abs": abs,
-    "round": round,
-    "isinstance": isinstance,
-    "type": type,
-    "hasattr": hasattr,
-    "getattr": getattr,
-    "setattr": setattr,
-    "repr": repr,
-    "reversed": reversed,
-    "any": any,
-    "all": all,
-    "None": None,
-    "True": True,
-    "False": False,
-    "Exception": Exception,
-    "RuntimeError": RuntimeError,
-    "ValueError": ValueError,
-    "TypeError": TypeError,
-    "KeyError": KeyError,
-    "IndexError": IndexError,
-    "NameError": NameError,
-    "AttributeError": AttributeError,
-    "__build_class__": __build_class__,
+# Builtins ward for InProcessPythonExecutor.
+# Per the spec, wards are subtractive: start with everything, remove what's
+# dangerous.  This set is subtracted from Python's full builtins.
+_BUILTIN_WARDS: set[str] = {
+    "__import__",   # module loading — primary host-escape vector
+    "open",         # filesystem access
+    "eval",         # code evaluation (entity already has exec via the medium)
+    "exec",         # code execution
+    "compile",      # code compilation
+    "input",        # stdin access
+    "breakpoint",   # debugger
+    "exit",         # process termination
+    "quit",         # process termination
+    "help",         # interactive help (blocks on stdin)
+    "globals",      # frame introspection
+    "locals",       # frame introspection
+    "vars",         # frame introspection
+    "copyright",    # interactive repl artifact
+    "credits",      # interactive repl artifact
+    "license",      # interactive repl artifact
+}
+_raw_builtins: dict[str, Any] = (
+    __builtins__ if isinstance(__builtins__, dict)  # type: ignore[union-attr]
+    else {k: getattr(__builtins__, k) for k in dir(__builtins__)}
+)
+_WARDED_BUILTINS: dict[str, Any] = {
+    k: v for k, v in _raw_builtins.items() if k not in _BUILTIN_WARDS
 }
 
 
@@ -82,9 +66,16 @@ class _DoneSignal(Exception):
 class InProcessPythonExecutor(CodeExecutor):
     """Runs entity-written Python via exec() with gate functions injected.
 
-    Not an isolation boundary; use SubprocessPythonExecutor for sandboxing.
+    Not a security boundary — builtins are warded (see _BUILTIN_WARDS) but
+    CPython exec() is escapable via subclass traversal.  For process-level
+    isolation use SubprocessPythonExecutor (which trades away delegation gates).
+
     Available functions in entity code: done(answer), call_entity(req_dict),
-    call_entity_batch(req_list). Variables persist across turns via self.env.
+    call_entity_batch(req_list), call_gate(name, args).  Variables persist
+    across turns via self.env.
+
+    Timeout is best-effort: on expiry the turn stops but the background thread
+    may continue until process exit (CPython threads cannot be killed).
     """
 
     def __init__(self, timeout_s: float = 5.0) -> None:
@@ -129,17 +120,25 @@ class InProcessPythonExecutor(CodeExecutor):
             kwargs.pop("file", None)
             print(*args, file=captured_print, **kwargs)
 
+        def _call_gate(gate_name: str, arguments: Any = None) -> Any:
+            rec = call_gate(gate_name, arguments or {})
+            obs.append(rec)
+            if rec.is_error:
+                raise RuntimeError(rec.content)
+            return rec.result
+
         namespace: dict[str, Any] = {
             **self.env,
             "done": done,
             "call_entity": call_entity,
             "call_entity_batch": call_entity_batch,
+            "call_gate": _call_gate,
             "print": safe_print,
         }
 
-        safe_builtins = dict(_SAFE_BUILTINS)
-        safe_builtins["print"] = safe_print
-        namespace["__builtins__"] = safe_builtins
+        warded_builtins = dict(_WARDED_BUILTINS)
+        warded_builtins["print"] = safe_print
+        namespace["__builtins__"] = warded_builtins
 
         error_holder: dict[str, BaseException] = {}
         finished = threading.Event()
@@ -167,7 +166,7 @@ class InProcessPythonExecutor(CodeExecutor):
             raise error_holder["error"]  # type: ignore[misc]
 
         # Persist variables for next turn (exclude injected functions)
-        _injected = {"done", "call_entity", "call_entity_batch", "print", "__builtins__"}
+        _injected = {"done", "call_entity", "call_entity_batch", "call_gate", "print", "__builtins__"}
         for k, v in namespace.items():
             if k not in _injected:
                 self.env[k] = v

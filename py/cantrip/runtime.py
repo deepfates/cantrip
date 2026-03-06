@@ -335,6 +335,7 @@ class Cantrip:
                     "require_done_tool",
                     "medium",
                     "depends",
+                    "system_prompt",
                 }
                 for k in req.keys():
                     if k not in allowed_req_keys:
