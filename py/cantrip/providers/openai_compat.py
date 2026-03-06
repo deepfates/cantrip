@@ -18,7 +18,7 @@ from cantrip.providers.base import LLM
 class OpenAICompatLLM(LLM):
     """OpenAI-compatible chat completions client.
 
-    Works with OpenAI, Ollama, vLLM and other compatible servers.
+    Works with OpenAI, LM Studio,vLLM and other compatible servers.
     """
 
     def __init__(
@@ -38,9 +38,7 @@ class OpenAICompatLLM(LLM):
         self.timeout_s = timeout_s
         self.extra = extra or {}
         if requests is None:
-            raise CantripError(
-                "requests dependency is required for OpenAICompatLLM"
-            )
+            raise CantripError("requests dependency is required for OpenAICompatLLM")
 
     def query(self, messages, tools, tool_choice):
         payload = {
