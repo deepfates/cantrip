@@ -93,11 +93,16 @@ class Cantrip:
 
     def _context_messages(self, thread: Thread) -> list[dict[str, Any]]:
         msgs: list[dict[str, Any]] = []
+        medium = medium_for(self.circle.medium)
+        cap_text = medium.capability_text(self.circle)
+        if cap_text is not None:
+            msgs.append({"role": "system", "content": cap_text})
         if thread.identity.system_prompt is not None:
             msgs.append({"role": "system", "content": thread.identity.system_prompt})
-        msgs.append(
-            {"role": "system", "content": self._capability_message(self.circle)}
-        )
+        if cap_text is None:
+            msgs.append(
+                {"role": "system", "content": self._capability_message(self.circle)}
+            )
         msgs.append({"role": "user", "content": thread.intent})
 
         for t in thread.turns:
