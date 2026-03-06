@@ -4,7 +4,7 @@
 >
 > — Gargoyles: Reawakening (1995)
 
-**Version**: 0.2.0
+**Version**: 0.3.0
 **Status**: Draft — behavioral rules for implementation
 
 ## Introduction
