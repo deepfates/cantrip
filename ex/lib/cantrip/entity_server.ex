@@ -513,7 +513,18 @@ defmodule Cantrip.EntityServer do
         observation: %{gate: "call_entity", result: "max_depth exceeded", is_error: true}
       }
     else
-      child_intent = opts[:intent] || opts["intent"] || ""
+      raw_intent = opts[:intent] || opts["intent"] || ""
+      # If context is provided, prepend it to the intent so the child sees it.
+      context = opts[:context] || opts["context"]
+      child_intent =
+        if context do
+          ctx_str = if is_binary(context), do: context, else: Jason.encode!(context)
+          "Context: #{ctx_str}\n\nTask: #{raw_intent}"
+        else
+          raw_intent
+        end
+      # If system_prompt is provided, override child identity.
+      child_system_prompt = opts[:system_prompt] || opts["system_prompt"]
       child_wards = normalize_child_wards(opts)
       composed_wards = Circle.compose_wards(state.cantrip.circle.wards, child_wards)
       requested_gates = Enum.uniq(requested_gates ++ ["done"])
@@ -539,6 +550,12 @@ defmodule Cantrip.EntityServer do
           llm_state: child_state,
           circle: child_circle
       }
+      child_cantrip =
+        if child_system_prompt do
+          put_in(child_cantrip, [:identity, :system_prompt], child_system_prompt)
+        else
+          child_cantrip
+        end
 
       cancel_on_parent = [self() | state.cancel_on_parent] |> Enum.uniq()
 

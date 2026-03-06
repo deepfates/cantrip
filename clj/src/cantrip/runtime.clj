@@ -89,7 +89,7 @@
         (get named-llms (keyword (str "child_llm_l" child-level))))))
 
 (def ^:private allowed-call-agent-request-keys
-  #{:intent :cantrip :llm :gates})
+  #{:intent :cantrip :llm :gates :context :system-prompt})
 
 (defn- validate-call-agent-request!
   [request]
@@ -499,11 +499,20 @@
   "Composes a child cast from a parent entity while preserving parent continuity."
   [parent-entity request]
   (validate-call-agent-request! request)
-  (let [{:keys [cantrip intent]} request
+  (let [{:keys [cantrip intent context system-prompt]} request
+        ;; If context is provided, prepend it to the intent so the child sees it.
+        intent (if (some? context)
+                 (let [ctx-str (if (string? context) context (pr-str context))]
+                   (str "Context: " ctx-str "\n\nTask: " (or intent "")))
+                 intent)
         parent-cantrip (:cantrip parent-entity)
         parent-depth (long (or (:depth parent-entity) 0))
         max-depth (max-depth-ward parent-cantrip)
-        child-cantrip (or cantrip parent-cantrip)]
+        child-cantrip (or cantrip parent-cantrip)
+        ;; If system-prompt is provided, override child identity.
+        child-cantrip (if system-prompt
+                        (assoc-in child-cantrip [:identity :system-prompt] system-prompt)
+                        child-cantrip)]
     (cond
       (and (some? max-depth) (>= parent-depth (long max-depth)))
       {:status :error
