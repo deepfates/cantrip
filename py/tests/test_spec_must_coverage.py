@@ -30,7 +30,7 @@ def _must_rule_ids_from_spec() -> set[str]:
     spec_lines = (ROOT / "SPEC.md").read_text().splitlines()
     must_ids: set[str] = set()
     for line in spec_lines:
-        match = re.search(r">\s*\*\*([A-Z]+-\d+)\*\*:\s*(.*)", line)
+        match = re.match(r"^([A-Z]+-\d+):\s*(.*)", line)
         if match and "MUST" in match.group(2):
             must_ids.add(match.group(1))
     return must_ids
