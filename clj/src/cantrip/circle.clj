@@ -64,8 +64,9 @@
        :is-error false}
 
       (= (gates/gate-keyword gate) :read)
-      {:result (read-path spec args dependencies)
-       :is-error false}
+      (let [r (read-path spec args dependencies)]
+        {:result r
+         :is-error (= r "path escapes root")})
 
       (contains? spec :result)
       {:result (:result spec)

@@ -4,7 +4,6 @@ import pytest
 
 from cantrip import Cantrip, Circle, FakeLLM
 from cantrip.acp_server import CantripACPServer
-from cantrip.adapters import cast_via_acp, cast_via_cli, cast_via_http
 from cantrip.cli_runner import run_cli
 from cantrip.http_router import CantripHTTPRouter
 
@@ -74,18 +73,6 @@ def test_prod_1_protocol_adapters_do_not_change_behavior(build_cantrip) -> None:
         c = build_cantrip()
         return c.cast("intent"), _snapshot_first_query(c)
 
-    def run_cli_adapter():
-        c = build_cantrip()
-        return cast_via_cli(c, "intent"), _snapshot_first_query(c)
-
-    def run_http_adapter():
-        c = build_cantrip()
-        return cast_via_http(c, "intent"), _snapshot_first_query(c)
-
-    def run_acp_adapter():
-        c = build_cantrip()
-        return cast_via_acp(c, "intent"), _snapshot_first_query(c)
-
     def run_acp_server():
         c = build_cantrip()
         server = CantripACPServer(c)
@@ -106,9 +93,6 @@ def test_prod_1_protocol_adapters_do_not_change_behavior(build_cantrip) -> None:
 
     baseline_result, baseline_query = run_direct()
     for run in (
-        run_cli_adapter,
-        run_http_adapter,
-        run_acp_adapter,
         run_acp_server,
         run_http_router,
         run_cli_runner,

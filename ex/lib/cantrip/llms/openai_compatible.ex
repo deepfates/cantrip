@@ -5,6 +5,8 @@ defmodule Cantrip.LLMs.OpenAICompatible do
   Supports providers that expose a `/v1/chat/completions` endpoint.
   """
 
+  alias Cantrip.LLMs.Helpers
+
   @behaviour Cantrip.LLM
 
   @impl true
@@ -18,7 +20,7 @@ defmodule Cantrip.LLMs.OpenAICompatible do
         {:ok, normalize_body(body), state}
 
       {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, %{status: status, message: extract_error(body)}, state}
+        {:error, %{status: status, message: Helpers.extract_error(body)}, state}
 
       {:error, reason} ->
         {:error, %{status: nil, message: inspect(reason)}, state}
@@ -149,7 +151,7 @@ defmodule Cantrip.LLMs.OpenAICompatible do
 
     %{
       content: content,
-      code: extract_code(content),
+      code: Helpers.extract_code(content),
       tool_calls: tool_calls,
       usage: %{
         prompt_tokens: usage["prompt_tokens"] || 0,
@@ -157,20 +159,6 @@ defmodule Cantrip.LLMs.OpenAICompatible do
       },
       raw_response: body
     }
-  end
-
-  defp extract_code(content) when not is_binary(content), do: nil
-
-  defp extract_code(content) do
-    text = String.trim(content)
-
-    case Regex.run(~r/```(?:elixir)?\s*\n([\s\S]*?)\n```/i, text) do
-      [_, code] ->
-        String.trim(code)
-
-      _ ->
-        text
-    end
   end
 
   defp normalize_tool_call(tc) do
@@ -188,9 +176,6 @@ defmodule Cantrip.LLMs.OpenAICompatible do
       args: args
     }
   end
-
-  defp extract_error(%{"error" => %{"message" => message}}) when is_binary(message), do: message
-  defp extract_error(body), do: inspect(body)
 
   defp normalize_blank(value) when value in [nil, ""], do: nil
   defp normalize_blank(value), do: value

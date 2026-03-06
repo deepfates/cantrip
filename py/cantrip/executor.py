@@ -57,7 +57,7 @@ _WARDED_BUILTINS: dict[str, Any] = {
 }
 
 
-class _DoneSignal(Exception):
+class _DoneSignal(BaseException):
     """Internal signal raised when done() is called to stop execution."""
 
     pass

@@ -231,31 +231,6 @@ export async function invokeLLMWithRetries(options: {
   throw new Error("Retry loop completed without return or exception");
 }
 
-export async function invokeLLMOnce(options: {
-  llm: BaseChatModel;
-  messages: AnyMessage[];
-  tools: BoundGate[];
-  tool_definitions: GateDefinition[];
-  tool_choice: ToolChoice;
-  usage_tracker: UsageTracker;
-}): Promise<ChatInvokeCompletion> {
-  const { llm, messages, tools, tool_definitions, tool_choice, usage_tracker } =
-    options;
-
-  const response = await invokeModel(
-    llm,
-    messages,
-    tool_definitions.length ? tool_definitions : null,
-    tool_definitions.length ? tool_choice : null,
-  );
-
-  if (response.usage) {
-    usage_tracker.add(llm.model, response.usage);
-  }
-
-  return response;
-}
-
 export async function generateMaxIterationsSummary(options: {
   llm: BaseChatModel;
   messages: AnyMessage[];

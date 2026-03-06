@@ -58,8 +58,6 @@ defmodule Cantrip.Loom do
     end
   end
 
-  def delete_turn(_loom, _index), do: {:error, "loom is append-only"}
-
   def annotate_reward(%__MODULE__{turns: turns, storage_module: module} = loom, index, reward) do
     case Enum.fetch(turns, index) do
       :error ->

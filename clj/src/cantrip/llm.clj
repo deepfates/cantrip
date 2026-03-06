@@ -99,7 +99,7 @@
     response))
 
 ;; ---------------------------------------------------------------------------
-;; Minimal JSON encoder / decoder (no external deps)
+;; JSON encoder / decoder (via clojure.data.json)
 ;; ---------------------------------------------------------------------------
 
 (defn- json-encode [v]

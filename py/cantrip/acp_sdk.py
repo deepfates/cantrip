@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from concurrent.futures import Future
 from typing import Any
 
@@ -15,23 +14,9 @@ from acp import (
 )
 from acp.connection import StreamDirection, StreamEvent
 
+from cantrip._utils import _debug_enabled, _debug_log
 from cantrip.acp_server import CantripACPServer
 from cantrip.runtime import Cantrip
-
-
-def _debug_enabled() -> bool:
-    return bool(os.getenv("CANTRIP_ACP_DEBUG") or os.getenv("CANTRIP_ACP_DEBUG_FILE"))
-
-
-def _debug_log(line: str) -> None:
-    if not _debug_enabled():
-        return
-    path = os.getenv("CANTRIP_ACP_DEBUG_FILE", ".cantrip_acp_debug.log")
-    try:
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(line.rstrip("\n") + "\n")
-    except Exception:  # noqa: BLE001
-        pass
 
 
 class CantripACPAgent:

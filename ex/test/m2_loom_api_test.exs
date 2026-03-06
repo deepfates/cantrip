@@ -3,17 +3,6 @@ defmodule CantripM2LoomApiTest do
 
   alias Cantrip.FakeLLM
 
-  test "LOOM-3 append-only delete is blocked" do
-    llm =
-      {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
-
-    {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
-
-    {:ok, "ok", cantrip, loom, _meta} = Cantrip.cast(cantrip, "append only")
-    assert {:error, "loom is append-only"} = Cantrip.delete_turn(cantrip, loom, 0)
-  end
-
   test "LOOM-3 reward may be annotated after turn creation" do
     llm =
       {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}

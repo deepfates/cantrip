@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import threading
 
-from cantrip.errors import CantripError
+from cantrip.errors import CantripError, ProviderError
 from cantrip.models import LLMResponse, ToolCall
 from cantrip.providers.base import LLM
 
@@ -45,9 +45,7 @@ class FakeLLM(LLM):
 
         if "error" in raw:
             err = raw["error"]
-            raise CantripError(
-                f"provider_error:{err.get('status')}:{err.get('message')}"
-            )
+            raise ProviderError(err.get("status"), err.get("message", ""))
 
         # Handle tool_result response type (validates tool call ID linkage)
         if "tool_result" in raw:

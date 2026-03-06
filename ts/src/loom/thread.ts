@@ -67,7 +67,7 @@ export function threadToMessages(thread: Thread): AnyMessage[] {
         role: "assistant",
         content: turn.utterance,
         tool_calls: turn.gate_calls.length > 0
-          ? turn.gate_calls.map(gateCallRecordToGateCall)
+          ? turn.gate_calls.map(gc => gateCallRecordToGateCall(gc, turn.id))
           : null,
       };
       messages.push(assistantMsg);
@@ -100,9 +100,9 @@ export function threadToMessages(thread: Thread): AnyMessage[] {
 }
 
 /** Convert a GateCallRecord to the GateCall shape expected by the llm. */
-function gateCallRecordToGateCall(gc: GateCallRecord) {
+function gateCallRecordToGateCall(gc: GateCallRecord, turnId: string) {
   return {
-    id: gc.gate_name, // simplified; real impl may use unique IDs
+    id: `${turnId}-${gc.gate_name}`,
     type: "function" as const,
     function: {
       name: gc.gate_name,

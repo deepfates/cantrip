@@ -62,11 +62,12 @@
 (defn- count-forms
   [code]
   (let [reader (java.io.PushbackReader. (java.io.StringReader. code))]
-    (loop [n 0]
-      (let [form (read {:eof ::eof} reader)]
-        (if (= ::eof form)
-          n
-          (recur (inc n)))))))
+    (binding [*read-eval* false]
+      (loop [n 0]
+        (let [form (read {:eof ::eof} reader)]
+          (if (= ::eof form)
+            n
+            (recur (inc n))))))))
 
 (defn- validate-code!
   [circle snippets code]

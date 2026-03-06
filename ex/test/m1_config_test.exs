@@ -57,13 +57,4 @@ defmodule CantripM1ConfigTest do
            ]
   end
 
-  test "CALL-1 mutation API returns immutable contract error" do
-    llm = {FakeLLM, FakeLLM.new([%{content: "ok"}])}
-
-    {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
-
-    assert {:error, "identity is immutable"} =
-             Cantrip.mutate_identity(cantrip, %{system_prompt: "evil"})
-  end
 end

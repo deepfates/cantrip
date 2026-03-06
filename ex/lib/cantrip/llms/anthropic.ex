@@ -5,6 +5,8 @@ defmodule Cantrip.LLMs.Anthropic do
   Supports Claude models via the native `/v1/messages` endpoint.
   """
 
+  alias Cantrip.LLMs.Helpers
+
   @behaviour Cantrip.LLM
 
   @default_base_url "https://api.anthropic.com"
@@ -21,7 +23,7 @@ defmodule Cantrip.LLMs.Anthropic do
         {:ok, normalize_body(body), state}
 
       {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, %{status: status, message: extract_error(body)}, state}
+        {:error, %{status: status, message: Helpers.extract_error(body)}, state}
 
       {:error, reason} ->
         {:error, %{status: nil, message: inspect(reason)}, state}
@@ -202,7 +204,7 @@ defmodule Cantrip.LLMs.Anthropic do
 
     %{
       content: content,
-      code: extract_code(content),
+      code: Helpers.extract_code(content),
       tool_calls: normalized_tool_calls,
       usage: %{
         prompt_tokens: usage["input_tokens"] || 0,
@@ -211,20 +213,6 @@ defmodule Cantrip.LLMs.Anthropic do
       raw_response: body
     }
   end
-
-  defp extract_code(content) when not is_binary(content), do: nil
-
-  defp extract_code(content) do
-    text = String.trim(content)
-
-    case Regex.run(~r/```(?:elixir)?\s*\n([\s\S]*?)\n```/i, text) do
-      [_, code] -> String.trim(code)
-      _ -> text
-    end
-  end
-
-  defp extract_error(%{"error" => %{"message" => message}}) when is_binary(message), do: message
-  defp extract_error(body), do: inspect(body)
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

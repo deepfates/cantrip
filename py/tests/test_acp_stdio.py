@@ -385,15 +385,15 @@ def test_router_session_prompt_uses_fallback_text_when_cast_result_is_none() -> 
 
     assert (
         resp["result"]["output"][0]["text"]
-        == "No final answer produced. Last error: gate not available"
+        == "No final answer produced before max_turns. Last error: gate not available"
     )
     assert (
         updates[1]["params"]["update"]["content"]["text"]
-        == "No final answer produced. Last error: gate not available"
+        == "No final answer produced before max_turns. Last error: gate not available"
     )
     assert (
         updates[0]["params"]["update"]["content"]["text"]
-        == "No final answer produced. Last error: gate not available"
+        == "No final answer produced before max_turns. Last error: gate not available"
     )
 
 

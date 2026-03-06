@@ -10,10 +10,6 @@
 (declare call-agent)
 (declare call-agent-batch)
 
-(defn- max-turns [cantrip]
-  (or (some :max-turns (get-in cantrip [:circle :wards]))
-      1))
-
 (defn- require-done-tool? [cantrip]
   (true? (get-in cantrip [:identity :require-done-tool])))
 
@@ -52,7 +48,7 @@
   (some #(or (get % k) (get % (keyword (str/replace (name k) "-" "_"))))
         (get-in cantrip [:circle :wards])))
 
-(defn- max-turns-ward [cantrip]
+(defn- max-turns [cantrip]
   (or (ward-value cantrip :max-turns)
       1))
 

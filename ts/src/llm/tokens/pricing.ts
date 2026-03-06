@@ -24,7 +24,7 @@ export type PricingProvider = {
   getModelPricing(model: string): Promise<ModelPricing | null>;
 };
 
-const CACHE_DIR_NAME = "bu_agent_sdk/token_cost";
+const CACHE_DIR_NAME = "cantrip/token_cost";
 const CACHE_DURATION_MS = 24 * 60 * 60 * 1000;
 const PRICING_URL =
   "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";

@@ -33,7 +33,7 @@ def test_cmd_repl_prints_assistant_text_fallback(monkeypatch, capsys) -> None:
     out = capsys.readouterr().out
 
     assert rc == 0
-    assert "No final answer produced. Last error: gate not available" in out
+    assert "No final answer produced before max_turns. Last error: gate not available" in out
     assert "[tool:code] error" in out
 
 

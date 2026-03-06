@@ -383,9 +383,6 @@
      (or (not= :then (:op (last steps)))
          (supported-then? (-> steps last :value))))))
 
-(defn- unsupported-expectation? [expect]
-  false)
-
 (defn- supports-expectation? [tc]
   (let [expect (:expect tc)
         supported #{:error
@@ -415,8 +412,7 @@
                     :acp-responses
                     :logs-exclude
                     :loom-export-exclude}]
-    (and (every? supported (keys expect))
-         (not (unsupported-expectation? expect)))))
+    (every? supported (keys expect))))
 
 (defn- evaluate-then! [run-state then-clause]
   (cond

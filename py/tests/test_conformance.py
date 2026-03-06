@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 import yaml
 
-from cantrip.core import Identity, Cantrip, CantripError, Circle, FakeLLM
+from cantrip import Identity, Cantrip, CantripError, Circle, FakeLLM
 
 ROOT = Path(__file__).resolve().parent.parent
 

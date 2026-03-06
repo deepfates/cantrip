@@ -17,7 +17,7 @@ from cantrip.code_runner import (
     SubprocessPythonRunnerFactory,
     code_runner_from_name,
 )
-from cantrip.errors import CantripError
+from cantrip.errors import CantripError, ProviderError, ProviderTimeout, ProviderTransportError
 from cantrip.entity import Entity
 from cantrip.loom import InMemoryLoomStore, Loom
 from cantrip.mediums import medium_for
@@ -597,24 +597,13 @@ class Cantrip:
                 if cancel_check is not None and cancel_check():
                     raise CantripError("cancelled")
                 return _query_once()
-            except CantripError as e:
-                msg = str(e)
-                if msg == "cancelled":
-                    raise
-                if msg.startswith("provider_timeout:") or msg.startswith(
-                    "provider_transport_error:"
-                ):
-                    if attempts < max_retries:
-                        attempts += 1
-                        continue
-                    raise
-                if not msg.startswith("provider_error:"):
-                    raise
-                parts = msg.split(":", 2)
-                status = (
-                    int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
-                )
-                if attempts < max_retries and status in retryable:
+            except (ProviderTimeout, ProviderTransportError):
+                if attempts < max_retries:
+                    attempts += 1
+                    continue
+                raise
+            except ProviderError as e:
+                if attempts < max_retries and e.status_code in retryable:
                     attempts += 1
                     continue
                 raise
@@ -726,6 +715,7 @@ class Cantrip:
             thread.turns[-1].id if thread.turns else None
         )
         stagnant_code_turns = 0
+        truncation_reason: str | None = None
 
         while sequence < max_turns:
             if cancel_check is not None and cancel_check():
@@ -836,8 +826,7 @@ class Cantrip:
                         content="non-terminal code loop detected",
                     )
                 )
-                terminated = True
-                result = ""
+                truncation_reason = "stagnation_guard"
             if event_sink is not None:
                 for rec in observation:
                     event_sink(
@@ -856,14 +845,14 @@ class Cantrip:
             # This avoids spinning through max_turns with no actionable progress.
             if (
                 not terminated
+                and truncation_reason is None
                 and observation
                 and all(
                     rec.is_error and rec.content == "gate not available"
                     for rec in observation
                 )
             ):
-                terminated = True
-                result = ""
+                truncation_reason = "gate_not_available"
 
             dt_ms = max(1, int((time.perf_counter() - t0) * 1000))
             usage = response.usage or {"prompt_tokens": 0, "completion_tokens": 0}
@@ -910,6 +899,8 @@ class Cantrip:
                 thread.terminated = True
                 thread.result = result
                 break
+            if truncation_reason is not None:
+                break
 
         if not thread.terminated:
             was_cancelled = bool(thread.__dict__.get("cancelled"))
@@ -917,7 +908,9 @@ class Cantrip:
                 thread.turns[-1].truncated = True
                 thread.turns[-1].metadata = dict(thread.turns[-1].metadata)
                 if not was_cancelled:
-                    thread.turns[-1].metadata["truncation_reason"] = "max_turns"
+                    thread.turns[-1].metadata["truncation_reason"] = (
+                        truncation_reason or "max_turns"
+                    )
             thread.truncated = True
         if self.circle.medium == "browser" and runtime is not None:
             try:

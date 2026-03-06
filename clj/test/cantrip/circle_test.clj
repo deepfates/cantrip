@@ -46,4 +46,4 @@
              [{:id "call_1" :gate :read :args {:path "../secrets.txt"}}]
              {:filesystem {"/safe/ok.txt" "ok"}})]
     (is (= "path escapes root" (-> res :observation first :result)))
-    (is (false? (-> res :observation first :is-error)))))
+    (is (true? (-> res :observation first :is-error)))))

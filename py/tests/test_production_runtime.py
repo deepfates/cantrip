@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from cantrip import Identity, Cantrip, Circle
-from cantrip.errors import CantripError
+from cantrip.errors import CantripError, ProviderTimeout
 from cantrip.models import LLMResponse, ToolCall
 from cantrip.loom import Loom, SQLiteLoomStore
 from cantrip.providers.fake import FakeLLM
@@ -60,7 +60,7 @@ def test_retry_on_provider_timeout() -> None:
         def query(self, _messages, _tools, _tool_choice):
             self.calls += 1
             if self.calls == 1:
-                raise CantripError("provider_timeout:slow upstream")
+                raise ProviderTimeout("slow upstream")
             return LLMResponse(
                 content=None,
                 tool_calls=[ToolCall(id="c1", gate="done", args={"answer": "ok"})],

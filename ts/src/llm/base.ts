@@ -13,8 +13,6 @@ export type ToolDefinition = {
 export type GateDefinition = ToolDefinition;
 
 export type ToolChoice = "auto" | "required" | "none" | string | { type: string; name: string };
-export type ModelResponse = ChatInvokeCompletion;
-
 export interface BaseChatModel {
   model: string;
   provider: string;
@@ -28,12 +26,6 @@ export interface BaseChatModel {
     extra?: Record<string, unknown>
   ): Promise<ChatInvokeCompletion>;
   ainvoke(
-    messages: AnyMessage[],
-    tools?: GateDefinition[] | null,
-    tool_choice?: ToolChoice | null,
-    extra?: Record<string, unknown>
-  ): Promise<ChatInvokeCompletion>;
-  query?(
     messages: AnyMessage[],
     tools?: GateDefinition[] | null,
     tool_choice?: ToolChoice | null,
