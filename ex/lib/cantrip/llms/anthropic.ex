@@ -65,13 +65,13 @@ defmodule Cantrip.LLMs.Anthropic do
   defp extract_system(messages) do
     case messages do
       [%{role: :system, content: prompt} | rest] -> {prompt, rest}
-      [%{role: "system", content: prompt} | rest] -> {prompt, rest}
       _ -> {nil, messages}
     end
   end
 
   defp normalize_messages(messages) do
     messages
+    |> Enum.map(&Helpers.normalize_message/1)
     |> Enum.chunk_by(&message_role/1)
     |> Enum.map(&merge_consecutive/1)
   end
@@ -96,9 +96,9 @@ defmodule Cantrip.LLMs.Anthropic do
 
   defp message_content_blocks(message) do
     role = message_role(message)
-    content = Map.get(message, :content) || Map.get(message, "content") || ""
-    tool_calls = Map.get(message, :tool_calls) || Map.get(message, "tool_calls") || []
-    tool_call_id = Map.get(message, :tool_call_id) || Map.get(message, "tool_call_id")
+    content = message[:content] || ""
+    tool_calls = message[:tool_calls] || []
+    tool_call_id = message[:tool_call_id]
 
     cond do
       role == "assistant" and tool_calls != [] ->
@@ -111,9 +111,9 @@ defmodule Cantrip.LLMs.Anthropic do
           Enum.map(tool_calls, fn tc ->
             %{
               type: "tool_use",
-              id: tc[:id] || tc["id"],
-              name: tc[:gate] || tc["gate"],
-              input: tc[:args] || tc["args"] || %{}
+              id: tc[:id],
+              name: tc[:gate],
+              input: tc[:args] || %{}
             }
           end)
 
@@ -134,26 +134,22 @@ defmodule Cantrip.LLMs.Anthropic do
   end
 
   defp message_role(message) do
-    role = Map.get(message, :role) || Map.get(message, "role") || :user
-
-    case role do
+    case message[:role] do
       :assistant -> "assistant"
       :tool -> "user"
       :system -> "user"
-      "assistant" -> "assistant"
-      "tool" -> "user"
-      "system" -> "user"
       _ -> "user"
     end
   end
 
   defp normalize_tools(tools) do
     Enum.map(tools, fn tool ->
+      tool = Helpers.normalize_tool_spec(tool)
+
       %{
-        name: tool[:name] || tool["name"],
-        description: tool[:description] || tool["description"] || "",
-        input_schema:
-          tool[:parameters] || tool["parameters"] || %{type: "object", properties: %{}}
+        name: tool[:name],
+        description: tool[:description] || "",
+        input_schema: tool[:parameters] || %{type: "object", properties: %{}}
       }
     end)
   end

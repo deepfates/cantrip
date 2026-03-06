@@ -54,10 +54,12 @@ defmodule Cantrip.LLMs.OpenAICompatible do
   end
 
   defp normalize_messages(messages) do
-    Enum.map(messages, fn message ->
+    messages
+    |> Enum.map(&Helpers.normalize_message/1)
+    |> Enum.map(fn message ->
       role = message_role(message)
-      content = Map.get(message, :content)
-      tool_calls = Map.get(message, :tool_calls, [])
+      content = message[:content]
+      tool_calls = message[:tool_calls] || []
 
       base =
         %{
@@ -72,28 +74,24 @@ defmodule Cantrip.LLMs.OpenAICompatible do
   end
 
   defp message_role(message) do
-    role = Map.get(message, :role) || Map.get(message, "role") || :user
-
-    case role do
+    case message[:role] do
       :assistant -> "assistant"
       :system -> "system"
       :tool -> "tool"
-      "assistant" -> "assistant"
-      "system" -> "system"
-      "tool" -> "tool"
       _ -> "user"
     end
   end
 
   defp normalize_tools(tools) do
     Enum.map(tools, fn tool ->
+      tool = Helpers.normalize_tool_spec(tool)
+
       %{
         type: "function",
         function: %{
-          name: tool[:name] || tool["name"],
-          description: tool[:description] || tool["description"] || "",
-          parameters:
-            tool[:parameters] || tool["parameters"] || %{type: "object", properties: %{}}
+          name: tool[:name],
+          description: tool[:description] || "",
+          parameters: tool[:parameters] || %{type: "object", properties: %{}}
         }
       }
     end)
@@ -104,11 +102,11 @@ defmodule Cantrip.LLMs.OpenAICompatible do
     encoded =
       Enum.map(tool_calls, fn tc ->
         %{
-          id: tc[:id] || tc["id"],
+          id: tc[:id],
           type: "function",
           function: %{
-            name: tc[:gate] || tc["gate"],
-            arguments: Jason.encode!(tc[:args] || tc["args"] || %{})
+            name: tc[:gate],
+            arguments: Jason.encode!(tc[:args] || %{})
           }
         }
       end)
@@ -123,7 +121,7 @@ defmodule Cantrip.LLMs.OpenAICompatible do
   defp maybe_put_assistant_tool_calls(message, _role, _tool_calls), do: message
 
   defp maybe_put_tool_call_id(message, "tool", source_message) do
-    tool_call_id = source_message[:tool_call_id] || source_message["tool_call_id"]
+    tool_call_id = source_message[:tool_call_id]
 
     if is_binary(tool_call_id) do
       Map.put(message, :tool_call_id, tool_call_id)

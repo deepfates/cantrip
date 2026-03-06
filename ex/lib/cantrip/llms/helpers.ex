@@ -56,4 +56,45 @@ defmodule Cantrip.LLMs.Helpers do
     end)
     |> Map.new()
   end
+
+  @message_atoms ~w(role content tool_calls tool_call_id gate)a
+  @tool_spec_atoms ~w(name description parameters)a
+  @tool_call_atoms ~w(id gate args)a
+
+  @doc """
+  Ensures a message map has atom keys for known fields, including nested tool_calls.
+  """
+  @spec normalize_message(map()) :: map()
+  def normalize_message(msg) when is_map(msg) do
+    msg = ensure_atom_keys(msg, @message_atoms)
+
+    case msg[:tool_calls] do
+      tcs when is_list(tcs) -> %{msg | tool_calls: Enum.map(tcs, &normalize_tool_call/1)}
+      _ -> msg
+    end
+  end
+
+  @doc """
+  Ensures a tool spec map has atom keys for known fields.
+  """
+  @spec normalize_tool_spec(map()) :: map()
+  def normalize_tool_spec(tool) when is_map(tool), do: ensure_atom_keys(tool, @tool_spec_atoms)
+
+  @doc """
+  Ensures a tool call map has atom keys for known fields.
+  """
+  @spec normalize_tool_call(map()) :: map()
+  def normalize_tool_call(tc) when is_map(tc), do: ensure_atom_keys(tc, @tool_call_atoms)
+
+  defp ensure_atom_keys(map, known_atoms) do
+    Enum.reduce(known_atoms, map, fn atom_key, acc ->
+      str_key = Atom.to_string(atom_key)
+
+      case {Map.has_key?(acc, atom_key), Map.pop(acc, str_key)} do
+        {true, _} -> acc
+        {false, {nil, _}} -> acc
+        {false, {val, rest}} -> Map.put(rest, atom_key, val)
+      end
+    end)
+  end
 end
