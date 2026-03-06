@@ -329,6 +329,7 @@ class Cantrip:
                 req = args if isinstance(args, dict) else {}
                 allowed_req_keys = {
                     "intent",
+                    "context",
                     "gates",
                     "wards",
                     "llm",
@@ -340,6 +341,12 @@ class Cantrip:
                 for k in req.keys():
                     if k not in allowed_req_keys:
                         raise CantripError(f"unknown call_entity arg: {k}")
+                # If context is provided, prepend it to the intent so the child sees it.
+                if req.get("context") is not None:
+                    ctx = req["context"]
+                    ctx_str = json.dumps(ctx) if not isinstance(ctx, str) else ctx
+                    req = dict(req)
+                    req["intent"] = f"Context: {ctx_str}\n\nTask: {req.get('intent', '')}"
 
                 requested_wards = req.get("wards") or []
                 if not isinstance(requested_wards, list):
