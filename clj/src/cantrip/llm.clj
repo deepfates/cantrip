@@ -414,7 +414,7 @@
         url (str base-url "/chat/completions")
         request-body (build-openai-request-body llm messages tools tool-choice)
         body-json (json-encode request-body)
-        timeout-ms (or (:timeout-ms llm) (:timeout_ms llm) 60000)
+        timeout-ms (or (:timeout-ms llm) (:timeout_ms llm) 120000)
         headers {"Content-Type" "application/json"
                  "Authorization" (str "Bearer " api-key)}
         {:keys [status body]} (try

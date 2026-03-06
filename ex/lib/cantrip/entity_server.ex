@@ -627,7 +627,7 @@ defmodule Cantrip.EntityServer do
             fn opts -> execute_call_entity(state, opts) end,
             ordered: true,
             max_concurrency: max_concurrency,
-            timeout: 30_000
+            timeout: 120_000
           )
           |> Enum.map(fn
             {:ok, payload} ->

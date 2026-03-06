@@ -101,7 +101,7 @@ defmodule Cantrip do
               api_key: env_first(["OPENAI_API_KEY", "CANTRIP_API_KEY"]),
               base_url:
                 env_first(["OPENAI_BASE_URL", "CANTRIP_BASE_URL"]) || "https://api.openai.com/v1",
-              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000)
+              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 120_000)
             }}}
         end
 
@@ -118,7 +118,7 @@ defmodule Cantrip do
               api_key: env_first(["ANTHROPIC_API_KEY", "CANTRIP_API_KEY"]),
               base_url:
                 System.get_env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com",
-              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000),
+              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 120_000),
               max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), 4096)
             }}}
         end
@@ -136,7 +136,7 @@ defmodule Cantrip do
               api_key: env_first(["GEMINI_API_KEY", "CANTRIP_API_KEY"]),
               base_url:
                 System.get_env("GEMINI_BASE_URL") || "https://generativelanguage.googleapis.com",
-              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 30_000)
+              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 120_000)
             }}}
         end
 

@@ -32,7 +32,7 @@ defmodule Cantrip.LLMs.OpenAICompatible do
       model: Map.get(state, :model),
       api_key: normalize_blank(Map.get(state, :api_key)),
       base_url: Map.get(state, :base_url, "https://api.openai.com/v1"),
-      timeout_ms: Map.get(state, :timeout_ms, 30_000),
+      timeout_ms: Map.get(state, :timeout_ms, 120_000),
       temperature: Map.get(state, :temperature)
     }
   end
