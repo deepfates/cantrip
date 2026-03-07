@@ -13,7 +13,8 @@ spell = cantrip(
              Use submit_answer() when you have findings.",
   circle: Circle(
     medium: code("javascript", state: { context: SALES_DATA }),
-    wards:  [max_turns(15), require_done()],
+    wards:  [max_turns(15)],
+    gates:  [done()],
   ),
 )
 
