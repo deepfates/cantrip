@@ -330,13 +330,12 @@ defmodule CantripExamplesTest do
           child_llm: child_llm,
           identity: %{
             system_prompt: "You are a coordinator. Use call_entity to delegate. Use done when finished.",
-            require_done_tool: true,
             tool_choice: "required"
           },
           circle: %{
             type: :code,
             gates: [:done, :call_entity],
-            wards: [%{max_turns: 4}, %{max_depth: 2}]
+            wards: [%{max_turns: 4}, %{max_depth: 2}, %{require_done_tool: true}]
           }
         })
 

@@ -5,14 +5,12 @@ defmodule Cantrip.Identity do
 
   defstruct system_prompt: nil,
             temperature: nil,
-            tool_choice: nil,
-            require_done_tool: false
+            tool_choice: nil
 
   @type t :: %__MODULE__{
           system_prompt: String.t() | nil,
           temperature: number() | nil,
-          tool_choice: String.t() | nil,
-          require_done_tool: boolean()
+          tool_choice: String.t() | nil
         }
 
   @spec new(keyword() | map()) :: t()
@@ -22,8 +20,7 @@ defmodule Cantrip.Identity do
     %__MODULE__{
       system_prompt: fetch(attrs, :system_prompt),
       temperature: fetch(attrs, :temperature),
-      tool_choice: fetch(attrs, :tool_choice),
-      require_done_tool: fetch(attrs, :require_done_tool) || false
+      tool_choice: fetch(attrs, :tool_choice)
     }
   end
 

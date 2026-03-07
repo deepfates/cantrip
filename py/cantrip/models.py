@@ -8,7 +8,6 @@ from typing import Any
 class Identity:
     system_prompt: str | None = None
     temperature: float | None = None
-    require_done_tool: bool = False
     tool_choice: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -65,6 +64,14 @@ class Circle:
                     depends=g.get("depends", g.get("dependencies")),
                     ephemeral=bool(g.get("ephemeral", False)),
                 )
+
+    def require_done_tool(self) -> bool:
+        """OR composition: if any ward has require_done_tool=True, result is True."""
+        return any(
+            bool(w.get("require_done_tool"))
+            for w in self.wards
+            if "require_done_tool" in w
+        )
 
     def max_turns(self) -> int | None:
         for w in self.wards:

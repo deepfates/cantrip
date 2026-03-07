@@ -97,7 +97,11 @@ def _build_real_cantrip(
             {"name": "repo_files", "depends": {"root": str(repo_root)}},
             {"name": "repo_read", "depends": {"root": str(repo_root)}},
         ],
-        wards=[{"max_turns": max_turns}, {"max_depth": max_depth}],
+        wards=[
+            {"max_turns": max_turns},
+            {"max_depth": max_depth},
+            {"require_done_tool": medium == "code"},
+        ],
     )
     if medium == "code":
         system_prompt = (
@@ -116,7 +120,6 @@ def _build_real_cantrip(
     identity = Identity(
         system_prompt=system_prompt,
         tool_choice="required" if medium == "code" else None,
-        require_done_tool=(medium == "code"),
     )
     return Cantrip(llm=llm, circle=circle, identity=identity)
 

@@ -63,11 +63,13 @@ def run(mode: str | None = None) -> dict[str, Any]:
     print(f"max_turns from [10, 50, 3]: min wins -> {min_wins_value}")
     max_turns_min_wins_direct = min_wins_value == 3
 
-    # OR wins for require_done_tool: any True makes it True.
-    # require_done_tool lives on Identity, but the principle is the same.
-    parent_requires = False
-    child_requires = True
-    or_wins = parent_requires or child_requires  # True — any "yes" wins
+    # OR wins for require_done_tool: any True makes it True (WARD-1).
+    # require_done_tool is a ward, composed with OR across circles.
+    circle_or = Circle(
+        gates=["done"],
+        wards=[{"max_turns": 5}, {"require_done_tool": False}, {"require_done_tool": True}],
+    )
+    or_wins = circle_or.require_done_tool()  # True — any "yes" wins
     print(f"require_done_tool [False, True]: OR wins -> {or_wins}")
 
     # Depth-zero removes delegation gates (WARD-2).
@@ -104,11 +106,10 @@ def run(mode: str | None = None) -> dict[str, Any]:
                 "  done(answer=...) — finish with your final answer\n"
                 "Delegate the user's question to a child, then pass the child's answer to done()."
             ),
-            require_done_tool=True,
         ),
         circle=Circle(
             gates=["done", "call_entity"],
-            wards=[{"max_turns": 5}, {"max_depth": 1}],
+            wards=[{"max_turns": 5}, {"max_depth": 1}, {"require_done_tool": True}],
         ),
     )
 

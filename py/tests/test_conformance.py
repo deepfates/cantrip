@@ -141,7 +141,6 @@ def build_context(case: dict[str, Any]) -> dict[str, Any]:
     identity = Identity(
         system_prompt=identity_cfg.get("system_prompt"),
         temperature=identity_cfg.get("temperature"),
-        require_done_tool=bool(identity_cfg.get("require_done_tool", False)),
         tool_choice=identity_cfg.get("tool_choice"),
     )
 

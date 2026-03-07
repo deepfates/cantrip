@@ -179,7 +179,7 @@
        :capability-text (capability-text circle)}
       {:tools (gates/gate-tools (:gates circle))
        :tool-choice (or (:tool-choice identity-config)
-                        (when (true? (:require-done-tool identity-config)) :required)
+                        (when (some :require-done-tool (:wards circle)) :required)
                         :auto)
        :capability-text nil})))
 

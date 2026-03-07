@@ -41,7 +41,7 @@ def run(mode: str | None = None) -> dict[str, Any]:
     )
 
     # ── Code medium: G = {done}, M = code (Python sandbox) ──────────────
-    code_circle = Circle(gates=["done"], wards=[{"max_turns": 4}], medium="code")
+    code_circle = Circle(gates=["done"], wards=[{"max_turns": 4}, {"require_done_tool": True}], medium="code")
     code_cantrip = Cantrip(
         llm=active_llm,
         circle=code_circle,
@@ -51,7 +51,6 @@ def run(mode: str | None = None) -> dict[str, Any]:
                 "Available function: done(answer). Call done('your answer') to finish. "
                 "Variables persist across turns. Example: done('56')"
             ),
-            require_done_tool=True,
         ),
     )
 

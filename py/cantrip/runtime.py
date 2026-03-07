@@ -54,7 +54,7 @@ class Cantrip:
         self.child_llm = child_llm
         self.medium_depends = medium_depends or {}
 
-        if self.identity.require_done_tool and "done" not in self.circle._gates:
+        if self.circle.require_done_tool() and "done" not in self.circle._gates:
             raise CantripError("cantrip with require_done must have a done gate")
         if "done" not in self.circle._gates:
             raise CantripError("circle must have a done gate")
@@ -378,9 +378,16 @@ class Cantrip:
                 else:
                     composed_max_depth = min(parent_child_depth, requested_max_depth)
 
+                # OR composition for require_done_tool (WARD-1)
+                parent_require_done = self.circle.require_done_tool()
+                child_require_done = parent_require_done or bool(
+                    req.get("require_done_tool", False)
+                )
+
                 child_wards: list[dict[str, Any]] = [
                     {"max_turns": composed_max_turns},
                     {"max_depth": composed_max_depth},
+                    {"require_done_tool": child_require_done},
                 ]
 
                 available_parent_gates = circle.available_gates()
@@ -389,8 +396,11 @@ class Cantrip:
                 else:
                     gate_names = list(available_parent_gates.keys())
 
+                delegation_gates = {"call_entity", "call_entity_batch"}
                 child_gates = []
                 for name in gate_names:
+                    if name in delegation_gates and composed_max_depth <= 0:
+                        continue
                     parent_gate = available_parent_gates.get(name)
                     if parent_gate is None:
                         child_gates.append({"name": name})
@@ -449,15 +459,13 @@ class Cantrip:
                 # a generic prompt so they don't inherit parent's delegation instructions
                 # (which reference gates unavailable at lower depths).
                 child_system_prompt = req.get("system_prompt") or (
-                    "You are a helpful assistant. Complete the task and return your answer. "
+                    "You are a child entity. Pursue the intent and return the result. "
                     "If you have a code tool, write Python code that calls done(answer) with the result. "
                     "If you have a done tool, call done with your answer."
                 )
                 child_call = Identity(
                     system_prompt=child_system_prompt,
                     temperature=self.identity.temperature,
-                    require_done_tool=self.identity.require_done_tool
-                    or bool(req.get("require_done_tool", False)),
                     tool_choice=self.identity.tool_choice,
                     extra=copy.deepcopy(self.identity.extra),
                 )
@@ -740,7 +748,7 @@ class Cantrip:
             messages = self._context_messages(thread)
             tools = self._make_tools(self.circle)
             tool_choice = medium.tool_choice(self.identity.tool_choice)
-            if self.identity.require_done_tool and tool_choice is None:
+            if self.circle.require_done_tool() and tool_choice is None:
                 tool_choice = "required"
 
             try:
@@ -791,12 +799,12 @@ class Cantrip:
                 circle=self.circle,
                 depth=local_depth,
                 runtime=runtime,
-                require_done_tool=self.identity.require_done_tool,
+                require_done_tool=self.circle.require_done_tool(),
             )
 
             if (
                 self.circle.medium == "code"
-                and self.identity.require_done_tool
+                and self.circle.require_done_tool()
                 and not terminated
                 and (
                     (

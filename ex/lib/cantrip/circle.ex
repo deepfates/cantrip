@@ -64,6 +64,14 @@ defmodule Cantrip.Circle do
     end)
   end
 
+  @spec require_done_tool?(t()) :: boolean()
+  def require_done_tool?(%__MODULE__{wards: wards}) do
+    Enum.any?(wards, fn
+      %{require_done_tool: true} -> true
+      _ -> false
+    end)
+  end
+
   @done_parameters %{
     type: "object",
     properties: %{answer: %{type: "string", description: "Your final answer"}},
@@ -191,6 +199,8 @@ defmodule Cantrip.Circle do
       :code_eval_timeout_ms
     ]
 
+    boolean_keys = [:require_done_tool]
+
     # Collect all numeric ward values from both sides
     parent_numerics = extract_numerics(parent_wards, numeric_keys)
     child_numerics = extract_numerics(child_wards, numeric_keys)
@@ -208,15 +218,30 @@ defmodule Cantrip.Circle do
       end)
       |> Enum.map(fn {k, v} -> %{k => v} end)
 
-    # Pass through non-numeric wards from both sides
+    # Compose boolean wards with OR
+    merged_booleans =
+      boolean_keys
+      |> Enum.filter(fn key ->
+        Enum.any?(parent_wards ++ child_wards, &Map.has_key?(&1, key))
+      end)
+      |> Enum.map(fn key ->
+        value =
+          Enum.any?(parent_wards ++ child_wards, fn ward ->
+            Map.get(ward, key, false) == true
+          end)
+
+        %{key => value}
+      end)
+
+    # Pass through non-numeric, non-boolean wards from both sides
     passthrough =
       (parent_wards ++ child_wards)
       |> Enum.reject(fn ward ->
-        Enum.any?(numeric_keys, &Map.has_key?(ward, &1))
+        Enum.any?(numeric_keys ++ boolean_keys, &Map.has_key?(ward, &1))
       end)
       |> Enum.uniq()
 
-    merged_numerics ++ passthrough
+    merged_numerics ++ merged_booleans ++ passthrough
   end
 
   defp extract_numerics(wards, keys) do

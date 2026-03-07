@@ -50,10 +50,10 @@ def test_end_to_end_delegated_repo_workflow(tmp_path) -> None:
                 {"name": "repo_files", "depends": {"root": str(repo_root)}},
                 {"name": "repo_read", "depends": {"root": str(repo_root)}},
             ],
-            wards=[{"max_turns": 4}, {"max_depth": 2}],
+            wards=[{"max_turns": 4}, {"max_depth": 2}, {"require_done_tool": True}],
             depends={"code": {"runner": "mini"}},
         ),
-        identity=Identity(require_done_tool=True, tool_choice="required"),
+        identity=Identity(tool_choice="required"),
     )
 
     result, parent_thread = cantrip.cast_with_thread("delegate now")

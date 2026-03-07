@@ -61,13 +61,12 @@ def test_live_cantrip_tool_circle_done_path() -> None:
     )
     cantrip = Cantrip(
         llm=llm,
-        circle=Circle(gates=["done"], wards=[{"max_turns": 4}]),
+        circle=Circle(gates=["done"], wards=[{"max_turns": 4}, {"require_done_tool": True}]),
         identity=Identity(
             system_prompt=(
                 "You are a strict test agent. Always finish by calling done with answer='ok'."
             ),
             tool_choice="required",
-            require_done_tool=True,
         ),
     )
     result, thread = cantrip.cast_with_thread(intent="Return success now.")
