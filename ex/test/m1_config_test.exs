@@ -28,8 +28,7 @@ defmodule CantripM1ConfigTest do
     assert {:error, "cantrip with require_done must have a done gate"} =
              Cantrip.new(
                llm: llm,
-               identity: %{require_done_tool: true},
-               circle: %{gates: [], wards: [%{max_turns: 10}]}
+               circle: %{gates: [], wards: [%{max_turns: 10}, %{require_done_tool: true}]}
              )
   end
 

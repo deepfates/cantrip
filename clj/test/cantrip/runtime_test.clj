@@ -57,8 +57,8 @@
 
 (deftest text-only-continues-when-done-required
   (let [cantrip (-> valid-cantrip
-                    (assoc :identity {:system-prompt "test"
-                                  :require-done-tool true})
+                    (assoc :identity {:system-prompt "test"})
+                    (assoc-in [:circle :wards] [{:max-turns 2} {:require-done-tool true}])
                     (assoc :llm {:provider :fake
                                      :responses [{:content "thinking"}
                                                  {:tool-calls [{:id "call_1"
@@ -71,8 +71,8 @@
 
 (deftest truncates-when-max-turns-hit
   (let [cantrip (-> valid-cantrip
-                    (assoc :identity {:system-prompt "test"
-                                  :require-done-tool true})
+                    (assoc :identity {:system-prompt "test"})
+                    (assoc-in [:circle :wards] [{:max-turns 2} {:require-done-tool true}])
                     (assoc :llm {:provider :fake
                                      :responses [{:content "a"}
                                                  {:content "b"}
@@ -231,11 +231,10 @@
                            :responses [{:tool-calls [{:id "call_1" :gate :echo :args {:text "one"}}]}
                                        {:tool-calls [{:id "call_2" :gate :echo :args {:text "two"}}]}
                                        {:tool-calls [{:id "call_3" :gate :done :args {:answer "ok"}}]}]}
-                 :identity {:system-prompt "ephemeral test"
-                        :require-done-tool true}
+                 :identity {:system-prompt "ephemeral test"}
                  :circle {:medium :conversation
                           :gates [:done :echo]
-                          :wards [{:max-turns 5}]}
+                          :wards [{:max-turns 5} {:require-done-tool true}]}
                  :runtime {:ephemeral-observations true}}
         result (runtime/cast cantrip "compact")
         third-messages (-> @invocations (nth 2) :messages)
@@ -258,10 +257,10 @@
                   " :intent \"child\"}))")
         cantrip {:llm {:provider :fake
                            :responses [{:content code}]}
-                 :identity {:require-done-tool true}
+                 :identity {}
                  :circle {:medium :code
                           :gates [:done :call_entity]
-                          :wards [{:max-turns 3} {:max-depth 1}]}}
+                          :wards [{:max-turns 3} {:max-depth 1} {:require-done-tool true}]}}
         result (runtime/cast cantrip "compose via code")]
     (is (= :terminated (:status result)))
     (is (= "child-ok" (:result result)))))

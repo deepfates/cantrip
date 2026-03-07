@@ -15,8 +15,7 @@ defmodule CantripM9RealLlmIntegrationTest do
           identity: %{
             system_prompt:
               "Use tools only. First call echo with text exactly as requested. Then call done with the same text as answer.",
-            tool_choice: "required",
-            require_done_tool: true
+            tool_choice: "required"
           },
           circle: %{
             gates: [
@@ -37,7 +36,7 @@ defmodule CantripM9RealLlmIntegrationTest do
                 }
               }
             ],
-            wards: [%{max_turns: 5}]
+            wards: [%{max_turns: 5}, %{require_done_tool: true}]
           }
         )
 

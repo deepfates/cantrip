@@ -59,9 +59,8 @@ def run(mode: str | None = None) -> dict[str, Any]:
         llm=terminated_llm,
         identity=Identity(
             system_prompt="You are a financial analyst. Summarize the data, then call done(answer).",
-            require_done_tool=True,
         ),
-        circle=Circle(gates=["done"], wards=[{"max_turns": 3}]),
+        circle=Circle(gates=["done"], wards=[{"max_turns": 3}, {"require_done_tool": True}]),
         loom=loom,
     )
 
@@ -84,9 +83,8 @@ def run(mode: str | None = None) -> dict[str, Any]:
                 "You have echo(text) and done(answer). "
                 "Use echo to record each observation. Only call done when analysis is complete."
             ),
-            require_done_tool=True,
         ),
-        circle=Circle(gates=["done", "echo"], wards=[{"max_turns": 3}]),
+        circle=Circle(gates=["done", "echo"], wards=[{"max_turns": 3}, {"require_done_tool": True}]),
         loom=loom,
     )
 

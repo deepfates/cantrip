@@ -376,9 +376,9 @@ defmodule Cantrip do
   defp validate_llm({module, _state}) when is_atom(module), do: :ok
   defp validate_llm(_), do: {:error, "invalid llm"}
 
-  defp validate_circle(circle, call) do
+  defp validate_circle(circle, _identity) do
     cond do
-      call.require_done_tool and not Circle.has_done?(circle) ->
+      Circle.require_done_tool?(circle) and not Circle.has_done?(circle) ->
         {:error, "cantrip with require_done must have a done gate"}
 
       not Circle.has_done?(circle) ->

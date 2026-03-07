@@ -183,11 +183,12 @@
         normalized-circle (assoc circle :medium (normalized-medium circle))
         medium (:medium normalized-circle)
         base-identity (or (:identity setup) (:call setup) {})
-        identity-cfg (if (and (= :code medium)
-                              (not (contains? base-identity :require-done-tool))
-                              (not (contains? base-identity :require_done_tool)))
-                       (assoc base-identity :require-done-tool true)
-                       base-identity)
+        identity-cfg base-identity
+        ;; For code medium, add require-done-tool as a ward if not already present
+        needs-require-done-ward? (and (= :code medium)
+                                      (not (some #(or (contains? % :require-done-tool)
+                                                      (contains? % :require_done_tool))
+                                                 (:wards normalized-circle))))
         runtime-cfg (:folding setup)
         max-in-context (or (:trigger-after-turns runtime-cfg)
                            (:trigger_after_turns runtime-cfg))
@@ -200,7 +201,9 @@
                            {:default-child-llm child}))]
     (cond-> {:llm (resolve-llm llms cast)
              :identity identity-cfg
-             :circle (assoc normalized-circle :dependencies base-deps)}
+             :circle (cond-> (assoc normalized-circle :dependencies base-deps)
+                       needs-require-done-ward?
+                       (update :wards (fnil conj []) {:require-done-tool true}))}
       (:retry setup) (assoc :retry (:retry setup))
       (or (integer? max-in-context) has-ephemeral-gate?)
       (assoc :runtime (cond-> {}

@@ -154,9 +154,7 @@
         - content: "stuck forever"
     circle:
       gates: []
-      wards: [{ max_turns: 10 }]
-    identity:
-      require_done_tool: true
+      wards: [{ max_turns: 10 }, { require_done_tool: true }]
   action:
     construct_cantrip: true
   expect:
@@ -231,8 +229,6 @@
     circle:
       gates: [done]
       wards: [{ max_turns: 10 }]
-    identity:
-      require_done_tool: false
   action:
     cast:
       intent: "what is the answer?"
@@ -251,9 +247,7 @@
         - tool_calls: [{ gate: "done", args: { answer: "42" } }]
     circle:
       gates: [done]
-      wards: [{ max_turns: 10 }]
-    identity:
-      require_done_tool: true
+      wards: [{ max_turns: 10 }, { require_done_tool: true }]
   action:
     cast:
       intent: "what is the answer?"

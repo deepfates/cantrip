@@ -62,11 +62,11 @@ def run(mode: str | None = None) -> dict[str, Any]:
                 "Available host functions: call_gate('repo_read', {'path': '...'}) to read files, "
                 "done(answer) to finish. If a read fails, adapt and try a different path."
             ),
-            require_done_tool=True,  # WARD: entity must call done() to terminate
+            # require_done_tool is now a ward on the circle, not an identity property
         ),
         circle=Circle(
             gates=["done", {"name": "repo_read", "depends": {"root": str(workspace)}}],
-            wards=[{"max_turns": 5}],  # WARD-1: safety bound on loop iterations
+            wards=[{"max_turns": 5}, {"require_done_tool": True}],  # WARD-1: safety bound on loop iterations
             medium="code",  # A.7: code medium — entity writes Python, not JSON tool calls
         ),
     )

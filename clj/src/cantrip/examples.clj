@@ -215,11 +215,10 @@
                    (resolve-llm-config opts [{:tool-calls [{:id "c1" :gate :done :args {:answer "The key Q3 revenue driver was enterprise seat expansion, accounting for 62% of new ARR."}}]}
                                              {:tool-calls [{:id "c2" :gate :done :args {:answer "The biggest churn risk is in the SMB segment where 30-day retention dropped 8pp in Q3."}}]}]))
          cantrip {:llm llm-cfg
-                  :identity {:system-prompt "You are a SaaS analyst. Answer business questions concisely. You have one tool: done(answer). Call done(answer) with your analysis."
-                             :require-done-tool true}
+                  :identity {:system-prompt "You are a SaaS analyst. Answer business questions concisely. You have one tool: done(answer). Call done(answer) with your analysis."}
                   :circle {:medium :conversation
                            :gates [:done]
-                           :wards [{:max-turns 4}]}}
+                           :wards [{:max-turns 4} {:require-done-tool true}]}}
          ;; Two independent casts from the same cantrip template
          first-run (runtime/cast cantrip "Identify the key revenue driver in Q3. Call done(answer) with your analysis.")
          second-run (runtime/cast cantrip "What's the biggest risk in our churn data? Call done(answer) with your analysis.")]
@@ -314,9 +313,8 @@
                            "What does 14% QoQ MRR growth mean for a Series B company? Call done with your answer.")
          code-run (runtime/cast
                    {:llm code-llm
-                    :identity {:system-prompt "You write Clojure code to analyze SaaS metrics. Available functions: (submit-answer value) to return your final answer. Write a single Clojure expression."
-                               :require-done-tool true}
-                    :circle code-circle}
+                    :identity {:system-prompt "You write Clojure code to analyze SaaS metrics. Available functions: (submit-answer value) to return your final answer. Write a single Clojure expression."}
+                    :circle (update code-circle :wards conj {:require-done-tool true})}
                    "Calculate post-growth MRR if base was $3.7M and growth is 14%. Submit the result.")]
      ;; ── Narrative ──
      (println "=== Pattern 06: Medium Comparison ===")
@@ -349,8 +347,7 @@
          ;; Simulated workspace filesystem with quarterly revenue data
          filesystem {"/workspace/q4.txt" "Q4 Revenue: $4.8M | Churn: 3.1% | NRR: 118% | New logos: 47"}
          cantrip {:llm llm-cfg
-                  :identity {:system-prompt "You write Clojure code to analyze SaaS data. Available functions:\n- (call-gate :read-report {:path \"filename\"}) - read a formatted report (may error)\n- (call-gate :read {:path \"filename\"}) - read a plain data file\n- (submit-answer value) - return your final answer\nIf a gate call errors, try a different approach. The file q4.txt exists in the workspace."
-                             :require-done-tool true}
+                  :identity {:system-prompt "You write Clojure code to analyze SaaS data. Available functions:\n- (call-gate :read-report {:path \"filename\"}) - read a formatted report (may error)\n- (call-gate :read {:path \"filename\"}) - read a plain data file\n- (submit-answer value) - return your final answer\nIf a gate call errors, try a different approach. The file q4.txt exists in the workspace."}
                   :circle {:medium :code
                            :gates {:done {}
                                    :read-report {:dependencies {:root "/workspace"}
@@ -358,7 +355,7 @@
                                                  :error "ENOENT: q4.md not found — report format unavailable"}
                                    :read {:dependencies {:root "/workspace"}}}
                            :dependencies {:filesystem filesystem}
-                           :wards [{:max-turns 4}]}}
+                           :wards [{:max-turns 4} {:require-done-tool true}]}}
          run (runtime/cast cantrip "Read the quarterly data file and return its contents. Try read-report first with q4.md, and if that fails, use read with q4.txt.")
          observations (mapcat :observation (:turns run))
          gate-seq (mapv :gate observations)
@@ -470,11 +467,10 @@
                                      :wards [{:max-turns 2}]}}
         ;; Risk analyst (code medium — computes metrics programmatically)
         child-code {:llm child-code-llm
-                    :identity {:system-prompt "You write Clojure code to analyze risk metrics. Use (submit-answer value) to return your analysis."
-                               :require-done-tool true}
+                    :identity {:system-prompt "You write Clojure code to analyze risk metrics. Use (submit-answer value) to return your analysis."}
                     :circle {:medium :code
                              :gates [:done]
-                             :wards [{:max-turns 2}]}}
+                             :wards [{:max-turns 2} {:require-done-tool true}]}}
         ;; Single delegation: revenue analyst
         single (runtime/call-agent parent {:intent "Analyze Q3 revenue: $4.2M ARR, 62% from enterprise expansion. What's the growth trajectory?" :cantrip child-conversation})
         ;; Batch delegation: both analysts in parallel
@@ -624,11 +620,10 @@
                                   {:tool-calls [{:id "fc2" :gate :done :args {:answer "child-b-result"}}]}]})
          entity (runtime/summon
                  {:llm parent-llm
-                  :identity {:system-prompt "You are a coordinator. Delegate work to children and combine results.\n\nONLY these functions exist:\n- (call-agent {:intent \"task\" :system-prompt \"child role\"}) — delegate to a child, returns answer string\n- (submit-answer value) — finish and return your combined answer\n\nRULES:\n- ALWAYS include :system-prompt in call-agent so children know their role.\n- Do NOT define functions, macros, or error handling. Just call-agent and submit-answer.\n- Keep intents short and specific.\n- You MUST call (submit-answer ...) in every response.\n\nExample:\n(def trends (call-agent {:intent \"List top 3 Q3 revenue trends\" :system-prompt \"You are a revenue analyst. Answer concisely. Call (submit-answer answer) when done.\"}))\n(def risks (call-agent {:intent \"List top 2 risks from Q3 data\" :system-prompt \"You are a risk analyst. Answer concisely. Call (submit-answer answer) when done.\"}))\n(submit-answer (str \"Trends: \" trends \"\\nRisks: \" risks))"
-                             :require-done-tool true}
+                  :identity {:system-prompt "You are a coordinator. Delegate work to children and combine results.\n\nONLY these functions exist:\n- (call-agent {:intent \"task\" :system-prompt \"child role\"}) — delegate to a child, returns answer string\n- (submit-answer value) — finish and return your combined answer\n\nRULES:\n- ALWAYS include :system-prompt in call-agent so children know their role.\n- Do NOT define functions, macros, or error handling. Just call-agent and submit-answer.\n- Keep intents short and specific.\n- You MUST call (submit-answer ...) in every response.\n\nExample:\n(def trends (call-agent {:intent \"List top 3 Q3 revenue trends\" :system-prompt \"You are a revenue analyst. Answer concisely. Call (submit-answer answer) when done.\"}))\n(def risks (call-agent {:intent \"List top 2 risks from Q3 data\" :system-prompt \"You are a risk analyst. Answer concisely. Call (submit-answer answer) when done.\"}))\n(submit-answer (str \"Trends: \" trends \"\\nRisks: \" risks))"}
                   :circle {:medium :code
                            :gates [:done]
-                           :wards [{:max-turns 4} {:max-depth 2}]
+                           :wards [{:max-turns 4} {:max-depth 2} {:require-done-tool true}]
                            :dependencies (when child-llm {:default-child-llm child-llm})}})
          ;; First send: delegate two analyses to children
          first-send (runtime/send entity "Delegate two analyses: (1) Q3 revenue drivers, (2) churn risk score. Combine their results.")

@@ -50,7 +50,8 @@
              :max-eval-ms
              :max-forms]]
     (validate-ward-positive-int! ward k))
-  (validate-ward-boolean! ward :allow-require))
+  (validate-ward-boolean! ward :allow-require)
+  (validate-ward-boolean! ward :require-done-tool))
 
 (defn- validate-circle! [circle]
   (when-not (map? circle)
@@ -84,7 +85,7 @@
               (nil? (get cantrip k)))
       (throw (ex-info (str "cantrip requires " (name k))
                       {:rule "CANTRIP-1" :missing k}))))
-  (when (and (true? (get-in cantrip [:identity :require-done-tool]))
+  (when (and (some :require-done-tool (get-in cantrip [:circle :wards]))
              (not (has-done-gate? (:circle cantrip))))
     (throw (ex-info "cantrip with require_done must have a done gate"
                     {:rule "LOOP-2"})))

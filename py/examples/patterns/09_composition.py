@@ -79,12 +79,11 @@ def run(mode: str | None = None) -> dict[str, Any]:
                 "Children will return string summaries.\n"
                 "Combine their results and call done() with the synthesis."
             ),
-            require_done_tool=True,
         ),
         circle=Circle(
             medium="code",
             gates=["done", "call_entity", "call_entity_batch"],
-            wards=[{"max_turns": 6}, {"max_depth": 1}],
+            wards=[{"max_turns": 6}, {"max_depth": 1}, {"require_done_tool": True}],
         ),
         medium_depends={"code": {"timeout_s": 60}},
     )

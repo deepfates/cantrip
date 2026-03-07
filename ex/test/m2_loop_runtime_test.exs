@@ -85,7 +85,6 @@ defmodule CantripM2LoopRuntimeTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        identity: %{require_done_tool: false},
         circle: %{gates: [:done], wards: [%{max_turns: 10}]}
       )
 
@@ -108,8 +107,7 @@ defmodule CantripM2LoopRuntimeTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        identity: %{require_done_tool: true},
-        circle: %{gates: [:done], wards: [%{max_turns: 10}]}
+        circle: %{gates: [:done], wards: [%{max_turns: 10}, %{require_done_tool: true}]}
       )
 
     {:ok, "42", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "what is the answer?")

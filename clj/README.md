@@ -52,8 +52,7 @@ Run an example in scripted mode (no API key needed):
 (def spell
   (runtime/new-cantrip
    {:llm llm-config
-    :identity {:system-prompt "You are a financial analyst. Call done(answer) with your summary."
-               :require-done-tool false}
+    :identity {:system-prompt "You are a financial analyst. Call done(answer) with your summary."}
     :circle {:medium :conversation
              :gates [:done]
              :wards [{:max-turns 10}]}}))

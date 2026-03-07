@@ -15,8 +15,7 @@ defmodule CantripM10RealLlmEvalTest do
           identity: %{
             system_prompt:
               "You can call tools. First call fail_once exactly once, then call echo with the provided token, then call done with answer equal to that token.",
-            tool_choice: "required",
-            require_done_tool: true
+            tool_choice: "required"
           },
           circle: %{
             gates: [
@@ -38,7 +37,7 @@ defmodule CantripM10RealLlmEvalTest do
               },
               %{name: :fail_once, behavior: :throw, error: "intentional failure"}
             ],
-            wards: [%{max_turns: 8}]
+            wards: [%{max_turns: 8}, %{require_done_tool: true}]
           }
         )
 
@@ -76,12 +75,11 @@ defmodule CantripM10RealLlmEvalTest do
           identity: %{
             system_prompt:
               "Use call_entity exactly once with any intent, then call done with the exact child result string.",
-            require_done_tool: true
           },
           circle: %{
             type: :code,
             gates: [:done, :call_entity],
-            wards: [%{max_turns: 12}, %{max_depth: 1}]
+            wards: [%{max_turns: 12}, %{max_depth: 1}, %{require_done_tool: true}]
           }
         )
 

@@ -10,13 +10,12 @@ defmodule Cantrip.ACP.Runtime.Cantrip do
     case Cantrip.new_from_env(
            identity: %{
              system_prompt:
-               "Return only executable Elixir code. Always finish with done.(\"...\"). No markdown.",
-             require_done_tool: true
+               "Return only executable Elixir code. Always finish with done.(\"...\"). No markdown."
            },
            circle: %{
              type: :code,
              gates: [:done, :echo, :call_entity, :call_entity_batch, :compile_and_load],
-             wards: [%{max_turns: 24}, %{max_depth: 2}, %{max_concurrent_children: 4}]
+             wards: [%{max_turns: 24}, %{max_depth: 2}, %{max_concurrent_children: 4}, %{require_done_tool: true}]
            },
            retry: %{max_retries: 1, retryable_status_codes: [408, 429, 500, 502, 503, 504]}
          ) do

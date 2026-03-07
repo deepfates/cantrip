@@ -130,7 +130,7 @@ def run(mode: str | None = None) -> dict[str, Any]:
         circle=Circle(
             medium="code",
             gates=["done", "call_entity"],
-            wards=[{"max_turns": 6}, {"max_depth": 2}],
+            wards=[{"max_turns": 6}, {"max_depth": 2}, {"require_done_tool": True}],
         ),
         medium_depends={"code": {"timeout_s": 120}},
         identity=Identity(
@@ -149,7 +149,6 @@ def run(mode: str | None = None) -> dict[str, Any]:
                 '  risks = call_entity({"intent": "List top 2 risks from Q3 data"})\n'
                 "  done(f'Trends: {trends}\\nRisks: {risks}')"
             ),
-            require_done_tool=True,
         ),
         loom=loom,
     )

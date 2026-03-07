@@ -221,10 +221,9 @@ defmodule Cantrip.Examples do
         identity: %{
           system_prompt:
             "You are a SaaS metrics analyst. You have two tools: echo (to log observations) and done (to return your final answer). Analyze the provided data and call done with your summary.",
-          require_done_tool: true,
           tool_choice: "required"
         },
-        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 5}]}
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 5}, %{require_done_tool: true}]}
       })
 
     IO.puts("Valid circle: gates=[done, echo], wards=[max_turns: 5] -- construction succeeded.")
@@ -291,10 +290,9 @@ defmodule Cantrip.Examples do
         llm: llm,
         identity: %{
           system_prompt: "You are a SaaS analyst. Examine the given data segment and call done with a one-sentence finding.",
-          require_done_tool: true,
           tool_choice: "required"
         },
-        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 3}]}
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 3}, %{require_done_tool: true}]}
       })
 
     IO.puts("Cantrip constructed once. Now casting twice with different intents:\n")
@@ -348,10 +346,9 @@ defmodule Cantrip.Examples do
         llm: llm,
         identity: %{
           system_prompt: "You are a compliance analyst reviewing SaaS data access policies. Identify the most restrictive constraint and call done with your finding.",
-          require_done_tool: true,
           tool_choice: "required"
         },
-        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 4}]}
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 4}, %{require_done_tool: true}]}
       })
 
     with {:ok, result, next_cantrip, loom, meta} <-
@@ -427,10 +424,9 @@ defmodule Cantrip.Examples do
              identity: %{
                system_prompt:
                  "You are a SaaS dashboard reporter. You have two tools: echo (to log an observation) and done (to finalize). First echo a finding, then call done with a summary.",
-               require_done_tool: true,
                tool_choice: "required"
              },
-             circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 4}]}
+             circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 4}, %{require_done_tool: true}]}
            }),
          {:ok, code_cantrip} <-
            Cantrip.new(%{
@@ -438,10 +434,9 @@ defmodule Cantrip.Examples do
              identity: %{
                system_prompt:
                  "You write Elixir code to compute SaaS metrics. Write all code at the top level — do NOT use defmodule. Available host functions: echo.(opts) and done.(answer). Compute the requested value and call done.(answer) with the result string.",
-               require_done_tool: true,
                tool_choice: "required"
              },
-             circle: %{type: :code, gates: [:done, :echo], wards: [%{max_turns: 4}]}
+             circle: %{type: :code, gates: [:done, :echo], wards: [%{max_turns: 4}, %{require_done_tool: true}]}
            }),
          {:ok, convo_result, _next_convo, convo_loom, _convo_meta} <-
            Cantrip.cast(convo_cantrip, "Report the monthly active user trend and finalize."),
@@ -527,7 +522,6 @@ defmodule Cantrip.Examples do
         identity: %{
           system_prompt:
             "You write Elixir code to analyze quarterly revenue data. Write all code at the top level as a simple script — do NOT use defmodule or guard clauses. Use anonymous functions for helpers (e.g., parse = fn text -> ... end). Available host functions (closure bindings):\n- read.(%{path: \"file.txt\"}) — read a file, returns content string or error\n- compile_and_load.(%{module: \"Name\", source: \"code\"}) — compile an Elixir module\n- done.(answer) — finish and return the answer\n\nIf a read returns an error, recover by trying an alternative file. Keep code simple and direct.",
-          require_done_tool: true,
           tool_choice: "required"
         },
         circle: %{
@@ -539,7 +533,8 @@ defmodule Cantrip.Examples do
           ],
           wards: [
             %{max_turns: 6},
-            %{allow_compile_modules: [module_name]}
+            %{allow_compile_modules: [module_name]},
+            %{require_done_tool: true}
           ]
         }
       })
@@ -597,10 +592,9 @@ defmodule Cantrip.Examples do
         identity: %{
           system_prompt:
             "You are a financial analyst reviewing quarterly SaaS metrics. You have two tools: echo (to record an observation about each quarter) and done (to return your final trend summary). Examine each quarter one at a time using echo, then call done with the overall trend.",
-          require_done_tool: true,
           tool_choice: "required"
         },
-        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 8}]},
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 8}, %{require_done_tool: true}]},
         folding: %{trigger_after_turns: 2}
       })
 
@@ -702,13 +696,12 @@ defmodule Cantrip.Examples do
         identity: %{
           system_prompt:
             "You write Elixir code to coordinate a SaaS portfolio review. Write all code at the top level as a script — do NOT use defmodule, Task, spawn, or any concurrency primitives. Host functions are closure bindings only accessible at top level. Use ONLY these host functions:\n- call_entity.(%{intent: \"task\", gates: [\"done\"]}) — delegate to one child\n- call_entity_batch.([%{intent: \"task\", gates: [\"done\"]}]) — delegate to multiple children in parallel (returns a list of results in order)\n- done.(answer) — finish and return the answer\n\nExample:\nsingle = call_entity.(%{intent: \"analyze X\", gates: [\"done\"]})\nbatch = call_entity_batch.([%{intent: \"analyze Y\", gates: [\"done\"]}, %{intent: \"analyze Z\", gates: [\"done\"]}])\ndone.(%{single: single, batch: batch})",
-          require_done_tool: true,
           tool_choice: "required"
         },
         circle: %{
           type: :code,
           gates: [:done, :call_entity, :call_entity_batch],
-          wards: [%{max_turns: 8}, %{max_depth: 2}, %{max_batch_size: 4}]
+          wards: [%{max_turns: 8}, %{max_depth: 2}, %{max_batch_size: 4}, %{require_done_tool: true}]
         }
       })
 
@@ -752,10 +745,9 @@ defmodule Cantrip.Examples do
         identity: %{
           system_prompt:
             "You are a SaaS metrics analyst. You have two tools: echo (to record a key metric observation) and done (to return your final assessment). First echo the most important metric, then call done with a one-line assessment.",
-          require_done_tool: true,
           tool_choice: "required"
         },
-        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 5}]}
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 5}, %{require_done_tool: true}]}
       })
 
     with {:ok, result, _next_cantrip, loom, meta} <-
@@ -849,10 +841,9 @@ defmodule Cantrip.Examples do
         identity: %{
           system_prompt:
             "You write Elixir code to build a regional SaaS performance model. Write all code at the top level — do NOT use defmodule, because host functions are closure bindings only accessible at top level. Variables persist across turns and across sends. Define variables to accumulate metrics, then call done.(answer) with a summary map. Available host function: done.(answer).",
-          require_done_tool: true,
           tool_choice: "required"
         },
-        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 4}]}
+        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 4}, %{require_done_tool: true}]}
       })
 
     with {:ok, pid} <- Cantrip.summon(cantrip),
@@ -944,10 +935,9 @@ defmodule Cantrip.Examples do
         identity: %{
           system_prompt:
             "You write Elixir code to coordinate SaaS analysis. Write all code at the top level — do NOT use defmodule.\n\nAvailable host functions:\n- call_entity.(%{intent: \"task description\"}) — delegate to a child entity, returns the child's answer as a string\n- call_entity_batch.([%{intent: \"task1\"}, %{intent: \"task2\"}]) — delegate multiple tasks in parallel, returns list of answers\n- done.(answer) — finish and return your final answer\n\nOptional keys for call_entity: :context (data map), :system_prompt, :gates, :wards\n\nVariables persist across turns and sends. Use Process.put/get for cross-send memory.\n\nYour job: break the request into subtasks, delegate via call_entity, combine results, call done.",
-          require_done_tool: true,
           tool_choice: "required"
         },
-        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 8}]},
+        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 8}, %{require_done_tool: true}]},
         loom_storage: {:jsonl, loom_path}
       })
 

@@ -23,10 +23,10 @@
       (recur (dec remaining)
              {:llm {:provider :fake
                         :responses [{:content (mk-level-code child)}]}
-              :identity {:require-done-tool true}
+              :identity {}
               :circle {:medium :code
                        :gates [:done :call_entity]
-                       :wards [{:max-turns 4} {:max-depth 12}]}}))))
+                       :wards [{:max-turns 4} {:max-depth 12} {:require-done-tool true}]}}))))
 
 (defn run-once [levels]
   (let [cantrip (mk-nested-cantrip levels)
