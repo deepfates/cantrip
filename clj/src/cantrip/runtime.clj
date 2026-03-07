@@ -11,7 +11,7 @@
 (declare call-agent-batch)
 
 (defn- require-done-tool? [cantrip]
-  (true? (get-in cantrip [:identity :require-done-tool])))
+  (boolean (some :require-done-tool (get-in cantrip [:circle :wards]))))
 
 (defn- tool-choice [cantrip]
   (let [{:keys [tool-choice]} (medium/tool-view (:circle cantrip) (:identity cantrip))]
@@ -125,14 +125,20 @@
                              default-child-llm)
                            depth-derived-llm
                            (:llm parent-cantrip))
-        ;; Strip delegation gates from child (prevents runaway recursion).
+        ;; Strip delegation gates from child when child has no remaining depth.
         ;; Child keeps done + parent's non-delegation gates.
         parent-gates (get-in parent-cantrip [:circle :gates])
+        max-depth (max-depth-ward parent-cantrip)
+        child-has-no-depth (and (some? max-depth)
+                                (>= (inc (long parent-depth))
+                                    (long max-depth)))
         child-gates (when (and (seq parent-gates) (nil? requested-gates))
-                      (vec (remove #{:call-entity :call-entity-batch
-                                     "call_entity" "call_entity_batch"
-                                     :call_entity :call_entity_batch}
-                                   parent-gates)))
+                      (if child-has-no-depth
+                        (vec (remove #{:call-entity :call-entity-batch
+                                       "call_entity" "call_entity_batch"
+                                       :call_entity :call_entity_batch}
+                                     parent-gates))
+                        (vec parent-gates)))
         ;; Cap child max-turns at 3 (prevents exponential blowup from error cascading)
         parent-max-turns (ward-value parent-cantrip :max-turns)
         child-max-turns (when parent-max-turns (min (long parent-max-turns) 3))]

@@ -274,7 +274,7 @@ defmodule Cantrip.EntityServer do
         by_done ->
           true
 
-        tool_calls == [] and is_binary(content) and not state.cantrip.identity.require_done_tool ->
+        tool_calls == [] and is_binary(content) and not Circle.require_done_tool?(state.cantrip.circle) ->
           true
 
         true ->
@@ -532,8 +532,13 @@ defmodule Cantrip.EntityServer do
       requested_gates = Enum.uniq(requested_gates ++ ["done"])
       parent_gate_map = state.cantrip.circle.gates
 
+      delegation_gates = MapSet.new(["call_entity", "call_entity_batch"])
+      child_depth = state.depth + 1
+      strip_delegation = is_integer(max_depth) and child_depth >= max_depth
+
       child_gates =
         requested_gates
+        |> Enum.reject(fn name -> strip_delegation and MapSet.member?(delegation_gates, name) end)
         |> Enum.map(fn name ->
           case Map.get(parent_gate_map, name) do
             nil -> {name, %{name: name}}
