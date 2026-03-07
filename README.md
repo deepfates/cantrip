@@ -4,13 +4,29 @@
 > >
 > — Gargoyles: Reawakening (1995)
 
-Cantrip is a pattern for building LLM entities — autonomous loops where a model acts in an environment, observes the results, and adapts. You draw a circle, speak an intent into it, and an entity arises. It reasons, writes code, calls tools, delegates to children, and loops until the work is done or a limit is reached.
+A language model is a function: text in, text out. One call, no memory, no consequences. Put it in a REPL — now it writes code, sees what happened, writes more code. Variables persist. Errors come back as observations. The environment pushes back with truth, and the model adjusts. That's a cantrip: a self-modifying loop of language.
 
-Three components make a cantrip: the **LLM** (the model), the **identity** (a system prompt that shapes it), and the **circle** (the environment it acts in). The circle contains a **medium** — the substrate the entity works *in*, like a code sandbox or a conversation — plus **gates** (functions that cross the boundary, like reading files or spawning child entities) and **wards** (hard constraints like turn limits that the entity cannot override). The entity's action space follows a formula: **A = M ∪ G − W**. Everything the medium and gates allow, minus whatever the wards restrict.
+```
+spell = cantrip(
+  llm:      create_llm("claude-sonnet-4-5"),
+  identity: "You are a data analyst. Explore the `context` variable with code.
+             Use submit_answer() when you have findings.",
+  circle: Circle(
+    medium: code("javascript", state: { context: SALES_DATA }),
+    wards:  [max_turns(15), require_done()],
+  ),
+)
 
-Cast a cantrip on an intent and the entity loops until it calls `done` or a ward cuts it off. Every turn is recorded in the **loom** — an append-only tree that captures the full execution history. Threads that end with `done` are *terminated* (complete episodes). Threads cut short by wards are *truncated* (interrupted). The distinction matters if you use the loom for training data.
+answer = spell.cast("Which product has the highest revenue? Any regional patterns?")
+```
 
-The pattern is defined by a [spec](./SPEC.md) and a [behavioral test suite](./tests.yaml). This repository contains four working implementations you can run, learn from, or use as a starting point for your own.
+Three components make a cantrip: the **LLM** (the model), the **identity** (what it is and how to work), and the **circle** (the environment it acts in). The circle has a **medium** — the substrate the entity works *in*, like a code sandbox or a bash shell — plus **gates** (functions that cross the boundary, like reading files or delegating to child entities) and **wards** (hard constraints like turn limits). The action space follows a formula: **A = (M + G) − W**. Everything the medium and gates allow, minus whatever the wards restrict.
+
+When you `cast`, the entity loops. It writes code, the sandbox runs it, and the results come back — not as raw data in the prompt, but as a summary. To use the data, the entity stores it in a variable and operates on it with more code. It catches errors and adjusts. Turn by turn, it builds up an analysis the way you would in a Jupyter notebook — except the notebook writes itself. Because code is compositional, the entity composes actions nobody enumerated in advance. That's the core insight: a model in a REPL can do things a model with pre-built tools cannot.
+
+Gates let the entity reach outside the circle — read a file, spawn a child entity, fetch a URL. In a code medium, gates are just functions the entity calls in its code, freely composed in loops and conditionals. Wards are structural, not advisory: if the turn limit is 30, turn 31 doesn't happen. Every turn is recorded in the **loom** — an append-only tree. Threads that end with `done` are *terminated*; threads cut short by wards are *truncated*. The distinction matters for training data.
+
+The pattern is defined by a [spec](./SPEC.md) and a [behavioral test suite](./tests.yaml). This repository contains four implementations you can run, learn from, or use as a starting point for your own.
 
 ## Launch the Familiar
 
