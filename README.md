@@ -1,4 +1,4 @@
-# cantrip
+# 📜 cantrip
 
 > "The cantrips have been spoken. The patterns of force are aligned. Now it is up to your machine."
 > >
