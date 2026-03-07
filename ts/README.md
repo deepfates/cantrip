@@ -1,46 +1,38 @@
-# cantrip
+# cantrip — TypeScript
 
-> "The cantrips have been spoken. The patterns of force are aligned. Now it is up to your machine."
-> — Gargoyles: Reawakening (1995)
+> Reference implementation. The richest surface for mediums, examples, and the full API.
 
+This is the TypeScript realization of the cantrip spec. It was the original experimental playground — built up iteratively, then backported to the spec's domain model after SPEC.md was written. It has the most mediums, the most examples, and the most complete coverage of the spec's behavioral rules. If you want to understand how cantrip works by reading code, start here.
 
-A framework for building autonomous LLM entities. You draw a circle, speak an intent into it, and an entity arises — it reasons, acts in an environment, observes the results, and loops until the work is done or a limit is reached.
-
-Eleven terms describe everything in the system. Three are fundamental: the **llm** (the model), the **identity** (the invocation that shapes it), and the **circle** (the environment it acts in). Everything else is what happens when you put those together and let the loop run.
+For the full vocabulary and behavioral rules, see [SPEC.md](../SPEC.md) at the repo root.
 
 ---
 
-## Quick Start: Launch an Entity
-
-The fastest way to experience cantrip is to launch the **Familiar** — a long-running entity that can explore a codebase, run shell commands, browse the web, and reason about what it finds. It works in a JS medium and delegates to child cantrips with different mediums (bash, browser, etc.).
+## Quick Start
 
 ```bash
-# Clone and install
-git clone https://github.com/deepfates/cantrip.git
-cd cantrip
+cd ts
 bun install
+cp .env.example .env   # add your API key
+```
 
-# Set your API key
-export ANTHROPIC_API_KEY="sk-..."
+Run the simplest meaningful example — a cantrip with an LLM, an identity, a circle, and an intent:
 
-# Launch the Familiar as an interactive REPL
+```bash
+bun run examples/04_cantrip.ts
+```
+
+Once the vocabulary clicks, try the capstone — a persistent entity that constructs and casts child cantrips from code:
+
+```bash
 bun run examples/16_familiar.ts
 ```
-
-You'll get an interactive session where the entity can observe the repo (`repo_files`, `repo_read`), spawn child cantrips to run shell commands or browse the web, and reason about everything in code. Ask it to explore the codebase, run tests, analyze files — it figures out how to decompose the task and coordinate the work.
-
-```bash
-# Or give it a single task
-bun run examples/16_familiar.ts "Explain the gate system and find all builtin gates"
-```
-
-The `examples/` directory has simpler starting points too — see the [examples table](#examples) below to walk through the concepts one at a time.
 
 ---
 
 ## Minimal Example
 
-To build a cantrip from scratch: an llm, a circle with gates and wards, and an identity.
+An LLM, a circle with gates and wards, and an identity — assembled into a cantrip and cast on an intent.
 
 ```typescript
 import { cantrip, Circle, ChatAnthropic, done, max_turns, gate } from "cantrip";
@@ -72,7 +64,7 @@ const result = await spell.cast("What is 2 + 3?");
 console.log(result); // "5"
 ```
 
-Each `cast` creates a fresh entity — the cantrip is a reusable script. No medium specified here: the circle uses **conversation** by default, where gates appear as tool calls in natural language. Add a medium to upgrade the entity's action space — see [Mediums](#mediums) below.
+Each `cast` creates a fresh entity — the cantrip is a reusable script. No medium specified here: the circle uses **conversation** by default, where gates appear as tool calls in natural language. Add a medium to upgrade the entity's action space.
 
 ---
 
@@ -320,7 +312,7 @@ const spell = cantrip({ llm, identity: "Delegate analysis to child entities.", c
 const answer = await spell.cast("Analyze each category and summarize the trend.");
 ```
 
-Children get independent circles. The shared loom captures parent + child turns as a tree.
+Children get independent circles. `call_entity` is synchronous from the parent's perspective — the parent blocks while the child runs and receives the result as a return value. The shared loom captures parent + child turns as a tree.
 
 ### The Familiar
 
@@ -423,17 +415,9 @@ The loom records whether each thread **terminated** (entity called `done`) or wa
 
 ---
 
-## The Spec and the Ghost Library
-
-[SPEC.md](./SPEC.md) is the formal specification — eleven terms, behavioral rules, and the design rationale. It describes behavior, not technology: "the circle must provide sandboxed code execution" — not "use QuickJS."
-
-This TypeScript package is the reference implementation. The spec is designed so that implementations in other languages can be generated from it — the **ghost library** pattern, where the spec and its test suite are the durable artifacts and code regenerates from them. A Python cantrip and a TypeScript cantrip are both cantrips. The concepts compose across language boundaries because each language implements its own native mediums while sharing the same circle/gate/ward semantics.
-
----
-
 ## Examples
 
-The `examples/` directory walks through the concepts in order:
+The `examples/` directory walks through the concepts in order. Each example builds on the previous ones — the progression is the curriculum.
 
 | # | Example | What it teaches |
 |---|---------|----------------|
@@ -466,28 +450,51 @@ bun run examples/04_cantrip.ts
 
 ---
 
-## Installation
+## What You Can Learn Here
 
-```bash
-bun install cantrip
-```
+This is the reference implementation — the most complete realization of the spec. It has things the other implementations don't:
 
-Set your API key for your LLM provider:
-```bash
-export ANTHROPIC_API_KEY="sk-..."
-# or
-export OPENROUTER_API_KEY="sk-..."
-# or
-export OPENAI_API_KEY="sk-..."
-```
+- **Five mediums** (conversation, VM, QuickJS, bash, browser) — see the spec's medium concept expressed in multiple substrates
+- **21 examples** — the fullest progression from raw LLM query to familiar
+- **Dependency injection via `Depends<T>`** — a pattern for wiring gate dependencies without coupling
+- **Ephemeral gate tuning** — mark gate results as ephemeral to save context space
+- **The gate decorator API** — both high-level (`gate()`) and low-level (`rawGate()`) interfaces
+
+It is also the least portable. It depends on Bun, QuickJS WASM bindings, Taiko, and node:vm. If you want a cleaner starting point for your own implementation, the Python or Elixir versions may be easier to read and adapt.
 
 ---
 
-## Why "Cantrip"?
+## Spec Conformance
 
-In tabletop RPGs, a cantrip is the simplest spell — it costs nothing to cast and you can cast it repeatedly. The etymology traces to Gaelic *canntaireachd*, a piper's mnemonic chant. It's a loop of language.
+Tests: **615 pass, 55 skip** (`bun test --timeout 30000`)
 
-Here, a cantrip is a reusable script for creating LLM entities. Configure once, cast many times, compose into larger spells. The loop is the mechanism. The repetition is the point.
+The skipped tests are primarily integration tests that require API keys or specific runtime conditions. Core behavioral rules are fully covered.
+
+Provider support: Anthropic, OpenAI, Google, OpenRouter, LMStudio — the broadest of the four implementations.
+
+---
+
+## Setup
+
+```bash
+bun install
+cp .env.example .env
+# Edit .env with your API key(s)
+```
+
+Set at least one provider:
+```bash
+ANTHROPIC_API_KEY="sk-..."
+# or
+OPENAI_API_KEY="sk-..."
+# or
+OPENROUTER_API_KEY="sk-..."
+```
+
+Run the test suite:
+```bash
+bun test --timeout 30000
+```
 
 ---
 
