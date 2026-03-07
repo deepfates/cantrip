@@ -1,6 +1,7 @@
 # cantrip
 
 > "The cantrips have been spoken. The patterns of force are aligned. Now it is up to your machine."
+> >
 > — Gargoyles: Reawakening (1995)
 
 Cantrip is a pattern for building LLM entities — autonomous loops where a model acts in an environment, observes the results, and adapts. You draw a circle, speak an intent into it, and an entity arises. It reasons, writes code, calls tools, delegates to children, and loops until the work is done or a limit is reached.
