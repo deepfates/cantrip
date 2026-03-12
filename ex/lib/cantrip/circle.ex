@@ -177,7 +177,20 @@ defmodule Cantrip.Circle do
         }
   def execute_gate(circle, gate_name, args) do
     gate_name = canonical_gate_name(gate_name)
-    do_execute(circle, gate_name, args)
+
+    :telemetry.execute([:cantrip, :gate, :call], %{}, %{gate_name: gate_name, args: args})
+    started_at = System.monotonic_time(:millisecond)
+
+    result = do_execute(circle, gate_name, args)
+    duration = max(System.monotonic_time(:millisecond) - started_at, 0)
+
+    :telemetry.execute(
+      [:cantrip, :gate, :result],
+      %{duration: duration},
+      %{gate_name: gate_name, args: args, result: result, duration: duration}
+    )
+
+    result
   end
 
   @spec gate_names(t()) :: [String.t()]
