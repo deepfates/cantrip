@@ -1,111 +1,142 @@
 defmodule Cantrip.Familiar do
   @moduledoc """
-  Constructs a production-ready cantrip familiar — a persistent coding assistant
-  with filesystem observation gates and configurable loom persistence.
+  Constructs a spec-conformant familiar — a persistent entity that orchestrates
+  other cantrips through code medium.
 
-  The familiar is a configuration of existing cantrip primitives, not a new runtime.
-  It wires together gates (read_file, list_dir, search, done), wards, identity,
-  and optional JSONL loom storage into a ready-to-use Cantrip struct.
+  The familiar observes a codebase through read-only gates, reasons in a code
+  medium, and delegates action to child cantrips that it constructs at runtime —
+  choosing their LLM, medium, gates, and wards based on what the task requires.
+
+  Gates:
+  - Observation: read_file, list_dir, search (read-only filesystem)
+  - Orchestration: cantrip (construct), cast (execute), cast_batch (parallel), dispose (cleanup)
+  - Control: done (terminate with answer)
+
+  The loom is persisted to JSONL. Combined with folding, this gives the
+  familiar long-term memory bounded only by storage.
   """
 
   @default_max_turns 20
 
   @system_prompt """
-  You are the Familiar — a persistent coding assistant.
+  You are the Familiar — a persistent entity that constructs and orchestrates
+  other cantrips through code. You observe a codebase, reason in code, and
+  delegate action to child cantrips.
 
-  You have access to these tools to observe and interact with the filesystem:
-  - read_file: Read a file from the filesystem. Provide the absolute path.
-  - list_dir: List directory contents. Provide the absolute path.
-  - search: Search file contents for a pattern. Provide pattern and path.
-  - done: Call this with your final answer when you have completed the task.
+  ## How your medium works
 
-  Your conversation history (loom) persists across sessions. You can refer
-  to previous conversations and build on prior work.
+  You write Elixir code. Respond with code that calls the available host
+  functions. Variables persist across turns.
 
-  Use your gates effectively:
-  - Use list_dir to explore directory structure before reading files
-  - Use search to find relevant code or content across files
-  - Use read_file to examine specific files in detail
-  - Call done with a clear, complete answer when finished
+  ## Observation gates
+
+  - read_file.(path) — read a file from the filesystem
+  - list_dir.(path) — list directory contents
+  - search.(pattern, path) — search file contents for a regex pattern
+
+  ## Orchestration gates
+
+  - cantrip.(config) — construct a child cantrip. Config is a map with:
+      :identity — system prompt for the child
+      :circle — %{medium: :conversation, gates: ["done"], wards: [%{max_turns: N}]}
+    Returns a cantrip ID.
+
+  - cast.(cantrip_id, intent) — send an intent to a constructed child cantrip.
+    Returns the child's answer.
+
+  - cast_batch.(items) — execute multiple child cantrips in parallel.
+    Each item is %{cantrip: id, intent: "..."}. Returns a list of results.
+
+  - dispose.(cantrip_id) — clean up a child cantrip's resources.
+
+  - done.(answer) — complete the task and return your answer.
+
+  ## Patterns
+
+  Observe first, then construct specialized children for different tasks:
+
+    # Read the codebase
+    content = read_file.(%{path: "/path/to/file.ex"})
+
+    # Construct a child for analysis
+    analyzer = cantrip.(%{
+      identity: "Analyze code for bugs. Call done with findings.",
+      circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+    })
+
+    # Delegate
+    analysis = cast.(analyzer, "Analyze: " <> content)
+    dispose.(analyzer)
+
+    # Parallel fan-out
+    ids = Enum.map(files, fn f ->
+      cantrip.(%{identity: "Summarize.", circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}})
+    end)
+    items = Enum.zip(ids, files) |> Enum.map(fn {id, f} -> %{cantrip: id, intent: f} end)
+    results = cast_batch.(items)
+
+    done.(Enum.join(results, "\\n"))
   """
 
   @doc """
-  Build a familiar cantrip.
+  Build a familiar cantrip with code medium and orchestration gates.
 
   ## Options
 
     * `:llm` — required, the LLM tuple `{module, state}`
+    * `:child_llm` — optional, default LLM for child cantrips
     * `:max_turns` — maximum turns before truncation (default: #{@default_max_turns})
     * `:loom_path` — path for JSONL loom persistence (optional)
     * `:system_prompt` — override the default system prompt (optional)
-
-  ## Examples
-
-      {:ok, cantrip} = Cantrip.Familiar.new(
-        llm: {Cantrip.LLMs.Anthropic, %{model: "claude-sonnet-4-20250514", ...}},
-        loom_path: "~/.cantrip/familiar.jsonl",
-        max_turns: 20
-      )
   """
   @spec new(keyword()) :: {:ok, Cantrip.t()} | {:error, String.t()}
   def new(opts) when is_list(opts) do
     llm = Keyword.fetch!(opts, :llm)
+    child_llm = Keyword.get(opts, :child_llm)
     max_turns = Keyword.get(opts, :max_turns, @default_max_turns)
     loom_path = Keyword.get(opts, :loom_path)
     system_prompt = Keyword.get(opts, :system_prompt, @system_prompt)
 
     loom_storage = if loom_path, do: {:jsonl, loom_path}, else: nil
 
-    gates = [
-      %{
-        name: "done",
-        parameters: %{
-          type: "object",
-          properties: %{answer: %{type: "string", description: "Your final answer"}},
-          required: ["answer"]
-        }
-      },
-      %{
-        name: "read_file",
-        parameters: %{
-          type: "object",
-          properties: %{path: %{type: "string", description: "Absolute path to the file to read"}},
-          required: ["path"]
-        }
-      },
-      %{
-        name: "list_dir",
-        parameters: %{
-          type: "object",
-          properties: %{path: %{type: "string", description: "Absolute path to the directory to list"}},
-          required: ["path"]
-        }
-      },
-      %{
-        name: "search",
-        parameters: %{
-          type: "object",
-          properties: %{
-            pattern: %{type: "string", description: "Regex pattern to search for"},
-            path: %{type: "string", description: "Absolute path to file or directory to search in"}
-          },
-          required: ["pattern", "path"]
-        }
-      }
+    # Observation gates (read-only filesystem access)
+    observation_gates = [
+      %{name: "read_file"},
+      %{name: "list_dir"},
+      %{name: "search"}
     ]
 
-    Cantrip.new(%{
+    # Orchestration gates (cantrip construction + delegation)
+    orchestration_gates = [
+      %{name: "cantrip"},
+      %{name: "cast"},
+      %{name: "cast_batch"},
+      %{name: "dispose"}
+    ]
+
+    # Control gates
+    control_gates = [
+      %{name: "done"}
+    ]
+
+    gates = control_gates ++ observation_gates ++ orchestration_gates
+
+    attrs = %{
       llm: llm,
       identity: %{
         system_prompt: system_prompt,
         tool_choice: "auto"
       },
       circle: %{
-        type: :conversation,
-        gates: gates,
-        wards: [%{max_turns: max_turns}]
+        type: :code,
+        gates: gates ++ [:call_entity, :call_entity_batch],
+        wards: [%{max_turns: max_turns}, %{max_depth: 3}]
       },
       loom_storage: loom_storage
-    })
+    }
+
+    attrs = if child_llm, do: Map.put(attrs, :child_llm, child_llm), else: attrs
+
+    Cantrip.new(attrs)
   end
 end

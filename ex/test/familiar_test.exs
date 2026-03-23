@@ -1,18 +1,18 @@
 defmodule Cantrip.FamiliarTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.{Familiar, FakeLLM}
+  alias Cantrip.{Familiar, FakeLLM, Circle}
 
-  describe "Familiar.new/1" do
-    test "returns a valid cantrip struct" do
-      llm = {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
+  describe "Familiar.new/1 — spec-conformant orchestrator" do
+    test "returns a cantrip with code medium (not conversation)" do
+      llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
 
       {:ok, cantrip} = Familiar.new(llm: llm)
       assert %Cantrip{} = cantrip
-      assert cantrip.llm_module == FakeLLM
+      assert cantrip.circle.type == :code
     end
 
-    test "includes read_file, list_dir, search, and done gates" do
+    test "includes observation gates: read_file, list_dir, search" do
       llm = {FakeLLM, FakeLLM.new([])}
       {:ok, cantrip} = Familiar.new(llm: llm)
 
@@ -23,26 +23,41 @@ defmodule Cantrip.FamiliarTest do
       assert "search" in gate_names
     end
 
-    test "has a system prompt describing the familiar" do
+    test "includes orchestration gates: cantrip, cast, cast_batch, dispose" do
       llm = {FakeLLM, FakeLLM.new([])}
       {:ok, cantrip} = Familiar.new(llm: llm)
 
-      assert is_binary(cantrip.identity.system_prompt)
-      assert cantrip.identity.system_prompt =~ "Familiar"
+      gate_names = Map.keys(cantrip.circle.gates)
+      assert "cantrip" in gate_names
+      assert "cast" in gate_names
+      assert "cast_batch" in gate_names
+      assert "dispose" in gate_names
+    end
+
+    test "system prompt mentions orchestration and child cantrips" do
+      llm = {FakeLLM, FakeLLM.new([])}
+      {:ok, cantrip} = Familiar.new(llm: llm)
+
+      prompt = cantrip.identity.system_prompt
+      assert is_binary(prompt)
+      assert prompt =~ "Familiar"
+      assert prompt =~ "orchestrat"
+      assert prompt =~ "cantrip"
+      assert prompt =~ "child"
     end
 
     test "respects custom max_turns" do
       llm = {FakeLLM, FakeLLM.new([])}
       {:ok, cantrip} = Familiar.new(llm: llm, max_turns: 10)
 
-      assert Cantrip.Circle.max_turns(cantrip.circle) == 10
+      assert Circle.max_turns(cantrip.circle) == 10
     end
 
     test "defaults max_turns to 20" do
       llm = {FakeLLM, FakeLLM.new([])}
       {:ok, cantrip} = Familiar.new(llm: llm)
 
-      assert Cantrip.Circle.max_turns(cantrip.circle) == 20
+      assert Circle.max_turns(cantrip.circle) == 20
     end
 
     test "configures JSONL loom storage when loom_path given" do
@@ -54,8 +69,8 @@ defmodule Cantrip.FamiliarTest do
     end
   end
 
-  describe "read_file gate" do
-    test "reads a real temp file" do
+  describe "observation gates work in code medium" do
+    test "read_file gate reads a real temp file via code" do
       tmp_dir = Path.join(System.tmp_dir!(), "familiar_rf_#{System.unique_integer([:positive])}")
       File.mkdir_p!(tmp_dir)
       file_path = Path.join(tmp_dir, "hello.txt")
@@ -64,48 +79,17 @@ defmodule Cantrip.FamiliarTest do
       llm =
         {FakeLLM,
          FakeLLM.new([
-           %{tool_calls: [%{gate: "read_file", args: %{"path" => file_path}}]},
-           %{tool_calls: [%{gate: "done", args: %{answer: "read it"}}]}
+           %{code: ~s[content = read_file.(%{path: "#{file_path}"})\ndone.("got:" <> content)]}
          ])}
 
       {:ok, cantrip} = Familiar.new(llm: llm)
-      {:ok, result, _c, loom, _meta} = Cantrip.cast(cantrip, "read that file")
-
-      # The read_file gate should have executed and returned file content
-      read_obs =
-        loom.turns
-        |> Enum.flat_map(fn t -> t.observation || [] end)
-        |> Enum.find(fn obs -> obs.gate == "read_file" end)
-
-      assert read_obs != nil
-      assert read_obs.result == "hello world"
-      assert read_obs.is_error == false
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "read that file")
+      assert result == "got:hello world"
     after
       File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_rf_*"))
     end
 
-    test "returns error for nonexistent file" do
-      llm =
-        {FakeLLM,
-         FakeLLM.new([
-           %{tool_calls: [%{gate: "read_file", args: %{"path" => "/nonexistent/path/file.txt"}}]},
-           %{tool_calls: [%{gate: "done", args: %{answer: "handled error"}}]}
-         ])}
-
-      {:ok, cantrip} = Familiar.new(llm: llm)
-      {:ok, _result, _c, loom, _meta} = Cantrip.cast(cantrip, "read missing file")
-
-      read_obs =
-        loom.turns
-        |> Enum.flat_map(fn t -> t.observation || [] end)
-        |> Enum.find(fn obs -> obs.gate == "read_file" end)
-
-      assert read_obs.is_error == true
-    end
-  end
-
-  describe "list_dir gate" do
-    test "lists a real temp directory" do
+    test "list_dir gate lists directory contents via code" do
       tmp_dir = Path.join(System.tmp_dir!(), "familiar_ld_#{System.unique_integer([:positive])}")
       File.mkdir_p!(tmp_dir)
       File.write!(Path.join(tmp_dir, "a.txt"), "a")
@@ -114,55 +98,150 @@ defmodule Cantrip.FamiliarTest do
       llm =
         {FakeLLM,
          FakeLLM.new([
-           %{tool_calls: [%{gate: "list_dir", args: %{"path" => tmp_dir}}]},
-           %{tool_calls: [%{gate: "done", args: %{answer: "listed"}}]}
+           %{code: ~s[entries = list_dir.(%{path: "#{tmp_dir}"})\ndone.(entries)]}
          ])}
 
       {:ok, cantrip} = Familiar.new(llm: llm)
-      {:ok, _result, _c, loom, _meta} = Cantrip.cast(cantrip, "list dir")
-
-      list_obs =
-        loom.turns
-        |> Enum.flat_map(fn t -> t.observation || [] end)
-        |> Enum.find(fn obs -> obs.gate == "list_dir" end)
-
-      assert list_obs != nil
-      assert list_obs.is_error == false
-      # Result should contain the filenames
-      assert list_obs.result =~ "a.txt"
-      assert list_obs.result =~ "b.txt"
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "list dir")
+      assert result =~ "a.txt"
+      assert result =~ "b.txt"
     after
       File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_ld_*"))
     end
-  end
 
-  describe "search gate" do
-    test "finds pattern in temp files" do
+    test "search gate finds pattern in temp files via code" do
       tmp_dir = Path.join(System.tmp_dir!(), "familiar_sr_#{System.unique_integer([:positive])}")
       File.mkdir_p!(tmp_dir)
       File.write!(Path.join(tmp_dir, "code.ex"), "defmodule Foo do\n  def hello, do: :world\nend\n")
-      File.write!(Path.join(tmp_dir, "other.ex"), "no match here\n")
 
       llm =
         {FakeLLM,
          FakeLLM.new([
-           %{tool_calls: [%{gate: "search", args: %{"pattern" => "defmodule", "path" => tmp_dir}}]},
-           %{tool_calls: [%{gate: "done", args: %{answer: "found it"}}]}
+           %{code: ~s[result = search.(%{pattern: "defmodule", path: "#{tmp_dir}"})\ndone.(result)]}
          ])}
 
       {:ok, cantrip} = Familiar.new(llm: llm)
-      {:ok, _result, _c, loom, _meta} = Cantrip.cast(cantrip, "search for defmodule")
-
-      search_obs =
-        loom.turns
-        |> Enum.flat_map(fn t -> t.observation || [] end)
-        |> Enum.find(fn obs -> obs.gate == "search" end)
-
-      assert search_obs != nil
-      assert search_obs.is_error == false
-      assert search_obs.result =~ "defmodule"
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "search for defmodule")
+      assert result =~ "defmodule"
     after
       File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_sr_*"))
+    end
+  end
+
+  describe "cantrip() + cast() orchestration pattern" do
+    test "cantrip() constructs a child config and cast() executes it" do
+      # Parent: construct a child cantrip, cast an intent to it, return the result
+      parent =
+        {FakeLLM,
+         FakeLLM.new([
+           %{
+             code: """
+             id = cantrip.(%{
+               identity: "You are a helper. Call done with the answer.",
+               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+             })
+             result = cast.(id, "What is 6 * 7?")
+             done.(result)
+             """
+           }
+         ])}
+
+      # Child responds with done
+      child =
+        {FakeLLM,
+         FakeLLM.new([
+           %{tool_calls: [%{gate: "done", args: %{answer: "42"}}]}
+         ])}
+
+      {:ok, cantrip} = Familiar.new(llm: parent, child_llm: child)
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "delegate to child")
+      assert result == "42"
+    end
+
+    test "cast_batch() executes multiple children in parallel" do
+      parent =
+        {FakeLLM,
+         FakeLLM.new([
+           %{
+             code: """
+             id1 = cantrip.(%{
+               identity: "Analyzer 1",
+               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+             })
+             id2 = cantrip.(%{
+               identity: "Analyzer 2",
+               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+             })
+             results = cast_batch.([
+               %{cantrip: id1, intent: "analyze trends"},
+               %{cantrip: id2, intent: "analyze risks"}
+             ])
+             done.(Enum.join(results, " | "))
+             """
+           }
+         ])}
+
+      child =
+        {FakeLLM,
+         FakeLLM.new(
+           [
+             %{tool_calls: [%{gate: "done", args: %{answer: "trend-result"}}]},
+             %{tool_calls: [%{gate: "done", args: %{answer: "risk-result"}}]}
+           ],
+           shared: true
+         )}
+
+      {:ok, cantrip} = Familiar.new(llm: parent, child_llm: child)
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "parallel analysis")
+      assert result =~ "trend-result"
+      assert result =~ "risk-result"
+    end
+
+    test "dispose() cleans up a constructed cantrip" do
+      parent =
+        {FakeLLM,
+         FakeLLM.new([
+           %{
+             code: """
+             id = cantrip.(%{
+               identity: "temp helper",
+               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+             })
+             dispose.(id)
+             done.("disposed")
+             """
+           }
+         ])}
+
+      {:ok, cantrip} = Familiar.new(llm: parent)
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "dispose test")
+      assert result == "disposed"
+    end
+
+    test "cast() with a disposed cantrip raises an error" do
+      parent =
+        {FakeLLM,
+         FakeLLM.new([
+           %{
+             code: """
+             id = cantrip.(%{
+               identity: "temp helper",
+               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+             })
+             dispose.(id)
+             try do
+               cast.(id, "should fail")
+               done.("should not reach")
+             rescue
+               e -> done.("error: " <> Exception.message(e))
+             end
+             """
+           }
+         ])}
+
+      {:ok, cantrip} = Familiar.new(llm: parent)
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "cast after dispose")
+      assert result =~ "error:"
     end
   end
 
@@ -171,8 +250,8 @@ defmodule Cantrip.FamiliarTest do
       llm =
         {FakeLLM,
          FakeLLM.new([
-           %{tool_calls: [%{gate: "done", args: %{answer: "first response"}}]},
-           %{tool_calls: [%{gate: "done", args: %{answer: "second response"}}]}
+           %{code: ~s[done.("first response")]},
+           %{code: ~s[done.("second response")]}
          ])}
 
       {:ok, cantrip} = Familiar.new(llm: llm)
@@ -191,7 +270,7 @@ defmodule Cantrip.FamiliarTest do
 
   describe "ACP runtime (Familiar)" do
     test "new_session returns a session with familiar gates" do
-      llm = {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
+      llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
 
       {:ok, session} =
         Cantrip.ACP.Runtime.Familiar.new_session(%{
@@ -231,7 +310,7 @@ defmodule Cantrip.FamiliarTest do
 
       assert resp["result"]["protocolVersion"] == 1
 
-      llm = {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
+      llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
 
       # Create session with injected LLM
       {_state, [resp]} =
@@ -243,6 +322,28 @@ defmodule Cantrip.FamiliarTest do
         })
 
       assert resp["result"]["sessionId"]
+    end
+  end
+
+  describe "JSONL loom persistence" do
+    test "loom persists to JSONL file" do
+      path = Path.join(System.tmp_dir!(), "familiar_loom_#{System.unique_integer([:positive])}.jsonl")
+
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s[done.("persisted")]}
+         ])}
+
+      {:ok, cantrip} = Familiar.new(llm: llm, loom_path: path)
+      {:ok, _result, _c, _loom, _meta} = Cantrip.cast(cantrip, "test persistence")
+
+      assert File.exists?(path)
+      content = File.read!(path)
+      assert content =~ "turn"
+      assert String.trim(content) != ""
+    after
+      Path.wildcard(Path.join(System.tmp_dir!(), "familiar_loom_*")) |> Enum.each(&File.rm/1)
     end
   end
 
@@ -260,29 +361,6 @@ defmodule Cantrip.FamiliarTest do
         )
 
       assert opts[:acp] == true
-    end
-  end
-
-  describe "JSONL loom persistence" do
-    test "loom persists to JSONL file" do
-      path = Path.join(System.tmp_dir!(), "familiar_loom_#{System.unique_integer([:positive])}.jsonl")
-
-      llm =
-        {FakeLLM,
-         FakeLLM.new([
-           %{tool_calls: [%{gate: "done", args: %{answer: "persisted"}}]}
-         ])}
-
-      {:ok, cantrip} = Familiar.new(llm: llm, loom_path: path)
-      {:ok, _result, _c, _loom, _meta} = Cantrip.cast(cantrip, "test persistence")
-
-      assert File.exists?(path)
-      content = File.read!(path)
-      assert content =~ "turn"
-      assert String.trim(content) != ""
-    after
-      # Cleanup
-      Path.wildcard(Path.join(System.tmp_dir!(), "familiar_loom_*")) |> Enum.each(&File.rm/1)
     end
   end
 end

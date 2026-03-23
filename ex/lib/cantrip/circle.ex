@@ -223,6 +223,18 @@ defmodule Cantrip.Circle do
   defp format_gate_description("search"),
     do: "- search.(opts) — search file contents; opts must include :pattern and :path"
 
+  defp format_gate_description("cantrip"),
+    do: "- cantrip.(config) — construct a child cantrip; config includes :identity, :circle"
+
+  defp format_gate_description("cast"),
+    do: "- cast.(cantrip_id, intent) — send an intent to a constructed child cantrip"
+
+  defp format_gate_description("cast_batch"),
+    do: "- cast_batch.(items) — execute multiple child cantrips in parallel; items are [%{cantrip: id, intent: text}]"
+
+  defp format_gate_description("dispose"),
+    do: "- dispose.(cantrip_id) — clean up a child cantrip's resources"
+
   defp format_gate_description(name),
     do: "- #{name}.(opts) — summon the #{name} gate"
 

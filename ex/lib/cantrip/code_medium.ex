@@ -14,7 +14,11 @@ defmodule Cantrip.CodeMedium do
     :done,
     :call_entity,
     :call_entity_batch,
-    :compile_and_load
+    :compile_and_load,
+    :cantrip,
+    :cast,
+    :cast_batch,
+    :dispose
   ]
 
   @type runtime :: %{
@@ -117,19 +121,140 @@ defmodule Cantrip.CodeMedium do
           Keyword.put(binding, :call_entity_batch, call_entity_batch_fun)
       end
 
-    case Map.get(runtime, :compile_and_load) do
-      nil ->
-        binding
+    binding =
+      case Map.get(runtime, :compile_and_load) do
+        nil ->
+          binding
 
-      gate_fun ->
-        compile_and_load_fun = fn opts ->
-          payload = gate_fun.(normalize_opts(opts))
+        gate_fun ->
+          compile_and_load_fun = fn opts ->
+            payload = gate_fun.(normalize_opts(opts))
+            push_observation(payload.observation)
+            payload.value
+          end
+
+          Keyword.put(binding, :compile_and_load, compile_and_load_fun)
+      end
+
+    # Familiar orchestration gates: cantrip/cast/cast_batch/dispose
+    # These are only bound when the circle has the corresponding gates.
+    gate_names = Circle.gate_names(runtime.circle)
+
+    if "cantrip" in gate_names do
+      put_familiar_bindings(binding, runtime)
+    else
+      binding
+    end
+  end
+
+  defp put_familiar_bindings(binding, runtime) do
+    # cantrip.(config) — store a child config in process dict, return an ID
+    cantrip_fun = fn config ->
+      config = normalize_opts(config)
+      id = "fam_child_" <> Integer.to_string(System.unique_integer([:positive]))
+      store = Process.get(:cantrip_familiar_store, %{})
+      Process.put(:cantrip_familiar_store, Map.put(store, id, config))
+      push_observation(%{gate: "cantrip", result: id, is_error: false})
+      id
+    end
+
+    # cast.(cantrip_id, intent) — retrieve config and call_entity
+    cast_fun = fn id, intent ->
+      store = Process.get(:cantrip_familiar_store, %{})
+
+      case Map.get(store, id) do
+        nil ->
+          raise "unknown cantrip ID: #{id} (was it disposed?)"
+
+        config ->
+          # Build call_entity opts from the stored config
+          call_opts = build_call_entity_opts(config, intent)
+          payload = runtime.call_entity.(call_opts)
+          push_observation(payload.observation)
+
+          if payload.observation[:is_error] do
+            raise payload.observation[:result] || "cast failed"
+          end
+
+          payload.value
+      end
+    end
+
+    # cast_batch.(items) — parallel execution of multiple child cantrips
+    cast_batch_fun = fn items ->
+      store = Process.get(:cantrip_familiar_store, %{})
+
+      call_opts_list =
+        Enum.map(items, fn item ->
+          item = normalize_opts(item)
+          id = item[:cantrip] || item[:id]
+          intent = item[:intent]
+
+          case Map.get(store, id) do
+            nil ->
+              raise "unknown cantrip ID: #{id} (was it disposed?)"
+
+            config ->
+              build_call_entity_opts(config, intent)
+          end
+        end)
+
+      case Map.get(runtime, :call_entity_batch) do
+        nil ->
+          # Fallback: sequential execution
+          Enum.map(call_opts_list, fn opts ->
+            payload = runtime.call_entity.(opts)
+            push_observation(payload.observation)
+            payload.value
+          end)
+
+        batch_fun ->
+          payload = batch_fun.(call_opts_list)
           push_observation(payload.observation)
           payload.value
-        end
-
-        Keyword.put(binding, :compile_and_load, compile_and_load_fun)
+      end
     end
+
+    # dispose.(cantrip_id) — remove the stored config
+    dispose_fun = fn id ->
+      store = Process.get(:cantrip_familiar_store, %{})
+      Process.put(:cantrip_familiar_store, Map.delete(store, id))
+      push_observation(%{gate: "dispose", result: "ok", is_error: false})
+      :ok
+    end
+
+    binding
+    |> Keyword.put(:cantrip, cantrip_fun)
+    |> Keyword.put(:cast, cast_fun)
+    |> Keyword.put(:cast_batch, cast_batch_fun)
+    |> Keyword.put(:dispose, dispose_fun)
+  end
+
+  defp build_call_entity_opts(config, intent) do
+    opts = %{intent: intent}
+
+    opts =
+      case config[:identity] do
+        nil -> opts
+        prompt -> Map.put(opts, :system_prompt, prompt)
+      end
+
+    opts =
+      case config[:circle] do
+        nil ->
+          opts
+
+        circle_config ->
+          circle_config = normalize_opts(circle_config)
+
+          # Extract wards from circle config for the child
+          case circle_config[:wards] do
+            nil -> opts
+            wards -> Map.put(opts, :wards, wards)
+          end
+      end
+
+    opts
   end
 
   defp persist_binding(binding) do
