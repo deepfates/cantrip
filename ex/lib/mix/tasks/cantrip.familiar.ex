@@ -1,13 +1,15 @@
 defmodule Mix.Tasks.Cantrip.Familiar do
   @shortdoc "Run the Familiar — a persistent coding assistant"
   @moduledoc """
-  Run the Familiar in REPL mode (interactive) or single-shot mode.
+  Run the Familiar in REPL mode (interactive), single-shot mode, or ACP server mode.
 
       mix cantrip.familiar                          # REPL mode
       mix cantrip.familiar "explain this codebase"  # single-shot
+      mix cantrip.familiar --acp                    # ACP stdio server
 
   ## Options
 
+    * `--acp` — start as an ACP stdio server instead of REPL
     * `--loom-path PATH` — path for persistent JSONL loom (default: .cantrip/familiar.jsonl)
     * `--max-turns N` — maximum turns per episode (default: 20)
     * `--help` — show this help
@@ -23,17 +25,28 @@ defmodule Mix.Tasks.Cantrip.Familiar do
         strict: [
           loom_path: :string,
           max_turns: :integer,
-          help: :boolean
+          help: :boolean,
+          acp: :boolean
         ],
         aliases: [h: :help]
       )
 
-    if opts[:help] do
-      Mix.shell().info(usage())
-    else
-      intent = List.first(positional)
-      run_familiar(intent, opts)
+    cond do
+      opts[:help] ->
+        Mix.shell().info(usage())
+
+      opts[:acp] ->
+        run_acp()
+
+      true ->
+        intent = List.first(positional)
+        run_familiar(intent, opts)
     end
+  end
+
+  defp run_acp do
+    Mix.shell().info("Familiar ACP server starting on stdio...")
+    Cantrip.ACP.Server.run(runtime: Cantrip.ACP.Runtime.Familiar)
   end
 
   defp run_familiar(intent, opts) do

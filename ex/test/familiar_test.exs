@@ -189,6 +189,80 @@ defmodule Cantrip.FamiliarTest do
     end
   end
 
+  describe "ACP runtime (Familiar)" do
+    test "new_session returns a session with familiar gates" do
+      llm = {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
+
+      {:ok, session} =
+        Cantrip.ACP.Runtime.Familiar.new_session(%{
+          "cwd" => System.tmp_dir!(),
+          "llm" => llm
+        })
+
+      gate_names = Map.keys(session.cantrip.circle.gates)
+      assert "done" in gate_names
+      assert "read_file" in gate_names
+      assert "list_dir" in gate_names
+      assert "search" in gate_names
+    end
+
+    test "new_session includes familiar system prompt" do
+      llm = {FakeLLM, FakeLLM.new([])}
+
+      {:ok, session} =
+        Cantrip.ACP.Runtime.Familiar.new_session(%{
+          "cwd" => System.tmp_dir!(),
+          "llm" => llm
+        })
+
+      assert session.cantrip.identity.system_prompt =~ "Familiar"
+    end
+
+    test "ACP protocol works with familiar runtime" do
+      state = Cantrip.ACP.Protocol.new(runtime: Cantrip.ACP.Runtime.Familiar)
+
+      # Initialize
+      {state, [resp]} =
+        Cantrip.ACP.Protocol.handle_request(state, %{
+          "jsonrpc" => "2.0",
+          "id" => 1,
+          "method" => "initialize"
+        })
+
+      assert resp["result"]["protocolVersion"] == 1
+
+      llm = {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
+
+      # Create session with injected LLM
+      {_state, [resp]} =
+        Cantrip.ACP.Protocol.handle_request(state, %{
+          "jsonrpc" => "2.0",
+          "id" => 2,
+          "method" => "session/new",
+          "params" => %{"cwd" => System.tmp_dir!(), "llm" => llm}
+        })
+
+      assert resp["result"]["sessionId"]
+    end
+  end
+
+  describe "Mix task --acp flag" do
+    test "option parser accepts --acp flag" do
+      {opts, _positional, _} =
+        OptionParser.parse(["--acp"],
+          strict: [
+            loom_path: :string,
+            max_turns: :integer,
+            help: :boolean,
+            acp: :boolean
+          ],
+          aliases: [h: :help]
+        )
+
+      assert opts[:acp] == true
+    end
+  end
+
   describe "JSONL loom persistence" do
     test "loom persists to JSONL file" do
       path = Path.join(System.tmp_dir!(), "familiar_loom_#{System.unique_integer([:positive])}.jsonl")
