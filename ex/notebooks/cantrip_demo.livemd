@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:cantrip, path: ".."},
+  {:cantrip_ex, path: ".."},
   {:kino, "~> 0.14"}
 ])
 ```
@@ -16,13 +16,13 @@ constraints through **wards**.
 
 Key concepts:
 
-- **Cantrip** — a configured agent: an LLM + identity + circle
-- **Cast** — run the agent on an intent (user request)
-- **Circle** — the set of gates (tools) and wards (constraints) available
-- **Loom** — the append-only history of turns
-- **Gate** — a tool the LLM can call (e.g. `done`, `echo`, custom gates)
-- **Ward** — a constraint (e.g. max turns, max depth)
-- **FakeLLM** — a deterministic LLM for testing and demos
+* **Cantrip** — a configured agent: an LLM + identity + circle
+* **Cast** — run the agent on an intent (user request)
+* **Circle** — the set of gates (tools) and wards (constraints) available
+* **Loom** — the append-only history of turns
+* **Gate** — a tool the LLM can call (e.g. `done`, `echo`, custom gates)
+* **Ward** — a constraint (e.g. max turns, max depth)
+* **FakeLLM** — a deterministic LLM for testing and demos
 
 This notebook uses `FakeLLM` throughout, so no API keys are needed.
 
