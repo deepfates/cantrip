@@ -162,6 +162,10 @@ incrementally. This is how you would build a real-time UI. Each event is a
 tagged tuple like `{:step_start, data}`, `{:tool_call, data}`,
 `{:tool_result, data}`, `{:final_response, data}`, or `{:done, result}`.
 
+> **Tip:** For low-level instrumentation (durations, gate names, entity lifecycle),
+> see **Section 7: Telemetry Dashboard** below. Streaming gives you application-level
+> events; telemetry gives you runtime-level measurements. They complement each other.
+
 ```elixir
 alias Cantrip.FakeLLM
 
@@ -436,6 +440,207 @@ rows =
 Kino.DataTable.new(rows, name: "Detailed Loom View", keys: ["#", "Role", "Content", "Gates", "Results", "Tokens", "Terminated?", "Turn ID"])
 ```
 
+## Section 7: Telemetry Dashboard
+
+The cantrip runtime emits `:telemetry` events at key points: entity start/stop,
+turn start/stop (with duration), gate start/stop (with duration and error status),
+and code evaluation (with duration). You can attach handlers to these events to
+build a real-time dashboard without modifying any application code.
+
+### Setting up handlers
+
+```elixir
+frame = Kino.Frame.new()
+Kino.render(frame)
+
+# Accumulate events in an Agent so we can build a summary table later
+{:ok, collector} = Agent.start_link(fn -> [] end)
+
+handler = fn event, measurements, metadata, {frame, collector} ->
+  time_str = DateTime.utc_now() |> Calendar.strftime("%H:%M:%S.%f")
+
+  {label, detail} =
+    case event do
+      [:cantrip, :entity, :start] ->
+        {"ENTITY START", "id=#{metadata.entity_id} intent=#{inspect(metadata.intent)}"}
+
+      [:cantrip, :entity, :stop] ->
+        {"ENTITY STOP", "id=#{metadata.entity_id} reason=#{metadata.reason}"}
+
+      [:cantrip, :turn, :start] ->
+        {"TURN START", "turn ##{metadata.turn_number}"}
+
+      [:cantrip, :turn, :stop] ->
+        us = div(measurements.duration, 1_000)
+        {"TURN STOP", "turn ##{metadata.turn_number} (#{us} us)"}
+
+      [:cantrip, :gate, :start] ->
+        {"GATE START", "gate=#{metadata.gate_name}"}
+
+      [:cantrip, :gate, :stop] ->
+        us = div(measurements.duration, 1_000)
+        err = if metadata.is_error, do: " [ERROR]", else: ""
+        {"GATE STOP", "gate=#{metadata.gate_name} (#{us} us)#{err}"}
+
+      [:cantrip, :code, :eval] ->
+        us = div(measurements.duration, 1_000)
+        {"CODE EVAL", "(#{us} us)"}
+    end
+
+  Agent.update(collector, fn events ->
+    [{event, measurements, metadata} | events]
+  end)
+
+  color =
+    case event do
+      [:cantrip, :entity, _] -> "#8b5cf6"
+      [:cantrip, :turn, :start] -> "#6366f1"
+      [:cantrip, :turn, :stop] -> "#818cf8"
+      [:cantrip, :gate, :start] -> "#f59e0b"
+      [:cantrip, :gate, :stop] -> "#10b981"
+      [:cantrip, :code, :eval] -> "#ec4899"
+    end
+
+  html = Kino.HTML.new("""
+  <div style="font-family: monospace; padding: 2px 8px; color: #{color};">
+    <span style="color: #888;">#{time_str}</span>
+    <strong>#{label}</strong> #{detail}
+  </div>
+  """)
+
+  Kino.Frame.append(frame, html)
+end
+
+events = [
+  [:cantrip, :entity, :start],
+  [:cantrip, :entity, :stop],
+  [:cantrip, :turn, :start],
+  [:cantrip, :turn, :stop],
+  [:cantrip, :gate, :start],
+  [:cantrip, :gate, :stop],
+  [:cantrip, :code, :eval]
+]
+
+# Detach any previous handlers from re-runs
+for event <- events do
+  id = "demo-telemetry-#{inspect(event)}"
+  :telemetry.detach(id)
+  :telemetry.attach(id, event, handler, {frame, collector})
+end
+
+Kino.Text.new("Telemetry handlers attached. Run the next cell to see events.")
+```
+
+### Running a cantrip with telemetry
+
+```elixir
+alias Cantrip.FakeLLM
+
+llm =
+  {FakeLLM,
+   FakeLLM.new([
+     %{tool_calls: [%{gate: "echo", args: %{text: "thinking..."}}]},
+     %{tool_calls: [%{gate: "echo", args: %{text: "almost there"}}]},
+     %{tool_calls: [%{gate: "done", args: %{answer: "Done after 3 turns."}}]}
+   ])}
+
+{:ok, cantrip} =
+  Cantrip.new(
+    llm: llm,
+    identity: %{system_prompt: "Telemetry demo agent."},
+    circle: %{
+      type: :conversation,
+      gates: [:done, :echo],
+      wards: [%{max_turns: 10}]
+    }
+  )
+
+{:ok, result, _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "Run a telemetry demo")
+
+IO.puts("Result: #{result}")
+```
+
+### Telemetry summary
+
+After the cantrip completes, the collector Agent holds all events. We can
+build a summary table showing total turns, total duration, and which gates
+were called.
+
+```elixir
+raw_events = Agent.get(collector, & &1) |> Enum.reverse()
+
+# Compute summary stats
+total_turns =
+  raw_events
+  |> Enum.count(fn {event, _, _} -> event == [:cantrip, :turn, :stop] end)
+
+turn_durations =
+  raw_events
+  |> Enum.filter(fn {event, _, _} -> event == [:cantrip, :turn, :stop] end)
+  |> Enum.map(fn {_, %{duration: d}, _} -> div(d, 1_000) end)
+
+total_duration_us = Enum.sum(turn_durations)
+
+gate_calls =
+  raw_events
+  |> Enum.filter(fn {event, _, _} -> event == [:cantrip, :gate, :stop] end)
+  |> Enum.map(fn {_, measurements, metadata} ->
+    %{
+      gate: metadata.gate_name,
+      duration_us: div(measurements.duration, 1_000),
+      error: metadata.is_error
+    }
+  end)
+
+gate_summary =
+  gate_calls
+  |> Enum.group_by(& &1.gate)
+  |> Enum.map(fn {gate, calls} ->
+    %{
+      "Gate" => gate,
+      "Calls" => length(calls),
+      "Total Duration (us)" => Enum.sum(Enum.map(calls, & &1.duration_us)),
+      "Errors" => Enum.count(calls, & &1.error)
+    }
+  end)
+
+entity_reason =
+  raw_events
+  |> Enum.find(fn {event, _, _} -> event == [:cantrip, :entity, :stop] end)
+  |> case do
+    {_, _, %{reason: reason}} -> reason
+    _ -> "unknown"
+  end
+
+overview = [
+  %{
+    "Metric" => "Total Turns",
+    "Value" => "#{total_turns}"
+  },
+  %{
+    "Metric" => "Total Turn Duration",
+    "Value" => "#{total_duration_us} us"
+  },
+  %{
+    "Metric" => "Avg Turn Duration",
+    "Value" => if(total_turns > 0, do: "#{div(total_duration_us, total_turns)} us", else: "—")
+  },
+  %{
+    "Metric" => "Total Gate Calls",
+    "Value" => "#{length(gate_calls)}"
+  },
+  %{
+    "Metric" => "Termination Reason",
+    "Value" => "#{entity_reason}"
+  }
+]
+
+Kino.Layout.grid([
+  Kino.DataTable.new(overview, name: "Telemetry Overview", keys: ["Metric", "Value"]),
+  Kino.DataTable.new(gate_summary, name: "Gate Breakdown", keys: ["Gate", "Calls", "Total Duration (us)", "Errors"])
+], columns: 1)
+```
+
 ## Summary
 
 This notebook demonstrated the core cantrip runtime:
@@ -446,6 +651,7 @@ This notebook demonstrated the core cantrip runtime:
 4. **Custom gates** — extend the circle with domain-specific tools
 5. **Composition** — parent agents delegate to child agents via `call_entity`
 6. **Loom inspection** — every turn is recorded with full provenance
+7. **Telemetry** — attach handlers to runtime events for real-time dashboards
 
 All examples used `FakeLLM` for deterministic, reproducible results.
 To use a real LLM, replace `FakeLLM` with `Cantrip.new_from_env/1` and
