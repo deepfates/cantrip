@@ -51,6 +51,12 @@ defmodule Cantrip.EntityServer do
     stream_to = Keyword.get(opts, :stream_to)
     cancel_on_parent = normalize_cancel_parents(Keyword.get(opts, :cancel_on_parent))
 
+    :telemetry.execute(
+      [:cantrip, :entity, :start],
+      %{},
+      %{entity_id: entity_id, intent: intent}
+    )
+
     {:ok,
      %__MODULE__{
        cantrip: cantrip,
@@ -70,10 +76,13 @@ defmodule Cantrip.EntityServer do
   def handle_call(:run, _from, state) do
     case run_loop(state) do
       {:error, reason, next_state} ->
+        emit_entity_stop(next_state, :error)
         reply = {:error, reason, next_state.cantrip}
         {:stop, :normal, reply, next_state}
 
       {result, next_state, meta} ->
+        stop_reason = if meta[:truncated], do: :truncated, else: :done
+        emit_entity_stop(next_state, stop_reason)
         reply = {:ok, result, next_state.cantrip, next_state.loom, meta}
         {:stop, :normal, reply, next_state}
     end
@@ -83,10 +92,13 @@ defmodule Cantrip.EntityServer do
   def handle_call(:run_persistent, _from, state) do
     case run_loop(state) do
       {:error, reason, next_state} ->
+        emit_entity_stop(next_state, :error)
         reply = {:error, reason, next_state.cantrip}
         {:reply, reply, next_state}
 
       {result, next_state, meta} ->
+        stop_reason = if meta[:truncated], do: :truncated, else: :done
+        emit_entity_stop(next_state, stop_reason)
         reply = {:ok, result, next_state.cantrip, next_state.loom, meta}
         {:reply, reply, next_state}
     end
@@ -105,10 +117,13 @@ defmodule Cantrip.EntityServer do
 
     case run_loop(next_state) do
       {:error, reason, final_state} ->
+        emit_entity_stop(final_state, :error)
         reply = {:error, reason, final_state.cantrip}
         {:reply, reply, final_state}
 
       {result, final_state, meta} ->
+        stop_reason = if meta[:truncated], do: :truncated, else: :done
+        emit_entity_stop(final_state, stop_reason)
         reply = {:ok, result, final_state.cantrip, final_state.loom, meta}
         {:reply, reply, final_state}
     end
@@ -151,7 +166,15 @@ defmodule Cantrip.EntityServer do
 
       {nil, %{state | loom: loom}, meta}
     else
-      emit_event(state, {:step_start, %{turn: state.turns + 1, entity_id: state.entity_id}})
+      turn_number = state.turns + 1
+      :telemetry.execute(
+        [:cantrip, :turn, :start],
+        %{},
+        %{entity_id: state.entity_id, turn_number: turn_number}
+      )
+      turn_start_time = System.monotonic_time()
+
+      emit_event(state, {:step_start, %{turn: turn_number, entity_id: state.entity_id}})
       started_at = System.monotonic_time(:millisecond)
       messages = fold_messages(state.messages, state.turns, state.cantrip)
 
@@ -169,6 +192,8 @@ defmodule Cantrip.EntityServer do
         {:error, reason, next_llm_state} ->
           error_message = if is_binary(reason), do: reason, else: inspect(reason)
 
+          emit_turn_stop(state.entity_id, turn_number, turn_start_time)
+
           {:error, error_message,
            %{
              state
@@ -181,7 +206,7 @@ defmodule Cantrip.EntityServer do
 
           emit_event(
             state,
-            {:message_complete, %{turn: state.turns + 1, duration_ms: duration_ms}}
+            {:message_complete, %{turn: turn_number, duration_ms: duration_ms}}
           )
 
           resp_usage = Map.get(response, :usage, %{})
@@ -202,13 +227,14 @@ defmodule Cantrip.EntityServer do
           execute_turn(
             %{state | cantrip: %{state.cantrip | llm_state: next_llm_state}},
             response,
-            duration_ms
+            duration_ms,
+            turn_start_time
           )
       end
     end
   end
 
-  defp execute_turn(state, response, duration_ms) do
+  defp execute_turn(state, response, duration_ms, turn_start_time) do
     content = Map.get(response, :content)
     code = Map.get(response, :code)
     tool_calls = Map.get(response, :tool_calls) || []
@@ -240,20 +266,20 @@ defmodule Cantrip.EntityServer do
             }
 
             {next_state, obs, result, terminated} =
-              eval_code_sandboxed(code, state.code_state, runtime)
+              eval_code_sandboxed(code, state.code_state, runtime, state.entity_id)
 
             {%{content: code, tool_calls: []}, obs, result, terminated, next_state}
           else
             # No code found — fall through to regular tool call handling
             # (child entities in code circles may receive non-code tool calls)
-            {observation, result, by_done} = execute_gate_calls(state.cantrip.circle, tool_calls)
+            {observation, result, by_done} = execute_gate_calls(state.cantrip.circle, tool_calls, state.entity_id)
 
             {%{content: content, tool_calls: tool_calls}, observation, result, by_done,
              state.code_state}
           end
 
         _ ->
-          {observation, result, by_done} = execute_gate_calls(state.cantrip.circle, tool_calls)
+          {observation, result, by_done} = execute_gate_calls(state.cantrip.circle, tool_calls, state.entity_id)
 
           {%{content: content, tool_calls: tool_calls}, observation, result, by_done,
            state.code_state}
@@ -346,6 +372,9 @@ defmodule Cantrip.EntityServer do
 
     emit_event(state, {:step_complete, %{turn: next_state.turns, terminated: terminated}})
 
+    turn_number = state.turns + 1
+    emit_turn_stop(state.entity_id, turn_number, turn_start_time)
+
     if terminated do
       case result do
         {:cantrip_error, msg} ->
@@ -409,9 +438,11 @@ defmodule Cantrip.EntityServer do
     end
   end
 
-  defp eval_code_sandboxed(code, code_state, runtime) do
+  defp eval_code_sandboxed(code, code_state, runtime, entity_id \\ nil) do
     timeout = Circle.code_eval_timeout_ms(runtime.circle)
     saved_child_llm = Map.get(code_state, :child_llm)
+
+    eval_start = System.monotonic_time()
 
     task =
       Task.async(fn ->
@@ -428,6 +459,11 @@ defmodule Cantrip.EntityServer do
 
     case Task.yield(task, timeout) do
       {:ok, {{next_state, obs, result, terminated}, child_llm, captured_output}} ->
+        if entity_id do
+          duration = System.monotonic_time() - eval_start
+          :telemetry.execute([:cantrip, :code, :eval], %{duration: duration}, %{entity_id: entity_id})
+        end
+
         next_state =
           if child_llm,
             do: Map.put(next_state, :child_llm, child_llm),
@@ -437,6 +473,11 @@ defmodule Cantrip.EntityServer do
         {next_state, obs, result, terminated}
 
       nil ->
+        if entity_id do
+          duration = System.monotonic_time() - eval_start
+          :telemetry.execute([:cantrip, :code, :eval], %{duration: duration}, %{entity_id: entity_id})
+        end
+
         Task.shutdown(task, :brutal_kill)
         obs = [%{gate: "code", result: "code evaluation timed out", is_error: true}]
         {code_state, obs, nil, false}
@@ -491,13 +532,32 @@ defmodule Cantrip.EntityServer do
   defp execute_gate_calls(_circle, []), do: {[], nil, false}
 
   defp execute_gate_calls(circle, tool_calls) do
+    execute_gate_calls(circle, tool_calls, nil)
+  end
+
+  defp execute_gate_calls(circle, tool_calls, entity_id) do
     Enum.reduce_while(tool_calls, {[], nil, false}, fn call, {acc, _result, _terminated} ->
       tool_call_id = call[:id] || call["id"]
       gate = call[:gate] || call["gate"]
       args = call[:args] || call["args"] || %{}
 
+      if entity_id do
+        :telemetry.execute([:cantrip, :gate, :start], %{}, %{entity_id: entity_id, gate_name: gate})
+      end
+
+      gate_start = System.monotonic_time()
+
       observation =
         Circle.execute_gate(circle, gate, args) |> Map.put(:tool_call_id, tool_call_id)
+
+      if entity_id do
+        duration = System.monotonic_time() - gate_start
+        :telemetry.execute(
+          [:cantrip, :gate, :stop],
+          %{duration: duration},
+          %{entity_id: entity_id, gate_name: gate, is_error: observation.is_error}
+        )
+      end
 
       acc = acc ++ [observation]
 
@@ -851,6 +911,23 @@ defmodule Cantrip.EntityServer do
   end
 
   defp extract_code_from_tool_call(_), do: nil
+
+  defp emit_entity_stop(state, reason) do
+    :telemetry.execute(
+      [:cantrip, :entity, :stop],
+      %{},
+      %{entity_id: state.entity_id, reason: reason}
+    )
+  end
+
+  defp emit_turn_stop(entity_id, turn_number, turn_start_time) do
+    duration = System.monotonic_time() - turn_start_time
+    :telemetry.execute(
+      [:cantrip, :turn, :stop],
+      %{duration: duration},
+      %{entity_id: entity_id, turn_number: turn_number}
+    )
+  end
 
   defp emit_event(%{stream_to: nil}, _event), do: :ok
 
