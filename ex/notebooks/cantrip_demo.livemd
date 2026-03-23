@@ -1,0 +1,452 @@
+# Cantrip Runtime Demo
+
+```elixir
+Mix.install([
+  {:cantrip, path: ".."},
+  {:kino, "~> 0.14"}
+])
+```
+
+## What is Cantrip?
+
+Cantrip is a structured runtime for LLM agents. Instead of free-form chat, cantrip
+gives the LLM a **circle** of available tools (called **gates**), records every
+interaction in an append-only **loom** (turn history), and enforces safety
+constraints through **wards**.
+
+Key concepts:
+
+- **Cantrip** — a configured agent: an LLM + identity + circle
+- **Cast** — run the agent on an intent (user request)
+- **Circle** — the set of gates (tools) and wards (constraints) available
+- **Loom** — the append-only history of turns
+- **Gate** — a tool the LLM can call (e.g. `done`, `echo`, custom gates)
+- **Ward** — a constraint (e.g. max turns, max depth)
+- **FakeLLM** — a deterministic LLM for testing and demos
+
+This notebook uses `FakeLLM` throughout, so no API keys are needed.
+
+## Section 1: Basic Cast
+
+The simplest cantrip: an LLM that receives an intent and immediately calls
+the `done` gate with its answer.
+
+```elixir
+alias Cantrip.FakeLLM
+
+# FakeLLM takes a list of scripted responses.
+# Each response contains tool_calls the "LLM" will make.
+llm =
+  {FakeLLM,
+   FakeLLM.new([
+     %{tool_calls: [%{gate: "done", args: %{answer: "Hello from cantrip!"}}]}
+   ])}
+
+# Build the cantrip
+{:ok, cantrip} =
+  Cantrip.new(
+    llm: llm,
+    identity: %{system_prompt: "You are a helpful assistant."},
+    circle: %{
+      type: :conversation,
+      gates: [:done],
+      wards: [%{max_turns: 10}]
+    }
+  )
+
+# Cast an intent — this runs the agent loop
+{:ok, result, _next_cantrip, loom, meta} = Cantrip.cast(cantrip, "Say hello")
+
+IO.puts("Result: #{inspect(result)}")
+IO.puts("Turns recorded: #{length(loom.turns)}")
+IO.puts("Meta: #{inspect(meta)}")
+```
+
+### Inspecting the Loom
+
+Every cast records turns in the loom. Let's render them as a table.
+
+```elixir
+rows =
+  loom.turns
+  |> Enum.with_index(1)
+  |> Enum.map(fn {turn, idx} ->
+    content = get_in(turn, [:utterance, :content])
+
+    gate_calls =
+      (turn[:observation] || [])
+      |> Enum.map(& &1.gate)
+      |> Enum.join(", ")
+
+    %{
+      "Turn" => idx,
+      "Role" => turn[:role] || "turn",
+      "Content" => if(is_binary(content), do: String.slice(content, 0, 60), else: inspect(content)),
+      "Gates Called" => gate_calls,
+      "Terminated?" => turn[:terminated]
+    }
+  end)
+
+Kino.DataTable.new(rows, name: "Loom Turns")
+```
+
+## Section 2: Multi-turn with Gates
+
+A more interesting scenario: the LLM calls an `echo` gate first, sees the
+result, then calls `done`. This shows how gates produce observations that
+feed back into the next turn.
+
+```elixir
+alias Cantrip.FakeLLM
+
+llm =
+  {FakeLLM,
+   FakeLLM.new([
+     # Turn 1: call echo
+     %{tool_calls: [%{gate: "echo", args: %{text: "ping"}}]},
+     # Turn 2: saw the echo result, now finish
+     %{tool_calls: [%{gate: "done", args: %{answer: "Echo replied: ping"}}]}
+   ])}
+
+{:ok, cantrip} =
+  Cantrip.new(
+    llm: llm,
+    identity: %{system_prompt: "You are an echo tester."},
+    circle: %{
+      type: :conversation,
+      gates: [:done, :echo],
+      wards: [%{max_turns: 10}]
+    }
+  )
+
+{:ok, result, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "Test the echo gate")
+
+IO.puts("Final result: #{inspect(result)}")
+IO.puts("Total turns: #{length(loom.turns)}")
+```
+
+```elixir
+# Render the multi-turn loom
+rows =
+  loom.turns
+  |> Enum.with_index(1)
+  |> Enum.map(fn {turn, idx} ->
+    content = get_in(turn, [:utterance, :content])
+
+    gate_calls =
+      (turn[:observation] || [])
+      |> Enum.map(& &1.gate)
+      |> Enum.join(", ")
+
+    gate_results =
+      (turn[:observation] || [])
+      |> Enum.map(fn obs -> "#{obs.gate}=#{inspect(obs.result)}" end)
+      |> Enum.join(", ")
+
+    %{
+      "Turn" => idx,
+      "Content" => if(is_binary(content), do: String.slice(content, 0, 60), else: "—"),
+      "Gates Called" => gate_calls,
+      "Gate Results" => String.slice(gate_results, 0, 80),
+      "Terminated?" => turn[:terminated]
+    }
+  end)
+
+Kino.DataTable.new(rows, name: "Multi-turn Loom")
+```
+
+## Section 3: Streaming
+
+`Cantrip.cast_stream/2` returns a stream of events that you can consume
+incrementally. This is how you would build a real-time UI. Each event is a
+tagged tuple like `{:step_start, data}`, `{:tool_call, data}`,
+`{:tool_result, data}`, `{:final_response, data}`, or `{:done, result}`.
+
+```elixir
+alias Cantrip.FakeLLM
+
+frame = Kino.Frame.new()
+Kino.render(frame)
+
+llm =
+  {FakeLLM,
+   FakeLLM.new([
+     %{tool_calls: [%{gate: "echo", args: %{text: "streaming works"}}]},
+     %{tool_calls: [%{gate: "done", args: %{answer: "All done streaming!"}}]}
+   ])}
+
+{:ok, cantrip} =
+  Cantrip.new(
+    llm: llm,
+    identity: %{system_prompt: "Stream demo agent."},
+    circle: %{
+      type: :conversation,
+      gates: [:done, :echo],
+      wards: [%{max_turns: 10}]
+    }
+  )
+
+{stream, _task} = Cantrip.cast_stream(cantrip, "Show me streaming")
+
+for event <- stream do
+  {tag, data} =
+    case event do
+      {tag, data} -> {tag, data}
+      other -> {:unknown, other}
+    end
+
+  color =
+    case tag do
+      :step_start -> "color: #6366f1"
+      :tool_call -> "color: #f59e0b"
+      :tool_result -> "color: #10b981"
+      :final_response -> "color: #ec4899"
+      :done -> "color: #8b5cf6; font-weight: bold"
+      _ -> ""
+    end
+
+  html = Kino.HTML.new("""
+  <div style="font-family: monospace; padding: 4px 8px; #{color}">
+    <strong>#{tag}</strong> #{inspect(data, pretty: true, limit: 200)}
+  </div>
+  """)
+
+  Kino.Frame.append(frame, html)
+end
+
+:ok
+```
+
+## Section 4: Custom Gates
+
+Gates are the tools available to the LLM inside its circle. You can define
+gates with custom behavior. Here we set up a gate with a static result to
+simulate a "fetch" operation, and watch the LLM use it across turns.
+
+```elixir
+alias Cantrip.FakeLLM
+
+# Define a custom "fetch" gate with a static result
+fetch_gate = %{
+  name: "fetch",
+  result: ~s({"temperature": 22, "unit": "celsius", "city": "Portland"}),
+  parameters: %{
+    type: "object",
+    properties: %{url: %{type: "string"}},
+    required: ["url"]
+  }
+}
+
+llm =
+  {FakeLLM,
+   FakeLLM.new([
+     # Turn 1: LLM calls the fetch gate
+     %{tool_calls: [%{gate: "fetch", args: %{url: "https://weather.example.com/portland"}}]},
+     # Turn 2: LLM reads the fetch result and calls done
+     %{tool_calls: [%{gate: "done", args: %{answer: "The temperature in Portland is 22 celsius."}}]}
+   ])}
+
+{:ok, cantrip} =
+  Cantrip.new(
+    llm: llm,
+    identity: %{system_prompt: "You are a weather reporter. Use the fetch gate to get data."},
+    circle: %{
+      type: :conversation,
+      gates: [:done, fetch_gate],
+      wards: [%{max_turns: 10}]
+    }
+  )
+
+{:ok, result, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "What is the weather in Portland?")
+
+IO.puts("Answer: #{result}")
+```
+
+```elixir
+# Visualize the gate call/result cycle
+rows =
+  loom.turns
+  |> Enum.with_index(1)
+  |> Enum.map(fn {turn, idx} ->
+    observations = turn[:observation] || []
+
+    %{
+      "Turn" => idx,
+      "Gates" => Enum.map_join(observations, ", ", & &1.gate),
+      "Gate Results" => Enum.map_join(observations, "\n", fn obs ->
+        result_str = inspect(obs.result)
+        "#{obs.gate}: #{String.slice(result_str, 0, 60)}"
+      end),
+      "Error?" => Enum.any?(observations, & &1.is_error),
+      "Terminated?" => turn[:terminated]
+    }
+  end)
+
+Kino.DataTable.new(rows, name: "Custom Gate Turns")
+```
+
+## Section 5: Composition with call_entity
+
+Cantrip supports hierarchical composition: a parent agent can delegate work
+to a child agent using `call_entity`. The child runs its own loop, returns a
+result, and the parent continues.
+
+Composition uses **code circles** where the LLM writes Elixir code that calls
+host functions like `call_entity.(opts)` and `done.(result)`.
+
+```elixir
+alias Cantrip.FakeLLM
+
+# The parent LLM delegates to a child, then uses the result
+parent_llm =
+  {FakeLLM,
+   FakeLLM.new([
+     %{code: ~s[result = call_entity.(%{intent: "compute 6 * 7"})\ndone.(result)]}
+   ])}
+
+# The child LLM computes and returns
+child_llm =
+  {FakeLLM,
+   FakeLLM.new([
+     %{code: ~s[done.(42)]}
+   ])}
+
+{:ok, cantrip} =
+  Cantrip.new(
+    llm: parent_llm,
+    child_llm: child_llm,
+    circle: %{
+      type: :code,
+      gates: [:done, :call_entity],
+      wards: [%{max_turns: 10}, %{max_depth: 1}]
+    }
+  )
+
+{:ok, result, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "What is 6 times 7?")
+
+IO.puts("Parent got from child: #{inspect(result)}")
+IO.puts("Total loom turns (parent + child): #{length(loom.turns)}")
+```
+
+```elixir
+# Show parent and child turns together
+rows =
+  loom.turns
+  |> Enum.with_index(1)
+  |> Enum.map(fn {turn, idx} ->
+    entity = turn[:entity_id] || "unknown"
+    content = get_in(turn, [:utterance, :content])
+
+    gate_calls =
+      (turn[:observation] || [])
+      |> Enum.map(& &1.gate)
+      |> Enum.join(", ")
+
+    %{
+      "Turn" => idx,
+      "Entity" => entity,
+      "Content" => if(is_binary(content), do: String.slice(content, 0, 80), else: "—"),
+      "Gates" => gate_calls,
+      "Terminated?" => turn[:terminated]
+    }
+  end)
+
+Kino.DataTable.new(rows, name: "Composition Loom (Parent + Child)")
+```
+
+## Section 6: Loom Visualization
+
+After running a multi-step cantrip, the loom contains a complete record of
+what happened. Here we run a richer scenario and render a detailed view
+of every turn.
+
+```elixir
+alias Cantrip.FakeLLM
+
+# A 3-turn conversation: echo, then a custom gate, then done
+lookup_gate = %{name: "lookup", result: "Elixir was created by Jose Valim in 2011."}
+
+llm =
+  {FakeLLM,
+   FakeLLM.new([
+     # Turn 1: echo a thought
+     %{tool_calls: [%{gate: "echo", args: %{text: "Let me look that up..."}}]},
+     # Turn 2: call lookup
+     %{tool_calls: [%{gate: "lookup", args: %{query: "Elixir programming language"}}]},
+     # Turn 3: synthesize and finish
+     %{tool_calls: [%{gate: "done", args: %{answer: "Elixir was created by Jose Valim in 2011."}}]}
+   ])}
+
+{:ok, cantrip} =
+  Cantrip.new(
+    llm: llm,
+    identity: %{system_prompt: "You are a research assistant."},
+    circle: %{
+      type: :conversation,
+      gates: [:done, :echo, lookup_gate],
+      wards: [%{max_turns: 10}]
+    }
+  )
+
+{:ok, result, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "Tell me about Elixir")
+
+IO.puts("Final answer: #{result}")
+```
+
+```elixir
+# Detailed loom visualization
+rows =
+  loom.turns
+  |> Enum.with_index(1)
+  |> Enum.map(fn {turn, idx} ->
+    content = get_in(turn, [:utterance, :content])
+    observations = turn[:observation] || []
+    metadata = turn[:metadata] || %{}
+
+    prompt_tokens = metadata[:tokens_prompt] || 0
+    completion_tokens = metadata[:tokens_completion] || 0
+    total_tokens = prompt_tokens + completion_tokens
+
+    gate_calls =
+      observations
+      |> Enum.map(& &1.gate)
+      |> Enum.join(", ")
+
+    gate_results =
+      observations
+      |> Enum.map(fn obs ->
+        result_str = if is_binary(obs.result), do: obs.result, else: inspect(obs.result)
+        prefix = if obs.is_error, do: "[ERR] ", else: ""
+        "#{prefix}#{obs.gate}: #{String.slice(result_str, 0, 50)}"
+      end)
+      |> Enum.join(" | ")
+
+    %{
+      "#" => idx,
+      "Role" => turn[:role] || "turn",
+      "Content" => if(is_binary(content), do: String.slice(content, 0, 50), else: "—"),
+      "Gates" => gate_calls,
+      "Results" => String.slice(gate_results, 0, 80),
+      "Tokens" => if(total_tokens > 0, do: "#{prompt_tokens}+#{completion_tokens}=#{total_tokens}", else: "—"),
+      "Terminated?" => turn[:terminated],
+      "Turn ID" => String.slice(turn[:id] || "", 0, 15)
+    }
+  end)
+
+Kino.DataTable.new(rows, name: "Detailed Loom View", keys: ["#", "Role", "Content", "Gates", "Results", "Tokens", "Terminated?", "Turn ID"])
+```
+
+## Summary
+
+This notebook demonstrated the core cantrip runtime:
+
+1. **Basic cast** — configure a cantrip and run it on an intent
+2. **Multi-turn** — gates produce observations that drive subsequent turns
+3. **Streaming** — consume events incrementally for real-time UIs
+4. **Custom gates** — extend the circle with domain-specific tools
+5. **Composition** — parent agents delegate to child agents via `call_entity`
+6. **Loom inspection** — every turn is recorded with full provenance
+
+All examples used `FakeLLM` for deterministic, reproducible results.
+To use a real LLM, replace `FakeLLM` with `Cantrip.new_from_env/1` and
+set the appropriate environment variables (`CANTRIP_MODEL`, API keys, etc.).
