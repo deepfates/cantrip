@@ -362,7 +362,8 @@ defmodule Cantrip.Circle do
     if is_nil(answer) do
       %{gate: "done", result: "missing required argument: answer", is_error: true}
     else
-      %{gate: "done", result: answer, is_error: false}
+      result = if is_binary(answer), do: answer, else: inspect(answer, pretty: true)
+      %{gate: "done", result: result, is_error: false}
     end
   end
 
