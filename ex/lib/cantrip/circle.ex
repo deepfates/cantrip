@@ -214,6 +214,15 @@ defmodule Cantrip.Circle do
   defp format_gate_description("read"),
     do: "- read.(opts) — read a file; opts must include :path"
 
+  defp format_gate_description("read_file"),
+    do: "- read_file.(opts) — read a file from the filesystem; opts must include :path (absolute)"
+
+  defp format_gate_description("list_dir"),
+    do: "- list_dir.(opts) — list directory contents; opts must include :path"
+
+  defp format_gate_description("search"),
+    do: "- search.(opts) — search file contents; opts must include :pattern and :path"
+
   defp format_gate_description(name),
     do: "- #{name}.(opts) — summon the #{name} gate"
 
@@ -356,6 +365,39 @@ defmodule Cantrip.Circle do
     case File.read(full_path) do
       {:ok, content} -> %{gate: "read", result: content, is_error: false}
       {:error, reason} -> %{gate: "read", result: inspect(reason), is_error: true}
+    end
+  end
+
+  defp run_gate(%{name: "read_file"}, args, _gates) do
+    path = Map.get(args, "path", Map.get(args, :path))
+
+    case File.read(path) do
+      {:ok, content} -> %{gate: "read_file", result: content, is_error: false}
+      {:error, reason} -> %{gate: "read_file", result: inspect(reason), is_error: true}
+    end
+  end
+
+  defp run_gate(%{name: "list_dir"}, args, _gates) do
+    path = Map.get(args, "path", Map.get(args, :path))
+
+    case File.ls(path) do
+      {:ok, entries} ->
+        %{gate: "list_dir", result: Enum.sort(entries) |> Enum.join("\n"), is_error: false}
+
+      {:error, reason} ->
+        %{gate: "list_dir", result: inspect(reason), is_error: true}
+    end
+  end
+
+  defp run_gate(%{name: "search"}, args, _gates) do
+    pattern = Map.get(args, "pattern", Map.get(args, :pattern))
+    path = Map.get(args, "path", Map.get(args, :path, "."))
+
+    try do
+      results = search_files(path, pattern)
+      %{gate: "search", result: results, is_error: false}
+    rescue
+      e -> %{gate: "search", result: Exception.message(e), is_error: true}
     end
   end
 
@@ -600,6 +642,61 @@ defmodule Cantrip.Circle do
   end
 
   defp compile_and_load(_module, _source, _path, _gate), do: {:error, "source is required"}
+
+  defp search_files(path, pattern) do
+    regex = Regex.compile!(pattern)
+
+    if File.dir?(path) do
+      path
+      |> list_files_recursive()
+      |> Enum.flat_map(fn file ->
+        case File.read(file) do
+          {:ok, content} ->
+            content
+            |> String.split("\n")
+            |> Enum.with_index(1)
+            |> Enum.filter(fn {line, _num} -> Regex.match?(regex, line) end)
+            |> Enum.map(fn {line, num} -> "#{file}:#{num}: #{line}" end)
+
+          {:error, _} ->
+            []
+        end
+      end)
+      |> Enum.join("\n")
+    else
+      case File.read(path) do
+        {:ok, content} ->
+          content
+          |> String.split("\n")
+          |> Enum.with_index(1)
+          |> Enum.filter(fn {line, _num} -> Regex.match?(regex, line) end)
+          |> Enum.map(fn {line, num} -> "#{path}:#{num}: #{line}" end)
+          |> Enum.join("\n")
+
+        {:error, reason} ->
+          raise "cannot read #{path}: #{inspect(reason)}"
+      end
+    end
+  end
+
+  defp list_files_recursive(dir) do
+    case File.ls(dir) do
+      {:ok, entries} ->
+        entries
+        |> Enum.flat_map(fn entry ->
+          full = Path.join(dir, entry)
+
+          if File.dir?(full) do
+            list_files_recursive(full)
+          else
+            [full]
+          end
+        end)
+
+      {:error, _} ->
+        []
+    end
+  end
 
   defp canonical_gate_name("call_entity"), do: "call_entity"
   defp canonical_gate_name("call_entity_batch"), do: "call_entity_batch"
