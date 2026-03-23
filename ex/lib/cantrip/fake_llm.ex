@@ -6,11 +6,24 @@ defmodule Cantrip.FakeLLM do
   @behaviour Cantrip.LLM
 
   def new(responses, opts \\ []) when is_list(responses) do
+    shared = Keyword.get(opts, :shared, false)
+
+    counter_ref =
+      if shared do
+        ref = make_ref()
+        table = :ets.new(:fake_llm_shared, [:public, :set])
+        :ets.insert(table, {ref, 0})
+        {table, ref}
+      else
+        nil
+      end
+
     %{
       responses: responses,
       index: 0,
       record_inputs: Keyword.get(opts, :record_inputs, false),
-      invocations: []
+      invocations: [],
+      shared_counter: counter_ref
     }
   end
 
@@ -19,8 +32,19 @@ defmodule Cantrip.FakeLLM do
   @impl true
   def query(state, request) do
     state = maybe_record(state, request)
-    response = Enum.at(state.responses, state.index, %{content: "ok"})
-    state = %{state | index: state.index + 1}
+
+    index =
+      case state.shared_counter do
+        {table, ref} ->
+          [{_, idx}] = :ets.lookup(table, ref)
+          :ets.update_counter(table, ref, {2, 1})
+          idx
+        nil ->
+          state.index
+      end
+
+    response = Enum.at(state.responses, index, %{content: "ok"})
+    state = %{state | index: index + 1}
 
     case response[:error] || response["error"] do
       nil -> {:ok, response, state}

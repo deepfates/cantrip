@@ -18,6 +18,7 @@ defmodule CantripM4CircleRuntimeTest do
       Cantrip.new(
         llm: llm,
         circle: %{
+          type: :conversation,
           gates: [
             %{name: :done},
             %{name: :slow_gate, behavior: :delay, delay_ms: 10, result: "completed"}
@@ -43,6 +44,7 @@ defmodule CantripM4CircleRuntimeTest do
       Cantrip.new(
         llm: llm,
         circle: %{
+          type: :conversation,
           gates: [
             %{name: :done},
             %{name: :failing_gate, behavior: :throw, error: "something went wrong"}
@@ -67,7 +69,7 @@ defmodule CantripM4CircleRuntimeTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        circle: %{gates: [:done], wards: [%{max_turns: 10}]}
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
       )
 
     {:ok, "ok", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "ward")
@@ -97,6 +99,7 @@ defmodule CantripM4CircleRuntimeTest do
       Cantrip.new(
         llm: llm,
         circle: %{
+          type: :conversation,
           gates: [%{name: :done}, %{name: :read, dependencies: %{root: root}}],
           wards: [%{max_turns: 10}]
         }

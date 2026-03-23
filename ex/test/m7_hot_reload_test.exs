@@ -29,6 +29,7 @@ defmodule CantripM7HotReloadTest do
       Cantrip.new(
         llm: llm,
         circle: %{
+          type: :conversation,
           gates: [:done, :compile_and_load],
           wards: [%{max_turns: 10}, %{allow_compile_modules: [module_name]}]
         }
@@ -71,6 +72,7 @@ defmodule CantripM7HotReloadTest do
       Cantrip.new(
         llm: llm,
         circle: %{
+          type: :conversation,
           gates: [:done, :compile_and_load],
           wards: [%{max_turns: 10}, %{allow_compile_modules: ["Elixir.Cantrip.AllowedOnly"]}]
         }
@@ -116,6 +118,7 @@ defmodule CantripM7HotReloadTest do
       Cantrip.new(
         llm: llm,
         circle: %{
+          type: :conversation,
           gates: [:done, :compile_and_load],
           wards: [
             %{max_turns: 10},
@@ -155,6 +158,7 @@ defmodule CantripM7HotReloadTest do
       Cantrip.new(
         llm: llm,
         circle: %{
+          type: :conversation,
           type: :code,
           gates: [:done, :compile_and_load],
           wards: [%{max_turns: 10}, %{allow_compile_modules: [module_name]}]
@@ -196,6 +200,7 @@ defmodule CantripM7HotReloadTest do
       Cantrip.new(
         llm: llm,
         circle: %{
+          type: :conversation,
           gates: [:done, :compile_and_load],
           wards: [
             %{max_turns: 10},
@@ -241,6 +246,7 @@ defmodule CantripM7HotReloadTest do
       Cantrip.new(
         llm: llm,
         circle: %{
+          type: :conversation,
           gates: [:done, :compile_and_load],
           wards: [
             %{max_turns: 10},
@@ -295,6 +301,7 @@ defmodule CantripM7HotReloadTest do
       Cantrip.new(
         llm: llm,
         circle: %{
+          type: :conversation,
           gates: [:done, :compile_and_load],
           wards: [
             %{max_turns: 10},
@@ -346,6 +353,7 @@ defmodule CantripM7HotReloadTest do
       Cantrip.new(
         llm: llm,
         circle: %{
+          type: :conversation,
           gates: [:done, :compile_and_load],
           wards: [
             %{max_turns: 10},

@@ -56,6 +56,9 @@ defmodule Cantrip.CodeMedium do
           catch
             {:cantrip_done, answer} ->
               {binding, answer, true}
+            {:cantrip_error, msg} ->
+              push_observation(%{gate: "code", result: msg, is_error: true})
+              {binding, {:cantrip_error, msg}, true}
           end
 
         {:error, {line, error, token}} ->
@@ -81,6 +84,12 @@ defmodule Cantrip.CodeMedium do
     call_entity_fun = fn opts ->
       payload = runtime.call_entity.(normalize_opts(opts))
       push_observation(payload.observation)
+
+      if payload.observation[:is_error] do
+        raise payload.observation[:result] || "call_entity failed"
+      end
+
+
       payload.value
     end
 

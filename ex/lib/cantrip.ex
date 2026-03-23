@@ -342,6 +342,9 @@ defmodule Cantrip do
         {:ok, result, next_cantrip, loom, meta} ->
           {:ok, result, next_cantrip, loom, meta}
 
+        {:error, reason, next_cantrip} ->
+          {:error, reason, next_cantrip}
+
         {:error, reason} ->
           {:error, reason, cantrip}
       end
@@ -388,7 +391,7 @@ defmodule Cantrip do
         {:error, "cantrip must have at least one truncation ward"}
 
       true ->
-        :ok
+        Circle.validate_medium(circle)
     end
   end
 

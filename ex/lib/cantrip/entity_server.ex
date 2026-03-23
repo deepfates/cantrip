@@ -68,16 +68,28 @@ defmodule Cantrip.EntityServer do
 
   @impl true
   def handle_call(:run, _from, state) do
-    {result, next_state, meta} = run_loop(state)
-    reply = {:ok, result, next_state.cantrip, next_state.loom, meta}
-    {:stop, :normal, reply, next_state}
+    case run_loop(state) do
+      {:error, reason, next_state} ->
+        reply = {:error, reason, next_state.cantrip}
+        {:stop, :normal, reply, next_state}
+
+      {result, next_state, meta} ->
+        reply = {:ok, result, next_state.cantrip, next_state.loom, meta}
+        {:stop, :normal, reply, next_state}
+    end
   end
 
   @impl true
   def handle_call(:run_persistent, _from, state) do
-    {result, next_state, meta} = run_loop(state)
-    reply = {:ok, result, next_state.cantrip, next_state.loom, meta}
-    {:reply, reply, next_state}
+    case run_loop(state) do
+      {:error, reason, next_state} ->
+        reply = {:error, reason, next_state.cantrip}
+        {:reply, reply, next_state}
+
+      {result, next_state, meta} ->
+        reply = {:ok, result, next_state.cantrip, next_state.loom, meta}
+        {:reply, reply, next_state}
+    end
   end
 
   @impl true
@@ -90,9 +102,16 @@ defmodule Cantrip.EntityServer do
       end
 
     next_state = %{state | messages: next_messages, lazy: false}
-    {result, final_state, meta} = run_loop(next_state)
-    reply = {:ok, result, final_state.cantrip, final_state.loom, meta}
-    {:reply, reply, final_state}
+
+    case run_loop(next_state) do
+      {:error, reason, final_state} ->
+        reply = {:error, reason, final_state.cantrip}
+        {:reply, reply, final_state}
+
+      {result, final_state, meta} ->
+        reply = {:ok, result, final_state.cantrip, final_state.loom, meta}
+        {:reply, reply, final_state}
+    end
   end
 
   defp build_initial_messages(cantrip, intent, lazy) do
@@ -148,38 +167,14 @@ defmodule Cantrip.EntityServer do
 
       case invoke_with_retry(state.cantrip, request) do
         {:error, reason, next_llm_state} ->
-          message = "llm error: #{inspect(reason)}"
+          error_message = if is_binary(reason), do: reason, else: inspect(reason)
 
-          loom =
-            Loom.append_turn(state.loom, %{
-              entity_id: state.entity_id,
-              utterance: %{content: nil, tool_calls: []},
-              observation: [%{gate: "llm", result: message, is_error: true}],
-              gate_calls: ["llm"],
-              terminated: false,
-              truncated: true,
-              metadata: %{
-                tokens_prompt: 0,
-                tokens_completion: 0,
-                duration_ms: max(System.monotonic_time(:millisecond) - started_at, 1),
-                timestamp: DateTime.utc_now()
-              }
-            })
-
-          meta = %{
-            entity_id: state.entity_id,
-            turns: state.turns + 1,
-            truncated: true,
-            cumulative_usage: state.usage
-          }
-
-          {message,
+          {:error, error_message,
            %{
              state
              | cantrip: %{state.cantrip | llm_state: next_llm_state},
-               loom: loom,
                turns: state.turns + 1
-           }, meta}
+           }}
 
         {:ok, response, next_llm_state} ->
           duration_ms = max(System.monotonic_time(:millisecond) - started_at, 1)
@@ -249,7 +244,12 @@ defmodule Cantrip.EntityServer do
 
             {%{content: code, tool_calls: []}, obs, result, terminated, next_state}
           else
-            {%{content: content, tool_calls: []}, [], nil, false, state.code_state}
+            # No code found — fall through to regular tool call handling
+            # (child entities in code circles may receive non-code tool calls)
+            {observation, result, by_done} = execute_gate_calls(state.cantrip.circle, tool_calls)
+
+            {%{content: content, tool_calls: tool_calls}, observation, result, by_done,
+             state.code_state}
           end
 
         _ ->
@@ -311,7 +311,30 @@ defmodule Cantrip.EntityServer do
 
     loom = Loom.append_turn(state.loom, turn_attrs)
 
+    parent_turn_id = loom.turns |> List.last() |> Map.get(:id)
     loom = append_child_subtrees(loom, observation)
+    had_child_turns = length(loom.turns) > length(state.loom.turns) + 1
+
+    # LOOM-8: If child turns were appended, add a parent continuation turn
+    # so the parent's execution after delegation is recorded as a separate turn.
+    loom =
+      if had_child_turns and terminated do
+        Loom.append_turn(loom, %{
+          cantrip_id: state.cantrip.id,
+          entity_id: state.entity_id,
+          role: "turn",
+          utterance: nil,
+          observation: [],
+          gate_calls: [],
+          terminated: true,
+          truncated: false,
+          parent_id: parent_turn_id,
+          sequence: state.turns + 2,
+          metadata: %{continuation: true, timestamp: DateTime.utc_now()}
+        })
+      else
+        loom
+      end
 
     next_state = %{
       state
@@ -324,17 +347,24 @@ defmodule Cantrip.EntityServer do
     emit_event(state, {:step_complete, %{turn: next_state.turns, terminated: terminated}})
 
     if terminated do
-      value = if is_nil(result) and is_binary(content), do: content, else: result
-      emit_event(state, {:final_response, %{result: value}})
+      case result do
+        {:cantrip_error, msg} ->
+          # Code medium fatal error (throw new Error) — propagate as entity error
+          {:error, msg, next_state}
 
-      meta = %{
-        entity_id: state.entity_id,
-        turns: next_state.turns,
-        terminated: true,
-        cumulative_usage: usage
-      }
+        _ ->
+          value = if is_nil(result) and is_binary(content), do: content, else: result
+          emit_event(state, {:final_response, %{result: value}})
 
-      {value, next_state, meta}
+          meta = %{
+            entity_id: state.entity_id,
+            turns: next_state.turns,
+            terminated: true,
+            cumulative_usage: usage
+          }
+
+          {value, next_state, meta}
+      end
     else
       next_messages =
         if state.cantrip.circle.type == :code do
@@ -471,7 +501,7 @@ defmodule Cantrip.EntityServer do
 
       acc = acc ++ [observation]
 
-      if gate == "done" do
+      if gate == "done" and not observation.is_error do
         {:halt, {acc, observation.result, true}}
       else
         {:cont, {acc, nil, false}}
@@ -774,7 +804,7 @@ defmodule Cantrip.EntityServer do
 
         attrs =
           turn
-          |> Map.drop([:id, :sequence])
+          |> Map.drop([:id])
           |> Map.put(:parent_id, new_parent)
 
         next_loom = Loom.append_turn(acc_loom, attrs)

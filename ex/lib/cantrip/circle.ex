@@ -3,7 +3,7 @@ defmodule Cantrip.Circle do
   Circle configuration only (M1): gates + wards + medium type.
   """
 
-  defstruct gates: %{}, wards: [], type: :conversation
+  defstruct gates: %{}, wards: [], type: :conversation, medium_sources: []
 
   @type gate :: %{required(:name) => String.t(), optional(:parameters) => map()}
   @type t :: %__MODULE__{
@@ -17,8 +17,55 @@ defmodule Cantrip.Circle do
     attrs = Map.new(attrs)
     gates = attrs |> fetch(:gates, []) |> normalize_gates()
     wards = fetch(attrs, :wards, [])
-    type = attrs |> fetch(:type, :conversation) |> normalize_type()
-    %__MODULE__{gates: gates, wards: wards, type: type}
+
+    # Collect all medium source declarations
+    medium_sources = collect_medium_sources(attrs)
+
+    # Resolve type from the first declared medium, or default to :conversation
+    type =
+      case medium_sources do
+        [{_source, value} | _] -> normalize_type(value)
+        [] -> :conversation
+      end
+
+    %__MODULE__{gates: gates, wards: wards, type: type, medium_sources: medium_sources}
+  end
+
+  @doc """
+  Validate medium declaration. Returns :ok or {:error, reason}.
+  Called during Cantrip construction.
+
+  Per SPEC MEDIUM-1: "If no medium is specified, the default is conversation."
+  Conflicting medium declarations are an error.
+  """
+  @spec validate_medium(t()) :: :ok | {:error, String.t()}
+  def validate_medium(%__MODULE__{medium_sources: sources}) do
+    case sources do
+      [] ->
+        {:error, "circle must declare a medium"}
+
+      [{_source, _value}] ->
+        :ok
+
+      sources ->
+        values = sources |> Enum.map(fn {_s, v} -> normalize_type(v) end) |> Enum.uniq()
+
+        if length(values) == 1 do
+          :ok
+        else
+          {:error, "circle must declare exactly one medium"}
+        end
+    end
+  end
+
+  defp collect_medium_sources(attrs) do
+    candidates = [
+      {:type, fetch(attrs, :type, nil)},
+      {:medium, fetch(attrs, :medium, nil)},
+      {:circle_type, fetch(attrs, :circle_type, nil)}
+    ]
+
+    Enum.reject(candidates, fn {_source, value} -> is_nil(value) end)
   end
 
   @spec has_done?(t()) :: boolean()
@@ -290,7 +337,12 @@ defmodule Cantrip.Circle do
 
   defp run_gate(%{name: "done"}, args, _gates) do
     answer = Map.get(args, "answer", Map.get(args, :answer))
-    %{gate: "done", result: answer, is_error: false}
+
+    if is_nil(answer) do
+      %{gate: "done", result: "missing required argument: answer", is_error: true}
+    else
+      %{gate: "done", result: answer, is_error: false}
+    end
   end
 
   defp run_gate(%{name: "echo"}, args, _gates) do

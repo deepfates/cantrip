@@ -54,7 +54,7 @@ defmodule CantripM3ForkTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: base_llm,
-        circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]}
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]}
       )
 
     {:ok, "original", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "test forking")

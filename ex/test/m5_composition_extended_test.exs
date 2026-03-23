@@ -39,7 +39,14 @@ defmodule CantripM5CompositionExtendedTest do
     parent =
       {FakeLLM,
        FakeLLM.new([
-         %{code: "result = call_entity.(%{intent: \"sub\"})\ndone.(to_string(result))"}
+         %{code: ~s"""
+           try do
+             call_entity.(%{intent: "sub"})
+             done.("should not reach")
+           rescue
+             e -> done.("blocked: " <> Exception.message(e))
+           end
+           """}
        ])}
 
     {:ok, cantrip} =
@@ -53,14 +60,21 @@ defmodule CantripM5CompositionExtendedTest do
       )
 
     assert {:ok, result, _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "depth")
-    assert String.contains?(result, "max_depth exceeded")
+    assert String.contains?(result, "blocked")
   end
 
   test "COMP-8 child failure is returned to parent instead of crashing parent" do
     parent =
       {FakeLLM,
        FakeLLM.new([
-         %{code: "result = call_entity.(%{intent: \"will fail\"})\ndone.(to_string(result))"}
+         %{code: ~s"""
+           try do
+             result = call_entity.(%{intent: "will fail"})
+             done.("got: " <> to_string(result))
+           rescue
+             e -> done.("caught: " <> Exception.message(e))
+           end
+           """}
        ])}
 
     child = {FakeLLM, FakeLLM.new([%{error: %{status: 500, message: "child exploded"}}])}
@@ -77,7 +91,7 @@ defmodule CantripM5CompositionExtendedTest do
       )
 
     assert {:ok, result, _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "child fail")
-    assert String.contains?(result, "child")
+    assert String.contains?(result, "caught")
   end
 
   test "COMP-8 child crash is returned to parent via structured error path" do

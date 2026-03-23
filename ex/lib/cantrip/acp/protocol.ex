@@ -36,8 +36,12 @@ defmodule Cantrip.ACP.Protocol do
     params = request["params"] || %{}
     cwd = params["cwd"]
 
+    # Default cwd to system tmp dir if not provided
+    cwd = if is_binary(cwd) and cwd != "", do: cwd, else: System.tmp_dir!()
+    params = Map.put(params, "cwd", cwd)
+
     cond do
-      not is_binary(cwd) or Path.type(cwd) != :absolute ->
+      Path.type(cwd) != :absolute ->
         {state, [err(id, -32602, "cwd must be an absolute path")]}
 
       true ->
@@ -56,7 +60,7 @@ defmodule Cantrip.ACP.Protocol do
   def handle_request(state, %{"method" => "session/prompt"} = request) do
     id = request["id"]
     params = request["params"] || %{}
-    session_id = params["sessionId"]
+    session_id = params["sessionId"] || infer_session_id(state)
     prompt_payload = params["prompt"] || params["content"] || params["text"] || params
 
     with {:ok, session} <- fetch_session(state, session_id),
@@ -80,6 +84,13 @@ defmodule Cantrip.ACP.Protocol do
   def handle_request(state, request) do
     {state, [err(request["id"], -32601, "method not found")]}
   end
+
+  # When sessionId is not provided and exactly one session exists, use it.
+  defp infer_session_id(%__MODULE__{sessions: sessions}) when map_size(sessions) == 1 do
+    sessions |> Map.keys() |> hd()
+  end
+
+  defp infer_session_id(_state), do: nil
 
   defp fetch_session(state, session_id) do
     case Map.fetch(state.sessions, session_id) do

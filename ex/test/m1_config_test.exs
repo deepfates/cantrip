@@ -5,21 +5,21 @@ defmodule CantripM1ConfigTest do
 
   test "CANTRIP-1 rejects missing llm" do
     assert {:error, "cantrip requires a llm"} =
-             Cantrip.new(circle: %{gates: [:done], wards: [%{max_turns: 10}]})
+             Cantrip.new(circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
   end
 
   test "CIRCLE-1 rejects circle without done gate" do
     llm = {FakeLLM, FakeLLM.new([%{content: "hello"}])}
 
     assert {:error, "circle must have a done gate"} =
-             Cantrip.new(llm: llm, circle: %{gates: [], wards: [%{max_turns: 10}]})
+             Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [], wards: [%{max_turns: 10}]})
   end
 
   test "LOOP-2 rejects circle without truncation ward" do
     llm = {FakeLLM, FakeLLM.new([%{content: "hello"}])}
 
     assert {:error, "cantrip must have at least one truncation ward"} =
-             Cantrip.new(llm: llm, circle: %{gates: [:done], wards: []})
+             Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: []})
   end
 
   test "LOOP-2 require_done_tool enforces done gate presence" do
@@ -28,7 +28,7 @@ defmodule CantripM1ConfigTest do
     assert {:error, "cantrip with require_done must have a done gate"} =
              Cantrip.new(
                llm: llm,
-               circle: %{gates: [], wards: [%{max_turns: 10}, %{require_done_tool: true}]}
+               circle: %{type: :conversation, gates: [], wards: [%{max_turns: 10}, %{require_done_tool: true}]}
              )
   end
 
@@ -40,6 +40,7 @@ defmodule CantripM1ConfigTest do
         llm: llm,
         identity: %{system_prompt: "You are helpful", tool_choice: "required"},
         circle: %{
+          type: :conversation,
           gates: [
             %{name: :done, parameters: %{type: :object, properties: %{answer: %{type: :string}}}},
             :echo
