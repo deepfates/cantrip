@@ -257,6 +257,7 @@ defmodule Cantrip.EntityServer do
           if is_binary(code) do
             runtime = %{
               circle: state.cantrip.circle,
+              loom: state.loom,
               execute_gate: fn gate, args ->
                 Circle.execute_gate(state.cantrip.circle, gate, args)
               end,

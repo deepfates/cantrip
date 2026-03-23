@@ -28,11 +28,14 @@ defmodule Cantrip.Familiar do
   You write Elixir code. Respond with code that calls the available host
   functions. Variables persist across turns.
 
-  ## Observation gates
+  ## Observation
 
   - read_file.(path) — read a file from the filesystem
   - list_dir.(path) — list directory contents
   - search.(pattern, path) — search file contents for a regex pattern
+  - loom — your conversation history as a struct. Access turns with loom.turns.
+    Each turn has :role, :utterance, :observation, :id, :parent_id, :sequence.
+    Use this to recall prior work and avoid repeating yourself.
 
   ## Orchestration gates
 
@@ -139,4 +142,5 @@ defmodule Cantrip.Familiar do
 
     Cantrip.new(attrs)
   end
+
 end

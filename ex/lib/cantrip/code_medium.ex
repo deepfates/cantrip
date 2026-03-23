@@ -18,7 +18,8 @@ defmodule Cantrip.CodeMedium do
     :cantrip,
     :cast,
     :cast_batch,
-    :dispose
+    :dispose,
+    :loom
   ]
 
   @type runtime :: %{
@@ -104,6 +105,7 @@ defmodule Cantrip.CodeMedium do
       user_binding
       |> Keyword.put(:done, done_fun)
       |> Keyword.put(:call_entity, call_entity_fun)
+      |> Keyword.put(:loom, Map.get(runtime, :loom))
       |> put_circle_gate_bindings(runtime)
 
     binding =
