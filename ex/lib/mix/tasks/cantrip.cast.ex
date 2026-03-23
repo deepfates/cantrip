@@ -56,7 +56,7 @@ defmodule Mix.Tasks.Cantrip.Cast do
 
         case Cantrip.cast(cantrip, intent) do
           {:ok, result, _cantrip, _loom, _meta} ->
-            Mix.shell().info(to_string(result))
+            Mix.shell().info(if is_binary(result), do: result, else: inspect(result, pretty: true))
 
           {:error, reason, _cantrip} ->
             Mix.shell().error("Error: #{inspect(reason)}")

@@ -80,7 +80,8 @@ defmodule Mix.Tasks.Cantrip.Familiar do
 
     case Cantrip.cast(cantrip, intent) do
       {:ok, result, _cantrip, _loom, _meta} ->
-        Mix.shell().info("\nResult:\n#{result}")
+        result_str = if is_binary(result), do: result, else: inspect(result, pretty: true)
+        Mix.shell().info("\nResult:\n#{result_str}")
 
       {:error, reason, _cantrip} ->
         Mix.shell().error("Error: #{inspect(reason)}")
@@ -133,7 +134,8 @@ defmodule Mix.Tasks.Cantrip.Familiar do
       Task.async(fn ->
         case Cantrip.send(pid, intent) do
           {:ok, result, _cantrip, _loom, _meta} ->
-            Kernel.send(caller, {:cantrip_event, {:text, to_string(result)}})
+            result_str = if is_binary(result), do: result, else: inspect(result, pretty: true)
+            Kernel.send(caller, {:cantrip_event, {:text, result_str}})
             Kernel.send(caller, {:cantrip_event, {:done, :ok}})
             {:ok, result}
 
