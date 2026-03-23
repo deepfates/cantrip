@@ -44,6 +44,9 @@ defmodule Cantrip.CodeMedium do
     if String.trim(code) == "" do
       {binding, nil, false}
     else
+      gate_names = extract_gate_names(binding)
+      code = add_dot_calls(code, gate_names)
+
       case Code.string_to_quoted(code) do
         {:ok, quoted} ->
           try do
@@ -172,4 +175,90 @@ defmodule Cantrip.CodeMedium do
   end
 
   defp normalize_batch(_), do: []
+
+  # Extract gate function names from bindings (all function-valued bindings)
+  defp extract_gate_names(binding) do
+    binding
+    |> Enum.filter(fn {_k, v} -> is_function(v) end)
+    |> Enum.map(fn {k, _v} -> Atom.to_string(k) end)
+  end
+
+  @doc false
+  # Transform bare gate calls like `done(x)` into `done.(x)` so LLMs
+  # don't need to remember Elixir's dot-call syntax for closures.
+  #
+  # Rules:
+  # - Don't transform inside strings (single or double quoted, heredocs)
+  # - Don't transform module-qualified calls: `Mod.done(`
+  # - Don't transform already-dotted calls: `done.(`
+  def add_dot_calls(code, gate_names) when gate_names == [], do: code
+
+  def add_dot_calls(code, gate_names) do
+    names_pattern = gate_names |> Enum.sort_by(&(-String.length(&1))) |> Enum.join("|")
+    regex = Regex.compile!("(?<![.\\w])(#{names_pattern})\\(")
+
+    code
+    |> split_string_segments()
+    |> Enum.map(fn
+      {:code, segment} -> Regex.replace(regex, segment, "\\1.(")
+      {:string, segment} -> segment
+    end)
+    |> Enum.join()
+  end
+
+  # Split code into alternating code/string segments
+  defp split_string_segments(code) do
+    split_segments(code, [], "", false, nil)
+  end
+
+  defp split_segments("", acc, current, in_string, _delim) do
+    type = if in_string, do: :string, else: :code
+    Enum.reverse([{type, current} | acc])
+  end
+
+  # Heredoc double-quote open
+  defp split_segments(~s(""") <> rest, acc, current, false, nil) do
+    split_segments(rest, [{:code, current} | acc], ~s("""), true, :heredoc_double)
+  end
+
+  defp split_segments(~s(""") <> rest, acc, current, true, :heredoc_double) do
+    split_segments(rest, [{:string, current <> ~s(""")} | acc], "", false, nil)
+  end
+
+  # Heredoc single-quote open
+  defp split_segments("'''" <> rest, acc, current, false, nil) do
+    split_segments(rest, [{:code, current} | acc], "'''", true, :heredoc_single)
+  end
+
+  defp split_segments("'''" <> rest, acc, current, true, :heredoc_single) do
+    split_segments(rest, [{:string, current <> "'''"} | acc], "", false, nil)
+  end
+
+  # Escaped chars inside strings
+  defp split_segments("\\" <> <<c::utf8>> <> rest, acc, current, true, delim) do
+    split_segments(rest, acc, current <> "\\" <> <<c::utf8>>, true, delim)
+  end
+
+  # Double-quote boundaries
+  defp split_segments("\"" <> rest, acc, current, false, nil) do
+    split_segments(rest, [{:code, current} | acc], "\"", true, :double)
+  end
+
+  defp split_segments("\"" <> rest, acc, current, true, :double) do
+    split_segments(rest, [{:string, current <> "\""} | acc], "", false, nil)
+  end
+
+  # Single-quote boundaries
+  defp split_segments("'" <> rest, acc, current, false, nil) do
+    split_segments(rest, [{:code, current} | acc], "'", true, :single)
+  end
+
+  defp split_segments("'" <> rest, acc, current, true, :single) do
+    split_segments(rest, [{:string, current <> "'"} | acc], "", false, nil)
+  end
+
+  # Any other character
+  defp split_segments(<<c::utf8>> <> rest, acc, current, in_string, delim) do
+    split_segments(rest, acc, current <> <<c::utf8>>, in_string, delim)
+  end
 end
