@@ -70,7 +70,10 @@ defmodule Mix.Tasks.Cantrip.Familiar do
 
       {:error, reason} ->
         Mix.shell().error("Cannot resolve LLM: #{reason}")
-        Mix.shell().error("Set CANTRIP_MODEL and CANTRIP_API_KEY (or provider-specific env vars).")
+
+        Mix.shell().error(
+          "Set CANTRIP_MODEL and CANTRIP_API_KEY (or provider-specific env vars)."
+        )
     end
   end
 
@@ -97,7 +100,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   end
 
   defp repl_loop(pid) do
-    case IO.gets("familiar> ") do
+    case IO.gets("~> ") do
       :eof ->
         Mix.shell().info("\nGoodbye.")
 
