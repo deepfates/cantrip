@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:cantrip_ex, path: ".."},
+  {:cantrip_ex, path: Path.join(__DIR__, "..")},
   {:kino, "~> 0.14"}
 ])
 ```
