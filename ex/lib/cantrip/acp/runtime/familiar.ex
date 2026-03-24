@@ -22,11 +22,22 @@ defmodule Cantrip.ACP.Runtime.Familiar do
       {:ok, llm} ->
         loom_path = Map.get(params, "loom_path")
 
-        case Cantrip.Familiar.new(
-               llm: llm,
-               loom_path: loom_path,
-               max_turns: Map.get(params, "max_turns", 20)
-             ) do
+        familiar_opts = [
+          llm: llm,
+          loom_path: loom_path,
+          max_turns: Map.get(params, "max_turns", 20)
+        ]
+
+        familiar_opts =
+          if is_binary(cwd) do
+            Keyword.put(familiar_opts, :system_prompt,
+              Cantrip.Familiar.default_system_prompt() <>
+              "\n\n## Working directory\n\nYou are observing: #{cwd}\nAll file paths should be relative to or within this directory.\nStart by listing the directory to orient yourself.\n")
+          else
+            familiar_opts
+          end
+
+        case Cantrip.Familiar.new(familiar_opts) do
           {:ok, cantrip} ->
             {:ok, %{cantrip: cantrip, cwd: cwd, entity_pid: nil}}
 

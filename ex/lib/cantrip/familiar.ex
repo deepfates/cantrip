@@ -89,6 +89,9 @@ defmodule Cantrip.Familiar do
     done.(Enum.join(results, "\\n"))
   """
 
+  @doc "Returns the default system prompt for the Familiar."
+  def default_system_prompt, do: @system_prompt
+
   @doc """
   Build a familiar cantrip with code medium and orchestration gates.
 
