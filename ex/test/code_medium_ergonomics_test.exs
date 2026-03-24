@@ -115,4 +115,50 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       assert result == "hello"
     end
   end
+
+  describe "bare-value gate args in code medium" do
+    defp make_runtime_with_gates(gates) do
+      circle = Circle.new(gates: gates, type: :code)
+
+      %{
+        circle: circle,
+        call_entity: fn _opts ->
+          %{observation: %{gate: "call_entity", result: "ok", is_error: false}, value: "ok"}
+        end,
+        execute_gate: fn gate_name, args ->
+          Circle.execute_gate(circle, gate_name, args)
+        end
+      }
+    end
+
+    test "echo.(string) returns the string, not nil" do
+      runtime = make_runtime_with_gates([:done, :echo])
+      state = %{}
+      code = ~s[result = echo.("hello world")\ndone.(result)]
+      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+
+      assert terminated
+      assert result == "hello world"
+    end
+
+    test "echo(string) without dot also returns the string" do
+      runtime = make_runtime_with_gates([:done, :echo])
+      state = %{}
+      code = ~s[result = echo("bare value")\ndone.(result)]
+      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+
+      assert terminated
+      assert result == "bare value"
+    end
+
+    test "echo.(%{text: string}) still works with map arg" do
+      runtime = make_runtime_with_gates([:done, :echo])
+      state = %{}
+      code = ~s[result = echo.(%{text: "map form"})\ndone.(result)]
+      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+
+      assert terminated
+      assert result == "map form"
+    end
+  end
 end

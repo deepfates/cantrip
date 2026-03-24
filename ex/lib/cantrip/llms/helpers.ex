@@ -39,7 +39,7 @@ defmodule Cantrip.LLMs.Helpers do
   def normalize_opts(opts) when is_list(opts), do: Map.new(opts)
   def normalize_opts(_), do: %{}
 
-  @known_keys ~w(gates intent context system_prompt llm wards)
+  @known_keys ~w(gates intent context system_prompt llm wards circle_type medium_opts)
 
   @doc """
   Converts string keys to atom keys for known option names, then passes through `normalize_opts/1`.

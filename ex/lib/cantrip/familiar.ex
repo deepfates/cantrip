@@ -30,9 +30,9 @@ defmodule Cantrip.Familiar do
 
   ## Observation
 
-  - read_file.(path) — read a file from the filesystem
-  - list_dir.(path) — list directory contents
-  - search.(pattern, path) — search file contents for a regex pattern
+  - read_file.("/path/to/file") — read a file from the filesystem
+  - list_dir.("/path/to/dir") — list directory contents
+  - search.(%{pattern: "regex", path: "/dir"}) — search file contents for a regex pattern
   - loom — your conversation history as a struct. Access turns with loom.turns.
     Each turn has :role, :utterance, :observation, :id, :parent_id, :sequence.
     Use this to recall prior work and avoid repeating yourself.
@@ -41,11 +41,13 @@ defmodule Cantrip.Familiar do
 
   - cantrip.(config) — construct a child cantrip. Config is a map with:
       :identity — system prompt for the child
-      :circle — %{medium: :conversation, gates: ["done"], wards: [%{max_turns: N}]}
+      :circle — %{type: :conversation, gates: ["done"], wards: [%{max_turns: N}]}
     Returns a cantrip ID.
+    Circle types: :conversation (tool-calling), :code (Elixir sandbox), :bash (shell)
 
   - cast.(cantrip_id, intent) — send an intent to a constructed child cantrip.
-    Returns the child's answer.
+    Returns the child's final answer as a string — the exact value the child
+    passed to done.() or SUBMIT:. Use it directly; no parsing needed.
 
   - cast_batch.(items) — execute multiple child cantrips in parallel.
     Each item is %{cantrip: id, intent: "..."}. Returns a list of results.
@@ -59,21 +61,27 @@ defmodule Cantrip.Familiar do
   Observe first, then construct specialized children for different tasks:
 
     # Read the codebase
-    content = read_file.(%{path: "/path/to/file.ex"})
+    content = read_file.("/path/to/file.ex")
 
-    # Construct a child for analysis
+    # Construct a child for analysis (conversation medium)
     analyzer = cantrip.(%{
       identity: "Analyze code for bugs. Call done with findings.",
-      circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+      circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
     })
-
-    # Delegate
     analysis = cast.(analyzer, "Analyze: " <> content)
     dispose.(analyzer)
 
+    # Shell work (bash medium)
+    shell = cantrip.(%{
+      identity: "Run shell commands. Echo SUBMIT: <value> to return results.",
+      circle: %{type: :bash, gates: ["done"], wards: [%{max_turns: 5}]}
+    })
+    test_output = cast.(shell, "Run the test suite and report results")
+    dispose.(shell)
+
     # Parallel fan-out
     ids = Enum.map(files, fn f ->
-      cantrip.(%{identity: "Summarize.", circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}})
+      cantrip.(%{identity: "Summarize.", circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}})
     end)
     items = Enum.zip(ids, files) |> Enum.map(fn {id, f} -> %{cantrip: id, intent: f} end)
     results = cast_batch.(items)

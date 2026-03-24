@@ -90,7 +90,15 @@ defmodule Cantrip.CodeMedium do
     end
 
     call_entity_fun = fn opts ->
-      payload = runtime.call_entity.(normalize_opts(opts))
+      args =
+        cond do
+          is_map(opts) -> opts
+          is_list(opts) -> Map.new(opts)
+          is_binary(opts) -> %{intent: opts}
+          true -> %{intent: inspect(opts)}
+        end
+
+      payload = runtime.call_entity.(args)
       push_observation(payload.observation)
 
       if payload.observation[:is_error] do
@@ -152,7 +160,12 @@ defmodule Cantrip.CodeMedium do
   defp put_familiar_bindings(binding, runtime) do
     # cantrip.(config) — store a child config in process dict, return an ID
     cantrip_fun = fn config ->
-      config = normalize_opts(config)
+      config =
+        cond do
+          is_map(config) -> config
+          is_list(config) -> Map.new(config)
+          true -> raise "cantrip.() requires a map config, got: #{inspect(config)}"
+        end
       id = "fam_child_" <> Integer.to_string(System.unique_integer([:positive]))
       store = Process.get(:cantrip_familiar_store, %{})
       Process.put(:cantrip_familiar_store, Map.put(store, id, config))
@@ -188,7 +201,12 @@ defmodule Cantrip.CodeMedium do
 
       call_opts_list =
         Enum.map(items, fn item ->
-          item = normalize_opts(item)
+          item =
+            cond do
+              is_map(item) -> item
+              is_list(item) -> Map.new(item)
+              true -> raise "cast_batch items must be maps, got: #{inspect(item)}"
+            end
           id = item[:cantrip] || item[:id]
           intent = item[:intent]
 
@@ -249,11 +267,31 @@ defmodule Cantrip.CodeMedium do
         circle_config ->
           circle_config = normalize_opts(circle_config)
 
-          # Extract wards from circle config for the child
-          case circle_config[:wards] do
-            nil -> opts
-            wards -> Map.put(opts, :wards, wards)
-          end
+          opts =
+            case circle_config[:wards] do
+              nil -> opts
+              wards -> Map.put(opts, :wards, wards)
+            end
+
+          opts =
+            case circle_config[:type] || circle_config[:medium] do
+              nil -> opts
+              type -> Map.put(opts, :circle_type, type)
+            end
+
+          opts =
+            case circle_config[:gates] do
+              nil -> opts
+              gates -> Map.put(opts, :gates, gates)
+            end
+
+          opts =
+            case circle_config[:medium_opts] do
+              nil -> opts
+              medium_opts -> Map.put(opts, :medium_opts, medium_opts)
+            end
+
+          opts
       end
 
     opts
@@ -285,7 +323,17 @@ defmodule Cantrip.CodeMedium do
             acc
           else
             gate_fun = fn opts ->
-              observation = execute_gate.(gate_name, normalize_opts(opts))
+              # In code medium, models may pass bare values (strings, numbers)
+              # rather than maps. Normalize maps/lists but pass bare values through
+              # so gate handlers can interpret them directly.
+              args =
+                cond do
+                  is_map(opts) -> opts
+                  is_list(opts) -> Map.new(opts)
+                  true -> opts
+                end
+
+              observation = execute_gate.(gate_name, args)
               push_observation(observation)
               observation.result
             end

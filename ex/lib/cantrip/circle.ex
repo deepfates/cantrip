@@ -3,13 +3,14 @@ defmodule Cantrip.Circle do
   Circle configuration only (M1): gates + wards + medium type.
   """
 
-  defstruct gates: %{}, wards: [], type: :conversation, medium_sources: []
+  defstruct gates: %{}, wards: [], type: :conversation, medium_sources: [], medium_opts: %{}
 
   @type gate :: %{required(:name) => String.t(), optional(:parameters) => map()}
   @type t :: %__MODULE__{
           gates: %{String.t() => map()},
           wards: list(map()),
-          type: atom()
+          type: atom(),
+          medium_opts: map()
         }
 
   @spec new(keyword() | map()) :: t()
@@ -28,7 +29,9 @@ defmodule Cantrip.Circle do
         [] -> :conversation
       end
 
-    %__MODULE__{gates: gates, wards: wards, type: type, medium_sources: medium_sources}
+    medium_opts = fetch(attrs, :medium_opts, %{}) |> Map.new()
+
+    %__MODULE__{gates: gates, wards: wards, type: type, medium_sources: medium_sources, medium_opts: medium_opts}
   end
 
   @doc """
@@ -162,6 +165,25 @@ defmodule Cantrip.Circle do
 
     capability_text = capability_presentation(circle)
     {tools, "required", capability_text}
+  end
+
+  def tool_view(%__MODULE__{type: :bash} = circle) do
+    tools = [
+      %{
+        name: "bash",
+        description:
+          "Execute a shell command. Echo a line starting with SUBMIT: to return your final result.",
+        parameters: %{
+          type: "object",
+          properties: %{
+            command: %{type: "string", description: "Shell command to execute."}
+          },
+          required: ["command"]
+        }
+      }
+    ]
+
+    {tools, "required", Cantrip.BashMedium.capability_text(circle.medium_opts)}
   end
 
   def tool_view(%__MODULE__{} = circle) do
@@ -343,6 +365,8 @@ defmodule Cantrip.Circle do
 
   defp normalize_type(:code), do: :code
   defp normalize_type("code"), do: :code
+  defp normalize_type(:bash), do: :bash
+  defp normalize_type("bash"), do: :bash
   defp normalize_type(_), do: :conversation
 
   defp do_execute(%__MODULE__{gates: gates, wards: wards}, gate_name, args) do
@@ -367,8 +391,21 @@ defmodule Cantrip.Circle do
     end
   end
 
+  defp run_gate(%{name: "echo"}, args, _gates) when is_binary(args) do
+    %{gate: "echo", result: args, is_error: false}
+  end
+
   defp run_gate(%{name: "echo"}, args, _gates) do
     %{gate: "echo", result: Map.get(args, "text", Map.get(args, :text)), is_error: false}
+  end
+
+  defp run_gate(%{name: "read", dependencies: %{root: root}}, args, _gates) when is_binary(args) do
+    full_path = Path.join(root, args)
+
+    case File.read(full_path) do
+      {:ok, content} -> %{gate: "read", result: content, is_error: false}
+      {:error, reason} -> %{gate: "read", result: inspect(reason), is_error: true}
+    end
   end
 
   defp run_gate(%{name: "read", dependencies: %{root: root}}, args, _gates) do
@@ -381,12 +418,29 @@ defmodule Cantrip.Circle do
     end
   end
 
+  defp run_gate(%{name: "read_file"}, args, _gates) when is_binary(args) do
+    case File.read(args) do
+      {:ok, content} -> %{gate: "read_file", result: content, is_error: false}
+      {:error, reason} -> %{gate: "read_file", result: inspect(reason), is_error: true}
+    end
+  end
+
   defp run_gate(%{name: "read_file"}, args, _gates) do
     path = Map.get(args, "path", Map.get(args, :path))
 
     case File.read(path) do
       {:ok, content} -> %{gate: "read_file", result: content, is_error: false}
       {:error, reason} -> %{gate: "read_file", result: inspect(reason), is_error: true}
+    end
+  end
+
+  defp run_gate(%{name: "list_dir"}, args, _gates) when is_binary(args) do
+    case File.ls(args) do
+      {:ok, entries} ->
+        %{gate: "list_dir", result: Enum.sort(entries) |> Enum.join("\n"), is_error: false}
+
+      {:error, reason} ->
+        %{gate: "list_dir", result: inspect(reason), is_error: true}
     end
   end
 

@@ -279,6 +279,23 @@ defmodule Cantrip.EntityServer do
              state.code_state}
           end
 
+        :bash ->
+          command = extract_code_from_tool_call(tool_calls) || content || ""
+
+          runtime = %{
+            circle: state.cantrip.circle
+          }
+
+          eval_start = System.monotonic_time()
+
+          {next_state, obs, result, terminated} =
+            Cantrip.BashMedium.eval(command, state.code_state, runtime)
+
+          duration = System.monotonic_time() - eval_start
+          :telemetry.execute([:cantrip, :code, :eval], %{duration: duration}, %{entity_id: state.entity_id})
+
+          {%{content: command, tool_calls: []}, obs, result, terminated, next_state}
+
         _ ->
           {observation, result, by_done} = execute_gate_calls(state.cantrip.circle, tool_calls, state.entity_id)
 
@@ -330,7 +347,7 @@ defmodule Cantrip.EntityServer do
 
     # Snapshot sandbox state for fork support (LOOM-4)
     turn_attrs =
-      if state.cantrip.circle.type == :code do
+      if state.cantrip.circle.type in [:code, :bash] do
         Map.put(turn_attrs, :code_state, next_code_state)
       else
         turn_attrs
@@ -397,7 +414,7 @@ defmodule Cantrip.EntityServer do
       end
     else
       next_messages =
-        if state.cantrip.circle.type == :code do
+        if state.cantrip.circle.type in [:code, :bash] do
           assistant = %{role: :assistant, content: utterance.content, tool_calls: []}
           feedback = format_code_feedback(observation, result)
 
@@ -640,6 +657,27 @@ defmodule Cantrip.EntityServer do
 
       child_circle = %{state.cantrip.circle | gates: child_gates}
       child_circle = %{child_circle | wards: composed_wards}
+
+      # Allow child to use a different medium type (e.g. :bash, :code, :conversation)
+      child_circle =
+        case opts[:circle_type] do
+          nil ->
+            child_circle
+
+          type ->
+            # Reconstruct circle with the requested type via Circle.new
+            # so normalize_type is applied correctly
+            normalized = Circle.new(%{type: type, gates: Map.values(child_gates), wards: composed_wards, medium_opts: child_circle.medium_opts})
+            %{child_circle | type: normalized.type}
+        end
+
+      # Allow child to have its own medium_opts (e.g. cwd for bash)
+      child_circle =
+        case opts[:medium_opts] do
+          nil -> child_circle
+          medium_opts -> %{child_circle | medium_opts: Map.new(medium_opts)}
+        end
+
       {child_module, child_state} = choose_child_llm(state, opts)
 
       child_cantrip = %{
@@ -909,6 +947,10 @@ defmodule Cantrip.EntityServer do
 
   defp extract_code_from_tool_call([%{gate: "elixir", args: args} | _]) do
     Map.get(args, "code") || Map.get(args, :code)
+  end
+
+  defp extract_code_from_tool_call([%{gate: "bash", args: args} | _]) do
+    Map.get(args, "command") || Map.get(args, :command)
   end
 
   defp extract_code_from_tool_call(_), do: nil
