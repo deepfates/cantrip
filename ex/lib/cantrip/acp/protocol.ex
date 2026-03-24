@@ -156,20 +156,15 @@ defmodule Cantrip.ACP.Protocol do
       notification("session/update", %{
         "sessionId" => session_id,
         "update" => %{
-          "kind" => "agent_message_chunk",
+          "sessionUpdate" => "agent_message_chunk",
           "content" => %{"type" => "text", "text" => answer}
         }
       }),
       notification("session/update", %{
         "sessionId" => session_id,
-        "update" => %{"kind" => "agent_message_end"}
+        "update" => %{"sessionUpdate" => "agent_message_end"}
       }),
-      ok(id, %{
-        "stopReason" => "end_turn",
-        "content" => [%{"type" => "text", "text" => answer}],
-        "text" => answer,
-        "output_text" => answer
-      })
+      ok(id, %{"stopReason" => "end_turn"})
     ]
   end
 

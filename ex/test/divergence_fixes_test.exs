@@ -213,7 +213,10 @@ defmodule DivergenceFixesTest do
       # Should get a successful response, not an error
       last = List.last(responses)
       assert last["result"], "expected result but got: #{inspect(last)}"
-      assert last["result"]["text"] =~ "hello"
+      assert last["result"]["stopReason"] == "end_turn"
+      # Answer text is in the notification, not the result
+      chunk = Enum.find(responses, &(&1["method"] == "session/update"))
+      assert get_in(chunk, ["params", "update", "content", "text"]) =~ "hello"
     end
   end
 

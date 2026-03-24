@@ -285,8 +285,11 @@ defmodule Cantrip.Conformance.Expect do
 
   defp check_one(ctx, "acp_responses", expected) when is_list(expected) do
     Enum.zip(expected, ctx.acp_responses)
-    |> Enum.each(fn {exp, actual} ->
+    |> Enum.each(fn {exp, entry} ->
       exp = atomize_string_keys(exp)
+      # entry is %{response: matched_response, all_replies: [all messages]}
+      actual = entry.response
+      all_replies = entry.all_replies
 
       if exp[:id] do
         assert actual["id"] == exp[:id],
@@ -299,10 +302,10 @@ defmodule Cantrip.Conformance.Expect do
       end
 
       if exp[:result_contains] do
-        result = actual["result"] || %{}
-        result_str = inspect(result)
-        assert String.contains?(result_str, exp[:result_contains]),
-          "expected ACP result containing #{inspect(exp[:result_contains])}, got #{result_str}"
+        # Check across all replies (result + notifications) for the expected content
+        all_str = inspect(all_replies)
+        assert String.contains?(all_str, exp[:result_contains]),
+          "expected ACP responses containing #{inspect(exp[:result_contains])}, got #{all_str}"
       end
     end)
   end

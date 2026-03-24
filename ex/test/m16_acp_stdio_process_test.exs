@@ -36,7 +36,7 @@ defmodule CantripM16AcpStdioProcessTest do
              "method" => "session/update",
              "params" => %{
                "update" => %{
-                 "kind" => "agent_message_chunk",
+                 "sessionUpdate" => "agent_message_chunk",
                  "content" => %{"text" => "echo:hola"}
                }
              }
@@ -44,7 +44,7 @@ defmodule CantripM16AcpStdioProcessTest do
 
     assert %{
              "method" => "session/update",
-             "params" => %{"update" => %{"kind" => "agent_message_end"}}
+             "params" => %{"update" => %{"sessionUpdate" => "agent_message_end"}}
            } =
              recv_json(port)
 

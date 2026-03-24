@@ -223,9 +223,9 @@ defmodule Cantrip.Conformance.Runner do
         # Keep string keys for the protocol handler
         request = normalize_acp_request(step)
         {next_proto, reply_list} = Cantrip.ACP.Protocol.handle_request(proto, request)
-        # The response with matching id
+        # The response with matching id, plus all replies for notification checks
         response = Enum.find(reply_list, fn r -> r["id"] == request["id"] end) || List.last(reply_list)
-        {next_proto, resps ++ [response]}
+        {next_proto, resps ++ [%{response: response, all_replies: reply_list}]}
       end)
 
     # Extract LLM invocations from the runtime's sessions if needed
