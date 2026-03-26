@@ -116,6 +116,54 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
     end
   end
 
+  describe "compile_and_load bare-value args" do
+    test "compile_and_load.(string) passes the string through, not %{}" do
+      circle = Circle.new(gates: [:done], type: :code)
+
+      runtime = %{
+        circle: circle,
+        call_entity: fn _opts ->
+          %{observation: %{gate: "call_entity", result: "ok", is_error: false}, value: "ok"}
+        end,
+        compile_and_load: fn opts ->
+          # The opts should be whatever was passed, not coerced to %{}
+          %{observation: %{gate: "compile_and_load", result: inspect(opts), is_error: false}, value: opts}
+        end
+      }
+
+      state = %{}
+      code = ~s[result = compile_and_load.("my_module_code")\ndone.(result)]
+      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+
+      assert terminated
+      assert result == "my_module_code"
+    end
+  end
+
+  describe "call_entity bare-value args" do
+    test "call_entity.(string) passes string as %{intent: string}" do
+      received = :ets.new(:test_received, [:set, :public])
+
+      circle = Circle.new(gates: [:done, :call_entity], type: :code)
+
+      runtime = %{
+        circle: circle,
+        call_entity: fn opts ->
+          :ets.insert(received, {:opts, opts})
+          %{observation: %{gate: "call_entity", result: "ok", is_error: false}, value: "ok"}
+        end
+      }
+
+      state = %{}
+      code = ~s[result = call_entity.("just a question")\ndone.(result)]
+      {_state, _obs, _result, _terminated} = CodeMedium.eval(code, state, runtime)
+
+      [{:opts, captured}] = :ets.lookup(received, :opts)
+      assert captured == %{intent: "just a question"}
+      :ets.delete(received)
+    end
+  end
+
   describe "bare-value gate args in code medium" do
     defp make_runtime_with_gates(gates) do
       circle = Circle.new(gates: gates, type: :code)

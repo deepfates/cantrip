@@ -138,7 +138,14 @@ defmodule Cantrip.CodeMedium do
 
         gate_fun ->
           compile_and_load_fun = fn opts ->
-            payload = gate_fun.(normalize_opts(opts))
+            args =
+              cond do
+                is_map(opts) -> opts
+                is_list(opts) -> Map.new(opts)
+                true -> opts
+              end
+
+            payload = gate_fun.(args)
             push_observation(payload.observation)
             payload.value
           end
