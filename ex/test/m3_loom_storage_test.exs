@@ -17,7 +17,7 @@ defmodule CantripM3LoomStorageTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]},
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]},
         loom_storage: {:jsonl, path}
       )
 
@@ -42,7 +42,7 @@ defmodule CantripM3LoomStorageTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        circle: %{gates: [:done], wards: [%{max_turns: 10}]},
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]},
         loom_storage: {:jsonl, path}
       )
 

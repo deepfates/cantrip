@@ -3,13 +3,14 @@ defmodule Cantrip.Circle do
   Circle configuration only (M1): gates + wards + medium type.
   """
 
-  defstruct gates: %{}, wards: [], type: :conversation
+  defstruct gates: %{}, wards: [], type: :conversation, medium_sources: [], medium_opts: %{}
 
   @type gate :: %{required(:name) => String.t(), optional(:parameters) => map()}
   @type t :: %__MODULE__{
           gates: %{String.t() => map()},
           wards: list(map()),
-          type: atom()
+          type: atom(),
+          medium_opts: map()
         }
 
   @spec new(keyword() | map()) :: t()
@@ -17,8 +18,57 @@ defmodule Cantrip.Circle do
     attrs = Map.new(attrs)
     gates = attrs |> fetch(:gates, []) |> normalize_gates()
     wards = fetch(attrs, :wards, [])
-    type = attrs |> fetch(:type, :conversation) |> normalize_type()
-    %__MODULE__{gates: gates, wards: wards, type: type}
+
+    # Collect all medium source declarations
+    medium_sources = collect_medium_sources(attrs)
+
+    # Resolve type from the first declared medium, or default to :conversation
+    type =
+      case medium_sources do
+        [{_source, value} | _] -> normalize_type(value)
+        [] -> :conversation
+      end
+
+    medium_opts = fetch(attrs, :medium_opts, %{}) |> Map.new()
+
+    %__MODULE__{gates: gates, wards: wards, type: type, medium_sources: medium_sources, medium_opts: medium_opts}
+  end
+
+  @doc """
+  Validate medium declaration. Returns :ok or {:error, reason}.
+  Called during Cantrip construction.
+
+  Per SPEC MEDIUM-1: "If no medium is specified, the default is conversation."
+  Conflicting medium declarations are an error.
+  """
+  @spec validate_medium(t()) :: :ok | {:error, String.t()}
+  def validate_medium(%__MODULE__{medium_sources: sources}) do
+    case sources do
+      [] ->
+        {:error, "circle must declare a medium"}
+
+      [{_source, _value}] ->
+        :ok
+
+      sources ->
+        values = sources |> Enum.map(fn {_s, v} -> normalize_type(v) end) |> Enum.uniq()
+
+        if length(values) == 1 do
+          :ok
+        else
+          {:error, "circle must declare exactly one medium"}
+        end
+    end
+  end
+
+  defp collect_medium_sources(attrs) do
+    candidates = [
+      {:type, fetch(attrs, :type, nil)},
+      {:medium, fetch(attrs, :medium, nil)},
+      {:circle_type, fetch(attrs, :circle_type, nil)}
+    ]
+
+    Enum.reject(candidates, fn {_source, value} -> is_nil(value) end)
   end
 
   @spec has_done?(t()) :: boolean()
@@ -117,6 +167,25 @@ defmodule Cantrip.Circle do
     {tools, "required", capability_text}
   end
 
+  def tool_view(%__MODULE__{type: :bash} = circle) do
+    tools = [
+      %{
+        name: "bash",
+        description:
+          "Execute a shell command. Echo a line starting with SUBMIT: to return your final result.",
+        parameters: %{
+          type: "object",
+          properties: %{
+            command: %{type: "string", description: "Shell command to execute."}
+          },
+          required: ["command"]
+        }
+      }
+    ]
+
+    {tools, "required", Cantrip.BashMedium.capability_text(circle.medium_opts)}
+  end
+
   def tool_view(%__MODULE__{} = circle) do
     {tool_definitions(circle), nil, nil}
   end
@@ -166,6 +235,27 @@ defmodule Cantrip.Circle do
 
   defp format_gate_description("read"),
     do: "- read.(opts) — read a file; opts must include :path"
+
+  defp format_gate_description("read_file"),
+    do: "- read_file.(opts) — read a file from the filesystem; opts must include :path (absolute)"
+
+  defp format_gate_description("list_dir"),
+    do: "- list_dir.(opts) — list directory contents; opts must include :path"
+
+  defp format_gate_description("search"),
+    do: "- search.(opts) — search file contents; opts must include :pattern and :path"
+
+  defp format_gate_description("cantrip"),
+    do: "- cantrip.(config) — construct a child cantrip; config includes :identity, :circle"
+
+  defp format_gate_description("cast"),
+    do: "- cast.(cantrip_id, intent) — send an intent to a constructed child cantrip"
+
+  defp format_gate_description("cast_batch"),
+    do: "- cast_batch.(items) — execute multiple child cantrips in parallel; items are [%{cantrip: id, intent: text}]"
+
+  defp format_gate_description("dispose"),
+    do: "- dispose.(cantrip_id) — clean up a child cantrip's resources"
 
   defp format_gate_description(name),
     do: "- #{name}.(opts) — summon the #{name} gate"
@@ -275,6 +365,8 @@ defmodule Cantrip.Circle do
 
   defp normalize_type(:code), do: :code
   defp normalize_type("code"), do: :code
+  defp normalize_type(:bash), do: :bash
+  defp normalize_type("bash"), do: :bash
   defp normalize_type(_), do: :conversation
 
   defp do_execute(%__MODULE__{gates: gates, wards: wards}, gate_name, args) do
@@ -290,11 +382,30 @@ defmodule Cantrip.Circle do
 
   defp run_gate(%{name: "done"}, args, _gates) do
     answer = Map.get(args, "answer", Map.get(args, :answer))
-    %{gate: "done", result: answer, is_error: false}
+
+    if is_nil(answer) do
+      %{gate: "done", result: "missing required argument: answer", is_error: true}
+    else
+      result = if is_binary(answer), do: answer, else: inspect(answer, pretty: true)
+      %{gate: "done", result: result, is_error: false}
+    end
+  end
+
+  defp run_gate(%{name: "echo"}, args, _gates) when is_binary(args) do
+    %{gate: "echo", result: args, is_error: false}
   end
 
   defp run_gate(%{name: "echo"}, args, _gates) do
     %{gate: "echo", result: Map.get(args, "text", Map.get(args, :text)), is_error: false}
+  end
+
+  defp run_gate(%{name: "read", dependencies: %{root: root}}, args, _gates) when is_binary(args) do
+    full_path = Path.join(root, args)
+
+    case File.read(full_path) do
+      {:ok, content} -> %{gate: "read", result: content, is_error: false}
+      {:error, reason} -> %{gate: "read", result: inspect(reason), is_error: true}
+    end
   end
 
   defp run_gate(%{name: "read", dependencies: %{root: root}}, args, _gates) do
@@ -304,6 +415,56 @@ defmodule Cantrip.Circle do
     case File.read(full_path) do
       {:ok, content} -> %{gate: "read", result: content, is_error: false}
       {:error, reason} -> %{gate: "read", result: inspect(reason), is_error: true}
+    end
+  end
+
+  defp run_gate(%{name: "read_file"}, args, _gates) when is_binary(args) do
+    case File.read(args) do
+      {:ok, content} -> %{gate: "read_file", result: content, is_error: false}
+      {:error, reason} -> %{gate: "read_file", result: inspect(reason), is_error: true}
+    end
+  end
+
+  defp run_gate(%{name: "read_file"}, args, _gates) do
+    path = Map.get(args, "path", Map.get(args, :path))
+
+    case File.read(path) do
+      {:ok, content} -> %{gate: "read_file", result: content, is_error: false}
+      {:error, reason} -> %{gate: "read_file", result: inspect(reason), is_error: true}
+    end
+  end
+
+  defp run_gate(%{name: "list_dir"}, args, _gates) when is_binary(args) do
+    case File.ls(args) do
+      {:ok, entries} ->
+        %{gate: "list_dir", result: Enum.sort(entries) |> Enum.join("\n"), is_error: false}
+
+      {:error, reason} ->
+        %{gate: "list_dir", result: inspect(reason), is_error: true}
+    end
+  end
+
+  defp run_gate(%{name: "list_dir"}, args, _gates) do
+    path = Map.get(args, "path", Map.get(args, :path))
+
+    case File.ls(path) do
+      {:ok, entries} ->
+        %{gate: "list_dir", result: Enum.sort(entries) |> Enum.join("\n"), is_error: false}
+
+      {:error, reason} ->
+        %{gate: "list_dir", result: inspect(reason), is_error: true}
+    end
+  end
+
+  defp run_gate(%{name: "search"}, args, _gates) do
+    pattern = Map.get(args, "pattern", Map.get(args, :pattern))
+    path = Map.get(args, "path", Map.get(args, :path, "."))
+
+    try do
+      results = search_files(path, pattern)
+      %{gate: "search", result: results, is_error: false}
+    rescue
+      e -> %{gate: "search", result: Exception.message(e), is_error: true}
     end
   end
 
@@ -548,6 +709,61 @@ defmodule Cantrip.Circle do
   end
 
   defp compile_and_load(_module, _source, _path, _gate), do: {:error, "source is required"}
+
+  defp search_files(path, pattern) do
+    regex = Regex.compile!(pattern)
+
+    if File.dir?(path) do
+      path
+      |> list_files_recursive()
+      |> Enum.flat_map(fn file ->
+        case File.read(file) do
+          {:ok, content} ->
+            content
+            |> String.split("\n")
+            |> Enum.with_index(1)
+            |> Enum.filter(fn {line, _num} -> Regex.match?(regex, line) end)
+            |> Enum.map(fn {line, num} -> "#{file}:#{num}: #{line}" end)
+
+          {:error, _} ->
+            []
+        end
+      end)
+      |> Enum.join("\n")
+    else
+      case File.read(path) do
+        {:ok, content} ->
+          content
+          |> String.split("\n")
+          |> Enum.with_index(1)
+          |> Enum.filter(fn {line, _num} -> Regex.match?(regex, line) end)
+          |> Enum.map(fn {line, num} -> "#{path}:#{num}: #{line}" end)
+          |> Enum.join("\n")
+
+        {:error, reason} ->
+          raise "cannot read #{path}: #{inspect(reason)}"
+      end
+    end
+  end
+
+  defp list_files_recursive(dir) do
+    case File.ls(dir) do
+      {:ok, entries} ->
+        entries
+        |> Enum.flat_map(fn entry ->
+          full = Path.join(dir, entry)
+
+          if File.dir?(full) do
+            list_files_recursive(full)
+          else
+            [full]
+          end
+        end)
+
+      {:error, _} ->
+        []
+    end
+  end
 
   defp canonical_gate_name("call_entity"), do: "call_entity"
   defp canonical_gate_name("call_entity_batch"), do: "call_entity_batch"

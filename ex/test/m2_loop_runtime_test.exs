@@ -8,7 +8,7 @@ defmodule CantripM2LoopRuntimeTest do
       {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
 
     assert {:error, "intent is required", _} = Cantrip.cast(cantrip, nil)
   end
@@ -25,7 +25,7 @@ defmodule CantripM2LoopRuntimeTest do
       Cantrip.new(
         llm: llm,
         identity: %{system_prompt: "You are helpful"},
-        circle: %{gates: [:done], wards: [%{max_turns: 10}]}
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
       )
 
     {:ok, "ok", cantrip, _loom, _meta} = Cantrip.cast(cantrip, "my task")
@@ -51,7 +51,7 @@ defmodule CantripM2LoopRuntimeTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]})
 
     {:ok, "finished", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "test ordering")
 
@@ -69,7 +69,7 @@ defmodule CantripM2LoopRuntimeTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{gates: [:done, :echo], wards: [%{max_turns: 2}]})
+      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 2}]})
 
     {:ok, nil, _cantrip, loom, meta} = Cantrip.cast(cantrip, "count")
 
@@ -85,7 +85,7 @@ defmodule CantripM2LoopRuntimeTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        circle: %{gates: [:done], wards: [%{max_turns: 10}]}
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
       )
 
     {:ok, "The answer is 42", _cantrip, loom, _meta} =
@@ -107,7 +107,7 @@ defmodule CantripM2LoopRuntimeTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        circle: %{gates: [:done], wards: [%{max_turns: 10}, %{require_done_tool: true}]}
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}, %{require_done_tool: true}]}
       )
 
     {:ok, "42", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "what is the answer?")
@@ -119,7 +119,7 @@ defmodule CantripM2LoopRuntimeTest do
       {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
 
     {:ok, "ok", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "hello")
     [turn] = loom.turns

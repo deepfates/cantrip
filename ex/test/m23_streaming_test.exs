@@ -12,7 +12,7 @@ defmodule CantripM23StreamingTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]})
 
     {stream, _task} = Cantrip.cast_stream(cantrip, "test streaming")
 
@@ -47,7 +47,7 @@ defmodule CantripM23StreamingTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
 
     {stream, _task} = Cantrip.cast_stream(cantrip, "usage test")
 
@@ -64,7 +64,7 @@ defmodule CantripM23StreamingTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
 
     {stream, _task} = Cantrip.cast_stream(cantrip, "completion test")
 

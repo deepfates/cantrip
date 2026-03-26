@@ -342,6 +342,9 @@ defmodule Cantrip do
         {:ok, result, next_cantrip, loom, meta} ->
           {:ok, result, next_cantrip, loom, meta}
 
+        {:error, reason, next_cantrip} ->
+          {:error, reason, next_cantrip}
+
         {:error, reason} ->
           {:error, reason, cantrip}
       end
@@ -366,9 +369,42 @@ defmodule Cantrip do
         else: [%{role: :system, content: call.system_prompt}]
 
     Enum.reduce(turns, prefix, fn turn, acc ->
-      assistant = %{role: :assistant, content: get_in(turn, [:utterance, :content])}
-      tools = Enum.map(turn.observation || [], &%{role: :tool, content: to_string(&1.result)})
-      acc ++ [assistant] ++ tools
+      utterance = turn[:utterance] || %{}
+      observations = turn[:observation] || []
+      tool_calls = utterance[:tool_calls] || []
+
+      assistant = %{
+        role: :assistant,
+        content: get_in(turn, [:utterance, :content]),
+        tool_calls: tool_calls
+      }
+
+      tool_messages =
+        Enum.map(observations, fn obs ->
+          %{
+            role: :tool,
+            content: to_string(obs.result),
+            gate: obs.gate,
+            is_error: obs.is_error,
+            tool_call_id: obs[:tool_call_id]
+          }
+        end)
+
+      # For code medium turns (no tool_calls, feedback is a user message),
+      # reconstruct as assistant + user feedback instead of assistant + tool
+      if tool_calls == [] and observations != [] do
+        feedback =
+          observations
+          |> Enum.map(fn obs ->
+            prefix = if obs.is_error, do: "Error: ", else: ""
+            "#{prefix}#{inspect(obs.result)}"
+          end)
+          |> Enum.join("\n")
+
+        acc ++ [assistant, %{role: :user, content: feedback}]
+      else
+        acc ++ [assistant] ++ tool_messages
+      end
     end)
   end
 
@@ -388,7 +424,7 @@ defmodule Cantrip do
         {:error, "cantrip must have at least one truncation ward"}
 
       true ->
-        :ok
+        Circle.validate_medium(circle)
     end
   end
 

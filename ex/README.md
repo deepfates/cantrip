@@ -153,11 +153,13 @@ data = echo.(%{text: "Q3 revenue up 14%"})
 done.("Analysis: #{data}")
 ```
 
-Available host functions: `done.(answer)`, `call_entity.(opts)`, `call_entity_batch.(list)`, `call_gate.(name, args)`, `compile_and_load.(opts)`, plus any custom gates.
+Available host functions: `done(answer)`, `call_entity(opts)`, `call_entity_batch(list)`, `call_gate(name, args)`, `compile_and_load(opts)`, plus any custom gates. The `loom` binding gives read access to the entity's conversation history.
+
+Both `done(x)` and `done.(x)` work — a source-level transform automatically handles the Elixir dot-call requirement for anonymous functions.
 
 **Important:** `call_entity` is **synchronous** — blocks and returns the child's answer. `done` throws internally to terminate the loop.
 
-Reserved bindings (`done`, `call_entity`, etc.) cannot be overridden by user code. User-defined variables persist across turns by filtering out functions from the binding snapshot.
+Reserved bindings (`done`, `call_entity`, `loom`, etc.) cannot be overridden by user code. User-defined variables persist across turns by filtering out functions from the binding snapshot.
 
 ---
 
@@ -216,37 +218,105 @@ This is unique to the Elixir implementation — no other realization has code-si
 
 ---
 
+## The Familiar
+
+The familiar is a persistent code-medium entity that observes a codebase and orchestrates child cantrips (spec A.12). It writes Elixir, constructs specialized children at runtime, and composes their results.
+
+### Three modes
+
+```bash
+# Interactive REPL — persistent entity across prompts
+mix cantrip.familiar
+
+# Single-shot — cast one intent and exit
+mix cantrip.cast "what are the main modules in this codebase?"
+
+# ACP — stdio server for editor integration
+mix cantrip.familiar --acp
+```
+
+### What the familiar can do
+
+In the code medium, the familiar has these bindings:
+
+- **Observe:** `read_file.(path)`, `list_dir.(path)`, `search.(pattern, path)`
+- **Orchestrate:** `cantrip.(config)`, `cast.(id, intent)`, `cast_batch.(items)`, `dispose.(id)`
+- **Remember:** `loom` — the full conversation history as an Elixir struct, directly in scope
+- **Finish:** `done.(answer)`
+
+Example of what the familiar writes:
+
+```elixir
+# Read the codebase
+files = list_dir.(%{path: "/project/lib"})
+
+# Construct a child for each file
+ids = Enum.map(files, fn f ->
+  cantrip.(%{
+    identity: "Summarize this Elixir module. Call done with a one-line summary.",
+    circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+  })
+end)
+
+# Fan out in parallel
+items = Enum.zip(ids, files) |> Enum.map(fn {id, f} ->
+  content = read_file.(%{path: "/project/lib/" <> f})
+  %{cantrip: id, intent: content}
+end)
+results = cast_batch.(items)
+
+# Recall prior work
+prior = length(loom.turns)
+
+done("Analyzed #{length(files)} files (#{prior} prior turns):\n" <> Enum.join(results, "\n"))
+```
+
+### Loom as data
+
+The familiar's loom is a plain Elixir struct available as `loom` in every turn. No file reads, no special gates — it's process-local data on the BEAM. `loom.turns` is a list of turn maps with `:role`, `:utterance`, `:observation`, `:id`, `:parent_id`, `:sequence`.
+
+For persistence across sessions, configure a storage backend:
+
+```bash
+mix cantrip.familiar --loom-path .cantrip/familiar.jsonl
+```
+
+---
+
 ## ACP (Agent Communication Protocol)
 
-Run the ACP stdio server:
+### Generic ACP server
 
 ```bash
 mix cantrip.acp
 ```
 
-Or as an installed escript:
+### Familiar as ACP server
 
 ```bash
-mix escript.install
-cantrip acp
+mix cantrip.familiar --acp
 ```
 
-Zed custom agent configuration:
+### Editor setup (Zed)
+
+Add to your Zed settings (`.zed/settings.json`):
 
 ```json
 {
   "agent_servers": {
-    "cantrip-ex": {
+    "cantrip-familiar": {
       "type": "custom",
       "command": "mix",
-      "args": ["cantrip.acp"],
-      "cwd": "/path/to/cantrip/ex"
+      "args": ["cantrip.familiar", "--acp"],
+      "cwd": "/absolute/path/to/grimoire/ex"
     }
   }
 }
 ```
 
-Protocol: `initialize`, `session/new`, `session/prompt` over JSON-RPC stdio.
+The `.env` file loads automatically — no manual sourcing needed.
+
+Protocol: `initialize` → `session/new` → `session/prompt` over JSON-RPC stdio.
 
 ---
 
@@ -292,9 +362,6 @@ mix cantrip.example 04 --json  # machine-readable output
 **Limitations:**
 
 - **Two mediums only.** Conversation and code. No bash, browser, or VM equivalents.
-- **Elixir dot-call syntax.** Gates are anonymous functions, so the entity writes `done.(answer)` not `done(answer)`. LLMs sometimes struggle with this, especially for complex code patterns.
-- **No conformance runner.** Tests are written directly in ExUnit, not derived from tests.yaml. The Clojure implementation's conformance runner is more directly traceable to the spec's test suite.
-- **`erl_crash.dump` in the directory.** Leftover from a crash during development. Harmless but not cleaned up.
 
 ---
 
@@ -302,10 +369,11 @@ mix cantrip.example 04 --json  # machine-readable output
 
 ```
 lib/cantrip/
-├── entity_server.ex      # GenServer: owns one cast execution (~700 lines)
+├── entity_server.ex      # GenServer: owns one cast execution
 ├── entity_supervisor.ex   # DynamicSupervisor for entity processes
-├── circle.ex              # Gate/ward model + execution (530 lines)
+├── circle.ex              # Gate/ward model + execution
 ├── code_medium.ex         # BEAM code evaluation sandbox
+├── familiar.ex            # Spec A.12 familiar: code-medium orchestrator
 ├── identity.ex            # Immutable call configuration
 ├── llm.ex                 # LLM behavior + contract validation
 ├── loom.ex                # Append-only turn storage
@@ -313,20 +381,55 @@ lib/cantrip/
 ├── llms/                  # OpenAI-compatible, Anthropic, Gemini adapters
 ├── fake_llm.ex            # Deterministic scripted LLM
 ├── examples.ex            # 12 teaching examples
-├── acp/                   # ACP protocol, runtime, server
+├── acp/                   # ACP protocol, runtimes (generic + familiar), server
 ├── repl.ex                # Interactive REPL
-└── application.ex         # OTP application (starts supervisor)
+└── application.ex         # OTP application (starts supervisor, loads .env)
+
+lib/mix/tasks/
+├── cantrip.familiar.ex    # mix cantrip.familiar (REPL / single-shot / ACP)
+├── cantrip.cast.ex        # mix cantrip.cast "intent"
+└── cantrip.acp.ex         # mix cantrip.acp
+
+notebooks/
+└── cantrip_demo.livemd    # Livebook demo with telemetry dashboard
 ```
 
-Dependencies: Elixir 1.15+, `jason` (JSON), `req` (HTTP). No heavy frameworks.
+Dependencies: Elixir 1.15+, `jason` (JSON), `req` (HTTP), `telemetry`. No heavy frameworks.
 
 ---
 
 ## Spec Conformance
 
-Tests: **170 tests, 0 failures** (`mix test`)
+Tests: **234 tests, 0 failures** (`mix test`)
 
-Test suites cover: LLM contract, config invariants, loom semantics, loop runtime, circle execution, composition (basic + extended + cancellation), production semantics (retry, folding, ephemeral), hot-reload, ACP protocol, streaming, persistent entities, and all 12 examples.
+Includes a conformance runner that exercises all 71 cases from the shared `tests.yaml` behavioral spec. Run it with `mix test test/conformance_test.exs`.
+
+Test suites cover: LLM contract, config invariants, loom semantics, loop runtime, circle execution, composition (basic + extended + cancellation), production semantics (retry, folding, ephemeral), hot-reload, ACP protocol, streaming, persistent entities, familiar, telemetry, code medium ergonomics, and all 12 examples.
+
+## Telemetry
+
+The runtime emits `:telemetry` events for observability:
+
+- `[:cantrip, :entity, :start]` / `[:cantrip, :entity, :stop]`
+- `[:cantrip, :turn, :start]` / `[:cantrip, :turn, :stop]` (with duration)
+- `[:cantrip, :gate, :start]` / `[:cantrip, :gate, :stop]` (with duration, gate name)
+- `[:cantrip, :code, :eval]` (with duration)
+
+Attach handlers with `:telemetry.attach/4`. See `notebooks/cantrip_demo.livemd` for a live dashboard example.
+
+## Livebook
+
+A Livebook notebook at `notebooks/cantrip_demo.livemd` demonstrates the runtime with no API keys (uses FakeLLM):
+
+1. Basic cast and loom inspection
+2. Multi-turn gate cycles
+3. Streaming events into Kino.Frame
+4. Custom gates
+5. Composition with call_entity
+6. Loom table visualization
+7. Telemetry dashboard with real-time event display
+
+Open it with `livebook server notebooks/cantrip_demo.livemd`.
 
 ---
 
@@ -352,7 +455,7 @@ Run tests:
 mix test
 ```
 
-Interactive REPL:
+Run the familiar:
 ```bash
-mix cantrip.repl
+mix cantrip.familiar
 ```

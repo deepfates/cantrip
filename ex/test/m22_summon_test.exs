@@ -12,7 +12,7 @@ defmodule CantripM22SummonTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]})
 
     {:ok, pid} = Cantrip.summon(cantrip)
     assert is_pid(pid)
@@ -35,7 +35,7 @@ defmodule CantripM22SummonTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]})
 
     {:ok, pid, result, _cantrip, loom, _meta} = Cantrip.summon(cantrip, "hello")
     assert is_pid(pid)
@@ -54,7 +54,7 @@ defmodule CantripM22SummonTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]})
+      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]})
 
     # First cast via summon — entity stays alive
     {:ok, pid, result1, _cantrip1, loom1, _meta1} = Cantrip.summon(cantrip, "hello")

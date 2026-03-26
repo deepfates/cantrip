@@ -7,6 +7,7 @@ defmodule Cantrip.MixProject do
       version: "0.1.0",
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
       escript: [main_module: Cantrip.CLI, name: "cantrip"],
       aliases: aliases(),
       deps: deps()
@@ -29,9 +30,14 @@ defmodule Cantrip.MixProject do
   defp deps do
     [
       {:req, "~> 0.5"},
-      {:jason, "~> 1.4"}
+      {:jason, "~> 1.4"},
+      {:telemetry, "~> 1.0"},
+      {:yaml_elixir, "~> 2.11", only: :test}
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
 
   defp aliases do
     [

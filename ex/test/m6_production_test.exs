@@ -14,7 +14,7 @@ defmodule CantripM6ProductionTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        circle: %{gates: [:done], wards: [%{max_turns: 10}]},
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]},
         retry: %{max_retries: 3, retryable_status_codes: [429], backoff_base_ms: 1}
       )
 
@@ -34,7 +34,7 @@ defmodule CantripM6ProductionTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        circle: %{gates: [:done], wards: [%{max_turns: 10}]},
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]},
         retry: %{max_retries: 3, retryable_status_codes: [429], backoff_base_ms: 50}
       )
 
@@ -63,7 +63,7 @@ defmodule CantripM6ProductionTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]}
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]}
       )
 
     assert {:ok, "ok", _cantrip, _loom, meta} = Cantrip.cast(cantrip, "usage")
@@ -93,7 +93,7 @@ defmodule CantripM6ProductionTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        circle: %{gates: [:done, :echo], wards: [%{max_turns: 10}]},
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]},
         folding: %{trigger_after_turns: 3}
       )
 
@@ -122,6 +122,7 @@ defmodule CantripM6ProductionTest do
       Cantrip.new(
         llm: llm,
         circle: %{
+          type: :conversation,
           gates: [
             %{name: :done},
             %{name: :read_ephemeral, ephemeral: true, result: payload}

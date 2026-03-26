@@ -17,7 +17,7 @@ defmodule CantripM3LoomDetsStorageTest do
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
-        circle: %{gates: [:done], wards: [%{max_turns: 10}]},
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]},
         loom_storage: {:dets, path}
       )
 

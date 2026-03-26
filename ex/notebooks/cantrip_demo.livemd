@@ -1,0 +1,447 @@
+# Cantrip Runtime Demo
+
+## Section
+
+```elixir
+Mix.install([
+  {:cantrip_ex, path: Path.join(__DIR__, "..")},
+  {:kino, "~> 0.14"}
+])
+```
+
+```elixir
+# Helper module for rendering loom turns. Defined once, used everywhere.
+
+defmodule LoomViz do
+  def table(loom, opts \\ []) do
+    name = Keyword.get(opts, :name, "Loom")
+
+    rows =
+      loom.turns
+      |> Enum.with_index(1)
+      |> Enum.map(fn {turn, idx} ->
+        content = get_in(turn, [:utterance, :content])
+        observations = turn[:observation] || []
+
+        gates = Enum.map_join(observations, ", ", & &1.gate)
+
+        results =
+          Enum.map_join(observations, " | ", fn obs ->
+            prefix = if obs.is_error, do: "[ERR] ", else: ""
+            result_str = if is_binary(obs.result), do: obs.result, else: inspect(obs.result)
+            "#{prefix}#{obs.gate}: #{String.slice(result_str, 0, 60)}"
+          end)
+
+        %{
+          "#" => idx,
+          "Entity" => turn[:entity_id] || "—",
+          "Content" => if(is_binary(content), do: String.slice(content, 0, 80), else: "—"),
+          "Gates" => gates,
+          "Results" => results,
+          "Status" => cond do
+            turn[:terminated] -> "terminated"
+            turn[:truncated] -> "truncated"
+            true -> "—"
+          end
+        }
+      end)
+
+    Kino.DataTable.new(rows, name: name)
+  end
+end
+
+:ok
+```
+
+## Setup
+
+Copy `ex/.env.example` to `ex/.env` and fill in your API key.
+`Cantrip.Application` loads it on boot, so by the time you get here
+the environment is already configured.
+
+```elixir
+# Verify the LLM is configured
+{:ok, llm} = Cantrip.llm_from_env()
+provider = System.get_env("CANTRIP_LLM_PROVIDER", "openai_compatible")
+model = System.get_env("CANTRIP_MODEL") || System.get_env("OPENAI_MODEL") || System.get_env("ANTHROPIC_MODEL") || System.get_env("GEMINI_MODEL")
+IO.puts("Using #{provider} / #{model}")
+```
+
+## What is Cantrip?
+
+Three things make a cantrip: an **LLM**, an **identity** (who it is), and a
+**circle** (what it can do). The circle has a **medium** — the substrate the
+entity works *in* — plus **gates** (tools that cross the boundary) and **wards**
+(hard constraints). The action space: **A = (M + G) − W**.
+
+Every turn is recorded in the **loom**. Threads that end with `done` are
+*terminated*; threads cut short by wards are *truncated*.
+
+## 1. Conversation Medium — The Baseline
+
+The simplest cantrip: an LLM with a `done` gate in conversation mode. This is
+the standard tool-calling agent pattern — the model returns structured tool
+calls, the host executes them, results feed back in.
+
+```elixir
+{:ok, cantrip} =
+  Cantrip.new_from_env(
+    identity: %{system_prompt: "You are a helpful assistant. Call done(answer) with your response."},
+    circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 5}]}
+  )
+
+{:ok, result, _cantrip, loom, meta} = Cantrip.cast(cantrip, "What are the three laws of thermodynamics? Be brief.")
+
+IO.puts("Result: #{inspect(result)}")
+IO.puts("Turns: #{length(loom.turns)}")
+LoomViz.table(loom, name: "1. Conversation Medium")
+```
+
+## 2. Code Medium — The Core Insight
+
+Now the interesting part. In a **code circle**, the entity writes Elixir
+that runs on the BEAM. Variables persist across turns. Gates are anonymous
+functions in the sandbox. The entity builds up state the way you would in
+IEx — except the notebook writes itself.
+
+Because code is compositional, the entity can compose actions nobody
+enumerated in advance. That's the point.
+
+```elixir
+{:ok, cantrip} =
+  Cantrip.new_from_env(
+    identity: %{
+      system_prompt: """
+      You are a data analyst working in an Elixir sandbox.
+      You have these host functions available as anonymous functions (use dot-call syntax):
+      - done.(answer) — return your final answer and terminate
+
+      Write Elixir code. Variables persist across turns — define data in one
+      turn, compute on it in the next. Each response should be a short code
+      snippet that does ONE thing: define data, transform it, or call done.
+      Do NOT call done in the same turn where you define your data.
+      """
+    },
+    circle: %{type: :code, gates: [:done], wards: [%{max_turns: 8}]}
+  )
+
+{:ok, result, _cantrip, loom, _meta} =
+  Cantrip.cast(cantrip, """
+  Here's quarterly revenue data:
+  Q1: 12_000, Q2: 13_200, Q3: 15_100, Q4: 14_800
+
+  First, store the data. Then in a separate step, compute the quarter-over-quarter
+  growth rates and identify which quarter had the highest growth.
+  """)
+
+IO.puts("Result: #{inspect(result)}")
+LoomViz.table(loom, name: "2. Code Medium")
+```
+
+## 3. Terminated vs. Truncated
+
+Wards are structural, not advisory. If the turn limit is 2, turn 3 doesn't
+happen — the thread is **truncated**. Compare that to a thread where the
+entity calls `done` — that's **terminated**. The distinction matters for
+training data: terminated threads completed their task; truncated threads
+were cut short.
+
+```elixir
+# Terminated: enough turns to finish
+{:ok, t_cantrip} =
+  Cantrip.new_from_env(
+    identity: %{system_prompt: "Answer the question. Call done(answer) with your response."},
+    circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 5}]}
+  )
+
+{:ok, t_result, _, t_loom, t_meta} = Cantrip.cast(t_cantrip, "What is 2 + 2?")
+
+# Truncated: only 1 turn allowed, and we give it a hard problem
+{:ok, tr_cantrip} =
+  Cantrip.new_from_env(
+    identity: %{
+      system_prompt: """
+      You must call echo() to think through each step before answering.
+      Think through at least 3 steps before calling done().
+      """
+    },
+    circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 1}]}
+  )
+
+tr_result = Cantrip.cast(tr_cantrip, "Explain the proof of Gödel's incompleteness theorem step by step")
+
+{tr_result_val, tr_loom, tr_meta} =
+  case tr_result do
+    {:ok, r, _, l, m} -> {r, l, m}
+    {:error, r, _} -> {r, %{turns: []}, %{}}
+  end
+
+tr_reason = tr_meta[:termination_reason] || (if tr_result_val == nil, do: "max_turns (truncated)", else: "done")
+
+Kino.Layout.grid([
+  Kino.Markdown.new("**Terminated** — result: `#{inspect(t_result)}`, turns: #{length(t_loom.turns)}, reason: `#{t_meta[:termination_reason] || "done"}`"),
+  LoomViz.table(t_loom, name: "3a. Terminated"),
+  Kino.Markdown.new("**Truncated** — result: `#{inspect(tr_result_val)}`, turns: #{length(tr_loom.turns)}, reason: `#{tr_reason}`"),
+  if(length(tr_loom.turns) > 0, do: LoomViz.table(tr_loom, name: "3b. Truncated"), else: Kino.Text.new("(no turns recorded)"))
+], columns: 1)
+```
+
+## 4. Gates and Error Recovery
+
+Gates let the entity reach outside the circle. When a gate returns an error,
+the entity sees it as an observation and can adjust. "Error is steering" —
+the model doesn't crash, it adapts.
+
+```elixir
+# A gate that always fails
+broken_gate = %{
+  name: "fetch_api",
+  result: {:error, "503 Service Unavailable"},
+  parameters: %{
+    type: "object",
+    properties: %{url: %{type: "string", description: "URL to fetch"}},
+    required: ["url"]
+  }
+}
+
+# A gate that works
+working_gate = %{
+  name: "local_cache",
+  result: ~s({"temperature": 18, "conditions": "overcast", "city": "Portland"}),
+  parameters: %{
+    type: "object",
+    properties: %{query: %{type: "string", description: "Cache lookup key"}},
+    required: ["query"]
+  }
+}
+
+{:ok, cantrip} =
+  Cantrip.new_from_env(
+    identity: %{
+      system_prompt: """
+      You are a weather reporter. You have two data sources:
+      - fetch_api(url) — live weather API (may be down)
+      - local_cache(query) — cached weather data (always available)
+
+      Try the API first. If it fails, fall back to the cache.
+      Call done(answer) with the weather report.
+      """
+    },
+    circle: %{
+      type: :conversation,
+      gates: [:done, broken_gate, working_gate],
+      wards: [%{max_turns: 10}]
+    }
+  )
+
+{:ok, result, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "What's the weather in Portland?")
+
+IO.puts("Result: #{result}")
+LoomViz.table(loom, name: "4. Error Recovery")
+```
+
+## 5. Composition — Parent and Child
+
+In code medium, the entity delegates via `call_entity.()`. The child runs
+its own loop, returns a result, and the parent continues. `max_depth` prevents
+infinite recursion — at depth 0, the child can't delegate further.
+
+```elixir
+{:ok, cantrip} =
+  Cantrip.new_from_env(
+    identity: %{
+      system_prompt: """
+      You are a manager agent in an Elixir code sandbox.
+      You can delegate work to a child entity using:
+        call_entity.(%{intent: "task description"})
+      This spawns a child that runs its own loop and returns a result.
+
+      Use done.(answer) to return your final answer.
+      Delegate the actual computation to a child, then synthesize.
+      """
+    },
+    circle: %{
+      type: :code,
+      gates: [:done, :call_entity],
+      wards: [%{max_turns: 8}, %{max_depth: 1}]
+    }
+  )
+
+{:ok, result, _cantrip, loom, _meta} =
+  Cantrip.cast(cantrip, """
+  I need two things:
+  1. The first 10 Fibonacci numbers
+  2. Their sum
+  Delegate the Fibonacci computation to a child entity, then compute the sum yourself.
+  """)
+
+IO.puts("Result: #{inspect(result)}")
+LoomViz.table(loom, name: "5. Composition")
+```
+
+## 6. Fork — Rewind and Replay
+
+`Cantrip.fork/4` restarts from a prior turn. The code medium snapshots
+bindings at each turn, so forking restores sandbox state without replay.
+
+We run a code cantrip that defines data and computes the mean, then fork
+from turn 1 — the `data` variable is still bound, and the entity takes
+a different analytical path.
+
+```elixir
+{:ok, cantrip} =
+  Cantrip.new_from_env(
+    identity: %{
+      system_prompt: """
+      You are a data analyst in an Elixir sandbox.
+      Use done.(answer) to return results.
+      """
+    },
+    circle: %{type: :code, gates: [:done], wards: [%{max_turns: 8}]}
+  )
+
+# Original run
+{:ok, original_result, next_cantrip, original_loom, _meta} =
+  Cantrip.cast(cantrip, "Define a list called `data` with values [10, 20, 30, 40, 50] and compute the mean.")
+
+IO.puts("Original: #{inspect(original_result)}")
+
+# Fork from turn 1 — the `data` variable should still be bound
+fork_result =
+  Cantrip.fork(next_cantrip, original_loom, 1, %{
+    intent: "Now compute the standard deviation of the `data` list that's already defined."
+  })
+
+case fork_result do
+  {:ok, result, _, fork_loom, _} ->
+    IO.puts("Fork: #{inspect(result)}")
+
+    Kino.Layout.grid([
+      LoomViz.table(original_loom, name: "6a. Original Run"),
+      LoomViz.table(fork_loom, name: "6b. Forked from Turn 1")
+    ], columns: 1)
+
+  {:error, reason, _} ->
+    IO.puts("Fork failed: #{inspect(reason)}")
+    LoomViz.table(original_loom, name: "6. Original Run (fork failed)")
+end
+```
+
+## 7. Persistent Entities — Memory Across Episodes
+
+`Cantrip.summon/1` creates a GenServer that stays alive. Each
+`Cantrip.send/2` runs a new episode, but state accumulates —
+loom, code bindings, message history. The OTP process model maps
+directly onto the entity lifecycle.
+
+```elixir
+{:ok, cantrip} =
+  Cantrip.new_from_env(
+    identity: %{
+      system_prompt: """
+      You are a persistent analyst in an Elixir sandbox. State carries across episodes.
+      Variables you define persist. Use done.(answer) to finish each episode.
+      """
+    },
+    circle: %{type: :code, gates: [:done], wards: [%{max_turns: 8}]}
+  )
+
+{:ok, pid} = Cantrip.summon(cantrip)
+
+# Episode 1: set up data
+{:ok, r1, _, loom1, _} = Cantrip.send(pid, "Create a map called `metrics` with keys :revenue, :cost, :profit set to 100, 60, 40. Confirm what you stored.")
+
+IO.puts("Episode 1: #{inspect(r1)}")
+
+# Episode 2: use the data from episode 1
+{:ok, r2, _, loom2, _} = Cantrip.send(pid, "Using the `metrics` map from before, compute the profit margin as a percentage.")
+
+IO.puts("Episode 2: #{inspect(r2)}")
+
+Kino.Layout.grid([
+  LoomViz.table(loom1, name: "7a. Episode 1"),
+  LoomViz.table(loom2, name: "7b. Episode 2 (accumulated)")
+], columns: 1)
+```
+
+## 8. Telemetry
+
+The runtime emits `:telemetry` events at entity start/stop, turn start/stop,
+gate start/stop, and code evaluation — all with durations. Attach handlers
+for observability without touching application code.
+
+```elixir
+defmodule TelemetryHandler do
+  def handle_event(event, measurements, metadata, frame) do
+    time = DateTime.utc_now() |> Calendar.strftime("%H:%M:%S.%f")
+
+    label =
+      event |> Enum.drop(1) |> Enum.map_join(" ", &String.upcase(to_string(&1)))
+
+    detail =
+      case event do
+        [:cantrip, :turn, :stop] -> "turn ##{metadata.turn_number} (#{div(measurements.duration, 1_000)} µs)"
+        [:cantrip, :gate, :stop] -> "#{metadata.gate_name} (#{div(measurements.duration, 1_000)} µs)#{if metadata.is_error, do: " [ERROR]", else: ""}"
+        [:cantrip, :entity, :start] -> "intent=#{String.slice(inspect(metadata.intent), 0, 60)}"
+        [:cantrip, :entity, :stop] -> "reason=#{metadata.reason}"
+        [:cantrip, :code, :eval] -> "(#{div(measurements.duration, 1_000)} µs)"
+        _ -> ""
+      end
+
+    html = Kino.HTML.new("""
+    <div style="font-family: monospace; padding: 2px 8px; color: #6366f1;">
+      <span style="color: #888;">#{time}</span> <strong>#{label}</strong> #{detail}
+    </div>
+    """)
+
+    Kino.Frame.append(frame, html)
+  end
+end
+
+frame = Kino.Frame.new()
+Kino.render(frame)
+
+for event <- [
+  [:cantrip, :entity, :start], [:cantrip, :entity, :stop],
+  [:cantrip, :turn, :start], [:cantrip, :turn, :stop],
+  [:cantrip, :gate, :start], [:cantrip, :gate, :stop],
+  [:cantrip, :code, :eval]
+] do
+  id = "demo-#{inspect(event)}"
+  :telemetry.detach(id)
+  :telemetry.attach(id, event, &TelemetryHandler.handle_event/4, frame)
+end
+
+Kino.Text.new("Telemetry attached — run the next cell.")
+```
+
+```elixir
+{:ok, cantrip} =
+  Cantrip.new_from_env(
+    identity: %{
+      system_prompt: """
+      You are an analyst in an Elixir code sandbox.
+      Use echo.() to think aloud and done.() to finish.
+      """
+    },
+    circle: %{type: :code, gates: [:done, :echo], wards: [%{max_turns: 6}]}
+  )
+
+{:ok, result, _, _, _} =
+  Cantrip.cast(cantrip, "Compute the factorial of 10, showing your work with echo.")
+
+IO.puts("Result: #{inspect(result)}")
+```
+
+## Reference
+
+| Section | Concept                          | Spec Rules                 |
+| ------- | -------------------------------- | -------------------------- |
+| 1       | Conversation medium, basic cast  | LLM-1, CANTRIP-1, CIRCLE-1 |
+| 2       | Code medium, persistent bindings | MEDIUM-1, LOOP-1           |
+| 3       | Terminated vs. truncated         | WARD-1, LOOP-4             |
+| 4       | Custom gates, error as steering  | GATE-1, LOOP-3             |
+| 5       | Parent/child composition         | COMP-2, COMP-3             |
+| 6       | Fork from prior turn             | LOOM-4                     |
+| 7       | Persistent entity lifecycle      | ENTITY-5                   |
+| 8       | Telemetry events                 | §7.5                      |
