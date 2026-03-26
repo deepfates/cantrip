@@ -34,7 +34,11 @@ defmodule Cantrip.MixProject do
       {:telemetry, "~> 1.0"},
       {:dune, "~> 0.3"},
       {:req_llm, "~> 1.9"},
-      {:yaml_elixir, "~> 2.11", only: :test}
+      {:dotenvy, "~> 1.1"},
+      {:nimble_options, "~> 1.1"},
+      {:agent_client_protocol, github: "f1729/agent-client-protocol-elixir"},
+      {:yaml_elixir, "~> 2.11", only: :test},
+      {:mox, "~> 1.2", only: :test}
     ]
   end
 
