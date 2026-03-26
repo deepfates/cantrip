@@ -52,7 +52,9 @@ defmodule Cantrip.ACP.Runtime.Familiar do
 
   @impl true
   def prompt(%{cantrip: cantrip, entity_pid: nil} = session, text) when is_binary(text) do
-    case Cantrip.summon(cantrip, text) do
+    opts = if session[:stream_to], do: [stream_to: session.stream_to], else: []
+
+    case Cantrip.summon(cantrip, text, opts) do
       {:ok, pid, result, next_cantrip, _loom, _meta} ->
         answer = normalize_answer(result)
         next_session = %{session | cantrip: next_cantrip, entity_pid: pid}

@@ -256,11 +256,14 @@ defmodule Cantrip do
   @doc """
   ENTITY-5: Create a persistent entity and immediately run the first intent.
   Convenience wrapper: equivalent to `summon/1` followed by `send/2`.
+  Accepts optional keyword opts (e.g. `stream_to: pid`) passed to EntityServer.
   """
-  @spec summon(t(), String.t()) ::
+  @spec summon(t(), String.t(), keyword()) ::
           {:ok, pid(), term(), t(), Loom.t(), map()} | {:error, term(), t()}
-  def summon(%__MODULE__{} = cantrip, intent) when is_binary(intent) do
-    with {:ok, pid} <- summon(cantrip) do
+  def summon(%__MODULE__{} = cantrip, intent, opts \\ []) when is_binary(intent) do
+    spec = {EntityServer, [cantrip: cantrip, lazy: true] ++ opts}
+
+    with {:ok, pid} <- DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec) do
       case send(pid, intent) do
         {:ok, result, next_cantrip, loom, meta} ->
           {:ok, pid, result, next_cantrip, loom, meta}

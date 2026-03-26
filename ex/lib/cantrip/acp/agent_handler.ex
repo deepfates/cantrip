@@ -92,14 +92,20 @@ defmodule Cantrip.ACP.AgentHandler do
           {:ok, text} ->
             runtime = :ets.lookup_element(table, :runtime, 2)
 
+            # Inject stream_to bridge if we have a connection
+            session = inject_stream_to(table, session_id, session)
+
             case runtime.prompt(session, text) do
               {:ok, answer, next_session} ->
+                # Remove stream_to before persisting (it's a pid, not serializable)
+                next_session = Map.delete(next_session, :stream_to)
                 :ets.insert(table, {{:session, session_id}, next_session})
                 :ets.insert(table, {{:last_answer, session_id}, answer})
                 send_answer_updates(table, session_id, answer)
                 {:ok, %ACP.PromptResponse{stop_reason: :end_turn}}
 
               {:error, reason, next_session} ->
+                next_session = Map.delete(next_session, :stream_to)
                 :ets.insert(table, {{:session, session_id}, next_session})
                 {:error, %ACP.Error{code: -32002, message: inspect(reason)}}
             end
@@ -137,6 +143,17 @@ defmodule Cantrip.ACP.AgentHandler do
 
       [] ->
         :ok
+    end
+  end
+
+  defp inject_stream_to(table, session_id, session) do
+    case :ets.lookup(table, :conn) do
+      [{:conn, conn}] ->
+        bridge = Cantrip.ACP.EventBridge.start(conn, session_id)
+        Map.put(session, :stream_to, bridge)
+
+      [] ->
+        session
     end
   end
 
