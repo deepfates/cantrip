@@ -216,23 +216,158 @@ defmodule Cantrip.Conformance.Runner do
     # Register the cantrip for the test runtime to use
     Process.put(:conformance_cantrip, cantrip)
 
-    protocol = Cantrip.ACP.Protocol.new(runtime: runtime)
+    table = Cantrip.ACP.AgentHandler.new(runtime: runtime)
 
-    {final_protocol, responses} =
-      Enum.reduce(steps, {protocol, []}, fn step, {proto, resps} ->
-        # Keep string keys for the protocol handler
+    {responses} =
+      Enum.reduce(steps, {[]}, fn step, {resps} ->
         request = normalize_acp_request(step)
-        {next_proto, reply_list} = Cantrip.ACP.Protocol.handle_request(proto, request)
-        # The response with matching id, plus all replies for notification checks
-        response = Enum.find(reply_list, fn r -> r["id"] == request["id"] end) || List.last(reply_list)
-        {next_proto, resps ++ [%{response: response, all_replies: reply_list}]}
+        {reply_list, response} = dispatch_acp_step(table, request)
+        {resps ++ [%{response: response, all_replies: reply_list}]}
       end)
 
     # Extract LLM invocations from the runtime's sessions if needed
-    llm_state = extract_llm_state_from_protocol(final_protocol)
+    llm_state = extract_llm_state_from_handler(table)
 
     ctx = %{ctx | acp_responses: responses}
     if llm_state, do: %{ctx | cantrip: %{ctx.cantrip | llm_state: llm_state}}, else: ctx
+  end
+
+  defp dispatch_acp_step(table, request) do
+    id = request["id"]
+    method = request["method"]
+    params = request["params"] || %{}
+
+    {typed_request, decode_ok} = decode_acp_request(method, params)
+
+    case decode_ok do
+      :ok ->
+        result = Cantrip.ACP.AgentHandler.handle_request(typed_request, table)
+        reply_list = build_reply_list(id, method, result, table)
+        response = Enum.find(reply_list, fn r -> r["id"] == id end) || List.last(reply_list)
+        {reply_list, response}
+
+      {:error, reason} ->
+        err = %{"jsonrpc" => "2.0", "id" => id, "error" => %{"code" => -32602, "message" => reason}}
+        {[err], err}
+    end
+  end
+
+  defp decode_acp_request("initialize", params) do
+    req = %ACP.InitializeRequest{
+      protocol_version: params["protocolVersion"] || 1,
+      client_capabilities: %ACP.ClientCapabilities{},
+      client_info: params["clientInfo"]
+    }
+    {{:initialize, req}, :ok}
+  end
+
+  defp decode_acp_request("session/new", params) do
+    req = %ACP.NewSessionRequest{
+      cwd: params["cwd"] || System.tmp_dir!()
+    }
+    {{:new_session, req}, :ok}
+  end
+
+  defp decode_acp_request("session/prompt", params) do
+    session_id = params["sessionId"]
+    prompt_raw = params["prompt"] || params["content"] || params["text"] || params
+
+    case extract_prompt_text(prompt_raw) do
+      {:ok, text} ->
+        req = %ACP.PromptRequest{
+          session_id: session_id,
+          prompt: [{:text, %ACP.TextContent{text: text}}]
+        }
+        {{:prompt, req}, :ok}
+
+      {:error, reason} ->
+        {nil, {:error, reason}}
+    end
+  end
+
+  defp decode_acp_request(_method, _params) do
+    {nil, {:error, "method not found"}}
+  end
+
+  defp extract_prompt_text(text) when is_binary(text) and text != "", do: {:ok, text}
+  defp extract_prompt_text(%{"text" => text}) when is_binary(text), do: {:ok, text}
+  defp extract_prompt_text(%{"content" => text}) when is_binary(text), do: {:ok, text}
+  defp extract_prompt_text(%{"content" => blocks}) when is_list(blocks) do
+    extract_prompt_text(blocks)
+  end
+  defp extract_prompt_text(%{"messages" => messages}) when is_list(messages) do
+    messages
+    |> Enum.reverse()
+    |> Enum.find_value(fn msg -> case extract_prompt_text(msg) do {:ok, t} -> t; _ -> nil end end)
+    |> case do
+      nil -> {:error, "bad prompt"}
+      text -> {:ok, text}
+    end
+  end
+  defp extract_prompt_text(blocks) when is_list(blocks) do
+    Enum.find_value(blocks, {:error, "bad prompt"}, fn
+      %{"text" => text} when is_binary(text) and text != "" -> {:ok, text}
+      %{"content" => text} when is_binary(text) and text != "" -> {:ok, text}
+      %{"value" => text} when is_binary(text) and text != "" -> {:ok, text}
+      _ -> nil
+    end)
+  end
+  defp extract_prompt_text(_), do: {:error, "bad prompt"}
+
+  defp build_reply_list(id, _method, {:ok, %ACP.InitializeResponse{} = resp}, _table) do
+    [%{"jsonrpc" => "2.0", "id" => id, "result" => %{
+      "protocolVersion" => resp.protocol_version,
+      "agentCapabilities" => %{
+        "promptCapabilities" => %{"image" => false},
+        "loadSession" => false
+      }
+    }}]
+  end
+
+  defp build_reply_list(id, _method, {:ok, %ACP.NewSessionResponse{session_id: sid}}, _table) do
+    [%{"jsonrpc" => "2.0", "id" => id, "result" => %{"sessionId" => sid}}]
+  end
+
+  defp build_reply_list(id, _method, {:ok, %ACP.PromptResponse{stop_reason: reason}}, table) do
+    session_id = infer_handler_session_id(table)
+    stop = case reason do :end_turn -> "end_turn"; other -> to_string(other) end
+
+    [
+      %{"jsonrpc" => "2.0", "method" => "session/update", "params" => %{
+        "sessionId" => session_id,
+        "update" => %{
+          "sessionUpdate" => "agent_message_chunk",
+          "content" => %{"type" => "text", "text" => get_last_answer(table, session_id)}
+        }
+      }},
+      %{"jsonrpc" => "2.0", "method" => "session/update", "params" => %{
+        "sessionId" => session_id,
+        "update" => %{"sessionUpdate" => "agent_message_end"}
+      }},
+      %{"jsonrpc" => "2.0", "id" => id, "result" => %{"stopReason" => stop}}
+    ]
+  end
+
+  defp build_reply_list(id, _method, {:error, %ACP.Error{code: code, message: msg}}, _table) do
+    [%{"jsonrpc" => "2.0", "id" => id, "error" => %{"code" => code, "message" => msg}}]
+  end
+
+  defp build_reply_list(id, _method, :ok, _table) do
+    [%{"jsonrpc" => "2.0", "id" => id, "result" => %{}}]
+  end
+
+  defp infer_handler_session_id(table) do
+    case :ets.match(table, {{:session, :"$1"}, :_}) do
+      [[id] | _] -> id
+      _ -> nil
+    end
+  end
+
+  defp get_last_answer(table, session_id) do
+    case :ets.lookup(table, {:last_answer, session_id}) do
+      [{{:last_answer, _}, answer}] -> answer
+      [] -> ""
+    end
   end
 
   defp normalize_acp_request(step) when is_map(step) do
@@ -248,10 +383,10 @@ defmodule Cantrip.Conformance.Runner do
   defp normalize_acp_value(v) when is_list(v), do: Enum.map(v, &normalize_acp_value/1)
   defp normalize_acp_value(v), do: v
 
-  defp extract_llm_state_from_protocol(protocol) do
-    # Try to get LLM state from the first session
-    case Map.values(protocol.sessions) do
-      [%{cantrip: %Cantrip{llm_state: state}} | _] -> state
+  defp extract_llm_state_from_handler(table) do
+    # Try to get LLM state from the first session in the ETS table
+    case :ets.match(table, {{:session, :_}, :"$1"}) do
+      [[%{cantrip: %Cantrip{llm_state: state}} | _]] -> state
       _ -> nil
     end
   end

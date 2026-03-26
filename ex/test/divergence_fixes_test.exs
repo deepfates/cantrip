@@ -3,7 +3,7 @@ defmodule DivergenceFixesTest do
 
   alias Cantrip.FakeLLM
   alias Cantrip.Circle
-  alias Cantrip.ACP.Protocol
+  alias Cantrip.ACP.AgentHandler
 
   # ===========================================================================
   # LLM-3: LLM must return content or tool_calls
@@ -111,112 +111,68 @@ defmodule DivergenceFixesTest do
 
   describe "PROD-6: ACP session/new without cwd" do
     defmodule StubRuntime do
-      def new_session(_params) do
-        {:ok, %{calls: []}}
-      end
-
-      def prompt(session, text) do
-        {:ok, "echo:" <> text, %{session | calls: session.calls ++ [text]}}
-      end
+      def new_session(_params), do: {:ok, %{calls: []}}
+      def prompt(session, text), do: {:ok, "echo:" <> text, %{session | calls: session.calls ++ [text]}}
     end
 
-    test "ACP session/new works without cwd parameter" do
-      state = Protocol.new(runtime: StubRuntime)
+    test "ACP session/new works without cwd parameter (defaults to tmp)" do
+      table = AgentHandler.new(runtime: StubRuntime)
 
-      # Initialize first
-      {state, _} =
-        Protocol.handle_request(state, %{
-          "jsonrpc" => "2.0",
-          "id" => 0,
-          "method" => "initialize",
-          "params" => %{"protocolVersion" => 1}
-        })
+      AgentHandler.handle_request(
+        {:initialize, %ACP.InitializeRequest{protocol_version: 1, client_capabilities: %ACP.ClientCapabilities{}}},
+        table
+      )
 
-      # session/new with empty params (no cwd)
-      {state, [response]} =
-        Protocol.handle_request(state, %{
-          "jsonrpc" => "2.0",
-          "id" => 1,
-          "method" => "session/new",
-          "params" => %{}
-        })
+      # session/new with nil cwd — should default to tmp dir
+      assert {:ok, %ACP.NewSessionResponse{session_id: session_id}} =
+               AgentHandler.handle_request(
+                 {:new_session, %ACP.NewSessionRequest{cwd: nil}},
+                 table
+               )
 
-      # Should succeed, not error
-      assert response["result"] != nil, "expected result but got error: #{inspect(response["error"])}"
-      assert is_binary(response["result"]["sessionId"])
+      assert is_binary(session_id)
 
       # Should be able to prompt on the session
-      session_id = response["result"]["sessionId"]
-
-      {_state, responses} =
-        Protocol.handle_request(state, %{
-          "jsonrpc" => "2.0",
-          "id" => 2,
-          "method" => "session/prompt",
-          "params" => %{
-            "sessionId" => session_id,
-            "prompt" => "hello"
-          }
-        })
-
-      [_, _, done] = responses
-      assert done["result"]["stopReason"] == "end_turn"
+      assert {:ok, %ACP.PromptResponse{stop_reason: :end_turn}} =
+               AgentHandler.handle_request(
+                 {:prompt, %ACP.PromptRequest{
+                   session_id: session_id,
+                   prompt: [{:text, %ACP.TextContent{text: "hello"}}]
+                 }},
+                 table
+               )
     end
   end
-
-  # ===========================================================================
-  # PROD-6 / ENTITY-5: ACP session/prompt auto-selects session when sessionId
-  # is missing and exactly one session exists
-  # ===========================================================================
 
   describe "PROD-6: ACP session/prompt without sessionId" do
     defmodule StubRuntime2 do
       def new_session(_params), do: {:ok, %{calls: []}}
-
-      def prompt(session, text) do
-        {:ok, "echo:" <> text, %{session | calls: session.calls ++ [text]}}
-      end
+      def prompt(session, text), do: {:ok, "echo:" <> text, %{session | calls: session.calls ++ [text]}}
     end
 
     test "session/prompt auto-selects the only session when sessionId is omitted" do
-      state = Protocol.new(runtime: StubRuntime2)
+      table = AgentHandler.new(runtime: StubRuntime2)
 
-      # Initialize
-      {state, _} =
-        Protocol.handle_request(state, %{
-          "jsonrpc" => "2.0",
-          "id" => "1",
-          "method" => "initialize",
-          "params" => %{"protocolVersion" => 1}
-        })
+      AgentHandler.handle_request(
+        {:initialize, %ACP.InitializeRequest{protocol_version: 1, client_capabilities: %ACP.ClientCapabilities{}}},
+        table
+      )
 
-      # Create session (no cwd)
-      {state, [sess_resp]} =
-        Protocol.handle_request(state, %{
-          "jsonrpc" => "2.0",
-          "id" => "2",
-          "method" => "session/new",
-          "params" => %{}
-        })
-
-      assert sess_resp["result"]["sessionId"]
+      {:ok, %ACP.NewSessionResponse{session_id: _session_id}} =
+        AgentHandler.handle_request(
+          {:new_session, %ACP.NewSessionRequest{cwd: nil}},
+          table
+        )
 
       # Prompt WITHOUT sessionId — should auto-select the only session
-      {_state, responses} =
-        Protocol.handle_request(state, %{
-          "jsonrpc" => "2.0",
-          "id" => "3",
-          "method" => "session/prompt",
-          "params" => %{"prompt" => "hello"}
-        })
-
-      # Should get a successful response, not an error
-      last = List.last(responses)
-      assert last["result"], "expected result but got: #{inspect(last)}"
-      assert last["result"]["stopReason"] == "end_turn"
-      # Answer text is in the notification, not the result
-      chunk = Enum.find(responses, &(&1["method"] == "session/update"))
-      assert get_in(chunk, ["params", "update", "content", "text"]) =~ "hello"
+      assert {:ok, %ACP.PromptResponse{stop_reason: :end_turn}} =
+               AgentHandler.handle_request(
+                 {:prompt, %ACP.PromptRequest{
+                   session_id: nil,
+                   prompt: [{:text, %ACP.TextContent{text: "hello"}}]
+                 }},
+                 table
+               )
     end
   end
 

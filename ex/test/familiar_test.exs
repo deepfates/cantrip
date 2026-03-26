@@ -297,31 +297,37 @@ defmodule Cantrip.FamiliarTest do
       assert session.cantrip.identity.system_prompt =~ "Familiar"
     end
 
-    test "ACP protocol works with familiar runtime" do
-      state = Cantrip.ACP.Protocol.new(runtime: Cantrip.ACP.Runtime.Familiar)
+    test "ACP AgentHandler works with familiar runtime" do
+      alias Cantrip.ACP.AgentHandler
+
+      table = AgentHandler.new(runtime: Cantrip.ACP.Runtime.Familiar)
 
       # Initialize
-      {state, [resp]} =
-        Cantrip.ACP.Protocol.handle_request(state, %{
-          "jsonrpc" => "2.0",
-          "id" => 1,
-          "method" => "initialize"
-        })
-
-      assert resp["result"]["protocolVersion"] == 1
+      assert {:ok, %ACP.InitializeResponse{protocol_version: 1}} =
+               AgentHandler.handle_request(
+                 {:initialize,
+                  %ACP.InitializeRequest{
+                    protocol_version: 1,
+                    client_capabilities: %ACP.ClientCapabilities{},
+                    client_info: %{"name" => "test"}
+                  }},
+                 table
+               )
 
       llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
 
-      # Create session with injected LLM
-      {_state, [resp]} =
-        Cantrip.ACP.Protocol.handle_request(state, %{
-          "jsonrpc" => "2.0",
-          "id" => 2,
-          "method" => "session/new",
-          "params" => %{"cwd" => System.tmp_dir!(), "llm" => llm}
-        })
+      # Create session with injected LLM via meta
+      assert {:ok, %ACP.NewSessionResponse{session_id: session_id}} =
+               AgentHandler.handle_request(
+                 {:new_session,
+                  %ACP.NewSessionRequest{
+                    cwd: System.tmp_dir!(),
+                    meta: %{"llm" => llm}
+                  }},
+                 table
+               )
 
-      assert resp["result"]["sessionId"]
+      assert is_binary(session_id)
     end
   end
 

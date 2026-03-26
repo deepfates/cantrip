@@ -1,50 +1,31 @@
 defmodule Cantrip.ACP.Server do
   @moduledoc """
-  Stdio ACP JSON-RPC server.
+  Stdio ACP JSON-RPC server backed by f1729's agent_client_protocol library.
   """
-
-  alias Cantrip.ACP.Protocol
 
   def run(opts \\ []) do
     runtime = Keyword.get(opts, :runtime, Cantrip.ACP.Runtime.Cantrip)
-    state = Protocol.new(runtime: runtime)
-    loop(state, :stdio)
-  end
+    table = Cantrip.ACP.AgentHandler.new(runtime: runtime)
 
-  def handle_line(state, line) when is_binary(line) do
-    case Jason.decode(String.trim(line)) do
-      {:ok, request} ->
-        Protocol.handle_request(state, request)
+    # Use group_leader pid for IO (not :stdio atom) to work around
+    # f1729 Connection's read_line/1 not wrapping :stdio reads.
+    gl = Process.group_leader()
 
-      {:error, _} ->
-        {state,
-         [
-           %{
-             "jsonrpc" => "2.0",
-             "id" => nil,
-             "error" => %{"code" => -32700, "message" => "parse error"}
-           }
-         ]}
+    {:ok, conn} =
+      ACP.AgentSideConnection.start_link(
+        handler: Cantrip.ACP.AgentHandler,
+        handler_state: table,
+        input: gl,
+        output: gl
+      )
+
+    Cantrip.ACP.AgentHandler.set_connection(table, conn)
+
+    # Block until the connection's underlying process exits (on stdin EOF)
+    ref = Process.monitor(conn.conn)
+
+    receive do
+      {:DOWN, ^ref, :process, _, _} -> :ok
     end
-  end
-
-  defp loop(state, io_device) do
-    case IO.read(io_device, :line) do
-      :eof ->
-        :ok
-
-      {:error, reason} ->
-        IO.puts(:stderr, "acp server read error: #{inspect(reason)}")
-        :ok
-
-      line when is_binary(line) ->
-        {next_state, responses} = handle_line(state, line)
-        Enum.each(responses, &write_json/1)
-        loop(next_state, io_device)
-    end
-  end
-
-  defp write_json(map) do
-    IO.write(Jason.encode!(map) <> "\n")
   end
 end
