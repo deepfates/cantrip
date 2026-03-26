@@ -177,6 +177,26 @@ defmodule DivergenceFixesTest do
   end
 
   # ===========================================================================
+  # Retry config validation via nimble_options
+  # ===========================================================================
+
+  describe "retry config validation" do
+    test "invalid retry config returns error" do
+      llm = {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
+
+      result =
+        Cantrip.new(
+          llm: llm,
+          circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]},
+          retry: %{max_retries: "not a number"}
+        )
+
+      assert {:error, msg} = result
+      assert msg =~ "max_retries"
+    end
+  end
+
+  # ===========================================================================
   # LOOM-8: child turns stored in parent loom
   # ===========================================================================
 

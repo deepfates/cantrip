@@ -33,6 +33,13 @@ defmodule Cantrip do
           folding: map()
         }
 
+  @retry_schema [
+    max_retries: [type: :non_neg_integer, default: 0],
+    retryable_status_codes: [type: {:list, :integer}, default: []],
+    backoff_base_ms: [type: :pos_integer, default: 1_000],
+    backoff_max_ms: [type: :pos_integer, default: 30_000]
+  ]
+
   @spec new(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
   def new(attrs) do
     attrs = Map.new(attrs)
@@ -41,7 +48,8 @@ defmodule Cantrip do
     circle = Circle.new(Map.get(attrs, :circle, %{}))
 
     with :ok <- validate_llm(llm),
-         :ok <- validate_circle(circle, identity) do
+         :ok <- validate_circle(circle, identity),
+         {:ok, retry} <- validate_retry(Map.get(attrs, :retry, %{})) do
       {module, state} = llm
 
       {:ok,
@@ -53,7 +61,7 @@ defmodule Cantrip do
          identity: identity,
          circle: circle,
          loom_storage: Map.get(attrs, :loom_storage),
-         retry: normalize_retry(Map.get(attrs, :retry, %{})),
+         retry: retry,
          folding: Map.get(attrs, :folding, %{})
        }}
     end
@@ -494,15 +502,13 @@ defmodule Cantrip do
     end
   end
 
-  defp normalize_retry(retry) do
-    retry = Map.new(retry)
+  defp validate_retry(retry) do
+    opts = retry |> Map.new() |> Keyword.new()
 
-    %{
-      max_retries: Map.get(retry, :max_retries, 0),
-      retryable_status_codes: Map.get(retry, :retryable_status_codes, []),
-      backoff_base_ms: Map.get(retry, :backoff_base_ms, 1_000),
-      backoff_max_ms: Map.get(retry, :backoff_max_ms, 30_000)
-    }
+    case NimbleOptions.validate(opts, @retry_schema) do
+      {:ok, validated} -> {:ok, Map.new(validated)}
+      {:error, %NimbleOptions.ValidationError{message: msg}} -> {:error, msg}
+    end
   end
 
   defp normalize_child_llm(nil, llm), do: llm
