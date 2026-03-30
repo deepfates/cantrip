@@ -431,53 +431,63 @@ defmodule Cantrip.Circle do
     end
   end
 
-  defp run_gate(%{name: "read_file"}, args, _gates) when is_binary(args) do
-    case File.read(args) do
-      {:ok, content} -> %{gate: "read_file", result: content, is_error: false}
-      {:error, reason} -> %{gate: "read_file", result: inspect(reason), is_error: true}
+  defp run_gate(%{name: "read_file"} = gate, args, _gates) when is_binary(args) do
+    with {:ok, path} <- validate_gate_path(args, gate) do
+      case File.read(path) do
+        {:ok, content} -> %{gate: "read_file", result: content, is_error: false}
+        {:error, reason} -> %{gate: "read_file", result: inspect(reason), is_error: true}
+      end
     end
   end
 
-  defp run_gate(%{name: "read_file"}, args, _gates) do
+  defp run_gate(%{name: "read_file"} = gate, args, _gates) do
     path = Map.get(args, "path", Map.get(args, :path))
 
-    case File.read(path) do
-      {:ok, content} -> %{gate: "read_file", result: content, is_error: false}
-      {:error, reason} -> %{gate: "read_file", result: inspect(reason), is_error: true}
+    with {:ok, path} <- validate_gate_path(path, gate) do
+      case File.read(path) do
+        {:ok, content} -> %{gate: "read_file", result: content, is_error: false}
+        {:error, reason} -> %{gate: "read_file", result: inspect(reason), is_error: true}
+      end
     end
   end
 
-  defp run_gate(%{name: "list_dir"}, args, _gates) when is_binary(args) do
-    case File.ls(args) do
-      {:ok, entries} ->
-        %{gate: "list_dir", result: Enum.sort(entries) |> Enum.join("\n"), is_error: false}
+  defp run_gate(%{name: "list_dir"} = gate, args, _gates) when is_binary(args) do
+    with {:ok, path} <- validate_gate_path(args, gate) do
+      case File.ls(path) do
+        {:ok, entries} ->
+          %{gate: "list_dir", result: Enum.sort(entries) |> Enum.join("\n"), is_error: false}
 
-      {:error, reason} ->
-        %{gate: "list_dir", result: inspect(reason), is_error: true}
+        {:error, reason} ->
+          %{gate: "list_dir", result: inspect(reason), is_error: true}
+      end
     end
   end
 
-  defp run_gate(%{name: "list_dir"}, args, _gates) do
+  defp run_gate(%{name: "list_dir"} = gate, args, _gates) do
     path = Map.get(args, "path", Map.get(args, :path))
 
-    case File.ls(path) do
-      {:ok, entries} ->
-        %{gate: "list_dir", result: Enum.sort(entries) |> Enum.join("\n"), is_error: false}
+    with {:ok, path} <- validate_gate_path(path, gate) do
+      case File.ls(path) do
+        {:ok, entries} ->
+          %{gate: "list_dir", result: Enum.sort(entries) |> Enum.join("\n"), is_error: false}
 
-      {:error, reason} ->
-        %{gate: "list_dir", result: inspect(reason), is_error: true}
+        {:error, reason} ->
+          %{gate: "list_dir", result: inspect(reason), is_error: true}
+      end
     end
   end
 
-  defp run_gate(%{name: "search"}, args, _gates) do
+  defp run_gate(%{name: "search"} = gate, args, _gates) do
     pattern = Map.get(args, "pattern", Map.get(args, :pattern))
     path = Map.get(args, "path", Map.get(args, :path, "."))
 
-    try do
-      results = search_files(path, pattern)
-      %{gate: "search", result: results, is_error: false}
-    rescue
-      e -> %{gate: "search", result: Exception.message(e), is_error: true}
+    with {:ok, path} <- validate_gate_path(path, gate) do
+      try do
+        results = search_files(path, pattern)
+        %{gate: "search", result: results, is_error: false}
+      rescue
+        e -> %{gate: "search", result: Exception.message(e), is_error: true}
+      end
     end
   end
 
@@ -722,6 +732,26 @@ defmodule Cantrip.Circle do
   end
 
   defp compile_and_load(_module, _source, _path, _gate), do: {:error, "source is required"}
+
+  # Validate a path against the gate's optional :root constraint.
+  # When root is set, the resolved path must be within root.
+  defp validate_gate_path(path, gate) do
+    root = Map.get(gate, :root) || Map.get(gate, "root")
+
+    if is_nil(root) do
+      {:ok, path}
+    else
+      abs_root = Path.expand(root)
+      abs_path = Path.expand(path, abs_root)
+
+      if abs_path == abs_root or String.starts_with?(abs_path, abs_root <> "/") do
+        {:ok, abs_path}
+      else
+        gate_name = Map.get(gate, :name, "gate")
+        %{gate: gate_name, result: "path #{path} is outside sandbox root #{root}", is_error: true}
+      end
+    end
+  end
 
   defp search_files(path, pattern) do
     regex = Regex.compile!(pattern)

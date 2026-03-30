@@ -109,15 +109,18 @@ defmodule Cantrip.Familiar do
     child_llm = Keyword.get(opts, :child_llm)
     max_turns = Keyword.get(opts, :max_turns, @default_max_turns)
     loom_path = Keyword.get(opts, :loom_path)
+    root = Keyword.get(opts, :root)
     system_prompt = Keyword.get(opts, :system_prompt, @system_prompt)
 
     loom_storage = if loom_path, do: {:jsonl, loom_path}, else: nil
 
-    # Observation gates (read-only filesystem access)
+    # Observation gates (read-only filesystem access, sandboxed to root if set)
+    base_gate = if root, do: %{root: root}, else: %{}
+
     observation_gates = [
-      %{name: "read_file"},
-      %{name: "list_dir"},
-      %{name: "search"}
+      Map.merge(base_gate, %{name: "read_file"}),
+      Map.merge(base_gate, %{name: "list_dir"}),
+      Map.merge(base_gate, %{name: "search"})
     ]
 
     # Orchestration gates (cantrip construction + delegation)

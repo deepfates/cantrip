@@ -30,7 +30,9 @@ defmodule Cantrip.ACP.Runtime.Familiar do
 
         familiar_opts =
           if is_binary(cwd) do
-            Keyword.put(familiar_opts, :system_prompt,
+            familiar_opts
+            |> Keyword.put(:root, cwd)
+            |> Keyword.put(:system_prompt,
               Cantrip.Familiar.default_system_prompt() <>
               "\n\n## Working directory\n\nYou are observing: #{cwd}\nAll file paths should be relative to or within this directory.\nStart by listing the directory to orient yourself.\n")
           else

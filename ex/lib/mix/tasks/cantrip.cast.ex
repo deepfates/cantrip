@@ -81,7 +81,8 @@ defmodule Mix.Tasks.Cantrip.Cast do
           Cantrip.Familiar.new(
             llm: llm,
             loom_path: loom_path,
-            max_turns: max_turns
+            max_turns: max_turns,
+            root: File.cwd!()
           )
 
         do_cast(cantrip, intent)

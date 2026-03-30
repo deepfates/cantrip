@@ -128,6 +128,83 @@ defmodule Cantrip.FamiliarTest do
     end
   end
 
+  # ===========================================================================
+  # CIRCLE-10: Filesystem gates sandboxed to root
+  # ===========================================================================
+
+  describe "filesystem gate sandboxing" do
+    test "read_file rejects paths outside root" do
+      tmp_dir = Path.join(System.tmp_dir!(), "familiar_sandbox_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
+
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s[result = read_file.("/etc/hosts")\ndone.(result)]}
+         ])}
+
+      {:ok, cantrip} = Familiar.new(llm: llm, root: tmp_dir)
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "try to escape sandbox")
+      assert result =~ "outside sandbox root"
+    after
+      File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_sandbox_*"))
+    end
+
+    test "read_file allows paths within root" do
+      tmp_dir = Path.join(System.tmp_dir!(), "familiar_sandbox_ok_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
+      File.write!(Path.join(tmp_dir, "allowed.txt"), "safe content")
+
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s[content = read_file.("allowed.txt")\ndone.("got:" <> content)]}
+         ])}
+
+      {:ok, cantrip} = Familiar.new(llm: llm, root: tmp_dir)
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "read allowed file")
+      assert result == "got:safe content"
+    after
+      File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_sandbox_ok_*"))
+    end
+
+    test "list_dir rejects traversal outside root" do
+      tmp_dir = Path.join(System.tmp_dir!(), "familiar_sandbox_ld_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
+
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s[result = list_dir.("../../..")\ndone.(result)]}
+         ])}
+
+      {:ok, cantrip} = Familiar.new(llm: llm, root: tmp_dir)
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "try traversal")
+      assert result =~ "outside sandbox root"
+    after
+      File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_sandbox_ld_*"))
+    end
+
+    test "without root, filesystem gates accept any path" do
+      tmp_dir = Path.join(System.tmp_dir!(), "familiar_noroot_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
+      File.write!(Path.join(tmp_dir, "test.txt"), "content")
+
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s[content = read_file.("#{Path.join(tmp_dir, "test.txt")}")\ndone.("got:" <> content)]}
+         ])}
+
+      # No root specified — should work with any path
+      {:ok, cantrip} = Familiar.new(llm: llm)
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "read any file")
+      assert result == "got:content"
+    after
+      File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_noroot_*"))
+    end
+  end
+
   describe "cantrip() + cast() orchestration pattern" do
     test "cantrip() constructs a child config and cast() executes it" do
       # Parent: construct a child cantrip, cast an intent to it, return the result
