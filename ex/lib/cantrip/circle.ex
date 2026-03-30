@@ -38,15 +38,14 @@ defmodule Cantrip.Circle do
   Validate medium declaration. Returns :ok or {:error, reason}.
   Called during Cantrip construction.
 
-  Per SPEC MEDIUM-1: "If no medium is specified, the default is conversation."
-  Conflicting medium declarations are an error.
+  Per tests.yaml MEDIUM-1: omitting a medium declaration is an error.
+  Conflicting medium declarations are also an error.
   """
   @spec validate_medium(t()) :: :ok | {:error, String.t()}
   def validate_medium(%__MODULE__{medium_sources: sources}) do
     case sources do
       [] ->
-        # Per spec MEDIUM-1: default to conversation when no medium specified
-        :ok
+        {:error, "circle must declare a medium"}
 
       [{_source, _value}] ->
         :ok

@@ -62,13 +62,13 @@ defmodule DivergenceFixesTest do
       assert {:error, _} = Circle.validate_medium(circle)
     end
 
-    test "Circle.new with no medium defaults to conversation (MEDIUM-1)" do
+    test "Circle.new with no medium defaults type to conversation but validate_medium rejects" do
       circle = Circle.new(%{})
-      assert :ok = Circle.validate_medium(circle)
       assert circle.type == :conversation
+      assert {:error, "circle must declare a medium"} = Circle.validate_medium(circle)
     end
 
-    test "Cantrip.new accepts circle with no explicit medium, defaults to conversation" do
+    test "Cantrip.new rejects circle with no explicit medium (tests.yaml MEDIUM-1)" do
       llm = {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
 
       result =
@@ -80,8 +80,8 @@ defmodule DivergenceFixesTest do
           }
         )
 
-      assert {:ok, cantrip} = result
-      assert cantrip.circle.type == :conversation
+      assert {:error, msg} = result
+      assert msg =~ "circle must declare a medium"
     end
 
     test "Cantrip.new rejects conflicting medium in circle" do
