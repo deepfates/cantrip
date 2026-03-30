@@ -59,7 +59,8 @@ defmodule Mix.Tasks.Cantrip.Familiar do
           Cantrip.Familiar.new(
             llm: llm,
             loom_path: loom_path,
-            max_turns: max_turns
+            max_turns: max_turns,
+            root: File.cwd!()
           )
 
         if intent do
