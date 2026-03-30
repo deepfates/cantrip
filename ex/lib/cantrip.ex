@@ -396,6 +396,17 @@ defmodule Cantrip do
 
     prefix_turns = Enum.take(loom.turns, from_turn)
     prefix_messages = messages_from_turns(prefix_turns, cantrip.identity)
+
+    # CIRCLE-11: inject capability presentation for code/bash circles
+    {_tools, _tc, capability_text} = Circle.tool_view(cantrip.circle)
+
+    prefix_messages =
+      if capability_text do
+        inject_capability(prefix_messages, capability_text)
+      else
+        prefix_messages
+      end
+
     fork_messages = prefix_messages ++ [%{role: :user, content: intent}]
     fork_loom = %{loom | turns: prefix_turns}
 
@@ -502,6 +513,17 @@ defmodule Cantrip do
         acc ++ [assistant] ++ tool_messages
       end
     end)
+  end
+
+  # Insert capability text as a system message after the first system message
+  defp inject_capability(messages, text) do
+    case Enum.split_while(messages, &(&1.role == :system)) do
+      {system_msgs, rest} when system_msgs != [] ->
+        system_msgs ++ [%{role: :system, content: text}] ++ rest
+
+      {[], rest} ->
+        [%{role: :system, content: text}] ++ rest
+    end
   end
 
   defp validate_llm(nil), do: {:error, "cantrip requires a llm"}

@@ -153,4 +153,40 @@ defmodule CantripM3ForkTest do
     tool_msgs = Enum.filter(messages, &(&1.role == :tool))
     assert tool_msgs == [], "code medium fork should not produce tool-role messages"
   end
+
+  test "CIRCLE-11 fork of code circle includes capability presentation" do
+    base_llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{code: "x = 10"},
+         %{code: "done.(x)"}
+       ])}
+
+    fork_llm =
+      {FakeLLM,
+       FakeLLM.new(
+         [%{code: "done.(x * 2)"}],
+         record_inputs: true
+       )}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        llm: base_llm,
+        circle: %{type: :code, gates: [:done, :echo], wards: [%{max_turns: 10}]}
+      )
+
+    {:ok, _result, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "set x")
+
+    {:ok, _result, forked_cantrip, _loom, _meta} =
+      Cantrip.fork(cantrip, loom, 1, %{llm: fork_llm, intent: "double x"})
+
+    [invocation] = FakeLLM.invocations(forked_cantrip.llm_state)
+    messages = invocation.messages
+
+    # Forked code circle should include capability presentation (gate descriptions)
+    system_msgs = Enum.filter(messages, &(&1.role == :system))
+    all_system_text = system_msgs |> Enum.map(& &1.content) |> Enum.join(" ")
+    assert String.contains?(all_system_text, "done"),
+      "forked code circle should include capability text describing available gates"
+  end
 end
