@@ -146,10 +146,15 @@ defmodule Cantrip.Circle do
     |> Map.values()
     |> Enum.map(fn gate ->
       default_params = if gate.name == "done", do: @done_parameters, else: %{type: "object", properties: %{}}
-      %{
+
+      tool = %{
         name: gate.name,
         parameters: Map.get(gate, :parameters, default_params)
       }
+
+      # Include gate description in tool definition if present (CIRCLE-10)
+      desc = Map.get(gate, :description) || Map.get(gate, "description")
+      if desc, do: Map.put(tool, :description, desc), else: tool
     end)
   end
 
