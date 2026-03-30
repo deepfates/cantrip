@@ -18,6 +18,8 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   use Mix.Task
   @requirements ["app.start"]
 
+  alias Cantrip.CLI.Renderer
+
   @impl true
   def run(args) do
     {opts, positional, _} =
@@ -71,30 +73,32 @@ defmodule Mix.Tasks.Cantrip.Familiar do
 
       {:error, reason} ->
         Mix.shell().error("Cannot resolve LLM: #{reason}")
-
-        Mix.shell().error(
-          "Set CANTRIP_MODEL and CANTRIP_API_KEY (or provider-specific env vars)."
-        )
+        Mix.shell().error("Set CANTRIP_MODEL and CANTRIP_API_KEY (or provider-specific env vars).")
     end
   end
+
+  # -- Single-shot: cast with streaming events --
 
   defp run_single_shot(cantrip, intent) do
-    Mix.shell().info("Familiar (single-shot)")
-    Mix.shell().info("Intent: #{intent}\n")
+    IO.write(:stderr, "Familiar (single-shot)\n")
+    IO.write(:stderr, "Intent: #{intent}\n\n")
 
-    case Cantrip.cast(cantrip, intent) do
-      {:ok, result, _cantrip, _loom, _meta} ->
-        result_str = if is_binary(result), do: result, else: inspect(result, pretty: true)
-        Mix.shell().info("\nResult:\n#{result_str}")
+    caller = self()
+    renderer = Renderer.new()
 
-      {:error, reason, _cantrip} ->
-        Mix.shell().error("Error: #{inspect(reason)}")
-    end
+    task =
+      Task.async(fn ->
+        Cantrip.cast(cantrip, intent, stream_to: caller)
+      end)
+
+    receive_loop(renderer, task)
   end
 
+  # -- REPL: summon + send in a loop --
+
   defp run_repl(cantrip) do
-    Mix.shell().info("Familiar REPL — persistent coding assistant")
-    Mix.shell().info("Type your intents. Ctrl-C to exit.\n")
+    IO.write(:stderr, "Familiar REPL — persistent coding assistant\n")
+    IO.write(:stderr, "Type your intents. Ctrl-C to exit.\n\n")
 
     {:ok, pid} = Cantrip.summon(cantrip)
     repl_loop(pid)
@@ -103,10 +107,10 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   defp repl_loop(pid) do
     case IO.gets("~> ") do
       :eof ->
-        Mix.shell().info("\nGoodbye.")
+        IO.write(:stderr, "\nGoodbye.\n")
 
       {:error, _reason} ->
-        Mix.shell().info("\nGoodbye.")
+        IO.write(:stderr, "\nGoodbye.\n")
 
       input when is_binary(input) ->
         input = String.trim(input)
@@ -114,68 +118,75 @@ defmodule Mix.Tasks.Cantrip.Familiar do
         if input == "" do
           repl_loop(pid)
         else
-          {stream, task} = stream_response(pid, input)
-
-          Enum.each(stream, fn
-            {:text, text} -> IO.write(text)
-            {:done, _} -> IO.puts("")
-            _ -> :ok
-          end)
-
-          # Wait for task to complete
-          Task.await(task, :infinity)
+          run_streaming_intent(pid, input)
           repl_loop(pid)
         end
     end
   end
 
-  defp stream_response(pid, intent) do
-    # For now, use synchronous send and print the result
-    # (streaming requires cast_stream which works differently with entities)
+  defp run_streaming_intent(pid, intent) do
     caller = self()
+    renderer = Renderer.new()
 
     task =
       Task.async(fn ->
-        case Cantrip.send(pid, intent) do
-          {:ok, result, _cantrip, _loom, _meta} ->
-            result_str = if is_binary(result), do: result, else: inspect(result, pretty: true)
-            Kernel.send(caller, {:cantrip_event, {:text, result_str}})
-            Kernel.send(caller, {:cantrip_event, {:done, :ok}})
-            {:ok, result}
-
-          {:error, reason} ->
-            Kernel.send(caller, {:cantrip_event, {:text, "Error: #{inspect(reason)}"}})
-            Kernel.send(caller, {:cantrip_event, {:done, :error}})
-            {:error, reason}
-        end
+        Cantrip.send(pid, intent, stream_to: caller)
       end)
 
-    stream =
-      Stream.resource(
-        fn -> :running end,
-        fn
-          :done ->
-            {:halt, :done}
+    receive_loop(renderer, task)
+  end
 
-          :running ->
-            receive do
-              {:cantrip_event, event} ->
-                case event do
-                  {:done, _} -> {[event], :done}
-                  _ -> {[event], :running}
-                end
+  # -- Event receive loop: renders events as they arrive --
 
-              {_ref, _result} ->
-                {[], :done}
+  defp receive_loop(renderer, task) do
+    receive do
+      {:cantrip_event, event} ->
+        {output, device, renderer} = Renderer.render_event(renderer, event)
+        write_output(output, device)
+        receive_loop(renderer, task)
 
-              {:DOWN, _ref, :process, _pid, _reason} ->
-                {[], :done}
-            end
-        end,
-        fn _ -> :ok end
-      )
+      {ref, result} when is_reference(ref) ->
+        # Task completed
+        Process.demonitor(ref, [:flush])
+        drain_events(renderer)
 
-    {stream, task}
+        case result do
+          {:ok, _result, _cantrip, _loom, _meta} ->
+            :ok
+
+          {:error, reason, _cantrip} ->
+            IO.write(:stderr, IO.ANSI.red() <> "Error: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n")
+
+          {:error, reason} ->
+            IO.write(:stderr, IO.ANSI.red() <> "Error: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n")
+        end
+
+      {:DOWN, _ref, :process, _pid, reason} ->
+        IO.write(:stderr, IO.ANSI.red() <> "Entity crashed: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n")
+    end
+  end
+
+  # Drain any remaining events after task completion
+  defp drain_events(renderer) do
+    receive do
+      {:cantrip_event, event} ->
+        {output, device, renderer} = Renderer.render_event(renderer, event)
+        write_output(output, device)
+        drain_events(renderer)
+    after
+      0 -> :ok
+    end
+  end
+
+  defp write_output(output, device) do
+    data = IO.iodata_to_binary(output)
+
+    if data != "" do
+      case device do
+        :stderr -> IO.write(:stderr, data)
+        :stdout -> IO.write(data)
+      end
+    end
   end
 
   defp usage do
