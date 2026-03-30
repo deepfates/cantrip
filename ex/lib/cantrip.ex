@@ -219,25 +219,6 @@ defmodule Cantrip do
     end
   end
 
-  # Also handle explicit "req_llm" provider in legacy path
-  defp llm_from_env_legacy("req_llm") do
-    model = env_first(["CANTRIP_MODEL", "OPENAI_MODEL", "ANTHROPIC_MODEL", "GEMINI_MODEL"])
-
-    if model in [nil, ""] do
-      {:error, "missing CANTRIP_MODEL"}
-    else
-      {:ok,
-       {Cantrip.LLMs.ReqLLM,
-        %{
-          model: model,
-          stream: System.get_env("CANTRIP_STREAM") == "true",
-          timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 60_000),
-          temperature: parse_float(System.get_env("CANTRIP_TEMPERATURE")),
-          max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), nil)
-        }}}
-    end
-  end
-
   defp env_first(keys) do
     Enum.find_value(keys, fn key ->
       case System.get_env(key) do
@@ -325,12 +306,20 @@ defmodule Cantrip do
     cast(cantrip, intent, [])
   end
 
+  def cast(%__MODULE__{} = cantrip, intent) do
+    cast(cantrip, coerce_intent(intent), [])
+  end
+
   @spec cast(t(), String.t() | nil, keyword()) ::
           {:ok, term(), t(), Cantrip.Loom.t(), map()} | {:error, String.t(), t()}
   def cast(cantrip, nil, _opts), do: {:error, "intent is required", cantrip}
 
   def cast(%__MODULE__{} = cantrip, intent, opts) when is_binary(intent) and is_list(opts) do
     run_cast(cantrip, intent, opts)
+  end
+
+  def cast(%__MODULE__{} = cantrip, intent, opts) when is_list(opts) do
+    run_cast(cantrip, coerce_intent(intent), opts)
   end
 
   @doc """
@@ -439,6 +428,9 @@ defmodule Cantrip do
       code_state: fork_code_state
     )
   end
+
+  defp coerce_intent(intent) when is_binary(intent), do: intent
+  defp coerce_intent(intent), do: inspect(intent, pretty: true, limit: :infinity)
 
   defp run_cast(%__MODULE__{} = cantrip, intent, extra_opts) do
     spec = {EntityServer, cantrip: cantrip, intent: intent}
