@@ -456,7 +456,7 @@ defmodule Cantrip.EntityServer do
     end
   end
 
-  defp eval_code_sandboxed(code, code_state, runtime, entity_id \\ nil) do
+  defp eval_code_sandboxed(code, code_state, runtime, entity_id) do
     case Circle.sandbox(runtime.circle) do
       :dune ->
         eval_code_dune(code, code_state, runtime, entity_id)
@@ -579,11 +579,7 @@ defmodule Cantrip.EntityServer do
     end
   end
 
-  defp execute_gate_calls(_circle, []), do: {[], nil, false}
-
-  defp execute_gate_calls(circle, tool_calls) do
-    execute_gate_calls(circle, tool_calls, nil)
-  end
+  defp execute_gate_calls(_circle, [], _entity_id), do: {[], nil, false}
 
   defp execute_gate_calls(circle, tool_calls, entity_id) do
     Enum.reduce_while(tool_calls, {[], nil, false}, fn call, {acc, _result, _terminated} ->

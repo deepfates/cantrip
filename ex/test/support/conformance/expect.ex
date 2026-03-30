@@ -162,7 +162,6 @@ defmodule Cantrip.Conformance.Expect do
     Enum.zip(expected, thread.turns)
     |> Enum.each(fn {exp, turn} ->
       if exp["role"] do
-        expected_role = exp["role"]
         actual_role = Map.get(turn, :role, "turn")
         # Every turn has role "turn" in our model — entity/circle alternate implicitly
         # For conformance, we just check the turn exists

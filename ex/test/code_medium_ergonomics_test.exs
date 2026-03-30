@@ -239,7 +239,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       done.("should not reach here")
       """
 
-      {_state, obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+      {_state, obs, _result, terminated} = CodeMedium.eval(code, state, runtime)
 
       # The raise should prevent done from being reached
       # Prior to fix: cast_batch swallowed the error, done was reached
