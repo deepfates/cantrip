@@ -771,12 +771,15 @@ defmodule Cantrip.Circle do
     end
   end
 
+  @max_search_results 200
+  @ignored_dirs ~w(.git _build deps node_modules .elixir_ls .cache __pycache__ .venv)
+
   defp search_files(path, pattern) do
     regex = Regex.compile!(pattern)
 
     if File.dir?(path) do
       path
-      |> list_files_recursive()
+      |> list_project_files()
       |> Enum.flat_map(fn file ->
         case File.read(file) do
           {:ok, content} ->
@@ -790,6 +793,7 @@ defmodule Cantrip.Circle do
             []
         end
       end)
+      |> Enum.take(@max_search_results)
       |> Enum.join("\n")
     else
       case File.read(path) do
@@ -799,6 +803,7 @@ defmodule Cantrip.Circle do
           |> Enum.with_index(1)
           |> Enum.filter(fn {line, _num} -> Regex.match?(regex, line) end)
           |> Enum.map(fn {line, num} -> "#{path}:#{num}: #{line}" end)
+          |> Enum.take(@max_search_results)
           |> Enum.join("\n")
 
         {:error, reason} ->
@@ -807,10 +812,28 @@ defmodule Cantrip.Circle do
     end
   end
 
+  # List project files, preferring git ls-files when available (respects .gitignore).
+  # Falls back to recursive walk with common directory exclusions.
+  defp list_project_files(dir) do
+    case System.cmd("git", ["ls-files", "--cached", "--others", "--exclude-standard"],
+           cd: dir,
+           stderr_to_stdout: true
+         ) do
+      {output, 0} ->
+        output
+        |> String.split("\n", trim: true)
+        |> Enum.map(&Path.join(dir, &1))
+
+      _ ->
+        list_files_recursive(dir)
+    end
+  end
+
   defp list_files_recursive(dir) do
     case File.ls(dir) do
       {:ok, entries} ->
         entries
+        |> Enum.reject(&(&1 in @ignored_dirs))
         |> Enum.flat_map(fn entry ->
           full = Path.join(dir, entry)
 
