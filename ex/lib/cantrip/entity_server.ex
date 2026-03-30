@@ -483,6 +483,7 @@ defmodule Cantrip.EntityServer do
   defp eval_code_unrestricted(code, code_state, runtime, entity_id) do
     timeout = Circle.code_eval_timeout_ms(runtime.circle)
     saved_child_llm = Map.get(code_state, :child_llm)
+    saved_familiar_store = Map.get(code_state, :familiar_store)
 
     eval_start = System.monotonic_time()
 
@@ -492,15 +493,17 @@ defmodule Cantrip.EntityServer do
         Process.group_leader(self(), capture_pid)
 
         if saved_child_llm, do: Process.put(:cantrip_child_llm, saved_child_llm)
+        if saved_familiar_store, do: Process.put(:cantrip_familiar_store, saved_familiar_store)
         result = CodeMedium.eval(code, code_state, runtime)
         child_llm = Process.get(:cantrip_child_llm)
+        familiar_store = Process.get(:cantrip_familiar_store)
         {_, captured_output} = StringIO.contents(capture_pid)
         StringIO.close(capture_pid)
-        {result, child_llm, captured_output}
+        {result, child_llm, familiar_store, captured_output}
       end)
 
     case Task.yield(task, timeout) do
-      {:ok, {{next_state, obs, result, terminated}, child_llm, captured_output}} ->
+      {:ok, {{next_state, obs, result, terminated}, child_llm, familiar_store, captured_output}} ->
         if entity_id do
           duration = System.monotonic_time() - eval_start
           :telemetry.execute([:cantrip, :code, :eval], %{duration: duration}, %{entity_id: entity_id})
@@ -509,6 +512,11 @@ defmodule Cantrip.EntityServer do
         next_state =
           if child_llm,
             do: Map.put(next_state, :child_llm, child_llm),
+            else: next_state
+
+        next_state =
+          if familiar_store && map_size(familiar_store) > 0,
+            do: Map.put(next_state, :familiar_store, familiar_store),
             else: next_state
 
         obs = maybe_append_stdio(obs, captured_output)

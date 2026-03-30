@@ -209,4 +209,43 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       assert result == "map form"
     end
   end
+
+  # ===========================================================================
+  # COMP-8: cast_batch must raise on child failure like cast does
+  # ===========================================================================
+
+  describe "cast_batch error consistency (COMP-8)" do
+    test "cast_batch sequential fallback surfaces child failure as error observation" do
+      # Runtime with call_entity that returns an error, no call_entity_batch
+      circle = Circle.new(gates: [:done, :cantrip, :cast, :cast_batch], type: :code)
+
+      failing_call_entity = fn _opts ->
+        %{
+          observation: %{gate: "call_entity", result: "child crashed", is_error: true},
+          value: nil
+        }
+      end
+
+      runtime = %{circle: circle, call_entity: failing_call_entity}
+      state = %{}
+
+      # cast_batch should raise internally (caught by code medium as error obs)
+      code = """
+      id = cantrip.(%{
+        identity: "helper",
+        circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+      })
+      cast_batch.([%{cantrip: id, intent: "fail please"}])
+      done.("should not reach here")
+      """
+
+      {_state, obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+
+      # The raise should prevent done from being reached
+      # Prior to fix: cast_batch swallowed the error, done was reached
+      refute terminated, "cast_batch should have raised before done was called"
+      error_obs = Enum.find(obs, fn o -> o[:is_error] end)
+      assert error_obs, "expected an error observation from cast_batch failure"
+    end
+  end
 end

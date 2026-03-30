@@ -333,4 +333,21 @@ defmodule DivergenceFixesTest do
       assert msg =~ "circle must declare a medium"
     end
   end
+
+  # ===========================================================================
+  # WARD-1 / COMP-6: max_depth: 0 must be preserved and strip delegation gates
+  # ===========================================================================
+
+  describe "WARD-1: max_depth 0 in ward composition" do
+    test "compose_wards takes min when child sets max_depth: 0 (COMP-6)" do
+      parent_wards = [%{max_turns: 10, max_depth: 1}]
+      child_wards = [%{max_turns: 5, max_depth: 0}]
+
+      composed = Circle.compose_wards(parent_wards, child_wards)
+
+      # min(1, 0) should be 0, not 1
+      depth_ward = Enum.find(composed, fn w -> Map.has_key?(w, :max_depth) end)
+      assert depth_ward.max_depth == 0
+    end
+  end
 end

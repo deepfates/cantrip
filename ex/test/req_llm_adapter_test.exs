@@ -203,5 +203,19 @@ defmodule ReqLLMAdapterTest do
       assert returned_state.stream == true
       assert returned_state.timeout_ms == 5_000
     end
+
+    test "base_url and api_key are preserved through state (LLM-3)" do
+      state = %{
+        model: "bad:model",
+        base_url: "http://localhost:11434/v1",
+        api_key: "sk-test-key"
+      }
+
+      request = %{messages: [%{role: :user, content: "hi"}], tools: []}
+
+      {:error, _error, returned_state} = Adapter.query(state, request)
+      assert returned_state.base_url == "http://localhost:11434/v1"
+      assert returned_state.api_key == "sk-test-key"
+    end
   end
 end

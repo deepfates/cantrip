@@ -369,4 +369,46 @@ defmodule Cantrip.FamiliarTest do
       assert opts[:acp] == true
     end
   end
+
+  # ===========================================================================
+  # A.12: Child cantrip registry must persist across turns
+  # ===========================================================================
+
+  describe "child cantrip persistence across turns" do
+    test "child constructed on turn 1 can be cast on turn 2" do
+      # Turn 1: construct a child cantrip, store the ID in a variable
+      # Turn 2: cast the child using the stored ID
+      # Turn 3: done with the result
+      parent =
+        {FakeLLM,
+         FakeLLM.new([
+           # Turn 1: construct child
+           %{
+             code: """
+             child_id = cantrip.(%{
+               identity: "You are a helper. Call done with the answer.",
+               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+             })
+             """
+           },
+           # Turn 2: cast the child using the ID from turn 1
+           %{
+             code: """
+             result = cast.(child_id, "What is 6 * 7?")
+             done.(result)
+             """
+           }
+         ])}
+
+      child =
+        {FakeLLM,
+         FakeLLM.new([
+           %{tool_calls: [%{gate: "done", args: %{answer: "42"}}]}
+         ])}
+
+      {:ok, cantrip} = Familiar.new(llm: parent, child_llm: child)
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "cross-turn orchestration")
+      assert result == "42"
+    end
+  end
 end

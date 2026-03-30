@@ -350,7 +350,7 @@ defmodule Cantrip.Circle do
     Enum.reduce(wards, %{}, fn ward, acc ->
       Enum.reduce(keys, acc, fn key, inner_acc ->
         case Map.get(ward, key) do
-          n when is_integer(n) and n > 0 ->
+          n when is_integer(n) and n >= 0 ->
             Map.update(inner_acc, key, n, &min(&1, n))
 
           _ ->

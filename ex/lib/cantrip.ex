@@ -116,17 +116,39 @@ defmodule Cantrip do
     if model in [nil, ""] do
       {:error, missing_model_error(provider)}
     else
-      {:ok,
-       {Cantrip.LLMs.ReqLLM,
-        %{
-          model: "#{prefix}:#{model}",
-          stream: System.get_env("CANTRIP_STREAM") == "true",
-          timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 60_000),
-          temperature: parse_float(System.get_env("CANTRIP_TEMPERATURE")),
-          max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), nil)
-        }}}
+      base_url = base_url_for_provider(provider)
+      api_key = api_key_for_provider(provider)
+
+      state = %{
+        model: "#{prefix}:#{model}",
+        stream: System.get_env("CANTRIP_STREAM") == "true",
+        timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 60_000),
+        temperature: parse_float(System.get_env("CANTRIP_TEMPERATURE")),
+        max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), nil)
+      }
+
+      state = if base_url, do: Map.put(state, :base_url, base_url), else: state
+      state = if api_key, do: Map.put(state, :api_key, api_key), else: state
+
+      {:ok, {Cantrip.LLMs.ReqLLM, state}}
     end
   end
+
+  defp base_url_for_provider("openai_compatible"),
+    do: env_first(["OPENAI_BASE_URL", "CANTRIP_BASE_URL"])
+
+  defp base_url_for_provider(_), do: nil
+
+  defp api_key_for_provider("openai_compatible"),
+    do: env_first(["OPENAI_API_KEY", "CANTRIP_API_KEY"])
+
+  defp api_key_for_provider("anthropic"),
+    do: env_first(["ANTHROPIC_API_KEY", "CANTRIP_API_KEY"])
+
+  defp api_key_for_provider("gemini"),
+    do: env_first(["GEMINI_API_KEY", "CANTRIP_API_KEY"])
+
+  defp api_key_for_provider(_), do: nil
 
   defp model_for_provider("openai_compatible"), do: env_first(["OPENAI_MODEL", "CANTRIP_MODEL"])
   defp model_for_provider("anthropic"), do: env_first(["ANTHROPIC_MODEL", "CANTRIP_MODEL"])

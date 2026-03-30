@@ -232,6 +232,11 @@ defmodule Cantrip.CodeMedium do
           Enum.map(call_opts_list, fn opts ->
             payload = runtime.call_entity.(opts)
             push_observation(payload.observation)
+
+            if payload.observation[:is_error] do
+              raise payload.observation[:result] || "cast_batch child failed"
+            end
+
             payload.value
           end)
 

@@ -135,6 +135,8 @@ if Code.ensure_loaded?(ReqLLM) do
       opts = if state.temperature, do: [{:temperature, state.temperature} | opts], else: opts
       opts = if state.max_tokens, do: [{:max_tokens, state.max_tokens} | opts], else: opts
       opts = if state.timeout_ms, do: [{:receive_timeout, state.timeout_ms} | opts], else: opts
+      opts = if state.base_url, do: [{:base_url, state.base_url} | opts], else: opts
+      opts = if state.api_key, do: [{:api_key, state.api_key} | opts], else: opts
 
       tool_specs = normalize_tools(tools)
 
@@ -247,7 +249,9 @@ if Code.ensure_loaded?(ReqLLM) do
         stream: Map.get(state, :stream, false),
         temperature: Map.get(state, :temperature),
         max_tokens: Map.get(state, :max_tokens),
-        timeout_ms: Map.get(state, :timeout_ms, @default_timeout_ms)
+        timeout_ms: Map.get(state, :timeout_ms, @default_timeout_ms),
+        base_url: Map.get(state, :base_url),
+        api_key: Map.get(state, :api_key)
       }
     end
   end
