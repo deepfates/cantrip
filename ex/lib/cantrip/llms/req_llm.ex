@@ -44,10 +44,14 @@ if Code.ensure_loaded?(ReqLLM) do
       model = state.model
       context = build_context(request)
       opts = build_opts(state, request)
+      stream_to = Map.get(request, :stream_to)
+
+      # Stream when explicitly configured or when a stream_to listener is present
+      use_stream = state.stream or is_pid(stream_to)
 
       result =
-        if state.stream do
-          stream_query(model, context, opts)
+        if use_stream do
+          stream_query(model, context, opts, stream_to)
         else
           sync_query(model, context, opts)
         end
@@ -78,21 +82,49 @@ if Code.ensure_loaded?(ReqLLM) do
 
     # -- Streaming path --
 
-    defp stream_query(model, context, opts) do
+    defp stream_query(model, context, opts, stream_to) do
       case ReqLLM.stream_text(model, context, opts) do
-        {:ok, %ReqLLM.Response{} = response} ->
-          # For streaming responses, collect text from the stream
+        {:ok, %ReqLLM.StreamResponse{} = sr} ->
+          # Stream tokens, emitting deltas to stream_to as they arrive
           text =
-            response
-            |> ReqLLM.Response.text_stream()
-            |> Enum.join("")
+            sr
+            |> ReqLLM.StreamResponse.tokens()
+            |> Enum.reduce("", fn chunk, acc ->
+              if is_pid(stream_to) and is_binary(chunk) and chunk != "" do
+                send(stream_to, {:cantrip_event, {:text_delta, chunk}})
+              end
+
+              acc <> chunk
+            end)
 
           text = if text == "", do: nil, else: text
-          usage = ReqLLM.Response.usage(response) || %{}
+
+          # Get metadata after stream is consumed
+          usage = ReqLLM.StreamResponse.usage(sr) || %{}
+          tool_calls = ReqLLM.StreamResponse.tool_calls(sr)
 
           {:ok,
            %{
              content: text,
+             code: Helpers.extract_code(text),
+             tool_calls: normalize_tool_calls(tool_calls || []),
+             usage: normalize_usage(usage),
+             raw_response: sr
+           }}
+
+        # Legacy Response path (some providers may still return this)
+        {:ok, %ReqLLM.Response{} = response} ->
+          text = ReqLLM.Response.text(response)
+
+          if is_pid(stream_to) and is_binary(text) and text != "" do
+            send(stream_to, {:cantrip_event, {:text_delta, text}})
+          end
+
+          usage = ReqLLM.Response.usage(response) || %{}
+
+          {:ok,
+           %{
+             content: if(is_nil(text) or text == "", do: nil, else: text),
              code: Helpers.extract_code(text),
              tool_calls: normalize_tool_calls(ReqLLM.Response.tool_calls(response)),
              usage: normalize_usage(usage),

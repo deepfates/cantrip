@@ -34,8 +34,14 @@ defmodule Cantrip.CLI.Renderer do
     {["\r", dim(), "  (#{ms}ms)\n", reset()], :stderr, state}
   end
 
+  def render_event(state, {:text_delta, chunk}) when is_binary(chunk) do
+    # Streaming text chunk — write directly for real-time display
+    # No per-chunk ANSI wrapping to avoid visual noise
+    {chunk, :stderr, state}
+  end
+
   def render_event(state, {:text, content}) when is_binary(content) and content != "" do
-    # Code medium text is LLM-generated code — show abbreviated and dim
+    # Full text (non-streaming fallback) — show abbreviated and dim
     preview = content |> String.split("\n") |> hd() |> truncate(80)
     {[dim(), "  │ ", preview, reset(), "\n"], :stderr, state}
   end

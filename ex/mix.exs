@@ -37,6 +37,7 @@ defmodule Cantrip.MixProject do
       {:dotenvy, "~> 1.1"},
       {:nimble_options, "~> 1.1"},
       {:agent_client_protocol, github: "f1729/agent-client-protocol-elixir"},
+      {:owl, "~> 0.13"},
       {:yaml_elixir, "~> 2.11", only: :test},
       {:mox, "~> 1.2", only: :test}
     ]

@@ -196,7 +196,8 @@ defmodule Cantrip.EntityServer do
       request = %{
         messages: messages,
         tools: tools,
-        tool_choice: tool_choice_override || state.cantrip.identity.tool_choice
+        tool_choice: tool_choice_override || state.cantrip.identity.tool_choice,
+        stream_to: state.stream_to
       }
 
       emit_event(state, {:message_start, %{turn: state.turns + 1}})
