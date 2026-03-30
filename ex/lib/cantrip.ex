@@ -301,6 +301,11 @@ defmodule Cantrip do
     EntityServer.send_intent(pid, intent)
   end
 
+  @doc "Send with opts (e.g. stream_to: pid for per-call event delivery)."
+  def send(pid, intent, opts) when is_pid(pid) and is_binary(intent) and is_list(opts) do
+    EntityServer.send_intent(pid, intent, opts)
+  end
+
   @doc """
   M2 cast entrypoint: executes one loop episode in an entity process.
   """

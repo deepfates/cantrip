@@ -31,7 +31,12 @@ defmodule Cantrip.EntityServer do
 
   @doc "Send a new intent to a persistent entity, running another loop episode."
   def send_intent(pid, intent) when is_binary(intent) do
-    GenServer.call(pid, {:send_intent, intent}, :infinity)
+    GenServer.call(pid, {:send_intent, intent, []}, :infinity)
+  end
+
+  @doc "Send with opts (e.g. stream_to: pid for per-call event delivery)."
+  def send_intent(pid, intent, opts) when is_binary(intent) and is_list(opts) do
+    GenServer.call(pid, {:send_intent, intent, opts}, :infinity)
   end
 
   @impl true
@@ -105,7 +110,7 @@ defmodule Cantrip.EntityServer do
   end
 
   @impl true
-  def handle_call({:send_intent, intent}, _from, state) do
+  def handle_call({:send_intent, intent, opts}, _from, state) do
     next_messages =
       if state.lazy do
         initial_messages(state.cantrip.identity, state.cantrip.circle, intent)
@@ -113,17 +118,23 @@ defmodule Cantrip.EntityServer do
         state.messages ++ [%{role: :user, content: intent}]
       end
 
-    next_state = %{state | messages: next_messages, lazy: false}
+    # Per-call stream_to override; save original to restore after loop
+    original_stream_to = state.stream_to
+    call_stream_to = Keyword.get(opts, :stream_to, state.stream_to)
+
+    next_state = %{state | messages: next_messages, lazy: false, stream_to: call_stream_to}
 
     case run_loop(next_state) do
       {:error, reason, final_state} ->
         emit_entity_stop(final_state, :error)
+        final_state = %{final_state | stream_to: original_stream_to}
         reply = {:error, reason, final_state.cantrip}
         {:reply, reply, final_state}
 
       {result, final_state, meta} ->
         stop_reason = if meta[:truncated], do: :truncated, else: :done
         emit_entity_stop(final_state, stop_reason)
+        final_state = %{final_state | stream_to: original_stream_to}
         reply = {:ok, result, final_state.cantrip, final_state.loom, meta}
         {:reply, reply, final_state}
     end
@@ -167,11 +178,13 @@ defmodule Cantrip.EntityServer do
       {nil, %{state | loom: loom}, meta}
     else
       turn_number = state.turns + 1
+
       :telemetry.execute(
         [:cantrip, :turn, :start],
         %{},
         %{entity_id: state.entity_id, turn_number: turn_number}
       )
+
       turn_start_time = System.monotonic_time()
 
       emit_event(state, {:step_start, %{turn: turn_number, entity_id: state.entity_id}})
@@ -252,7 +265,10 @@ defmodule Cantrip.EntityServer do
       case state.cantrip.circle.type do
         :code ->
           # Extract code from tool call args (tool_view) or from content (FakeLLM/legacy)
-          code = if is_binary(code) and code != "", do: code, else: extract_code_from_tool_call(tool_calls)
+          code =
+            if is_binary(code) and code != "",
+              do: code,
+              else: extract_code_from_tool_call(tool_calls)
 
           if is_binary(code) and code != "" do
             runtime = %{
@@ -273,7 +289,8 @@ defmodule Cantrip.EntityServer do
           else
             # No code found — fall through to regular tool call handling
             # (child entities in code circles may receive non-code tool calls)
-            {observation, result, by_done} = execute_gate_calls(state.cantrip.circle, tool_calls, state.entity_id)
+            {observation, result, by_done} =
+              execute_gate_calls(state.cantrip.circle, tool_calls, state.entity_id)
 
             {%{content: content, tool_calls: tool_calls}, observation, result, by_done,
              state.code_state}
@@ -292,12 +309,16 @@ defmodule Cantrip.EntityServer do
             Cantrip.BashMedium.eval(command, state.code_state, runtime)
 
           duration = System.monotonic_time() - eval_start
-          :telemetry.execute([:cantrip, :code, :eval], %{duration: duration}, %{entity_id: state.entity_id})
+
+          :telemetry.execute([:cantrip, :code, :eval], %{duration: duration}, %{
+            entity_id: state.entity_id
+          })
 
           {%{content: command, tool_calls: []}, obs, result, terminated, next_state}
 
         _ ->
-          {observation, result, by_done} = execute_gate_calls(state.cantrip.circle, tool_calls, state.entity_id)
+          {observation, result, by_done} =
+            execute_gate_calls(state.cantrip.circle, tool_calls, state.entity_id)
 
           {%{content: content, tool_calls: tool_calls}, observation, result, by_done,
            state.code_state}
@@ -318,7 +339,8 @@ defmodule Cantrip.EntityServer do
         by_done ->
           true
 
-        tool_calls == [] and is_binary(content) and not Circle.require_done_tool?(state.cantrip.circle) ->
+        tool_calls == [] and is_binary(content) and
+            not Circle.require_done_tool?(state.cantrip.circle) ->
           true
 
         true ->
@@ -506,7 +528,10 @@ defmodule Cantrip.EntityServer do
       {:ok, {{next_state, obs, result, terminated}, child_llm, familiar_store, captured_output}} ->
         if entity_id do
           duration = System.monotonic_time() - eval_start
-          :telemetry.execute([:cantrip, :code, :eval], %{duration: duration}, %{entity_id: entity_id})
+
+          :telemetry.execute([:cantrip, :code, :eval], %{duration: duration}, %{
+            entity_id: entity_id
+          })
         end
 
         next_state =
@@ -525,7 +550,10 @@ defmodule Cantrip.EntityServer do
       nil ->
         if entity_id do
           duration = System.monotonic_time() - eval_start
-          :telemetry.execute([:cantrip, :code, :eval], %{duration: duration}, %{entity_id: entity_id})
+
+          :telemetry.execute([:cantrip, :code, :eval], %{duration: duration}, %{
+            entity_id: entity_id
+          })
         end
 
         Task.shutdown(task, :brutal_kill)
@@ -588,7 +616,10 @@ defmodule Cantrip.EntityServer do
       args = call[:args] || call["args"] || %{}
 
       if entity_id do
-        :telemetry.execute([:cantrip, :gate, :start], %{}, %{entity_id: entity_id, gate_name: gate})
+        :telemetry.execute([:cantrip, :gate, :start], %{}, %{
+          entity_id: entity_id,
+          gate_name: gate
+        })
       end
 
       gate_start = System.monotonic_time()
@@ -598,6 +629,7 @@ defmodule Cantrip.EntityServer do
 
       if entity_id do
         duration = System.monotonic_time() - gate_start
+
         :telemetry.execute(
           [:cantrip, :gate, :stop],
           %{duration: duration},
@@ -654,6 +686,7 @@ defmodule Cantrip.EntityServer do
       raw_intent = opts[:intent] || ""
       # If context is provided, prepend it to the intent so the child sees it.
       context = opts[:context]
+
       child_intent =
         if context do
           ctx_str = if is_binary(context), do: context, else: Jason.encode!(context)
@@ -661,6 +694,7 @@ defmodule Cantrip.EntityServer do
         else
           raw_intent
         end
+
       # If system_prompt is provided, override child identity.
       child_system_prompt = opts[:system_prompt]
       child_wards = normalize_child_wards(opts)
@@ -695,7 +729,14 @@ defmodule Cantrip.EntityServer do
           type ->
             # Reconstruct circle with the requested type via Circle.new
             # so normalize_type is applied correctly
-            normalized = Circle.new(%{type: type, gates: Map.values(child_gates), wards: composed_wards, medium_opts: child_circle.medium_opts})
+            normalized =
+              Circle.new(%{
+                type: type,
+                gates: Map.values(child_gates),
+                wards: composed_wards,
+                medium_opts: child_circle.medium_opts
+              })
+
             %{child_circle | type: normalized.type}
         end
 
@@ -714,13 +755,18 @@ defmodule Cantrip.EntityServer do
           llm_state: child_state,
           circle: child_circle
       }
+
       # Use request's system_prompt if provided; otherwise give children
       # a generic prompt so they don't inherit parent's delegation instructions.
       effective_child_prompt =
         child_system_prompt ||
-        "You are a child entity. Pursue the intent and call done with the result."
+          "You are a child entity. Pursue the intent and call done with the result."
+
       child_cantrip =
-        %{child_cantrip | identity: %{child_cantrip.identity | system_prompt: effective_child_prompt}}
+        %{
+          child_cantrip
+          | identity: %{child_cantrip.identity | system_prompt: effective_child_prompt}
+        }
 
       cancel_on_parent = [self() | state.cancel_on_parent] |> Enum.uniq()
 
@@ -993,6 +1039,7 @@ defmodule Cantrip.EntityServer do
 
   defp emit_turn_stop(entity_id, turn_number, turn_start_time) do
     duration = System.monotonic_time() - turn_start_time
+
     :telemetry.execute(
       [:cantrip, :turn, :stop],
       %{duration: duration},
