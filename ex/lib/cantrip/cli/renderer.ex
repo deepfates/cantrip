@@ -69,6 +69,29 @@ defmodule Cantrip.CLI.Renderer do
     {[result_str, "\n"], :stdout, state}
   end
 
+  def render_event(state, {:child_start, %{intent: intent}}) do
+    preview = intent |> to_string() |> truncate(60)
+    {["  ▸ cast (child: \"", preview, "\")\n"], :stderr, state}
+  end
+
+  def render_event(state, {:child_start, _}) do
+    {["  ▸ cast (child running)\n"], :stderr, state}
+  end
+
+  def render_event(state, {:child_end, %{error: err}}) do
+    preview = err |> to_string() |> truncate(80)
+    {[red(), "  ✗ cast: ", preview, reset(), "\n"], :stderr, state}
+  end
+
+  def render_event(state, {:child_end, %{result: result}}) do
+    preview = result |> stringify_result() |> truncate(80)
+    {[green(), "  ✓ cast: ", preview, reset(), "\n"], :stderr, state}
+  end
+
+  def render_event(state, {:empty_turn, %{turn: n}}) do
+    {[IO.ANSI.yellow(), "  ⚠ Turn #{n}: empty (no output)\n", reset()], :stderr, state}
+  end
+
   # Events we don't render
   def render_event(state, {:text, _}), do: {"", :stderr, state}
   def render_event(state, {:step_complete, _}), do: {"", :stderr, state}

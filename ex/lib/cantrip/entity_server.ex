@@ -348,6 +348,12 @@ defmodule Cantrip.EntityServer do
           false
       end
 
+    # Detect empty turns — LLM responded but nothing happened
+    if observation == [] and not terminated do
+      turn_number = state.turns + 1
+      emit_event(state, {:empty_turn, %{turn: turn_number}})
+    end
+
     usage_data = Map.get(response, :usage, %{})
 
     turn_attrs = %{
@@ -770,13 +776,17 @@ defmodule Cantrip.EntityServer do
         }
 
       cancel_on_parent = [self() | state.cancel_on_parent] |> Enum.uniq()
+      child_depth = state.depth + 1
+
+      emit_event(state, {:child_start, %{depth: child_depth, intent: child_intent}})
 
       case Cantrip.cast(child_cantrip, child_intent,
-             depth: state.depth + 1,
+             depth: child_depth,
              cancel_on_parent: cancel_on_parent
            ) do
         {:ok, value, next_cantrip, child_loom, _meta} ->
           remember_child_llm(next_cantrip)
+          emit_event(state, {:child_end, %{depth: child_depth, result: value}})
 
           %{
             value: value,
@@ -790,6 +800,7 @@ defmodule Cantrip.EntityServer do
 
         {:error, reason, next_cantrip} ->
           remember_child_llm(next_cantrip)
+          emit_event(state, {:child_end, %{depth: child_depth, error: inspect(reason)}})
 
           %{
             value: inspect(reason),
