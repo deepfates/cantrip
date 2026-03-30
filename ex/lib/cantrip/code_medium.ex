@@ -271,6 +271,13 @@ defmodule Cantrip.CodeMedium do
         prompt -> Map.put(opts, :system_prompt, prompt)
       end
 
+    # Allow child to specify its own LLM (e.g. a cheaper model for simple tasks)
+    opts =
+      case config[:llm] do
+        nil -> opts
+        llm -> Map.put(opts, :llm, llm)
+      end
+
     opts =
       case config[:circle] do
         nil ->
