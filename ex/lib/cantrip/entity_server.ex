@@ -252,9 +252,9 @@ defmodule Cantrip.EntityServer do
       case state.cantrip.circle.type do
         :code ->
           # Extract code from tool call args (tool_view) or from content (FakeLLM/legacy)
-          code = code || extract_code_from_tool_call(tool_calls)
+          code = if is_binary(code) and code != "", do: code, else: extract_code_from_tool_call(tool_calls)
 
-          if is_binary(code) do
+          if is_binary(code) and code != "" do
             runtime = %{
               circle: state.cantrip.circle,
               loom: state.loom,

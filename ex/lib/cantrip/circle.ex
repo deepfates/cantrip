@@ -203,11 +203,11 @@ defmodule Cantrip.Circle do
   end
 
   @spec capability_presentation(t()) :: String.t()
-  def capability_presentation(%__MODULE__{} = circle) do
+  def capability_presentation(%__MODULE__{gates: gates} = circle) do
     gate_lines =
       circle
       |> gate_names()
-      |> Enum.map(&format_gate_description/1)
+      |> Enum.map(fn name -> format_gate_description(name, Map.get(gates, name, %{})) end)
       |> Enum.join("\n")
 
     """
@@ -230,47 +230,61 @@ defmodule Cantrip.Circle do
     """
   end
 
-  defp format_gate_description("done"),
+  # If the gate map has an explicit :description, use it (CIRCLE-10: gate config at construction time)
+  defp format_gate_description(name, %{description: desc}) when is_binary(desc),
+    do: "- #{name}.(#{gate_args_hint(name)}) — #{desc}"
+
+  defp format_gate_description(name, %{"description" => desc}) when is_binary(desc),
+    do: "- #{name}.(#{gate_args_hint(name)}) — #{desc}"
+
+  # Built-in defaults when no description is provided
+  defp format_gate_description("done", _gate),
     do: "- done.(answer) — complete the task and return the answer"
 
-  defp format_gate_description("echo"),
+  defp format_gate_description("echo", _gate),
     do: "- echo.(opts) — echo text back"
 
-  defp format_gate_description("call_entity"),
+  defp format_gate_description("call_entity", _gate),
     do: "- call_entity.(opts) — delegate to a child entity; opts must include :intent"
 
-  defp format_gate_description("call_entity_batch"),
+  defp format_gate_description("call_entity_batch", _gate),
     do: "- call_entity_batch.(list) — delegate to multiple child entities in parallel"
 
-  defp format_gate_description("compile_and_load"),
+  defp format_gate_description("compile_and_load", _gate),
     do: "- compile_and_load.(opts) — compile and load an Elixir module"
 
-  defp format_gate_description("read"),
-    do: "- read.(opts) — read a file; opts must include :path"
+  defp format_gate_description("read", _gate),
+    do: "- read.(path) — read a file; path is relative to the working directory"
 
-  defp format_gate_description("read_file"),
-    do: "- read_file.(opts) — read a file from the filesystem; opts must include :path (absolute)"
+  defp format_gate_description("read_file", _gate),
+    do: "- read_file.(path) — read a file; path is relative to the working directory"
 
-  defp format_gate_description("list_dir"),
-    do: "- list_dir.(opts) — list directory contents; opts must include :path"
+  defp format_gate_description("list_dir", _gate),
+    do: "- list_dir.(path) — list directory contents; path is relative to the working directory"
 
-  defp format_gate_description("search"),
+  defp format_gate_description("search", _gate),
     do: "- search.(opts) — search file contents; opts must include :pattern and :path"
 
-  defp format_gate_description("cantrip"),
+  defp format_gate_description("cantrip", _gate),
     do: "- cantrip.(config) — construct a child cantrip; config includes :identity, :circle"
 
-  defp format_gate_description("cast"),
+  defp format_gate_description("cast", _gate),
     do: "- cast.(cantrip_id, intent) — send an intent to a constructed child cantrip"
 
-  defp format_gate_description("cast_batch"),
+  defp format_gate_description("cast_batch", _gate),
     do: "- cast_batch.(items) — execute multiple child cantrips in parallel; items are [%{cantrip: id, intent: text}]"
 
-  defp format_gate_description("dispose"),
+  defp format_gate_description("dispose", _gate),
     do: "- dispose.(cantrip_id) — clean up a child cantrip's resources"
 
-  defp format_gate_description(name),
-    do: "- #{name}.(opts) — summon the #{name} gate"
+  defp format_gate_description(name, _gate),
+    do: "- #{name}.(opts) — invoke the #{name} gate"
+
+  defp gate_args_hint("done"), do: "answer"
+  defp gate_args_hint("cast"), do: "cantrip_id, intent"
+  defp gate_args_hint("cast_batch"), do: "items"
+  defp gate_args_hint("dispose"), do: "cantrip_id"
+  defp gate_args_hint(_), do: "opts"
 
   @spec execute_gate(t(), String.t(), map()) :: %{
           gate: String.t(),

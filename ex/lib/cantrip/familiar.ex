@@ -115,12 +115,13 @@ defmodule Cantrip.Familiar do
     loom_storage = if loom_path, do: {:jsonl, loom_path}, else: nil
 
     # Observation gates (read-only filesystem access, sandboxed to root if set)
+    # Gate descriptions tell the LLM how to use them; root is a closed-over dependency (CIRCLE-10)
     base_gate = if root, do: %{root: root}, else: %{}
 
     observation_gates = [
-      Map.merge(base_gate, %{name: "read_file"}),
-      Map.merge(base_gate, %{name: "list_dir"}),
-      Map.merge(base_gate, %{name: "search"})
+      Map.merge(base_gate, %{name: "read_file", description: "read a file; path is relative to the working directory"}),
+      Map.merge(base_gate, %{name: "list_dir", description: "list directory contents; path is relative to the working directory (use \".\" for current)"}),
+      Map.merge(base_gate, %{name: "search", description: "search file contents; opts must include :pattern and :path (relative to working directory)"})
     ]
 
     # Orchestration gates (cantrip construction + delegation)
