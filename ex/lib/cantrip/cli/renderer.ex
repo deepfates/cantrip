@@ -40,12 +40,12 @@ defmodule Cantrip.CLI.Renderer do
     {chunk, :stderr, state}
   end
 
-  def render_event(state, {:text, content}) when is_binary(content) and content != "" do
-    # Full utterance code — show in a bordered box
-    code = truncate_code(content, @max_code_lines)
+  def render_event(state, {:code, code}) when is_binary(code) and code != "" do
+    # Entity's utterance — the code it wrote this turn
+    display = truncate_code(code, @max_code_lines)
 
     box =
-      code
+      display
       |> Owl.Box.new(
         title: Owl.Data.tag(" elixir ", :cyan),
         border_tag: :faint,
@@ -54,6 +54,11 @@ defmodule Cantrip.CLI.Renderer do
       |> Owl.Data.to_chardata()
 
     {[box, "\n"], :stderr, state}
+  end
+
+  def render_event(state, {:text, content}) when is_binary(content) and content != "" do
+    # Conversation medium text — show directly
+    {[content, "\n"], :stderr, state}
   end
 
   def render_event(state, {:tool_call, %{gate: gate}}) do

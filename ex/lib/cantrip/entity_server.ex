@@ -272,6 +272,8 @@ defmodule Cantrip.EntityServer do
               else: extract_code_from_tool_call(tool_calls)
 
           if is_binary(code) and code != "" do
+            emit_event(state, {:code, code})
+
             runtime = %{
               circle: state.cantrip.circle,
               loom: state.loom,
