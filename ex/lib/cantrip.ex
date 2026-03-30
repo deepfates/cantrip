@@ -264,6 +264,12 @@ defmodule Cantrip do
     DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec)
   end
 
+  @doc "Summon with additional EntityServer opts (e.g. stream_to: pid)."
+  def summon_with(%__MODULE__{} = cantrip, opts) when is_list(opts) do
+    spec = {EntityServer, [cantrip: cantrip, lazy: true] ++ opts}
+    DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec)
+  end
+
   @doc """
   ENTITY-5: Create a persistent entity and immediately run the first intent.
   Convenience wrapper: equivalent to `summon/1` followed by `send/2`.

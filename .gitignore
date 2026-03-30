@@ -28,3 +28,4 @@ deps/
 # Editors
 *.swp
 *~
+erl_crash.dump
