@@ -1,13 +1,15 @@
 defmodule Cantrip.CLI.Renderer do
   @moduledoc """
-  Renders EntityServer streaming events to terminal output.
+  Renders EntityServer streaming events to terminal output using Owl.
 
-  Pure functions: render_event/2 returns {iodata, state}. The caller
+  Pure functions: render_event/2 returns {iodata, device, state}. The caller
   is responsible for writing to IO. This keeps the renderer testable.
 
   Progress goes to stderr. Final answer goes to stdout. This enables
   `mix cantrip.familiar "task" > result.txt` to capture just the answer.
   """
+
+  @max_code_lines 20
 
   defstruct turn: 0
 
@@ -16,52 +18,75 @@ defmodule Cantrip.CLI.Renderer do
   @spec new() :: t()
   def new, do: %__MODULE__{}
 
-  @doc """
-  Render a cantrip event to iodata. Returns {output, device, new_state}
-  where device is :stderr or :stdout.
-  """
   @spec render_event(t(), term()) :: {iodata(), :stderr | :stdout, t()}
 
   def render_event(state, {:step_start, %{turn: n}}) do
-    {[dim(), "--- Turn #{n} ---\n", reset()], :stderr, %{state | turn: n}}
+    header =
+      Owl.Data.tag("--- Turn #{n} ---", :faint)
+      |> Owl.Data.to_chardata()
+
+    {[header, "\n"], :stderr, %{state | turn: n}}
   end
 
   def render_event(state, {:message_start, _}) do
-    {[dim(), "  Thinking...", reset()], :stderr, state}
+    {[Owl.Data.tag("  Thinking...", :faint) |> Owl.Data.to_chardata()], :stderr, state}
   end
 
   def render_event(state, {:message_complete, %{duration_ms: ms}}) do
-    {["\r", dim(), "  (#{ms}ms)\n", reset()], :stderr, state}
+    {["\r", Owl.Data.tag("  (#{ms}ms)", :faint) |> Owl.Data.to_chardata(), "\n"], :stderr, state}
   end
 
   def render_event(state, {:text_delta, chunk}) when is_binary(chunk) do
-    # Streaming text chunk — write directly for real-time display
-    # No per-chunk ANSI wrapping to avoid visual noise
     {chunk, :stderr, state}
   end
 
   def render_event(state, {:text, content}) when is_binary(content) and content != "" do
-    # Full text (non-streaming fallback) — show abbreviated and dim
-    preview = content |> String.split("\n") |> hd() |> truncate(80)
-    {[dim(), "  │ ", preview, reset(), "\n"], :stderr, state}
+    # Full utterance code — show in a bordered box
+    code = truncate_code(content, @max_code_lines)
+
+    box =
+      code
+      |> Owl.Box.new(
+        title: Owl.Data.tag(" elixir ", :cyan),
+        border_tag: :faint,
+        padding_x: 1
+      )
+      |> Owl.Data.to_chardata()
+
+    {[box, "\n"], :stderr, state}
   end
 
   def render_event(state, {:tool_call, %{gate: gate}}) do
-    {["  ▸ ", gate, "\n"], :stderr, state}
+    line = ["  ", Owl.Data.tag("▸ ", :cyan) |> Owl.Data.to_chardata(), gate, "\n"]
+    {line, :stderr, state}
   end
 
   def render_event(state, {:tool_result, %{gate: gate, result: result, is_error: true}}) do
     preview = result |> stringify_result() |> truncate(80)
-    {[red(), "  ✗ ", gate, ": ", preview, reset(), "\n"], :stderr, state}
+
+    line =
+      Owl.Data.tag(["  ✗ ", gate, ": ", preview], :red)
+      |> Owl.Data.to_chardata()
+
+    {[line, "\n"], :stderr, state}
   end
 
   def render_event(state, {:tool_result, %{gate: gate, result: result, is_error: false}}) do
     preview = result |> stringify_result() |> truncate(80)
-    {[green(), "  ✓ ", gate, ": ", preview, reset(), "\n"], :stderr, state}
+
+    line =
+      Owl.Data.tag(["  ✓ ", gate, ": ", preview], :green)
+      |> Owl.Data.to_chardata()
+
+    {[line, "\n"], :stderr, state}
   end
 
   def render_event(state, {:usage, %{prompt_tokens: p, completion_tokens: c}}) do
-    {[dim(), "  [#{p}+#{c} tokens]\n", reset()], :stderr, state}
+    line =
+      Owl.Data.tag("  [#{p}+#{c} tokens]", :faint)
+      |> Owl.Data.to_chardata()
+
+    {[line, "\n"], :stderr, state}
   end
 
   def render_event(state, {:final_response, %{result: result}}) do
@@ -71,25 +96,52 @@ defmodule Cantrip.CLI.Renderer do
 
   def render_event(state, {:child_start, %{intent: intent}}) do
     preview = intent |> to_string() |> truncate(60)
-    {["  ▸ cast (child: \"", preview, "\")\n"], :stderr, state}
+
+    line = [
+      "  ",
+      Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(),
+      "cast (child: \"", preview, "\")\n"
+    ]
+
+    {line, :stderr, state}
   end
 
   def render_event(state, {:child_start, _}) do
-    {["  ▸ cast (child running)\n"], :stderr, state}
+    line = [
+      "  ",
+      Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(),
+      "cast (child running)\n"
+    ]
+
+    {line, :stderr, state}
   end
 
   def render_event(state, {:child_end, %{error: err}}) do
     preview = err |> to_string() |> truncate(80)
-    {[red(), "  ✗ cast: ", preview, reset(), "\n"], :stderr, state}
+
+    line =
+      Owl.Data.tag(["  ✗ cast: ", preview], :red)
+      |> Owl.Data.to_chardata()
+
+    {[line, "\n"], :stderr, state}
   end
 
   def render_event(state, {:child_end, %{result: result}}) do
     preview = result |> stringify_result() |> truncate(80)
-    {[green(), "  ✓ cast: ", preview, reset(), "\n"], :stderr, state}
+
+    line =
+      Owl.Data.tag(["  ✓ cast: ", preview], :green)
+      |> Owl.Data.to_chardata()
+
+    {[line, "\n"], :stderr, state}
   end
 
   def render_event(state, {:empty_turn, %{turn: n}}) do
-    {[IO.ANSI.yellow(), "  ⚠ Turn #{n}: empty (no output)\n", reset()], :stderr, state}
+    line =
+      Owl.Data.tag("  ⚠ Turn #{n}: empty (no output)", :yellow)
+      |> Owl.Data.to_chardata()
+
+    {[line, "\n"], :stderr, state}
   end
 
   # Events we don't render
@@ -101,12 +153,20 @@ defmodule Cantrip.CLI.Renderer do
   def truncate(str, max_len) when byte_size(str) <= max_len, do: str
   def truncate(str, max_len), do: String.slice(str, 0, max_len - 3) <> "..."
 
+  # -- Helpers --
+
   defp stringify_result(result) when is_binary(result), do: String.replace(result, "\n", " ")
   defp stringify_result(result), do: inspect(result, pretty: false, limit: 5)
 
-  # ANSI helpers
-  defp dim, do: IO.ANSI.faint()
-  defp reset, do: IO.ANSI.reset()
-  defp red, do: IO.ANSI.red()
-  defp green, do: IO.ANSI.green()
+  defp truncate_code(code, max_lines) do
+    lines = String.split(code, "\n")
+
+    if length(lines) > max_lines do
+      shown = Enum.take(lines, max_lines - 1)
+      remaining = length(lines) - max_lines + 1
+      Enum.join(shown, "\n") <> "\n... #{remaining} more lines"
+    else
+      code
+    end
+  end
 end
