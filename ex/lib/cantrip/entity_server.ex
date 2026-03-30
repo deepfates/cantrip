@@ -457,6 +457,30 @@ defmodule Cantrip.EntityServer do
   end
 
   defp eval_code_sandboxed(code, code_state, runtime, entity_id \\ nil) do
+    case Circle.sandbox(runtime.circle) do
+      :dune ->
+        eval_code_dune(code, code_state, runtime, entity_id)
+
+      _ ->
+        eval_code_unrestricted(code, code_state, runtime, entity_id)
+    end
+  end
+
+  defp eval_code_dune(code, code_state, runtime, entity_id) do
+    eval_start = System.monotonic_time()
+
+    {next_state, obs, result, terminated} =
+      Cantrip.CodeMedium.DuneSandbox.eval(code, code_state, runtime)
+
+    if entity_id do
+      duration = System.monotonic_time() - eval_start
+      :telemetry.execute([:cantrip, :code, :eval], %{duration: duration}, %{entity_id: entity_id})
+    end
+
+    {next_state, obs, result, terminated}
+  end
+
+  defp eval_code_unrestricted(code, code_state, runtime, entity_id) do
     timeout = Circle.code_eval_timeout_ms(runtime.circle)
     saved_child_llm = Map.get(code_state, :child_llm)
 

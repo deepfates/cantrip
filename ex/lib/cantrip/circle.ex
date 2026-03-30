@@ -106,6 +106,18 @@ defmodule Cantrip.Circle do
     end)
   end
 
+  @doc """
+  Returns the sandbox mode for this circle, or nil if none specified.
+  Add `%{sandbox: :dune}` to wards to opt-in to Dune sandboxing.
+  """
+  @spec sandbox(t()) :: atom() | nil
+  def sandbox(%__MODULE__{wards: wards}) do
+    Enum.find_value(wards, fn
+      %{sandbox: mode} when is_atom(mode) -> mode
+      _ -> nil
+    end)
+  end
+
   @spec code_eval_timeout_ms(t()) :: pos_integer()
   def code_eval_timeout_ms(%__MODULE__{wards: wards}) do
     Enum.find_value(wards, 30_000, fn

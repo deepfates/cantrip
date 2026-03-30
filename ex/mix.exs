@@ -32,6 +32,8 @@ defmodule Cantrip.MixProject do
       {:req, "~> 0.5"},
       {:jason, "~> 1.4"},
       {:telemetry, "~> 1.0"},
+      {:dune, "~> 0.3"},
+      {:req_llm, "~> 1.9"},
       {:yaml_elixir, "~> 2.11", only: :test}
     ]
   end

@@ -83,10 +83,54 @@ defmodule Cantrip do
     end
   end
 
+  @req_llm_prefixes %{
+    "openai_compatible" => "openai",
+    "anthropic" => "anthropic",
+    "gemini" => "google"
+  }
+
   @spec llm_from_env() :: {:ok, {module(), map()}} | {:error, String.t()}
   def llm_from_env do
     provider = System.get_env("CANTRIP_LLM_PROVIDER", "openai_compatible")
 
+    # Prefer ReqLLM when available for all providers
+    if Code.ensure_loaded?(Cantrip.LLMs.ReqLLM) and Map.has_key?(@req_llm_prefixes, provider) do
+      llm_from_env_req_llm(provider)
+    else
+      llm_from_env_legacy(provider)
+    end
+  end
+
+  defp llm_from_env_req_llm(provider) do
+    prefix = Map.fetch!(@req_llm_prefixes, provider)
+    model = model_for_provider(provider)
+
+    if model in [nil, ""] do
+      {:error, missing_model_error(provider)}
+    else
+      {:ok,
+       {Cantrip.LLMs.ReqLLM,
+        %{
+          model: "#{prefix}:#{model}",
+          stream: System.get_env("CANTRIP_STREAM") == "true",
+          timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 60_000),
+          temperature: parse_float(System.get_env("CANTRIP_TEMPERATURE")),
+          max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), nil)
+        }}}
+    end
+  end
+
+  defp model_for_provider("openai_compatible"), do: env_first(["OPENAI_MODEL", "CANTRIP_MODEL"])
+  defp model_for_provider("anthropic"), do: env_first(["ANTHROPIC_MODEL", "CANTRIP_MODEL"])
+  defp model_for_provider("gemini"), do: env_first(["GEMINI_MODEL", "CANTRIP_MODEL"])
+  defp model_for_provider(_), do: env_first(["CANTRIP_MODEL"])
+
+  defp missing_model_error("openai_compatible"), do: "missing CANTRIP_MODEL or OPENAI_MODEL"
+  defp missing_model_error("anthropic"), do: "missing CANTRIP_MODEL or ANTHROPIC_MODEL"
+  defp missing_model_error("gemini"), do: "missing CANTRIP_MODEL or GEMINI_MODEL"
+  defp missing_model_error(_), do: "missing CANTRIP_MODEL"
+
+  defp llm_from_env_legacy(provider) do
     case provider do
       "openai_compatible" ->
         model = env_first(["OPENAI_MODEL", "CANTRIP_MODEL"])
@@ -142,6 +186,25 @@ defmodule Cantrip do
 
       _ ->
         {:error, "unsupported llm provider: #{provider}"}
+    end
+  end
+
+  # Also handle explicit "req_llm" provider in legacy path
+  defp llm_from_env_legacy("req_llm") do
+    model = env_first(["CANTRIP_MODEL", "OPENAI_MODEL", "ANTHROPIC_MODEL", "GEMINI_MODEL"])
+
+    if model in [nil, ""] do
+      {:error, "missing CANTRIP_MODEL"}
+    else
+      {:ok,
+       {Cantrip.LLMs.ReqLLM,
+        %{
+          model: model,
+          stream: System.get_env("CANTRIP_STREAM") == "true",
+          timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 60_000),
+          temperature: parse_float(System.get_env("CANTRIP_TEMPERATURE")),
+          max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), nil)
+        }}}
     end
   end
 
@@ -452,6 +515,15 @@ defmodule Cantrip do
     case Integer.parse(value) do
       {n, _} -> n
       :error -> default
+    end
+  end
+
+  defp parse_float(nil), do: nil
+
+  defp parse_float(value) when is_binary(value) do
+    case Float.parse(value) do
+      {f, _} -> f
+      :error -> nil
     end
   end
 end

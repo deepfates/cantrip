@@ -33,9 +33,17 @@ defmodule CantripM8RealLlmConfigTest do
     System.put_env("OPENAI_BASE_URL", "http://localhost:11434/v1")
     System.put_env("CANTRIP_TIMEOUT_MS", "12345")
 
-    assert {:ok, {Cantrip.LLMs.OpenAICompatible, state}} = Cantrip.llm_from_env()
-    assert state.model == "gpt-5-mini"
-    assert state.base_url == "http://localhost:11434/v1"
+    assert {:ok, {module, state}} = Cantrip.llm_from_env()
+
+    if Code.ensure_loaded?(Cantrip.LLMs.ReqLLM) do
+      assert module == Cantrip.LLMs.ReqLLM
+      assert state.model == "openai:gpt-5-mini"
+    else
+      assert module == Cantrip.LLMs.OpenAICompatible
+      assert state.model == "gpt-5-mini"
+      assert state.base_url == "http://localhost:11434/v1"
+    end
+
     assert state.timeout_ms == 12_345
   end
 
