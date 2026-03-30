@@ -62,15 +62,13 @@ defmodule DivergenceFixesTest do
       assert {:error, _} = Circle.validate_medium(circle)
     end
 
-    test "Circle.new with no medium produces empty medium_sources" do
+    test "Circle.new with no medium defaults to conversation (MEDIUM-1)" do
       circle = Circle.new(%{})
-      assert {:error, msg} = Circle.validate_medium(circle)
-      assert msg =~ "circle must declare a medium"
-      # Circle.new still defaults type to :conversation for backwards compat
+      assert :ok = Circle.validate_medium(circle)
       assert circle.type == :conversation
     end
 
-    test "Cantrip.new rejects circle with no medium declaration" do
+    test "Cantrip.new accepts circle with no explicit medium, defaults to conversation" do
       llm = {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
 
       result =
@@ -82,8 +80,8 @@ defmodule DivergenceFixesTest do
           }
         )
 
-      assert {:error, msg} = result
-      assert msg =~ "circle must declare a medium"
+      assert {:ok, cantrip} = result
+      assert cantrip.circle.type == :conversation
     end
 
     test "Cantrip.new rejects conflicting medium in circle" do
@@ -311,28 +309,7 @@ defmodule DivergenceFixesTest do
     end
   end
 
-  # ===========================================================================
-  # MEDIUM-1: circle must declare a medium (no medium specified)
-  # ===========================================================================
-
-  describe "MEDIUM-1: circle must declare a medium when omitted" do
-    test "Cantrip.new rejects circle with no medium declaration" do
-      llm = {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
-
-      result =
-        Cantrip.new(
-          llm: llm,
-          circle: %{
-            gates: [:done],
-            wards: [%{max_turns: 10}]
-            # no type, medium, or circle_type specified
-          }
-        )
-
-      assert {:error, msg} = result
-      assert msg =~ "circle must declare a medium"
-    end
-  end
+  # MEDIUM-1 duplicate test removed — covered above in "circle medium validation"
 
   # ===========================================================================
   # WARD-1 / COMP-6: max_depth: 0 must be preserved and strip delegation gates

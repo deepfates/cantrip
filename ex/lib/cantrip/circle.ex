@@ -45,7 +45,8 @@ defmodule Cantrip.Circle do
   def validate_medium(%__MODULE__{medium_sources: sources}) do
     case sources do
       [] ->
-        {:error, "circle must declare a medium"}
+        # Per spec MEDIUM-1: default to conversation when no medium specified
+        :ok
 
       [{_source, _value}] ->
         :ok
