@@ -45,61 +45,93 @@ defmodule Mix.Tasks.Cantrip.Cast do
       true ->
         intent = Enum.join(positional, " ")
 
-        if opts[:familiar] do
-          run_familiar(intent, opts)
-        else
-          run_bare(intent, opts)
+        cantrip =
+          if opts[:familiar] do
+            build_familiar(opts)
+          else
+            build_bare(opts)
+          end
+
+        case cantrip do
+          {:ok, c} -> do_cast(c, intent, opts)
+          {:error, reason} -> print_env_error(reason)
         end
     end
   end
 
-  defp run_bare(intent, opts) do
+  defp build_bare(opts) do
     max_turns = Keyword.get(opts, :max_turns, 10)
 
     case Cantrip.llm_from_env() do
       {:ok, llm} ->
-        {:ok, cantrip} =
-          Cantrip.new(
-            llm: llm,
-            identity: %{system_prompt: "You are a helpful assistant. Call done(answer) with your response."},
-            circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: max_turns}]}
-          )
-
-        do_cast(cantrip, intent)
+        Cantrip.new(
+          llm: llm,
+          identity: %{system_prompt: "You are a helpful assistant. Call done(answer) with your response."},
+          circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: max_turns}]}
+        )
 
       {:error, reason} ->
-        print_env_error(reason)
+        {:error, reason}
     end
   end
 
-  defp run_familiar(intent, opts) do
+  defp build_familiar(opts) do
     loom_path = Keyword.get(opts, :loom_path, Path.join([".cantrip", "familiar.jsonl"]))
     max_turns = Keyword.get(opts, :max_turns, 20)
 
     case Cantrip.llm_from_env() do
       {:ok, llm} ->
-        {:ok, cantrip} =
-          Cantrip.Familiar.new(
-            llm: llm,
-            loom_path: loom_path,
-            max_turns: max_turns,
-            root: File.cwd!()
-          )
-
-        do_cast(cantrip, intent)
+        Cantrip.Familiar.new(
+          llm: llm,
+          loom_path: loom_path,
+          max_turns: max_turns,
+          root: File.cwd!()
+        )
 
       {:error, reason} ->
-        print_env_error(reason)
+        {:error, reason}
     end
   end
 
-  defp do_cast(cantrip, intent) do
-    case Cantrip.cast(cantrip, intent) do
-      {:ok, result, _cantrip, _loom, _meta} ->
-        Mix.shell().info(if is_binary(result), do: result, else: inspect(result, pretty: true))
+  defp do_cast(cantrip, intent, opts) do
+    caller = self()
+    renderer = if opts[:json], do: Cantrip.CLI.JsonRenderer.new(), else: Cantrip.CLI.Renderer.new()
+    renderer_mod = renderer.__struct__
 
-      {:error, reason, _cantrip} ->
-        Mix.shell().error("Error: #{inspect(reason)}")
+    task =
+      Task.async(fn ->
+        Cantrip.cast(cantrip, intent, stream_to: caller)
+      end)
+
+    receive_loop(renderer, renderer_mod, task)
+  end
+
+  defp receive_loop(renderer, renderer_mod, task) do
+    receive do
+      {:cantrip_event, event} ->
+        {output, device, renderer} = renderer_mod.render_event(renderer, event)
+        data = IO.iodata_to_binary(output)
+
+        if data != "" do
+          case device do
+            :stderr -> IO.write(:stderr, data)
+            :stdout -> IO.write(data)
+          end
+        end
+
+        receive_loop(renderer, renderer_mod, task)
+
+      {ref, result} when is_reference(ref) ->
+        Process.demonitor(ref, [:flush])
+
+        case result do
+          {:ok, _result, _cantrip, _loom, _meta} -> :ok
+          {:error, reason, _cantrip} ->
+            IO.write(:stderr, IO.ANSI.red() <> "Error: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n")
+        end
+
+      {:DOWN, _ref, :process, _pid, reason} ->
+        IO.write(:stderr, IO.ANSI.red() <> "Crashed: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n")
     end
   end
 

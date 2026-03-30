@@ -46,11 +46,8 @@ if Code.ensure_loaded?(ReqLLM) do
       opts = build_opts(state, request)
       stream_to = Map.get(request, :stream_to)
 
-      # Stream when explicitly configured or when a stream_to listener is present
-      use_stream = state.stream or is_pid(stream_to)
-
       result =
-        if use_stream do
+        if state.stream do
           stream_query(model, context, opts, stream_to)
         else
           sync_query(model, context, opts)

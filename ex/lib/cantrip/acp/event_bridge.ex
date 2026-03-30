@@ -25,6 +25,12 @@ defmodule Cantrip.ACP.EventBridge do
     end
   end
 
+  defp translate_and_send(conn, session_id, {:text_delta, chunk}) when is_binary(chunk) do
+    notify(conn, session_id,
+      {:agent_thought_chunk,
+       %ACP.ContentChunk{content: {:text, %ACP.TextContent{text: chunk}}}})
+  end
+
   defp translate_and_send(conn, session_id, {:text, content}) when is_binary(content) do
     notify(conn, session_id,
       {:agent_thought_chunk,
