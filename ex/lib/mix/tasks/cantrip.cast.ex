@@ -28,6 +28,7 @@ defmodule Mix.Tasks.Cantrip.Cast do
           loom_path: :string,
           max_turns: :integer,
           familiar: :boolean,
+          json: :boolean,
           help: :boolean
         ],
         aliases: [h: :help, f: :familiar]

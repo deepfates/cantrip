@@ -10,6 +10,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   ## Options
 
     * `--acp` — start as an ACP stdio server instead of REPL
+    * `--json` — output events as JSONL stream (for piping/scripting)
     * `--loom-path PATH` — path for persistent JSONL loom (default: .cantrip/familiar.jsonl)
     * `--max-turns N` — maximum turns per episode (default: 20)
     * `--help` — show this help
@@ -28,7 +29,8 @@ defmodule Mix.Tasks.Cantrip.Familiar do
           loom_path: :string,
           max_turns: :integer,
           help: :boolean,
-          acp: :boolean
+          acp: :boolean,
+          json: :boolean
         ],
         aliases: [h: :help]
       )
@@ -65,10 +67,12 @@ defmodule Mix.Tasks.Cantrip.Familiar do
             root: File.cwd!()
           )
 
+        renderer = if opts[:json], do: Cantrip.CLI.JsonRenderer.new(), else: Renderer.new()
+
         if intent do
-          run_single_shot(cantrip, intent)
+          run_single_shot(cantrip, intent, renderer, opts)
         else
-          run_repl(cantrip)
+          run_repl(cantrip, renderer)
         end
 
       {:error, reason} ->
@@ -79,12 +83,13 @@ defmodule Mix.Tasks.Cantrip.Familiar do
 
   # -- Single-shot: cast with streaming events --
 
-  defp run_single_shot(cantrip, intent) do
-    IO.write(:stderr, "Familiar (single-shot)\n")
-    IO.write(:stderr, "Intent: #{intent}\n\n")
+  defp run_single_shot(cantrip, intent, renderer, opts) do
+    unless opts[:json] do
+      IO.write(:stderr, "Familiar (single-shot)\n")
+      IO.write(:stderr, "Intent: #{intent}\n\n")
+    end
 
     caller = self()
-    renderer = Renderer.new()
 
     task =
       Task.async(fn ->
@@ -96,15 +101,15 @@ defmodule Mix.Tasks.Cantrip.Familiar do
 
   # -- REPL: summon + send in a loop --
 
-  defp run_repl(cantrip) do
+  defp run_repl(cantrip, renderer) do
     IO.write(:stderr, "Familiar REPL — persistent coding assistant\n")
     IO.write(:stderr, "Type your intents. Ctrl-C to exit.\n\n")
 
     {:ok, pid} = Cantrip.summon(cantrip)
-    repl_loop(pid)
+    repl_loop(pid, renderer)
   end
 
-  defp repl_loop(pid) do
+  defp repl_loop(pid, renderer) do
     case IO.gets("~> ") do
       :eof ->
         IO.write(:stderr, "\nGoodbye.\n")
@@ -116,17 +121,16 @@ defmodule Mix.Tasks.Cantrip.Familiar do
         input = String.trim(input)
 
         if input == "" do
-          repl_loop(pid)
+          repl_loop(pid, renderer)
         else
-          run_streaming_intent(pid, input)
-          repl_loop(pid)
+          run_streaming_intent(pid, input, renderer)
+          repl_loop(pid, renderer)
         end
     end
   end
 
-  defp run_streaming_intent(pid, intent) do
+  defp run_streaming_intent(pid, intent, renderer) do
     caller = self()
-    renderer = Renderer.new()
 
     task =
       Task.async(fn ->
@@ -139,9 +143,11 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   # -- Event receive loop: renders events as they arrive --
 
   defp receive_loop(renderer, task) do
+    renderer_mod = renderer.__struct__
+
     receive do
       {:cantrip_event, event} ->
-        {output, device, renderer} = Renderer.render_event(renderer, event)
+        {output, device, renderer} = renderer_mod.render_event(renderer, event)
         write_output(output, device)
         receive_loop(renderer, task)
 
@@ -168,9 +174,11 @@ defmodule Mix.Tasks.Cantrip.Familiar do
 
   # Drain any remaining events after task completion
   defp drain_events(renderer) do
+    renderer_mod = renderer.__struct__
+
     receive do
       {:cantrip_event, event} ->
-        {output, device, renderer} = Renderer.render_event(renderer, event)
+        {output, device, renderer} = renderer_mod.render_event(renderer, event)
         write_output(output, device)
         drain_events(renderer)
     after
