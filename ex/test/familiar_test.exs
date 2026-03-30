@@ -103,8 +103,9 @@ defmodule Cantrip.FamiliarTest do
 
       {:ok, cantrip} = Familiar.new(llm: llm)
       {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "list dir")
-      assert result =~ "a.txt"
-      assert result =~ "b.txt"
+      assert is_list(result)
+      assert "a.txt" in result
+      assert "b.txt" in result
     after
       File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_ld_*"))
     end

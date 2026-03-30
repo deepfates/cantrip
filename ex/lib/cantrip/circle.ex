@@ -468,7 +468,7 @@ defmodule Cantrip.Circle do
     with {:ok, path} <- validate_gate_path(args, gate) do
       case File.ls(path) do
         {:ok, entries} ->
-          %{gate: "list_dir", result: Enum.sort(entries) |> Enum.join("\n"), is_error: false}
+          %{gate: "list_dir", result: Enum.sort(entries), is_error: false}
 
         {:error, reason} ->
           %{gate: "list_dir", result: inspect(reason), is_error: true}
@@ -482,7 +482,7 @@ defmodule Cantrip.Circle do
     with {:ok, path} <- validate_gate_path(path, gate) do
       case File.ls(path) do
         {:ok, entries} ->
-          %{gate: "list_dir", result: Enum.sort(entries) |> Enum.join("\n"), is_error: false}
+          %{gate: "list_dir", result: Enum.sort(entries), is_error: false}
 
         {:error, reason} ->
           %{gate: "list_dir", result: inspect(reason), is_error: true}
