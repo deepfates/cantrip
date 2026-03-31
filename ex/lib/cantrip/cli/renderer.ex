@@ -9,169 +9,204 @@ defmodule Cantrip.CLI.Renderer do
   `mix cantrip.familiar "task" > result.txt` to capture just the answer.
   """
 
-  @max_code_lines 20
+  defstruct turn: 0, depth: 0
 
-  defstruct turn: 0
-
-  @type t :: %__MODULE__{turn: non_neg_integer()}
+  @type t :: %__MODULE__{turn: non_neg_integer(), depth: non_neg_integer()}
 
   @spec new() :: t()
   def new, do: %__MODULE__{}
 
   @spec render_event(t(), term()) :: {iodata(), :stderr | :stdout, t()}
 
+  # -- Turn lifecycle --
+
   def render_event(state, {:step_start, %{turn: n}}) do
-    header =
-      Owl.Data.tag("--- Turn #{n} ---", :faint)
-      |> Owl.Data.to_chardata()
-
-    {[header, "\n"], :stderr, %{state | turn: n}}
+    line = Owl.Data.tag("--- Turn #{n} ---", :faint) |> Owl.Data.to_chardata()
+    {[indent(state, line), "\n"], :stderr, %{state | turn: n}}
   end
 
-  def render_event(state, {:message_start, _}) do
-    {[Owl.Data.tag("  Thinking...", :faint) |> Owl.Data.to_chardata()], :stderr, state}
-  end
+  # Don't show "Thinking..." — it collides with subsequent events due to \r
+  # issues at varying indent depths. The duration shown in message_complete
+  # is sufficient.
+  def render_event(state, {:message_start, _}), do: {"", :stderr, state}
 
   def render_event(state, {:message_complete, %{duration_ms: ms}}) do
-    {["\r", Owl.Data.tag("  (#{ms}ms)", :faint) |> Owl.Data.to_chardata(), "\n"], :stderr, state}
+    line = Owl.Data.tag("  (#{ms}ms)", :faint) |> Owl.Data.to_chardata()
+    {[indent(state, line), "\n"], :stderr, state}
   end
 
-  def render_event(state, {:text_delta, chunk}) when is_binary(chunk) do
-    {chunk, :stderr, state}
-  end
+  # -- Entity utterance (code box) --
 
   def render_event(state, {:code, code}) when is_binary(code) and code != "" do
-    # Entity's utterance — the code it wrote this turn
-    display = truncate_code(code, @max_code_lines)
-
     box =
-      display
+      code
       |> Owl.Box.new(
         title: Owl.Data.tag(" elixir ", :cyan),
         border_tag: :faint,
         padding_x: 1
       )
       |> Owl.Data.to_chardata()
+      |> IO.chardata_to_string()
 
-    {[box, "\n"], :stderr, state}
+    {[indent_block(state, box), "\n"], :stderr, state}
   end
 
+  # LLM thinking/reasoning that accompanied a code tool call.
+  # Shown faint — it's the entity's internal reasoning, not the utterance.
+  def render_event(state, {:thinking, content}) when is_binary(content) and content != "" do
+    line = Owl.Data.tag(content, :faint) |> Owl.Data.to_chardata()
+    {[indent(state, line), "\n"], :stderr, state}
+  end
+
+  # Conversation medium text — show directly.
   def render_event(state, {:text, content}) when is_binary(content) and content != "" do
-    # Conversation medium text — show directly
-    {[content, "\n"], :stderr, state}
+    {[indent(state, content), "\n"], :stderr, state}
+  end
+
+  def render_event(state, {:text_delta, _chunk}), do: {"", :stderr, state}
+
+  # -- Gate calls and results --
+
+  # Suppress the internal "code" eval gate entirely — the code box and
+  # observations already tell the story. Only show eval errors.
+  def render_event(state, {:tool_call, %{gate: "code"}}), do: {"", :stderr, state}
+  def render_event(state, {:tool_result, %{gate: "code", is_error: false}}), do: {"", :stderr, state}
+
+  def render_event(state, {:tool_result, %{gate: "code", is_error: true, result: result}}) do
+    text = summarize(result)
+    line = Owl.Data.tag(["  ✗ eval: ", text], :red) |> Owl.Data.to_chardata()
+    {[indent(state, line), "\n"], :stderr, state}
   end
 
   def render_event(state, {:tool_call, %{gate: gate}}) do
-    line = ["  ", Owl.Data.tag("▸ ", :cyan) |> Owl.Data.to_chardata(), gate, "\n"]
-    {line, :stderr, state}
+    line = ["  ", Owl.Data.tag("▸ ", :cyan) |> Owl.Data.to_chardata(), gate]
+    {[indent(state, line), "\n"], :stderr, state}
   end
 
   def render_event(state, {:tool_result, %{gate: gate, result: result, is_error: true}}) do
-    preview = result |> stringify_result() |> truncate(80)
-
-    line =
-      Owl.Data.tag(["  ✗ ", gate, ": ", preview], :red)
-      |> Owl.Data.to_chardata()
-
-    {[line, "\n"], :stderr, state}
+    text = summarize(result)
+    line = Owl.Data.tag(["  ✗ ", gate, ": ", text], :red) |> Owl.Data.to_chardata()
+    {[indent(state, line), "\n"], :stderr, state}
   end
 
   def render_event(state, {:tool_result, %{gate: gate, result: result, is_error: false}}) do
-    preview = result |> stringify_result() |> truncate(80)
-
-    line =
-      Owl.Data.tag(["  ✓ ", gate, ": ", preview], :green)
-      |> Owl.Data.to_chardata()
-
-    {[line, "\n"], :stderr, state}
+    text = summarize(result)
+    line = Owl.Data.tag(["  ✓ ", gate, ": ", text], :green) |> Owl.Data.to_chardata()
+    {[indent(state, line), "\n"], :stderr, state}
   end
+
+  # -- Token usage --
 
   def render_event(state, {:usage, %{prompt_tokens: p, completion_tokens: c}}) do
-    line =
-      Owl.Data.tag("  [#{p}+#{c} tokens]", :faint)
-      |> Owl.Data.to_chardata()
-
-    {[line, "\n"], :stderr, state}
+    line = Owl.Data.tag("  [#{p}+#{c} tokens]", :faint) |> Owl.Data.to_chardata()
+    {[indent(state, line), "\n"], :stderr, state}
   end
 
-  def render_event(state, {:final_response, %{result: result}}) do
+  # -- Final response --
+  # Only the root entity writes to stdout. Child results are already
+  # visible via the ✓ cast: summary line.
+
+  def render_event(%{depth: 0} = state, {:final_response, %{result: result}}) do
     result_str = if is_binary(result), do: result, else: inspect(result, pretty: true)
     {[result_str, "\n"], :stdout, state}
   end
 
+  def render_event(state, {:final_response, _}), do: {"", :stderr, state}
+
+  # -- Child delegation --
+
   def render_event(state, {:child_start, %{intent: intent}}) do
-    preview = intent |> to_string() |> truncate(60)
-
-    line = [
-      "  ",
-      Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(),
-      "cast (child: \"", preview, "\")\n"
-    ]
-
-    {line, :stderr, state}
+    intent_str = to_string(intent)
+    line = ["  ", Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(), "cast: \"", intent_str, "\""]
+    {[indent(state, line), "\n"], :stderr, %{state | depth: state.depth + 1}}
   end
 
   def render_event(state, {:child_start, _}) do
-    line = [
-      "  ",
-      Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(),
-      "cast (child running)\n"
-    ]
-
-    {line, :stderr, state}
+    line = ["  ", Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(), "cast (child)"]
+    {[indent(state, line), "\n"], :stderr, %{state | depth: state.depth + 1}}
   end
 
   def render_event(state, {:child_end, %{error: err}}) do
-    preview = err |> to_string() |> truncate(80)
-
-    line =
-      Owl.Data.tag(["  ✗ cast: ", preview], :red)
-      |> Owl.Data.to_chardata()
-
-    {[line, "\n"], :stderr, state}
+    new_depth = max(state.depth - 1, 0)
+    line = Owl.Data.tag(["  ✗ cast: ", to_string(err)], :red) |> Owl.Data.to_chardata()
+    {[indent_at(new_depth, line), "\n"], :stderr, %{state | depth: new_depth}}
   end
 
   def render_event(state, {:child_end, %{result: result}}) do
-    preview = result |> stringify_result() |> truncate(80)
-
-    line =
-      Owl.Data.tag(["  ✓ cast: ", preview], :green)
-      |> Owl.Data.to_chardata()
-
-    {[line, "\n"], :stderr, state}
+    new_depth = max(state.depth - 1, 0)
+    line = Owl.Data.tag(["  ✓ cast: ", summarize(result)], :green) |> Owl.Data.to_chardata()
+    {[indent_at(new_depth, line), "\n"], :stderr, %{state | depth: new_depth}}
   end
+
+  # -- Warnings --
 
   def render_event(state, {:empty_turn, %{turn: n}}) do
-    line =
-      Owl.Data.tag("  ⚠ Turn #{n}: empty (no output)", :yellow)
-      |> Owl.Data.to_chardata()
-
-    {[line, "\n"], :stderr, state}
+    line = Owl.Data.tag("  ⚠ Turn #{n}: empty (no output)", :yellow) |> Owl.Data.to_chardata()
+    {[indent(state, line), "\n"], :stderr, state}
   end
 
-  # Events we don't render
+  # -- Catch-all --
   def render_event(state, {:text, _}), do: {"", :stderr, state}
   def render_event(state, {:step_complete, _}), do: {"", :stderr, state}
   def render_event(state, _unknown), do: {"", :stderr, state}
 
-  @doc "Truncate a string to max_len, adding ... if truncated."
-  def truncate(str, max_len) when byte_size(str) <= max_len, do: str
-  def truncate(str, max_len), do: String.slice(str, 0, max_len - 3) <> "..."
+  # ── Indentation ──────────────────────────────────────────────────────
 
-  # -- Helpers --
+  # Indent a single line of content using current state depth.
+  defp indent(%{depth: 0}, content), do: content
+  defp indent(%{depth: depth}, content), do: [prefix(depth), content]
 
-  defp stringify_result(result) when is_binary(result), do: String.replace(result, "\n", " ")
-  defp stringify_result(result), do: inspect(result, pretty: false, limit: 5)
+  # Indent at a specific depth (for child_end which decrements first).
+  defp indent_at(0, content), do: content
+  defp indent_at(depth, content), do: [prefix(depth), content]
 
-  defp truncate_code(code, max_lines) do
-    lines = String.split(code, "\n")
+  # Indent every line of a multi-line string (for Owl.Box output).
+  defp indent_block(%{depth: 0}, block), do: block
 
-    if length(lines) > max_lines do
-      shown = Enum.take(lines, max_lines - 1)
-      remaining = length(lines) - max_lines + 1
-      Enum.join(shown, "\n") <> "\n... #{remaining} more lines"
+  defp indent_block(%{depth: depth}, block) do
+    p = prefix(depth)
+
+    block
+    |> String.split("\n")
+    |> Enum.intersperse(["\n", p])
+    |> then(fn lines -> [p | lines] end)
+  end
+
+  defp prefix(depth), do: String.duplicate("  │ ", depth)
+
+  # ── Result summarization ─────────────────────────────────────────────
+  # Show small results as-is, summarize large ones. The entity has the
+  # full data in its variable bindings; both human and entity see metadata
+  # for large results.
+
+  @max_display 300
+
+  defp summarize(result) when is_binary(result) do
+    if byte_size(result) <= @max_display do
+      String.replace(result, "\n", " ")
     else
-      code
+      lines = length(String.split(result, "\n"))
+      "#{byte_size(result)} bytes, #{lines} lines"
+    end
+  end
+
+  defp summarize(result) when is_list(result) do
+    text = inspect(result, pretty: false, limit: 5)
+
+    if byte_size(text) <= @max_display do
+      text
+    else
+      "list (#{length(result)} items)"
+    end
+  end
+
+  defp summarize(result) do
+    text = inspect(result, pretty: false, limit: 10)
+
+    if byte_size(text) <= @max_display do
+      text
+    else
+      "#{byte_size(text)} bytes"
     end
   end
 end

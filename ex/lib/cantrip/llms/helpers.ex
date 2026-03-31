@@ -4,25 +4,6 @@ defmodule Cantrip.LLMs.Helpers do
   """
 
   @doc """
-  Extracts code from a markdown-fenced response, stripping the fence markers.
-
-  If the content contains a fenced code block (optionally tagged `elixir`),
-  returns the trimmed interior. Otherwise returns the trimmed content as-is.
-  Returns `nil` for non-binary input.
-  """
-  @spec extract_code(term()) :: String.t() | nil
-  def extract_code(content) when not is_binary(content), do: nil
-
-  def extract_code(content) do
-    text = String.trim(content)
-
-    case Regex.run(~r/```(?:elixir)?\s*\n([\s\S]*?)\n```/i, text) do
-      [_, code] -> String.trim(code)
-      _ -> text
-    end
-  end
-
-  @doc """
   Extracts an error message from an API response body.
 
   Looks for `body["error"]["message"]`; falls back to `inspect(body)`.

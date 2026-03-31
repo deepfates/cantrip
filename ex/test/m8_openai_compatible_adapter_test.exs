@@ -54,7 +54,7 @@ defmodule CantripM8OpenAICompatibleAdapterTest do
     assert tool["tool_call_id"] == "call_1"
   end
 
-  test "maps message content into response code for code mediums" do
+  test "passes content through without extracting code" do
     {:ok, server} =
       start_stub_server(%{
         "content" => "```elixir\nx = 21 * 2\ndone.(Integer.to_string(x))\n```",
@@ -71,7 +71,7 @@ defmodule CantripM8OpenAICompatibleAdapterTest do
 
     assert {:ok, response, _state} = OpenAICompatible.query(state, %{messages: [], tools: []})
     assert is_binary(response.content)
-    assert response.code == "x = 21 * 2\ndone.(Integer.to_string(x))"
+    refute Map.has_key?(response, :code)
   end
 
   defp start_stub_server(message) do

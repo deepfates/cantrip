@@ -12,11 +12,11 @@ defmodule Cantrip.CLI.RendererTest do
       assert next.turn == 3
     end
 
-    test "message_start returns thinking indicator on stderr" do
+    test "message_start is suppressed (duration shown in message_complete)" do
       state = Renderer.new()
       {output, device, _} = Renderer.render_event(state, {:message_start, %{turn: 1}})
       assert device == :stderr
-      assert IO.iodata_to_binary(output) =~ "Thinking"
+      assert IO.iodata_to_binary(output) == ""
     end
 
     test "message_complete returns duration on stderr" do
@@ -94,15 +94,17 @@ defmodule Cantrip.CLI.RendererTest do
     end
   end
 
-  describe "truncate/2" do
-    test "short strings pass through" do
-      assert Renderer.truncate("hello", 10) == "hello"
-    end
+  describe "depth rendering" do
+    test "child events are indented" do
+      state = Renderer.new()
+      {_, _, state} = Renderer.render_event(state, {:child_start, %{intent: "test task"}})
+      assert state.depth == 1
 
-    test "long strings are clipped with ellipsis" do
-      result = Renderer.truncate("a very long string that exceeds the limit", 20)
-      assert String.length(result) <= 20
-      assert String.ends_with?(result, "...")
+      {output, _, _} = Renderer.render_event(state, {:tool_call, %{gate: "read_file"}})
+      assert IO.iodata_to_binary(output) =~ "│"
+
+      {_, _, state} = Renderer.render_event(state, {:child_end, %{result: "done"}})
+      assert state.depth == 0
     end
   end
 end

@@ -138,7 +138,7 @@ defmodule CantripM20AnthropicAdapterTest do
     assert block["tool_use_id"] == "toolu_abc"
   end
 
-  test "extracts code from markdown fences" do
+  test "passes content through without extracting code" do
     response_body = %{
       "content" => [
         %{"type" => "text", "text" => "```elixir\nx = 1 + 1\ndone.(x)\n```"}
@@ -154,7 +154,8 @@ defmodule CantripM20AnthropicAdapterTest do
     assert {:ok, response, _state} =
              Anthropic.query(state, %{messages: [%{role: :user, content: "Hi"}], tools: []})
 
-    assert response.code == "x = 1 + 1\ndone.(x)"
+    assert response.content == "```elixir\nx = 1 + 1\ndone.(x)\n```"
+    refute Map.has_key?(response, :code)
   end
 
   test "tool_choice required maps to anthropic any" do

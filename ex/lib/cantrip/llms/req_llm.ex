@@ -103,7 +103,6 @@ if Code.ensure_loaded?(ReqLLM) do
           {:ok,
            %{
              content: text,
-             code: Helpers.extract_code(text),
              tool_calls: normalize_tool_calls(tool_calls || []),
              usage: normalize_usage(usage),
              raw_response: sr
@@ -122,7 +121,6 @@ if Code.ensure_loaded?(ReqLLM) do
           {:ok,
            %{
              content: if(is_nil(text) or text == "", do: nil, else: text),
-             code: Helpers.extract_code(text),
              tool_calls: normalize_tool_calls(ReqLLM.Response.tool_calls(response)),
              usage: normalize_usage(usage),
              raw_response: response
@@ -162,7 +160,14 @@ if Code.ensure_loaded?(ReqLLM) do
 
       opts = []
       opts = if state.temperature, do: [{:temperature, state.temperature} | opts], else: opts
-      opts = if state.max_tokens, do: [{:max_tokens, state.max_tokens} | opts], else: opts
+
+      opts =
+        if state.max_tokens do
+          key = if reasoning_model?(state.model), do: :max_completion_tokens, else: :max_tokens
+          [{key, state.max_tokens} | opts]
+        else
+          opts
+        end
       opts = if state.timeout_ms, do: [{:receive_timeout, state.timeout_ms} | opts], else: opts
       opts = if state.base_url, do: [{:base_url, state.base_url} | opts], else: opts
       opts = if state.api_key, do: [{:api_key, state.api_key} | opts], else: opts
@@ -198,7 +203,6 @@ if Code.ensure_loaded?(ReqLLM) do
 
       %{
         content: if(is_nil(text) or text == "", do: nil, else: text),
-        code: Helpers.extract_code(text),
         tool_calls: normalize_tool_calls(tool_calls),
         usage: normalize_usage(usage),
         raw_response: response
@@ -267,6 +271,23 @@ if Code.ensure_loaded?(ReqLLM) do
     defp normalize_error(reason) do
       %{status: nil, message: inspect(reason)}
     end
+
+    # -- Model detection --
+
+    defp reasoning_model?(model) when is_binary(model) do
+      # Strip provider prefix (e.g., "openai:o3" → "o3")
+      bare = case String.split(model, ":", parts: 2) do
+        [_prefix, name] -> name
+        [name] -> name
+      end
+
+      String.starts_with?(bare, "o1") or String.starts_with?(bare, "o3") or
+        String.starts_with?(bare, "o4") or String.starts_with?(bare, "gpt-4.1") or
+        (String.starts_with?(bare, "gpt-5") and bare != "gpt-5-chat-latest") or
+        String.contains?(bare, "codex")
+    end
+
+    defp reasoning_model?(_), do: false
 
     # -- State --
 

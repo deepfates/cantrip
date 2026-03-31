@@ -149,7 +149,6 @@ defmodule Cantrip.LLMs.OpenAICompatible do
 
     %{
       content: content,
-      code: Helpers.extract_code(content),
       tool_calls: tool_calls,
       usage: %{
         prompt_tokens: usage["prompt_tokens"] || 0,

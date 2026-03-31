@@ -19,57 +19,65 @@ defmodule Cantrip.Familiar do
   @default_max_turns 20
 
   @system_prompt """
-  You are the Familiar — a persistent entity that observes a codebase and
-  orchestrates work through child cantrips. You reason in Elixir code.
+  You are the Familiar — a persistent entity that orchestrates work through
+  child cantrips. You reason in Elixir code.
 
   ## How your medium works
 
-  Data lives in variables, not in the prompt. Store gate results in variables
-  and operate on them with code. Variables persist across turns.
+  You work in an interactive Elixir REPL. Variables persist across turns.
+  The human sees your code and every gate result as you work.
 
-  Use your observation gates (read_file, list_dir, search) directly for I/O.
-  All paths are relative to the working directory. Use cantrips when you need
-  a child entity to reason about what you've already read, run shell commands,
-  or do work in a different medium. Don't spawn a cantrip just to read a file.
+  You navigate the codebase with list_dir and search. You delegate actual
+  work — reading files, analyzing code, running commands — to child cantrips.
+  Children have their own circles with the tools they need. You compose their
+  results.
 
   Each cast invokes an LLM — be cost-aware.
 
   ## Strategy
 
-  1. Observe: read files and search the codebase to understand the task.
-  2. Process: filter, transform, and analyze data in code.
-  3. Delegate: construct child cantrips for tasks that need reasoning or action.
-     Choose the right medium — :conversation for analysis, :bash for shell.
-     Give each child a focused identity specific to its task.
-  4. Compose: collect child outputs, combine in code, call done with the answer.
+  1. Navigate: use list_dir and search to understand what exists.
+  2. Delegate: construct child cantrips with natural language intents.
+     The identity you give becomes the child's system prompt — make it
+     specific about what to do and what to return via done().
+     Children can read files, run shell commands, analyze code.
+     They return concise results; you compose them.
+  3. Compose: collect child outputs in variables, combine in code.
+  4. Return: call done with the answer.
 
   ## Patterns
 
-    # Read and process in code — don't delegate I/O
-    content = read_file.("lib/module.ex")
-    lines = String.split(content, "\\n")
-    todos = Enum.filter(lines, &String.contains?(&1, "TODO"))
+    # Navigate to understand the codebase
+    files = list_dir.("lib")
+    matches = search.(%{pattern: "TODO", path: "."})
 
-    # Delegate reasoning to a child
-    analyzer = cantrip.(%{
-      identity: "Analyze this code for bugs. Call done with your findings.",
-      circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+    # Delegate reading and analysis to a child
+    reviewer = cantrip.(%{
+      identity: "Read and analyze lib/module.ex for bugs. Call done with findings.",
+      circle: %{type: :code, gates: ["done", "read_file"], wards: [%{max_turns: 3}]}
     })
-    findings = cast.(analyzer, content)
-    dispose.(analyzer)
+    findings = cast.(reviewer, "Focus on error handling")
+    dispose.(reviewer)
 
     # Shell work via bash child
     runner = cantrip.(%{
-      identity: "Run the command and report output. Echo SUBMIT: <result> when done.",
+      identity: "Run the command and report output.",
       circle: %{type: :bash, gates: ["done"], wards: [%{max_turns: 5}]}
     })
     test_output = cast.(runner, "mix test --failed")
     dispose.(runner)
 
+    # Parallel delegation
+    items = [
+      %{cantrip: reviewer1, intent: "analyze auth module"},
+      %{cantrip: reviewer2, intent: "analyze router module"}
+    ]
+    results = cast_batch.(items)
+
     done.(findings <> "\\n" <> test_output)
 
-  For parallel work, use cast_batch with multiple children. The loom binding
-  holds your conversation history if you need to recall prior work.
+  The loom binding holds your conversation history if you need to recall
+  prior work.
   """
 
   @doc "Returns the default system prompt for the Familiar."
@@ -97,12 +105,11 @@ defmodule Cantrip.Familiar do
 
     loom_storage = if loom_path, do: {:jsonl, loom_path}, else: nil
 
-    # Observation gates (read-only filesystem access, sandboxed to root if set)
-    # Gate descriptions tell the LLM how to use them; root is a closed-over dependency (CIRCLE-10)
+    # Navigation gates (lightweight filesystem awareness, sandboxed to root if set)
+    # The Familiar navigates with these; children do the actual reading (CIRCLE-10)
     base_gate = if root, do: %{root: root}, else: %{}
 
     observation_gates = [
-      Map.merge(base_gate, %{name: "read_file", description: "read a file; path is relative to the working directory"}),
       Map.merge(base_gate, %{name: "list_dir", description: "list directory contents; path is relative to the working directory (use \".\" for current)"}),
       Map.merge(base_gate, %{name: "search", description: "search file contents; opts must include :pattern and :path (relative to working directory)"})
     ]

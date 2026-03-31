@@ -204,7 +204,6 @@ defmodule Cantrip.LLMs.Gemini do
 
     %{
       content: content,
-      code: Helpers.extract_code(content),
       tool_calls: tool_calls,
       usage: %{
         prompt_tokens: usage["promptTokenCount"] || 0,

@@ -153,7 +153,7 @@ defmodule CantripM24GeminiAdapterTest do
     assert payload["tool_config"]["function_calling_config"]["mode"] == "ANY"
   end
 
-  test "extracts code from markdown fences" do
+  test "passes content through without extracting code" do
     response_body = %{
       "candidates" => [
         %{
@@ -178,7 +178,8 @@ defmodule CantripM24GeminiAdapterTest do
     assert {:ok, response, _state} =
              Gemini.query(state, %{messages: [%{role: :user, content: "Hi"}], tools: []})
 
-    assert response.code == "x = 1 + 1\ndone.(x)"
+    assert response.content == "```elixir\nx = 1 + 1\ndone.(x)\n```"
+    refute Map.has_key?(response, :code)
   end
 
   # -- Stub HTTP server --

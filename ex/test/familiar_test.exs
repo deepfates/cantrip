@@ -12,15 +12,15 @@ defmodule Cantrip.FamiliarTest do
       assert cantrip.circle.type == :code
     end
 
-    test "includes observation gates: read_file, list_dir, search" do
+    test "includes navigation gates: list_dir, search (not read_file)" do
       llm = {FakeLLM, FakeLLM.new([])}
       {:ok, cantrip} = Familiar.new(llm: llm)
 
       gate_names = Map.keys(cantrip.circle.gates)
       assert "done" in gate_names
-      assert "read_file" in gate_names
       assert "list_dir" in gate_names
       assert "search" in gate_names
+      refute "read_file" in gate_names
     end
 
     test "includes orchestration gates: cantrip, cast, cast_batch, dispose" do
@@ -70,25 +70,6 @@ defmodule Cantrip.FamiliarTest do
   end
 
   describe "observation gates work in code medium" do
-    test "read_file gate reads a real temp file via code" do
-      tmp_dir = Path.join(System.tmp_dir!(), "familiar_rf_#{System.unique_integer([:positive])}")
-      File.mkdir_p!(tmp_dir)
-      file_path = Path.join(tmp_dir, "hello.txt")
-      File.write!(file_path, "hello world")
-
-      llm =
-        {FakeLLM,
-         FakeLLM.new([
-           %{code: ~s[content = read_file.(%{path: "#{file_path}"})\ndone.("got:" <> content)]}
-         ])}
-
-      {:ok, cantrip} = Familiar.new(llm: llm)
-      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "read that file")
-      assert result == "got:hello world"
-    after
-      File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_rf_*"))
-    end
-
     test "list_dir gate lists directory contents via code" do
       tmp_dir = Path.join(System.tmp_dir!(), "familiar_ld_#{System.unique_integer([:positive])}")
       File.mkdir_p!(tmp_dir)
@@ -104,8 +85,8 @@ defmodule Cantrip.FamiliarTest do
       {:ok, cantrip} = Familiar.new(llm: llm)
       {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "list dir")
       assert is_list(result)
-      assert "a.txt" in result
-      assert "b.txt" in result
+      assert "a.txt (file)" in result
+      assert "b.txt (file)" in result
     after
       File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_ld_*"))
     end
@@ -134,41 +115,6 @@ defmodule Cantrip.FamiliarTest do
   # ===========================================================================
 
   describe "filesystem gate sandboxing" do
-    test "read_file rejects paths outside root" do
-      tmp_dir = Path.join(System.tmp_dir!(), "familiar_sandbox_#{System.unique_integer([:positive])}")
-      File.mkdir_p!(tmp_dir)
-
-      llm =
-        {FakeLLM,
-         FakeLLM.new([
-           %{code: ~s[result = read_file.("/etc/hosts")\ndone.(result)]}
-         ])}
-
-      {:ok, cantrip} = Familiar.new(llm: llm, root: tmp_dir)
-      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "try to escape sandbox")
-      assert result =~ "outside sandbox root"
-    after
-      File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_sandbox_*"))
-    end
-
-    test "read_file allows paths within root" do
-      tmp_dir = Path.join(System.tmp_dir!(), "familiar_sandbox_ok_#{System.unique_integer([:positive])}")
-      File.mkdir_p!(tmp_dir)
-      File.write!(Path.join(tmp_dir, "allowed.txt"), "safe content")
-
-      llm =
-        {FakeLLM,
-         FakeLLM.new([
-           %{code: ~s[content = read_file.("allowed.txt")\ndone.("got:" <> content)]}
-         ])}
-
-      {:ok, cantrip} = Familiar.new(llm: llm, root: tmp_dir)
-      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "read allowed file")
-      assert result == "got:safe content"
-    after
-      File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_sandbox_ok_*"))
-    end
-
     test "list_dir rejects traversal outside root" do
       tmp_dir = Path.join(System.tmp_dir!(), "familiar_sandbox_ld_#{System.unique_integer([:positive])}")
       File.mkdir_p!(tmp_dir)
@@ -186,24 +132,6 @@ defmodule Cantrip.FamiliarTest do
       File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_sandbox_ld_*"))
     end
 
-    test "without root, filesystem gates accept any path" do
-      tmp_dir = Path.join(System.tmp_dir!(), "familiar_noroot_#{System.unique_integer([:positive])}")
-      File.mkdir_p!(tmp_dir)
-      File.write!(Path.join(tmp_dir, "test.txt"), "content")
-
-      llm =
-        {FakeLLM,
-         FakeLLM.new([
-           %{code: ~s[content = read_file.("#{Path.join(tmp_dir, "test.txt")}")\ndone.("got:" <> content)]}
-         ])}
-
-      # No root specified — should work with any path
-      {:ok, cantrip} = Familiar.new(llm: llm)
-      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "read any file")
-      assert result == "got:content"
-    after
-      File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_noroot_*"))
-    end
   end
 
   describe "cantrip() + cast() orchestration pattern" do
@@ -358,9 +286,9 @@ defmodule Cantrip.FamiliarTest do
 
       gate_names = Map.keys(session.cantrip.circle.gates)
       assert "done" in gate_names
-      assert "read_file" in gate_names
       assert "list_dir" in gate_names
       assert "search" in gate_names
+      refute "read_file" in gate_names
     end
 
     test "new_session includes familiar system prompt" do

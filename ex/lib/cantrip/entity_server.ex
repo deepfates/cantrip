@@ -234,10 +234,6 @@ defmodule Cantrip.EntityServer do
              }}
           )
 
-          if is_binary(Map.get(response, :content)) do
-            emit_event(state, {:text, Map.get(response, :content)})
-          end
-
           execute_turn(
             %{state | cantrip: %{state.cantrip | llm_state: next_llm_state}},
             response,
@@ -250,7 +246,6 @@ defmodule Cantrip.EntityServer do
 
   defp execute_turn(state, response, duration_ms, turn_start_time) do
     content = Map.get(response, :content)
-    code = Map.get(response, :code)
     tool_calls = Map.get(response, :tool_calls) || []
     usage = Map.get(response, :usage, %{})
 
@@ -265,13 +260,14 @@ defmodule Cantrip.EntityServer do
     {utterance, observation, result, by_done, next_code_state} =
       case state.cantrip.circle.type do
         :code ->
-          # Extract code from tool call args (tool_view) or from content (FakeLLM/legacy)
-          code =
-            if is_binary(code) and code != "",
-              do: code,
-              else: extract_code_from_tool_call(tool_calls)
+          code = extract_code_from_tool_call(tool_calls)
 
           if is_binary(code) and code != "" do
+            # If the LLM also produced content (reasoning/thinking), emit and preserve it
+            if is_binary(content) and content != "" do
+              emit_event(state, {:thinking, content})
+            end
+
             emit_event(state, {:code, code})
 
             runtime = %{
@@ -288,10 +284,16 @@ defmodule Cantrip.EntityServer do
             {next_state, obs, result, terminated} =
               eval_code_sandboxed(code, state.code_state, runtime, state.entity_id)
 
-            {%{content: code, tool_calls: []}, obs, result, terminated, next_state}
+            # Utterance preserves both the thinking (content) and the code
+            {%{content: content, code: code, tool_calls: tool_calls}, obs, result, terminated,
+             next_state}
           else
-            # No code found — fall through to regular tool call handling
-            # (child entities in code circles may receive non-code tool calls)
+            # No code in tool call — emit content as text if present
+            if is_binary(content) and content != "" do
+              emit_event(state, {:text, content})
+            end
+
+            # Fall through to regular tool call handling
             {observation, result, by_done} =
               execute_gate_calls(state.cantrip.circle, tool_calls, state.entity_id)
 
@@ -446,7 +448,21 @@ defmodule Cantrip.EntityServer do
     else
       next_messages =
         if state.cantrip.circle.type in [:code, :bash] do
-          assistant = %{role: :assistant, content: utterance.content, tool_calls: []}
+          # The assistant message reflects what the LLM actually produced.
+          # For code medium with thinking: include both so the entity sees its own reasoning.
+          assistant_content =
+            case {utterance[:code], utterance.content} do
+              {code, thinking} when is_binary(code) and is_binary(thinking) and thinking != "" ->
+                thinking <> "\n\n" <> code
+
+              {code, _} when is_binary(code) ->
+                code
+
+              {_, content} ->
+                content
+            end
+
+          assistant = %{role: :assistant, content: assistant_content, tool_calls: []}
           feedback = format_code_feedback(observation, result)
 
           if feedback do
@@ -590,6 +606,10 @@ defmodule Cantrip.EntityServer do
 
   defp maybe_append_stdio(obs, _), do: obs
 
+  # Maximum byte size for a gate result before it's summarized in feedback.
+  # The entity still has the full result in its variable binding.
+  @feedback_max_bytes 500
+
   defp format_code_feedback(observations, eval_result) do
     error_parts =
       observations
@@ -600,7 +620,7 @@ defmodule Cantrip.EntityServer do
       observations
       |> Enum.reject(& &1.is_error)
       |> Enum.reject(fn obs -> obs.gate == "done" end)
-      |> Enum.map(fn obs -> "[#{obs.gate}] #{stringify_tool_result(obs.result)}" end)
+      |> Enum.map(fn obs -> "[#{obs.gate}] #{summarize_result(obs.result)}" end)
 
     parts = error_parts ++ non_error_parts
 
@@ -609,12 +629,33 @@ defmodule Cantrip.EntityServer do
         Enum.join(parts, "\n")
 
       not is_nil(eval_result) ->
-        "Code evaluated. Result: #{stringify_tool_result(eval_result)}"
+        "Code evaluated. Result: #{summarize_result(eval_result)}"
 
       true ->
         "Code executed with no return value. Call done.(result) to complete."
     end
   end
+
+  defp summarize_result(result) when is_binary(result) do
+    if byte_size(result) <= @feedback_max_bytes do
+      result
+    else
+      lines = length(String.split(result, "\n"))
+      "ok (#{byte_size(result)} bytes, #{lines} lines) — stored in variable"
+    end
+  end
+
+  defp summarize_result(result) when is_list(result) do
+    text = inspect(result, pretty: false, limit: 5)
+
+    if byte_size(text) <= @feedback_max_bytes do
+      text
+    else
+      "list (#{length(result)} items) — stored in variable"
+    end
+  end
+
+  defp summarize_result(result), do: inspect(result, pretty: false, limit: 10)
 
   defp execute_gate_calls(_circle, [], _entity_id), do: {[], nil, false}
 
@@ -769,7 +810,12 @@ defmodule Cantrip.EntityServer do
       # a generic prompt so they don't inherit parent's delegation instructions.
       effective_child_prompt =
         child_system_prompt ||
-          "You are a child entity. Pursue the intent and call done with the result."
+          """
+          You are a child entity working on a specific task for a parent orchestrator.
+          Work in variables — read, process, and analyze data in code.
+          Call done.(result) with a concise answer when finished.
+          The parent only sees your done() result, so make it informative but brief.
+          """
 
       child_cantrip =
         %{
@@ -784,7 +830,8 @@ defmodule Cantrip.EntityServer do
 
       case Cantrip.cast(child_cantrip, child_intent,
              depth: child_depth,
-             cancel_on_parent: cancel_on_parent
+             cancel_on_parent: cancel_on_parent,
+             stream_to: state.stream_to
            ) do
         {:ok, value, next_cantrip, child_loom, _meta} ->
           remember_child_llm(next_cantrip)

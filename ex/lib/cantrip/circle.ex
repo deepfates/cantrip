@@ -231,7 +231,9 @@ defmodule Cantrip.Circle do
     Available host functions (closure bindings, top-level only):
     #{gate_lines}
 
-    Variables persist across turns. Call done.(result) when finished.\
+    Variables persist across turns. Store intermediate data in variables.
+    Call done.(result) with your final answer when finished.
+    Your done() result is what the caller sees — make it concise and informative.\
     """
   end
 
@@ -471,13 +473,7 @@ defmodule Cantrip.Circle do
 
   defp run_gate(%{name: "list_dir"} = gate, args, _gates) when is_binary(args) do
     with {:ok, path} <- validate_gate_path(args, gate) do
-      case File.ls(path) do
-        {:ok, entries} ->
-          %{gate: "list_dir", result: Enum.sort(entries), is_error: false}
-
-        {:error, reason} ->
-          %{gate: "list_dir", result: inspect(reason), is_error: true}
-      end
+      list_dir_entries(path)
     end
   end
 
@@ -485,13 +481,26 @@ defmodule Cantrip.Circle do
     path = Map.get(args, "path", Map.get(args, :path))
 
     with {:ok, path} <- validate_gate_path(path, gate) do
-      case File.ls(path) do
-        {:ok, entries} ->
-          %{gate: "list_dir", result: Enum.sort(entries), is_error: false}
+      list_dir_entries(path)
+    end
+  end
 
-        {:error, reason} ->
-          %{gate: "list_dir", result: inspect(reason), is_error: true}
-      end
+  defp list_dir_entries(path) do
+    case File.ls(path) do
+      {:ok, entries} ->
+        enriched =
+          entries
+          |> Enum.sort()
+          |> Enum.map(fn entry ->
+            full = Path.join(path, entry)
+            type = if File.dir?(full), do: "dir", else: "file"
+            "#{entry} (#{type})"
+          end)
+
+        %{gate: "list_dir", result: enriched, is_error: false}
+
+      {:error, reason} ->
+        %{gate: "list_dir", result: inspect(reason), is_error: true}
     end
   end
 
