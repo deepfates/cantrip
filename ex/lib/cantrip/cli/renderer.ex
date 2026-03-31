@@ -35,20 +35,23 @@ defmodule Cantrip.CLI.Renderer do
     {[indent(state, line), "\n"], :stderr, state}
   end
 
-  # -- Entity utterance (code box) --
+  # -- Entity utterance (code block) --
+  # Left-border only: minimal ink, composes with depth indentation,
+  # leaves full terminal width for code. No Owl.Box — it competes
+  # with tree lines for horizontal space.
 
   def render_event(state, {:code, code}) when is_binary(code) and code != "" do
-    box =
-      code
-      |> Owl.Box.new(
-        title: Owl.Data.tag(" elixir ", :cyan),
-        border_tag: :faint,
-        padding_x: 1
-      )
-      |> Owl.Data.to_chardata()
-      |> IO.chardata_to_string()
+    p = prefix(state.depth)
+    border = Owl.Data.tag("│ ", :faint) |> Owl.Data.to_chardata()
+    top = Owl.Data.tag("╷ elixir", :cyan) |> Owl.Data.to_chardata()
+    bottom = Owl.Data.tag("╵", :faint) |> Owl.Data.to_chardata()
 
-    {[indent_block(state, box), "\n"], :stderr, state}
+    lines =
+      code
+      |> String.split("\n")
+      |> Enum.map(fn line -> [p, border, line, "\n"] end)
+
+    {[[p, top, "\n"] | lines] ++ [[p, bottom, "\n"]], :stderr, state}
   end
 
   # LLM thinking/reasoning that accompanied a code tool call.
@@ -160,19 +163,8 @@ defmodule Cantrip.CLI.Renderer do
   defp indent_at(0, content), do: content
   defp indent_at(depth, content), do: [prefix(depth), content]
 
-  # Indent every line of a multi-line string (for Owl.Box output).
-  defp indent_block(%{depth: 0}, block), do: block
 
-  defp indent_block(%{depth: depth}, block) do
-    p = prefix(depth)
-
-    block
-    |> String.split("\n")
-    |> Enum.intersperse(["\n", p])
-    |> then(fn lines -> [p | lines] end)
-  end
-
-  defp prefix(depth), do: String.duplicate("  │ ", depth)
+  defp prefix(depth), do: String.duplicate("  ", depth)
 
   # ── Result summarization ─────────────────────────────────────────────
   # Show small results as-is, summarize large ones. The entity has the

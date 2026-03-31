@@ -101,7 +101,8 @@ defmodule Cantrip.CLI.RendererTest do
       assert state.depth == 1
 
       {output, _, _} = Renderer.render_event(state, {:tool_call, %{gate: "read_file"}})
-      assert IO.iodata_to_binary(output) =~ "│"
+      # At depth 1, content is indented by 2 spaces
+      assert IO.iodata_to_binary(output) =~ "  " <> "  ▸"
 
       {_, _, state} = Renderer.render_event(state, {:child_end, %{result: "done"}})
       assert state.depth == 0
