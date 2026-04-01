@@ -5,13 +5,17 @@ defmodule Cantrip.CLI.Renderer do
   Pure functions: render_event/2 returns {iodata, device, state}. The caller
   is responsible for writing to IO. This keeps the renderer testable.
 
+  Events arrive as {envelope, {type, data}} where the envelope carries
+  entity_id, depth, and medium. The renderer uses envelope depth for
+  indentation — no mutable depth tracking needed.
+
   Progress goes to stderr. Final answer goes to stdout. This enables
   `mix cantrip.familiar "task" > result.txt` to capture just the answer.
   """
 
-  defstruct turn: 0, depth: 0
+  defstruct turn: 0
 
-  @type t :: %__MODULE__{turn: non_neg_integer(), depth: non_neg_integer()}
+  @type t :: %__MODULE__{turn: non_neg_integer()}
 
   @spec new() :: t()
   def new, do: %__MODULE__{}
@@ -20,30 +24,28 @@ defmodule Cantrip.CLI.Renderer do
 
   # -- Turn lifecycle --
 
-  def render_event(state, {:step_start, %{turn: n}}) do
+  def render_event(state, {%{depth: d}, {:step_start, %{turn: n}}}) do
     line = Owl.Data.tag("--- Turn #{n} ---", :faint) |> Owl.Data.to_chardata()
-    {[indent(state, line), "\n"], :stderr, %{state | turn: n}}
+    {[indent(d, line), "\n"], :stderr, %{state | turn: n}}
   end
 
-  # Don't show "Thinking..." — it collides with subsequent events due to \r
-  # issues at varying indent depths. The duration shown in message_complete
-  # is sufficient.
-  def render_event(state, {:message_start, _}), do: {"", :stderr, state}
+  def render_event(state, {_, {:message_start, _}}), do: {"", :stderr, state}
 
-  def render_event(state, {:message_complete, %{duration_ms: ms}}) do
+  def render_event(state, {%{depth: d}, {:message_complete, %{duration_ms: ms}}}) do
     line = Owl.Data.tag("  (#{ms}ms)", :faint) |> Owl.Data.to_chardata()
-    {[indent(state, line), "\n"], :stderr, state}
+    {[indent(d, line), "\n"], :stderr, state}
   end
 
   # -- Entity utterance (code block) --
   # Left-border only: minimal ink, composes with depth indentation,
-  # leaves full terminal width for code. No Owl.Box — it competes
-  # with tree lines for horizontal space.
+  # leaves full terminal width for code.
 
-  def render_event(state, {:code, code}) when is_binary(code) and code != "" do
-    p = prefix(state.depth)
+  def render_event(state, {%{depth: d, medium: medium}, {:code, code}})
+      when is_binary(code) and code != "" do
+    lang = if medium == :bash, do: "bash", else: "elixir"
+    p = prefix(d)
     border = Owl.Data.tag("│ ", :faint) |> Owl.Data.to_chardata()
-    top = Owl.Data.tag("╷ elixir", :cyan) |> Owl.Data.to_chardata()
+    top = Owl.Data.tag("╷ #{lang}", :cyan) |> Owl.Data.to_chardata()
     bottom = Owl.Data.tag("╵", :faint) |> Owl.Data.to_chardata()
 
     lines =
@@ -55,121 +57,120 @@ defmodule Cantrip.CLI.Renderer do
   end
 
   # LLM thinking/reasoning that accompanied a code tool call.
-  # Shown faint — it's the entity's internal reasoning, not the utterance.
-  def render_event(state, {:thinking, content}) when is_binary(content) and content != "" do
+  def render_event(state, {%{depth: d}, {:thinking, content}})
+      when is_binary(content) and content != "" do
     line = Owl.Data.tag(content, :faint) |> Owl.Data.to_chardata()
-    {[indent(state, line), "\n"], :stderr, state}
+    {[indent(d, line), "\n"], :stderr, state}
   end
 
-  # Conversation medium text — show directly.
-  def render_event(state, {:text, content}) when is_binary(content) and content != "" do
-    {[indent(state, content), "\n"], :stderr, state}
+  # Conversation medium text.
+  def render_event(state, {%{depth: d}, {:text, content}})
+      when is_binary(content) and content != "" do
+    {[indent(d, content), "\n"], :stderr, state}
   end
 
-  def render_event(state, {:text_delta, _chunk}), do: {"", :stderr, state}
+  def render_event(state, {_, {:text_delta, _}}), do: {"", :stderr, state}
 
   # -- Gate calls and results --
 
-  # Suppress the internal "code" eval gate entirely — the code box and
-  # observations already tell the story. Only show eval errors.
-  def render_event(state, {:tool_call, %{gate: "code"}}), do: {"", :stderr, state}
-  def render_event(state, {:tool_result, %{gate: "code", is_error: false}}), do: {"", :stderr, state}
+  # Suppress the internal "code" eval gate — the code block covers it.
+  def render_event(state, {_, {:tool_call, %{gate: "code"}}}), do: {"", :stderr, state}
+  def render_event(state, {_, {:tool_result, %{gate: "code", is_error: false}}}), do: {"", :stderr, state}
 
-  def render_event(state, {:tool_result, %{gate: "code", is_error: true, result: result}}) do
+  def render_event(state, {%{depth: d}, {:tool_result, %{gate: "code", is_error: true, result: result}}}) do
     text = summarize(result)
     line = Owl.Data.tag(["  ✗ eval: ", text], :red) |> Owl.Data.to_chardata()
-    {[indent(state, line), "\n"], :stderr, state}
+    {[indent(d, line), "\n"], :stderr, state}
   end
 
-  def render_event(state, {:tool_call, %{gate: gate}}) do
-    line = ["  ", Owl.Data.tag("▸ ", :cyan) |> Owl.Data.to_chardata(), gate]
-    {[indent(state, line), "\n"], :stderr, state}
+  def render_event(state, {%{depth: d}, {:tool_call, %{gate: gate} = meta}}) do
+    label =
+      case meta[:args_summary] do
+        nil -> gate
+        summary -> [gate, ": ", to_string(summary)]
+      end
+
+    line = ["  ", Owl.Data.tag("▸ ", :cyan) |> Owl.Data.to_chardata(), label]
+    {[indent(d, line), "\n"], :stderr, state}
   end
 
-  def render_event(state, {:tool_result, %{gate: gate, result: result, is_error: true}}) do
+  def render_event(state, {%{depth: d}, {:tool_result, %{gate: gate, result: result, is_error: true}}}) do
     text = summarize(result)
     line = Owl.Data.tag(["  ✗ ", gate, ": ", text], :red) |> Owl.Data.to_chardata()
-    {[indent(state, line), "\n"], :stderr, state}
+    {[indent(d, line), "\n"], :stderr, state}
   end
 
-  def render_event(state, {:tool_result, %{gate: gate, result: result, is_error: false}}) do
+  def render_event(state, {%{depth: d}, {:tool_result, %{gate: gate, result: result, is_error: false}}}) do
     text = summarize(result)
     line = Owl.Data.tag(["  ✓ ", gate, ": ", text], :green) |> Owl.Data.to_chardata()
-    {[indent(state, line), "\n"], :stderr, state}
+    {[indent(d, line), "\n"], :stderr, state}
   end
 
   # -- Token usage --
 
-  def render_event(state, {:usage, %{prompt_tokens: p, completion_tokens: c}}) do
+  def render_event(state, {%{depth: d}, {:usage, %{prompt_tokens: p, completion_tokens: c}}}) do
     line = Owl.Data.tag("  [#{p}+#{c} tokens]", :faint) |> Owl.Data.to_chardata()
-    {[indent(state, line), "\n"], :stderr, state}
+    {[indent(d, line), "\n"], :stderr, state}
   end
 
   # -- Final response --
-  # Only the root entity writes to stdout. Child results are already
-  # visible via the ✓ cast: summary line.
+  # Only the root entity writes to stdout.
 
-  def render_event(%{depth: 0} = state, {:final_response, %{result: result}}) do
+  def render_event(state, {%{depth: 0}, {:final_response, %{result: result}}}) do
     result_str = if is_binary(result), do: result, else: inspect(result, pretty: true)
     {[result_str, "\n"], :stdout, state}
   end
 
-  def render_event(state, {:final_response, _}), do: {"", :stderr, state}
+  def render_event(state, {_, {:final_response, _}}), do: {"", :stderr, state}
 
   # -- Child delegation --
 
-  def render_event(state, {:child_start, %{intent: intent}}) do
-    intent_str = to_string(intent)
-    line = ["  ", Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(), "cast: \"", intent_str, "\""]
-    {[indent(state, line), "\n"], :stderr, %{state | depth: state.depth + 1}}
+  def render_event(state, {%{depth: d}, {:child_start, %{intent: intent}}}) do
+    line = ["  ", Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(), "cast: \"", to_string(intent), "\""]
+    {[indent(d, line), "\n"], :stderr, state}
   end
 
-  def render_event(state, {:child_start, _}) do
+  def render_event(state, {%{depth: d}, {:child_start, _}}) do
     line = ["  ", Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(), "cast (child)"]
-    {[indent(state, line), "\n"], :stderr, %{state | depth: state.depth + 1}}
+    {[indent(d, line), "\n"], :stderr, state}
   end
 
-  def render_event(state, {:child_end, %{error: err}}) do
-    new_depth = max(state.depth - 1, 0)
+  def render_event(state, {%{depth: d}, {:child_end, %{error: err}}}) do
     line = Owl.Data.tag(["  ✗ cast: ", to_string(err)], :red) |> Owl.Data.to_chardata()
-    {[indent_at(new_depth, line), "\n"], :stderr, %{state | depth: new_depth}}
+    {[indent(d, line), "\n"], :stderr, state}
   end
 
-  def render_event(state, {:child_end, %{result: result}}) do
-    new_depth = max(state.depth - 1, 0)
+  def render_event(state, {%{depth: d}, {:child_end, %{result: result}}}) do
     line = Owl.Data.tag(["  ✓ cast: ", summarize(result)], :green) |> Owl.Data.to_chardata()
-    {[indent_at(new_depth, line), "\n"], :stderr, %{state | depth: new_depth}}
+    {[indent(d, line), "\n"], :stderr, state}
   end
 
   # -- Warnings --
 
-  def render_event(state, {:empty_turn, %{turn: n}}) do
+  def render_event(state, {%{depth: d}, {:empty_turn, %{turn: n}}}) do
     line = Owl.Data.tag("  ⚠ Turn #{n}: empty (no output)", :yellow) |> Owl.Data.to_chardata()
-    {[indent(state, line), "\n"], :stderr, state}
+    {[indent(d, line), "\n"], :stderr, state}
   end
 
-  # -- Catch-all --
-  def render_event(state, {:text, _}), do: {"", :stderr, state}
-  def render_event(state, {:step_complete, _}), do: {"", :stderr, state}
+  # -- Suppressed / catch-all --
+  def render_event(state, {_, {:text, _}}), do: {"", :stderr, state}
+  def render_event(state, {_, {:step_complete, _}}), do: {"", :stderr, state}
+
+  # Fallback for bare events (text_delta from LLM adapter, backward compat)
+  def render_event(state, {type, _} = bare) when is_atom(type) do
+    render_event(state, {%{entity_id: nil, depth: 0, medium: :code}, bare})
+  end
+
   def render_event(state, _unknown), do: {"", :stderr, state}
 
   # ── Indentation ──────────────────────────────────────────────────────
 
-  # Indent a single line of content using current state depth.
-  defp indent(%{depth: 0}, content), do: content
-  defp indent(%{depth: depth}, content), do: [prefix(depth), content]
-
-  # Indent at a specific depth (for child_end which decrements first).
-  defp indent_at(0, content), do: content
-  defp indent_at(depth, content), do: [prefix(depth), content]
-
+  defp indent(0, content), do: content
+  defp indent(depth, content), do: [prefix(depth), content]
 
   defp prefix(depth), do: String.duplicate("  ", depth)
 
   # ── Result summarization ─────────────────────────────────────────────
-  # Show small results as-is, summarize large ones. The entity has the
-  # full data in its variable bindings; both human and entity see metadata
-  # for large results.
 
   @max_display 300
 

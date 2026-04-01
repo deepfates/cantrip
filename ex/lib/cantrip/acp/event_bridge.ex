@@ -4,6 +4,8 @@ defmodule Cantrip.ACP.EventBridge do
 
   Spawned per-prompt as a lightweight process. Receives {:cantrip_event, event}
   messages from EntityServer and sends ACP session_notification via the Connection.
+
+  Events arrive as {envelope, {type, data}} with entity context.
   """
 
   @doc """
@@ -25,32 +27,49 @@ defmodule Cantrip.ACP.EventBridge do
     end
   end
 
-  defp translate_and_send(conn, session_id, {:text_delta, chunk}) when is_binary(chunk) do
+  # -- Enveloped events --
+
+  defp translate_and_send(conn, session_id, {_env, {:text_delta, chunk}}) when is_binary(chunk) do
     notify(conn, session_id,
       {:agent_thought_chunk,
        %ACP.ContentChunk{content: {:text, %ACP.TextContent{text: chunk}}}})
   end
 
-  defp translate_and_send(conn, session_id, {:text, content}) when is_binary(content) do
+  defp translate_and_send(conn, session_id, {_env, {:text, content}}) when is_binary(content) do
     notify(conn, session_id,
       {:agent_thought_chunk,
        %ACP.ContentChunk{content: {:text, %ACP.TextContent{text: content}}}})
   end
 
-  defp translate_and_send(conn, session_id, {:tool_call, %{gate: gate, tool_call_id: tc_id}}) do
+  defp translate_and_send(conn, session_id, {_env, {:thinking, content}}) when is_binary(content) do
+    notify(conn, session_id,
+      {:agent_thought_chunk,
+       %ACP.ContentChunk{content: {:text, %ACP.TextContent{text: content}}}})
+  end
+
+  defp translate_and_send(conn, session_id, {_env, {:tool_call, %{gate: gate} = meta}}) do
+    tc_id = meta[:tool_call_id] || "tc_" <> Integer.to_string(System.unique_integer([:positive]))
+    kind = meta[:kind] || :execute
+
+    title =
+      case meta[:args_summary] do
+        nil -> gate
+        summary -> "#{gate}: #{summary}"
+      end
+
     notify(conn, session_id,
       {:tool_call,
        %ACP.ToolCall{
-         tool_call_id: tc_id || "tc_" <> Integer.to_string(System.unique_integer([:positive])),
-         title: gate,
-         kind: :execute,
+         tool_call_id: tc_id,
+         title: title,
+         kind: kind,
          status: :in_progress,
          content: [],
          locations: []
        }})
   end
 
-  defp translate_and_send(conn, session_id, {:tool_result, %{gate: gate, result: result, is_error: is_error} = meta}) do
+  defp translate_and_send(conn, session_id, {_env, {:tool_result, %{gate: gate, result: result, is_error: is_error} = meta}}) do
     status = if is_error, do: :failed, else: :completed
     tc_id = meta[:tool_call_id] || "tc_#{gate}"
 
@@ -65,10 +84,17 @@ defmodule Cantrip.ACP.EventBridge do
        }})
   end
 
-  defp translate_and_send(conn, session_id, {:step_complete, %{terminated: true}}) do
+  defp translate_and_send(conn, session_id, {_env, {:step_complete, %{terminated: true}}}) do
     notify(conn, session_id,
       {:agent_message_chunk,
        %ACP.ContentChunk{content: {:text, %ACP.TextContent{text: ""}}}})
+  end
+
+  # Bare events (text_delta from LLM adapter, no envelope)
+  defp translate_and_send(conn, session_id, {:text_delta, chunk}) when is_binary(chunk) do
+    notify(conn, session_id,
+      {:agent_thought_chunk,
+       %ACP.ContentChunk{content: {:text, %ACP.TextContent{text: chunk}}}})
   end
 
   defp translate_and_send(_conn, _session_id, _event), do: :ok

@@ -329,9 +329,14 @@ defmodule Cantrip.EntityServer do
            state.code_state}
       end
 
-    # Emit tool call and result events
+    # Emit tool call and result events with semantic metadata
     Enum.each(observation, fn obs ->
-      emit_event(state, {:tool_call, %{gate: obs.gate, tool_call_id: obs[:tool_call_id]}})
+      emit_event(state, {:tool_call, %{
+        gate: obs.gate,
+        tool_call_id: obs[:tool_call_id],
+        kind: gate_kind(obs.gate),
+        args_summary: args_summary(obs.gate, obs[:args])
+      }})
 
       emit_event(
         state,
@@ -675,7 +680,9 @@ defmodule Cantrip.EntityServer do
       gate_start = System.monotonic_time()
 
       observation =
-        Circle.execute_gate(circle, gate, args) |> Map.put(:tool_call_id, tool_call_id)
+        Circle.execute_gate(circle, gate, args)
+        |> Map.put(:tool_call_id, tool_call_id)
+        |> Map.put(:args, args)
 
       if entity_id do
         duration = System.monotonic_time() - gate_start
@@ -1110,9 +1117,31 @@ defmodule Cantrip.EntityServer do
 
   defp emit_event(%{stream_to: nil}, _event), do: :ok
 
-  defp emit_event(%{stream_to: pid}, event) when is_pid(pid) do
-    send(pid, {:cantrip_event, event})
+  defp emit_event(%{stream_to: pid} = state, event) when is_pid(pid) do
+    envelope = %{
+      entity_id: state.entity_id,
+      depth: state.depth,
+      medium: state.cantrip.circle.type
+    }
+
+    send(pid, {:cantrip_event, {envelope, event}})
   end
+
+  # -- Gate metadata helpers --
+
+  defp gate_kind("read_file"), do: :read
+  defp gate_kind("read"), do: :read
+  defp gate_kind("list_dir"), do: :read
+  defp gate_kind("search"), do: :search
+  defp gate_kind("compile_and_load"), do: :edit
+  defp gate_kind(_), do: :execute
+
+  defp args_summary("read_file", args) when is_binary(args), do: args
+  defp args_summary("read_file", %{} = a), do: Map.get(a, "path", Map.get(a, :path))
+  defp args_summary("list_dir", args) when is_binary(args), do: args
+  defp args_summary("list_dir", %{} = a), do: Map.get(a, "path", Map.get(a, :path))
+  defp args_summary("search", %{} = a), do: Map.get(a, "pattern", Map.get(a, :pattern))
+  defp args_summary(_, _), do: nil
 
   defp stringify_tool_result(result) when is_binary(result), do: result
   defp stringify_tool_result(result), do: inspect(result)

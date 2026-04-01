@@ -3,6 +3,11 @@ defmodule CantripM23StreamingTest do
 
   alias Cantrip.FakeLLM
 
+  # Helper to extract event type from enveloped events
+  defp event_type({_envelope, {type, _data}}), do: type
+  defp event_type({type, _data}) when is_atom(type), do: type
+  defp event_type(_), do: nil
+
   test "cast_stream emits step_start, tool events, and final_response" do
     llm =
       {FakeLLM,
@@ -18,23 +23,19 @@ defmodule CantripM23StreamingTest do
 
     events = Enum.to_list(stream)
 
-    # Should have step_start events
-    step_starts = Enum.filter(events, &match?({:step_start, _}, &1))
+    step_starts = Enum.filter(events, &(event_type(&1) == :step_start))
     assert length(step_starts) == 2
 
-    # Should have tool_call and tool_result events
-    tool_calls = Enum.filter(events, &match?({:tool_call, _}, &1))
+    tool_calls = Enum.filter(events, &(event_type(&1) == :tool_call))
     assert length(tool_calls) >= 2
 
-    tool_results = Enum.filter(events, &match?({:tool_result, _}, &1))
+    tool_results = Enum.filter(events, &(event_type(&1) == :tool_result))
     assert length(tool_results) >= 2
 
-    # Should have a final_response
-    finals = Enum.filter(events, &match?({:final_response, _}, &1))
+    finals = Enum.filter(events, &(event_type(&1) == :final_response))
     assert [final] = finals
-    assert {:final_response, %{result: "finished"}} = final
+    assert {_env, {:final_response, %{result: "finished"}}} = final
 
-    # Should end with {:done, result}
     last = List.last(events)
     assert {:done, {:ok, "finished", _cantrip, _loom, _meta}} = last
   end
@@ -52,7 +53,7 @@ defmodule CantripM23StreamingTest do
     {stream, _task} = Cantrip.cast_stream(cantrip, "usage test")
 
     events = Enum.to_list(stream)
-    usage_events = Enum.filter(events, &match?({:usage, _}, &1))
+    usage_events = Enum.filter(events, &(event_type(&1) == :usage))
     assert length(usage_events) >= 1
   end
 
@@ -69,7 +70,7 @@ defmodule CantripM23StreamingTest do
     {stream, _task} = Cantrip.cast_stream(cantrip, "completion test")
 
     events = Enum.to_list(stream)
-    step_completes = Enum.filter(events, &match?({:step_complete, _}, &1))
-    assert [{:step_complete, %{terminated: true}}] = step_completes
+    step_completes = Enum.filter(events, &(event_type(&1) == :step_complete))
+    assert [{_env, {:step_complete, %{terminated: true}}}] = step_completes
   end
 end

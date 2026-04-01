@@ -2,8 +2,8 @@ defmodule Cantrip.CLI.JsonRenderer do
   @moduledoc """
   Renders EntityServer streaming events as JSONL to stdout.
 
-  Each event is one JSON line with `type` and `data` keys.
-  Matches the Codex exec pattern: programmatic consumption via piping.
+  Each event is one JSON line with `type`, `entity_id`, `depth`, `medium`,
+  and `data` keys. Events arrive as {envelope, {type, data}}.
   """
 
   defstruct []
@@ -14,6 +14,23 @@ defmodule Cantrip.CLI.JsonRenderer do
   def new, do: %__MODULE__{}
 
   @spec render_event(t(), term()) :: {iodata(), :stdout, t()}
+
+  # Enveloped events
+  def render_event(state, {%{} = envelope, {type, data}}) when is_atom(type) do
+    json =
+      %{
+        type: Atom.to_string(type),
+        entity_id: envelope[:entity_id],
+        depth: envelope[:depth] || 0,
+        medium: to_string(envelope[:medium] || "unknown"),
+        data: serialize_data(data)
+      }
+      |> Jason.encode!()
+
+    {[json, "\n"], :stdout, state}
+  end
+
+  # Bare events (text_delta from LLM adapter, backward compat)
   def render_event(state, {type, data}) when is_atom(type) do
     json =
       %{type: Atom.to_string(type), data: serialize_data(data)}

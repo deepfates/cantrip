@@ -23,8 +23,8 @@ defmodule Cantrip.EntityServerStreamTest do
       assert result == "hello"
 
       # Should have received streaming events
-      assert_received {:cantrip_event, {:step_start, _}}
-      assert_received {:cantrip_event, {:final_response, %{result: "hello"}}}
+      assert_received {:cantrip_event, {_, {:step_start, _}}}
+      assert_received {:cantrip_event, {_, {:final_response, %{result: "hello"}}}}
     end
 
     test "send/2 without stream_to does not deliver events" do
@@ -65,7 +65,7 @@ defmodule Cantrip.EntityServerStreamTest do
 
       # First send with stream_to
       {:ok, "first", _, _, _} = Cantrip.send(pid, "first", stream_to: self())
-      assert_received {:cantrip_event, {:final_response, %{result: "first"}}}
+      assert_received {:cantrip_event, {_, {:final_response, %{result: "first"}}}}
 
       # Drain mailbox
       flush_mailbox()
@@ -106,8 +106,8 @@ defmodule Cantrip.EntityServerStreamTest do
       assert result == "child done"
 
       # Should have received child delegation events
-      assert_received {:cantrip_event, {:child_start, %{depth: _}}}
-      assert_received {:cantrip_event, {:child_end, %{depth: _, result: "child done"}}}
+      assert_received {:cantrip_event, {_, {:child_start, %{depth: _}}}}
+      assert_received {:cantrip_event, {_, {:child_end, %{depth: _, result: "child done"}}}}
     end
   end
 
@@ -134,7 +134,7 @@ defmodule Cantrip.EntityServerStreamTest do
       case result do
         {:ok, _, _, _, _} ->
           # If it recovered, check we got an empty_turn event for the first turn
-          assert_received {:cantrip_event, {:empty_turn, _}}
+          assert_received {:cantrip_event, {_, {:empty_turn, _}}}
 
         {:error, _, _} ->
           # Error is also acceptable — the LLM returned nothing useful

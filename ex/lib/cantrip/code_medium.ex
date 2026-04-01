@@ -352,7 +352,7 @@ defmodule Cantrip.CodeMedium do
                   true -> opts
                 end
 
-              observation = execute_gate.(gate_name, args)
+              observation = execute_gate.(gate_name, args) |> Map.put(:args, args)
               push_observation(observation)
               observation.result
             end
