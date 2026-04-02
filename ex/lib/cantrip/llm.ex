@@ -36,14 +36,13 @@ defmodule Cantrip.LLM do
   def validate_response(response) do
     content = Map.get(response, :content)
     tool_calls = Map.get(response, :tool_calls)
-    code = Map.get(response, :code)
     tool_result = Map.get(response, :tool_result)
 
     cond do
       not is_nil(tool_result) ->
         {:error, "tool result without matching tool call"}
 
-      is_nil(content) and is_nil(tool_calls) and is_nil(code) ->
+      is_nil(content) and is_nil(tool_calls) ->
         {:error, "llm returned neither content nor tool_calls"}
 
       duplicate_tool_call_ids?(tool_calls || []) ->

@@ -90,12 +90,6 @@ defmodule Cantrip.ACP.EventBridge do
        %ACP.ContentChunk{content: {:text, %ACP.TextContent{text: ""}}}})
   end
 
-  # Bare events (text_delta from LLM adapter, no envelope)
-  defp translate_and_send(conn, session_id, {:text_delta, chunk}) when is_binary(chunk) do
-    notify(conn, session_id,
-      {:agent_thought_chunk,
-       %ACP.ContentChunk{content: {:text, %ACP.TextContent{text: chunk}}}})
-  end
 
   defp translate_and_send(_conn, _session_id, _event), do: :ok
 

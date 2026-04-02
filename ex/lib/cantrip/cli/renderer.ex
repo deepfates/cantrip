@@ -155,12 +155,6 @@ defmodule Cantrip.CLI.Renderer do
   # -- Suppressed / catch-all --
   def render_event(state, {_, {:text, _}}), do: {"", :stderr, state}
   def render_event(state, {_, {:step_complete, _}}), do: {"", :stderr, state}
-
-  # Fallback for bare events (text_delta from LLM adapter, backward compat)
-  def render_event(state, {type, _} = bare) when is_atom(type) do
-    render_event(state, {%{entity_id: nil, depth: 0, medium: :code}, bare})
-  end
-
   def render_event(state, _unknown), do: {"", :stderr, state}
 
   # ── Indentation ──────────────────────────────────────────────────────

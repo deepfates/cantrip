@@ -197,7 +197,7 @@ defmodule Cantrip.EntityServer do
         messages: messages,
         tools: tools,
         tool_choice: tool_choice_override || state.cantrip.identity.tool_choice,
-        stream_to: state.stream_to
+        stream_to: wrap_stream_to(state)
       }
 
       emit_event(state, {:message_start, %{turn: state.turns + 1}})
@@ -288,17 +288,30 @@ defmodule Cantrip.EntityServer do
             {%{content: content, code: code, tool_calls: tool_calls}, obs, result, terminated,
              next_state}
           else
-            # No code in tool call — emit content as text if present
             if is_binary(content) and content != "" do
               emit_event(state, {:text, content})
             end
 
-            # Fall through to regular tool call handling
-            {observation, result, by_done} =
-              execute_gate_calls(state.cantrip.circle, tool_calls, state.entity_id)
+            if tool_calls != [] do
+              # Non-elixir tool calls in code medium — process them normally.
+              # (child entities in code circles may receive conversation-style tool calls)
+              {observation, result, by_done} =
+                execute_gate_calls(state.cantrip.circle, tool_calls, state.entity_id)
 
-            {%{content: content, tool_calls: tool_calls}, observation, result, by_done,
-             state.code_state}
+              {%{content: content, tool_calls: tool_calls}, observation, result, by_done,
+               state.code_state}
+            else
+              # No tool calls and no code — the model violated the medium contract.
+              # Surface as error observation so the entity can steer (CIRCLE-5).
+              error_msg =
+                "Code medium requires an elixir tool call. " <>
+                  "The model returned prose instead."
+
+              observation = [%{gate: "code", result: error_msg, is_error: true, args: nil}]
+
+              {%{content: content, tool_calls: tool_calls}, observation, nil, false,
+               state.code_state}
+            end
           end
 
         :bash ->
@@ -340,7 +353,12 @@ defmodule Cantrip.EntityServer do
 
       emit_event(
         state,
-        {:tool_result, %{gate: obs.gate, result: obs.result, is_error: obs.is_error}}
+        {:tool_result, %{
+          gate: obs.gate,
+          result: obs.result,
+          is_error: obs.is_error,
+          tool_call_id: obs[:tool_call_id]
+        }}
       )
     end)
 
@@ -1113,6 +1131,29 @@ defmodule Cantrip.EntityServer do
       %{duration: duration},
       %{entity_id: entity_id, turn_number: turn_number}
     )
+  end
+
+  # Wrap stream_to with a relay that adds the envelope to bare events
+  # from the LLM adapter (text_delta). Returns nil if no stream_to.
+  defp wrap_stream_to(%{stream_to: nil}), do: nil
+
+  defp wrap_stream_to(state) do
+    envelope = %{
+      entity_id: state.entity_id,
+      depth: state.depth,
+      medium: state.cantrip.circle.type
+    }
+
+    dest = state.stream_to
+    spawn_link(fn -> text_delta_relay(dest, envelope) end)
+  end
+
+  defp text_delta_relay(dest, envelope) do
+    receive do
+      {:cantrip_event, event} ->
+        send(dest, {:cantrip_event, {envelope, event}})
+        text_delta_relay(dest, envelope)
+    end
   end
 
   defp emit_event(%{stream_to: nil}, _event), do: :ok

@@ -30,15 +30,6 @@ defmodule Cantrip.CLI.JsonRenderer do
     {[json, "\n"], :stdout, state}
   end
 
-  # Bare events (text_delta from LLM adapter, backward compat)
-  def render_event(state, {type, data}) when is_atom(type) do
-    json =
-      %{type: Atom.to_string(type), data: serialize_data(data)}
-      |> Jason.encode!()
-
-    {[json, "\n"], :stdout, state}
-  end
-
   def render_event(state, _unknown), do: {"", :stdout, state}
 
   defp serialize_data(data) when is_map(data) do

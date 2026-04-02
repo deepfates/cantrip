@@ -137,7 +137,7 @@ defmodule Cantrip.Familiar do
       },
       circle: %{
         type: :code,
-        gates: gates ++ [:call_entity, :call_entity_batch],
+        gates: gates,
         wards: [%{max_turns: max_turns}, %{max_depth: 3}]
       },
       loom_storage: loom_storage
