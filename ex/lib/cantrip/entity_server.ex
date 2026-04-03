@@ -1153,6 +1153,13 @@ defmodule Cantrip.EntityServer do
       {:cantrip_event, event} ->
         send(dest, {:cantrip_event, {envelope, event}})
         text_delta_relay(dest, envelope)
+
+      :stop ->
+        :ok
+    after
+      # LLM calls complete within the turn timeout. If no events arrive
+      # for 60s the relay is stale — exit to avoid process accumulation.
+      60_000 -> :ok
     end
   end
 
