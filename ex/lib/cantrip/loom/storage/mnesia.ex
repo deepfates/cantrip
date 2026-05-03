@@ -24,7 +24,7 @@ defmodule Cantrip.Loom.Storage.Mnesia do
   @impl true
   def append_turn(%{table: table} = state, turn) do
     key = System.unique_integer([:positive, :monotonic])
-    event = %{type: "turn", turn: turn}
+    event = storage_event(%{type: :turn, turn: turn})
 
     case call(:transaction, [fn -> call(:write, [{table, key, event}]) end]) do
       {:atomic, :ok} -> {:ok, state}
@@ -36,7 +36,19 @@ defmodule Cantrip.Loom.Storage.Mnesia do
   @impl true
   def annotate_reward(%{table: table} = state, index, reward) do
     key = System.unique_integer([:positive, :monotonic])
-    event = %{type: "reward", index: index, reward: reward}
+    event = storage_event(%{type: :reward, index: index, reward: reward})
+
+    case call(:transaction, [fn -> call(:write, [{table, key, event}]) end]) do
+      {:atomic, :ok} -> {:ok, state}
+      {:aborted, reason} -> {:error, reason}
+      other -> {:error, other}
+    end
+  end
+
+  @impl true
+  def append_event(%{table: table} = state, event) do
+    key = System.unique_integer([:positive, :monotonic])
+    event = storage_event(event)
 
     case call(:transaction, [fn -> call(:write, [{table, key, event}]) end]) do
       {:atomic, :ok} -> {:ok, state}
@@ -114,7 +126,6 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     end
   end
 
-
   defp default_table do
     :"cantrip_loom_mnesia_#{System.unique_integer([:positive])}"
   end
@@ -126,4 +137,25 @@ defmodule Cantrip.Loom.Storage.Mnesia do
   defp call(fun, args) do
     apply(:mnesia, fun, args)
   end
+
+  defp storage_event(event) do
+    case event_type(event) do
+      :turn ->
+        %{type: "turn", turn: Map.fetch!(event, :turn)}
+
+      "turn" ->
+        %{type: "turn", turn: Map.fetch!(event, :turn)}
+
+      :reward ->
+        %{type: "reward", index: Map.fetch!(event, :index), reward: Map.fetch!(event, :reward)}
+
+      "reward" ->
+        %{type: "reward", index: Map.fetch!(event, :index), reward: Map.fetch!(event, :reward)}
+
+      _ ->
+        %{type: "event", event: event}
+    end
+  end
+
+  defp event_type(event), do: Map.get(event, :type) || Map.get(event, "type")
 end

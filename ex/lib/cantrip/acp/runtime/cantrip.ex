@@ -15,18 +15,23 @@ defmodule Cantrip.ACP.Runtime.Cantrip do
            circle: %{
              type: :code,
              gates: [:done, :echo, :call_entity, :call_entity_batch, :compile_and_load],
-             wards: [%{max_turns: 24}, %{max_depth: 2}, %{max_concurrent_children: 4}, %{require_done_tool: true}]
+             wards: [
+               %{max_turns: 24},
+               %{max_depth: 2},
+               %{max_concurrent_children: 4},
+               %{require_done_tool: true}
+             ]
            },
            retry: %{max_retries: 1, retryable_status_codes: [408, 429, 500, 502, 503, 504]}
          ) do
-      {:ok, cantrip} -> {:ok, %{cantrip: cantrip, cwd: cwd, entity_pid: nil}}
+      {:ok, cantrip} -> {:ok, %{cantrip: cantrip, cwd: cwd, entity_pid: nil, streaming?: true}}
       {:error, reason} -> {:error, reason}
     end
   end
 
   @impl true
   def prompt(%{cantrip: cantrip, entity_pid: nil} = session, text) when is_binary(text) do
-    opts = if session[:stream_to], do: [stream_to: session.stream_to], else: []
+    opts = stream_opts(session)
 
     case Cantrip.summon(cantrip, text, opts) do
       {:ok, pid, result, next_cantrip, _loom, _meta} ->
@@ -45,7 +50,7 @@ defmodule Cantrip.ACP.Runtime.Cantrip do
   end
 
   def prompt(%{entity_pid: pid} = session, text) when is_pid(pid) and is_binary(text) do
-    case Cantrip.send(pid, text) do
+    case Cantrip.send(pid, text, stream_opts(session)) do
       {:ok, result, next_cantrip, _loom, _meta} ->
         answer = normalize_answer(result)
         next_session = %{session | cantrip: next_cantrip}
@@ -64,4 +69,9 @@ defmodule Cantrip.ACP.Runtime.Cantrip do
   defp normalize_answer(nil), do: ""
   defp normalize_answer(answer) when is_binary(answer), do: String.trim(answer)
   defp normalize_answer(answer), do: to_string(answer) |> String.trim()
+
+  defp stream_opts(%{stream_to: stream_to}) when is_pid(stream_to),
+    do: [stream_to: stream_to, stream_barrier?: true]
+
+  defp stream_opts(_session), do: []
 end

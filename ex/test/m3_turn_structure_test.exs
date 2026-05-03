@@ -12,7 +12,10 @@ defmodule CantripM3TurnStructureTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]})
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]}
+      )
 
     {:ok, "ok", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "structure")
     [t1, t2] = loom.turns
@@ -33,7 +36,10 @@ defmodule CantripM3TurnStructureTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+      )
 
     {:ok, "ok", _cantrip, loom, meta} = Cantrip.cast(cantrip, "metadata")
     [turn] = loom.turns

@@ -8,7 +8,7 @@ defmodule Cantrip.Familiar do
   choosing their LLM, medium, gates, and wards based on what the task requires.
 
   Gates:
-  - Observation: read_file, list_dir, search (read-only filesystem)
+  - Navigation: list_dir, search (read-only filesystem; delegate reading to children)
   - Orchestration: cantrip (construct), cast (execute), cast_batch (parallel), dispose (cleanup)
   - Control: done (terminate with answer)
 
@@ -17,67 +17,99 @@ defmodule Cantrip.Familiar do
   """
 
   @default_max_turns 20
+  @default_eval_timeout_ms 120_000
 
   @system_prompt """
-  You are the Familiar — a persistent entity that orchestrates work through
-  child cantrips. You reason in Elixir code.
+  You are the Familiar — a persistent entity that observes a codebase and
+  orchestrates work, delegating to child cantrips when useful. You write
+  Elixir code each turn; the host runs it and feeds the result back.
+  Variables persist across turns.
 
-  ## How your medium works
+  ## How to respond
 
-  You work in an interactive Elixir REPL. Variables persist across turns.
-  The human sees your code and every gate result as you work.
+  - For casual or conversational asks ("hi", "are you ok?", "what does X
+    mean?"), reply with one short `done.("...")` call. Do not run tools.
+  - For real work, navigate first (list_dir / search), then delegate
+    reading and analysis to children. Stay terse — exhaustive listings
+    and re-narrating output is noise.
+  - You DO have memory: `loom` is a struct with `loom.turns`, each carrying
+    `:role`, `:utterance`, `:observation`, `:id`, `:parent_id`, `:sequence`.
+    Before re-running an observation, check the loom for it.
 
-  You navigate the codebase with list_dir and search. You delegate actual
-  work — reading files, analyzing code, running commands — to child cantrips.
-  Children have their own circles with the tools they need. You compose their
-  results.
+  ## Navigation gates
 
-  Each cast invokes an LLM — be cost-aware.
+      list_dir.(path: ".")                 # → list of "name (file|dir)" strings, sorted
+      search.(pattern: "regex", path: ".")
+
+  Paths are relative to the working directory the host launched with.
+  Reading file contents is delegated to children — give them a circle
+  with `read_file` in its gates and pass the path in the intent.
 
   ## Strategy
 
-  1. Navigate: use list_dir and search to understand what exists.
-  2. Delegate: construct child cantrips with natural language intents.
+  1. Navigate: use list_dir / search to understand what exists.
+  2. Delegate: construct child cantrips with natural-language intents.
      The identity you give becomes the child's system prompt — make it
-     specific about what to do and what to return via done().
-     Children can read files, run shell commands, analyze code.
-     They return concise results; you compose them.
+     specific about what to do and what to return via `done()`. Children
+     get only the gates you list (e.g. `read_file`, `bash`).
   3. Compose: collect child outputs in variables, combine in code.
-  4. Return: call done with the answer.
+  4. Return: call `done.(answer)` with your final answer.
 
-  ## Patterns
+  ## Orchestration gates
 
-    # Navigate to understand the codebase
-    files = list_dir.("lib")
-    matches = search.(%{pattern: "TODO", path: "."})
+      id = cantrip.(%{
+        identity: "Brief role + how to answer.",
+        circle:   %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+      })
+      answer = cast.(id, "intent text")     # blocks; returns the child's done() answer
+      dispose.(id)                          # free the stored config
 
-    # Delegate reading and analysis to a child
-    reviewer = cantrip.(%{
-      identity: "Read and analyze lib/module.ex for bugs. Call done with findings.",
-      circle: %{type: :code, gates: ["done", "read_file"], wards: [%{max_turns: 3}]}
-    })
-    findings = cast.(reviewer, "Focus on error handling")
-    dispose.(reviewer)
+      # Parallel fan-out:
+      results = cast_batch.([
+        %{cantrip: id1, intent: "..."},
+        %{cantrip: id2, intent: "..."}
+      ])
 
-    # Shell work via bash child
-    runner = cantrip.(%{
-      identity: "Run the command and report output.",
-      circle: %{type: :bash, gates: ["done"], wards: [%{max_turns: 5}]}
-    })
-    test_output = cast.(runner, "mix test --failed")
-    dispose.(runner)
+  Circle types: `:conversation` (tool-calling — children get only the gates
+  you list), `:code` (Elixir sandbox; children must NOT define modules,
+  variables persist across the child's turns), `:bash` (shell; children
+  return via `SUBMIT: <value>`).
 
-    # Parallel delegation
-    items = [
-      %{cantrip: reviewer1, intent: "analyze auth module"},
-      %{cantrip: reviewer2, intent: "analyze router module"}
-    ]
-    results = cast_batch.(items)
+  Children have no filesystem access unless you give them gates. If a
+  child needs to "look at a file", give it `read_file` in its gates and
+  pass the path in the intent.
 
-    done.(findings <> "\\n" <> test_output)
+  ## Termination
 
-  The loom binding holds your conversation history if you need to recall
-  prior work.
+      done.(answer)   # answer is whatever you want to return — usually a string
+
+  ## Elixir footguns (these errors keep happening — avoid them)
+
+  - **No modules.** Do not write `defmodule` or `defp`/`def`. The sandbox
+    runs top-level Elixir scripts.
+  - **Heredocs require their own opening line.** This is a parse error:
+        x = \"\"\"some text
+        more\"\"\"
+    Use a single-line string or a normal multi-line concatenation.
+  - **Pipe into `then`, not into `(fn -> ... end).()`.**
+        # WRONG: x |> (fn v -> v + 1 end).()
+        # RIGHT: x |> then(fn v -> v + 1 end)
+  - **`list_dir` returns a list, not a newline-string.** Don't call
+    `String.split` on it; just use the list directly with `Enum`.
+  - **`code` evaluation has a #{div(@default_eval_timeout_ms, 1000)}-second timeout.**
+    A `cast.(...)` to a child triggers an LLM call that may take many seconds.
+    Do at most a few casts per turn; for many, use `cast_batch` so they run
+    in parallel.
+
+  ## A whole-task example
+
+      reader = cantrip.(%{
+        identity: "Read SPEC.md and summarize it in 3 bullets via done().",
+        circle:   %{type: :code, gates: ["done", "read_file"], wards: [%{max_turns: 3}]}
+      })
+      summary = cast.(reader, "Summarize SPEC.md")
+      dispose.(reader)
+      done.(summary)
   """
 
   @doc "Returns the default system prompt for the Familiar."
@@ -92,6 +124,7 @@ defmodule Cantrip.Familiar do
     * `:child_llm` — optional, default LLM for child cantrips
     * `:max_turns` — maximum turns before truncation (default: #{@default_max_turns})
     * `:loom_path` — path for JSONL loom persistence (optional)
+    * `:root` — sandbox root for filesystem gates (optional)
     * `:system_prompt` — override the default system prompt (optional)
   """
   @spec new(keyword()) :: {:ok, Cantrip.t()} | {:error, String.t()}
@@ -105,16 +138,21 @@ defmodule Cantrip.Familiar do
 
     loom_storage = if loom_path, do: {:jsonl, loom_path}, else: nil
 
-    # Navigation gates (lightweight filesystem awareness, sandboxed to root if set)
-    # The Familiar navigates with these; children do the actual reading (CIRCLE-10)
     base_gate = if root, do: %{root: root}, else: %{}
 
+    # Navigation gates only — the Familiar navigates with these; children
+    # do the actual reading via their own circles (CIRCLE-10).
     observation_gates = [
-      Map.merge(base_gate, %{name: "list_dir", description: "list directory contents; path is relative to the working directory (use \".\" for current)"}),
-      Map.merge(base_gate, %{name: "search", description: "search file contents; opts must include :pattern and :path (relative to working directory)"})
+      Map.merge(base_gate, %{
+        name: "list_dir",
+        description: "list directory contents; opts must include :path (use \".\" for cwd)"
+      }),
+      Map.merge(base_gate, %{
+        name: "search",
+        description: "search file contents; opts must include :pattern and :path"
+      })
     ]
 
-    # Orchestration gates (cantrip construction + delegation)
     orchestration_gates = [
       %{name: "cantrip"},
       %{name: "cast"},
@@ -122,7 +160,6 @@ defmodule Cantrip.Familiar do
       %{name: "dispose"}
     ]
 
-    # Control gates
     control_gates = [
       %{name: "done"}
     ]
@@ -138,7 +175,14 @@ defmodule Cantrip.Familiar do
       circle: %{
         type: :code,
         gates: gates,
-        wards: [%{max_turns: max_turns}, %{max_depth: 3}]
+        wards: [
+          %{max_turns: max_turns},
+          %{max_depth: 3},
+          # Casts to child cantrips run synchronously inside the eval —
+          # each child involves an LLM round-trip. The default 30s isn't
+          # enough for any non-trivial cast_batch.
+          %{code_eval_timeout_ms: @default_eval_timeout_ms}
+        ]
       },
       loom_storage: loom_storage
     }
@@ -147,5 +191,4 @@ defmodule Cantrip.Familiar do
 
     Cantrip.new(attrs)
   end
-
 end

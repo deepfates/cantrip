@@ -32,16 +32,18 @@ defmodule Cantrip.ACP.Runtime.Familiar do
           if is_binary(cwd) do
             familiar_opts
             |> Keyword.put(:root, cwd)
-            |> Keyword.put(:system_prompt,
+            |> Keyword.put(
+              :system_prompt,
               Cantrip.Familiar.default_system_prompt() <>
-              "\n\n## Working directory\n\nYou are observing: #{cwd}\nAll file paths should be relative to or within this directory.\nStart by listing the directory to orient yourself.\n")
+                "\n\n## Working directory\n\nYou are observing: #{cwd}\nAll file paths should be relative to or within this directory.\nStart by listing the directory to orient yourself.\n"
+            )
           else
             familiar_opts
           end
 
         case Cantrip.Familiar.new(familiar_opts) do
           {:ok, cantrip} ->
-            {:ok, %{cantrip: cantrip, cwd: cwd, entity_pid: nil}}
+            {:ok, %{cantrip: cantrip, cwd: cwd, entity_pid: nil, streaming?: true}}
 
           {:error, reason} ->
             {:error, reason}
@@ -54,7 +56,7 @@ defmodule Cantrip.ACP.Runtime.Familiar do
 
   @impl true
   def prompt(%{cantrip: cantrip, entity_pid: nil} = session, text) when is_binary(text) do
-    opts = if session[:stream_to], do: [stream_to: session.stream_to], else: []
+    opts = stream_opts(session)
 
     case Cantrip.summon(cantrip, text, opts) do
       {:ok, pid, result, next_cantrip, _loom, _meta} ->
@@ -73,9 +75,7 @@ defmodule Cantrip.ACP.Runtime.Familiar do
   end
 
   def prompt(%{entity_pid: pid} = session, text) when is_pid(pid) and is_binary(text) do
-    opts = if session[:stream_to], do: [stream_to: session.stream_to], else: []
-
-    case Cantrip.send(pid, text, opts) do
+    case Cantrip.send(pid, text, stream_opts(session)) do
       {:ok, result, next_cantrip, _loom, _meta} ->
         answer = normalize_answer(result)
         next_session = %{session | cantrip: next_cantrip}
@@ -93,5 +93,12 @@ defmodule Cantrip.ACP.Runtime.Familiar do
 
   defp normalize_answer(nil), do: ""
   defp normalize_answer(answer) when is_binary(answer), do: String.trim(answer)
-  defp normalize_answer(answer), do: to_string(answer) |> String.trim()
+  # Non-binary answers (agents that called done() with a map, list, etc.)
+  # get inspected — never raise. Mirrors Cantrip.ACP.EventBridge.stringify/1.
+  defp normalize_answer(answer), do: inspect(answer) |> String.trim()
+
+  defp stream_opts(%{stream_to: stream_to}) when is_pid(stream_to),
+    do: [stream_to: stream_to, stream_barrier?: true]
+
+  defp stream_opts(_session), do: []
 end

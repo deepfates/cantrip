@@ -39,7 +39,8 @@ defmodule Cantrip.MixProject do
       {:agent_client_protocol, github: "f1729/agent-client-protocol-elixir"},
       {:owl, "~> 0.13"},
       {:yaml_elixir, "~> 2.11", only: :test},
-      {:mox, "~> 1.2", only: :test}
+      {:mox, "~> 1.2", only: :test},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 

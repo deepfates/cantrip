@@ -186,7 +186,8 @@ defmodule CantripM3ForkTest do
     # Forked code circle should include capability presentation (gate descriptions)
     system_msgs = Enum.filter(messages, &(&1.role == :system))
     all_system_text = system_msgs |> Enum.map(& &1.content) |> Enum.join(" ")
+
     assert String.contains?(all_system_text, "done"),
-      "forked code circle should include capability text describing available gates"
+           "forked code circle should include capability text describing available gates"
   end
 end

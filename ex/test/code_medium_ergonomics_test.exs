@@ -3,6 +3,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
 
   alias Cantrip.CodeMedium
   alias Cantrip.Circle
+  alias Cantrip.Gate
 
   defp make_runtime(gates \\ [:done]) do
     circle = Circle.new(gates: gates, type: :code)
@@ -10,7 +11,10 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
     %{
       circle: circle,
       call_entity: fn _opts ->
-        %{observation: %{gate: "call_entity", result: "child_result", is_error: false}, value: "child_result"}
+        %{
+          observation: %{gate: "call_entity", result: "child_result", is_error: false},
+          value: "child_result"
+        }
       end
     }
   end
@@ -19,7 +23,9 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
     test "done.(x) works (dot-call, backwards compatible)" do
       runtime = make_runtime()
       state = %{}
-      {_state, observations, result, terminated} = CodeMedium.eval(~s[done.("answer")], state, runtime)
+
+      {_state, observations, result, terminated} =
+        CodeMedium.eval(~s[done.("answer")], state, runtime)
 
       assert terminated
       assert result == "answer"
@@ -29,7 +35,9 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
     test "done(x) works (no dot-call)" do
       runtime = make_runtime()
       state = %{}
-      {_state, observations, result, terminated} = CodeMedium.eval(~s[done("answer")], state, runtime)
+
+      {_state, observations, result, terminated} =
+        CodeMedium.eval(~s[done("answer")], state, runtime)
 
       assert terminated
       assert result == "answer"
@@ -102,7 +110,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
           %{observation: %{gate: "call_entity", result: "ok", is_error: false}, value: "ok"}
         end,
         execute_gate: fn gate_name, args ->
-          Circle.execute_gate(circle, gate_name, args)
+          Gate.execute(circle, gate_name, args)
         end
       }
 
@@ -127,7 +135,10 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
         end,
         compile_and_load: fn opts ->
           # The opts should be whatever was passed, not coerced to %{}
-          %{observation: %{gate: "compile_and_load", result: inspect(opts), is_error: false}, value: opts}
+          %{
+            observation: %{gate: "compile_and_load", result: inspect(opts), is_error: false},
+            value: opts
+          }
         end
       }
 
@@ -174,7 +185,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
           %{observation: %{gate: "call_entity", result: "ok", is_error: false}, value: "ok"}
         end,
         execute_gate: fn gate_name, args ->
-          Circle.execute_gate(circle, gate_name, args)
+          Gate.execute(circle, gate_name, args)
         end
       }
     end

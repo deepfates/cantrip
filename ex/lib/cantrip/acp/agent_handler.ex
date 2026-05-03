@@ -14,6 +14,10 @@ defmodule Cantrip.ACP.AgentHandler do
   @doc """
   Create the ETS table and seed it with initial config.
   Returns the table ref (used as handler_state for the Connection).
+
+  Each call returns a *fresh* table — the `:acp_handler` symbol is just a
+  hint, not a registered name (no `:named_table`), so multiple ACP
+  connections can run in the same BEAM with no shared state.
   """
   def new(opts \\ []) do
     runtime = Keyword.get(opts, :runtime, Cantrip.ACP.Runtime.Cantrip)
@@ -25,9 +29,26 @@ defmodule Cantrip.ACP.AgentHandler do
 
   @doc """
   Store the AgentSideConnection ref so the handler can send notifications.
+
+  Raises if called more than once with a different connection: a handler
+  table is bound to one connection for its lifetime. Re-binding would
+  silently break in-flight bridges (which monitor the original conn) and
+  produce notifications addressed to the wrong client.
   """
   def set_connection(table, conn) do
-    :ets.insert(table, {:conn, conn})
+    case :ets.lookup(table, :conn) do
+      [{:conn, ^conn}] ->
+        :ok
+
+      [{:conn, other}] ->
+        raise ArgumentError,
+              "AgentHandler table already bound to connection #{inspect(other)}; " <>
+                "cannot rebind to #{inspect(conn)}. Create a fresh table per connection."
+
+      [] ->
+        :ets.insert(table, {:conn, conn})
+        :ok
+    end
   end
 
   # --- Handler callback (called by Connection in a Task) ---
@@ -52,7 +73,7 @@ defmodule Cantrip.ACP.AgentHandler do
   def handle_request(request, table) do
     case :ets.lookup_element(table, :initialized, 2) do
       false ->
-        {:error, %ACP.Error{code: -32000, message: "not initialized"}}
+        {:error, %ACP.Error{code: -32_000, message: "not initialized"}}
 
       true ->
         dispatch(request, table)
@@ -65,7 +86,7 @@ defmodule Cantrip.ACP.AgentHandler do
     cwd = req.cwd || System.tmp_dir!()
 
     if not is_binary(cwd) or Path.type(cwd) != :absolute do
-      {:error, %ACP.Error{code: -32602, message: "cwd must be an absolute path"}}
+      {:error, %ACP.Error{code: -32_602, message: "cwd must be an absolute path"}}
     else
       runtime = :ets.lookup_element(table, :runtime, 2)
       params = %{"cwd" => cwd}
@@ -74,11 +95,20 @@ defmodule Cantrip.ACP.AgentHandler do
       case runtime.new_session(params) do
         {:ok, session} ->
           session_id = "sess_" <> Integer.to_string(System.unique_integer([:positive]))
+
+          # Bridge is per-session, not per-prompt. It lives as long as the
+          # session does, so the entity's stream_to set at summon time stays
+          # valid across every subsequent prompt.
+          bridge = start_session_bridge(table, session_id)
+          session = if bridge, do: Map.put(session, :stream_to, bridge), else: session
+
           :ets.insert(table, {{:session, session_id}, session})
+          if bridge, do: :ets.insert(table, {{:bridge, session_id}, bridge})
+
           {:ok, %ACP.NewSessionResponse{session_id: session_id}}
 
         {:error, reason} ->
-          {:error, %ACP.Error{code: -32001, message: reason}}
+          {:error, %ACP.Error{code: -32_001, message: reason}}
       end
     end
   end
@@ -88,34 +118,10 @@ defmodule Cantrip.ACP.AgentHandler do
 
     case :ets.lookup(table, {:session, session_id}) do
       [{{:session, ^session_id}, session}] ->
-        case extract_text(req.prompt) do
-          {:ok, text} ->
-            runtime = :ets.lookup_element(table, :runtime, 2)
-
-            # Inject stream_to bridge if we have a connection
-            session = inject_stream_to(table, session_id, session)
-
-            case runtime.prompt(session, text) do
-              {:ok, answer, next_session} ->
-                # Remove stream_to before persisting (it's a pid, not serializable)
-                next_session = Map.delete(next_session, :stream_to)
-                :ets.insert(table, {{:session, session_id}, next_session})
-                :ets.insert(table, {{:last_answer, session_id}, answer})
-                send_answer_updates(table, session_id, answer)
-                {:ok, %ACP.PromptResponse{stop_reason: :end_turn}}
-
-              {:error, reason, next_session} ->
-                next_session = Map.delete(next_session, :stream_to)
-                :ets.insert(table, {{:session, session_id}, next_session})
-                {:error, %ACP.Error{code: -32002, message: inspect(reason)}}
-            end
-
-          {:error, :bad_prompt} ->
-            {:error, %ACP.Error{code: -32602, message: "prompt must contain a text content block"}}
-        end
+        dispatch_prompt(table, session_id, session, req.prompt)
 
       [] ->
-        {:error, %ACP.Error{code: -32004, message: "unknown sessionId"}}
+        {:error, %ACP.Error{code: -32_004, message: "unknown sessionId"}}
     end
   end
 
@@ -127,9 +133,72 @@ defmodule Cantrip.ACP.AgentHandler do
     {:error, ACP.Error.method_not_found()}
   end
 
-  # --- Session update notifications ---
+  defp dispatch_prompt(table, session_id, session, prompt) do
+    case extract_text(prompt) do
+      {:ok, text} ->
+        prompt_runtime(table, session_id, session, text)
 
-  defp send_answer_updates(table, session_id, answer) do
+      {:error, :bad_prompt} ->
+        {:error, %ACP.Error{code: -32_602, message: "prompt must contain a text content block"}}
+    end
+  end
+
+  defp prompt_runtime(table, session_id, session, text) do
+    runtime = :ets.lookup_element(table, :runtime, 2)
+    bridge = lookup_bridge(table, session_id)
+
+    case runtime.prompt(session, text) do
+      {:ok, answer, next_session} ->
+        handle_prompt_answer(table, session_id, bridge, answer, next_session)
+
+      {:error, reason, next_session} ->
+        if bridge, do: Cantrip.ACP.EventBridge.flush(bridge)
+        :ets.insert(table, {{:session, session_id}, next_session})
+        {:error, %ACP.Error{code: -32_002, message: inspect(reason)}}
+    end
+  end
+
+  defp handle_prompt_answer(table, session_id, bridge, answer, next_session) do
+    bridge_status = if bridge, do: Cantrip.ACP.EventBridge.flush(bridge), else: nil
+    :ets.insert(table, {{:session, session_id}, next_session})
+    :ets.insert(table, {{:last_answer, session_id}, answer})
+
+    # Stream-aware runtimes deliver the answer via :final_response through the
+    # bridge. Non-streaming runtimes do not emit a final event, so :no_answer
+    # falls back to direct send. A :timeout is different: the bridge may still
+    # catch up later, so direct-send there can duplicate the final answer.
+    if should_send_answer_directly?(bridge_status, next_session),
+      do: send_answer_directly(table, session_id, answer)
+
+    {:ok, %ACP.PromptResponse{stop_reason: :end_turn}}
+  end
+
+  # --- Session bridge management ---
+
+  defp start_session_bridge(table, session_id) do
+    case :ets.lookup(table, :conn) do
+      [{:conn, conn}] ->
+        opts =
+          case :ets.lookup(table, :bridge_notify_fn) do
+            [{:bridge_notify_fn, fun}] when is_function(fun, 1) -> [notify_fn: fun]
+            _ -> []
+          end
+
+        Cantrip.ACP.EventBridge.start(conn, session_id, opts)
+
+      [] ->
+        nil
+    end
+  end
+
+  defp lookup_bridge(table, session_id) do
+    case :ets.lookup(table, {:bridge, session_id}) do
+      [{{:bridge, ^session_id}, pid}] -> pid
+      [] -> nil
+    end
+  end
+
+  defp send_answer_directly(table, session_id, answer) do
     case :ets.lookup(table, :conn) do
       [{:conn, conn}] ->
         ACP.AgentSideConnection.session_notification(conn, %ACP.SessionNotification{
@@ -137,7 +206,7 @@ defmodule Cantrip.ACP.AgentHandler do
           update:
             {:agent_message_chunk,
              %ACP.ContentChunk{
-               content: {:text, %ACP.TextContent{text: answer}}
+               content: {:text, %ACP.TextContent{text: Cantrip.ACP.EventBridge.stringify(answer)}}
              }}
         })
 
@@ -146,16 +215,13 @@ defmodule Cantrip.ACP.AgentHandler do
     end
   end
 
-  defp inject_stream_to(table, session_id, session) do
-    case :ets.lookup(table, :conn) do
-      [{:conn, conn}] ->
-        bridge = Cantrip.ACP.EventBridge.start(conn, session_id)
-        Map.put(session, :stream_to, bridge)
+  defp should_send_answer_directly?(nil, _session), do: true
+  defp should_send_answer_directly?(:dead, _session), do: true
 
-      [] ->
-        session
-    end
-  end
+  defp should_send_answer_directly?(:no_answer, session),
+    do: not Map.get(session, :streaming?, false)
+
+  defp should_send_answer_directly?(_status, _session), do: false
 
   # --- Helpers ---
 

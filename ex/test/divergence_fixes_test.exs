@@ -13,11 +13,13 @@ defmodule DivergenceFixesTest do
     test "cast returns error when LLM returns neither content nor tool_calls" do
       # FakeLLM returns a response with nil content and nil tool_calls
       llm =
-        {FakeLLM,
-         FakeLLM.new([%{content: nil, tool_calls: nil}])}
+        {FakeLLM, FakeLLM.new([%{content: nil, tool_calls: nil}])}
 
       {:ok, cantrip} =
-        Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
+        Cantrip.new(
+          llm: llm,
+          circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+        )
 
       result = Cantrip.cast(cantrip, "test empty response")
       assert {:error, reason, _cantrip} = result
@@ -43,7 +45,10 @@ defmodule DivergenceFixesTest do
          ])}
 
       {:ok, cantrip} =
-        Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]})
+        Cantrip.new(
+          llm: llm,
+          circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]}
+        )
 
       result = Cantrip.cast(cantrip, "test duplicate IDs")
       assert {:error, reason, _cantrip} = result
@@ -110,14 +115,20 @@ defmodule DivergenceFixesTest do
   describe "PROD-6: ACP session/new without cwd" do
     defmodule StubRuntime do
       def new_session(_params), do: {:ok, %{calls: []}}
-      def prompt(session, text), do: {:ok, "echo:" <> text, %{session | calls: session.calls ++ [text]}}
+
+      def prompt(session, text),
+        do: {:ok, "echo:" <> text, %{session | calls: session.calls ++ [text]}}
     end
 
     test "ACP session/new works without cwd parameter (defaults to tmp)" do
       table = AgentHandler.new(runtime: StubRuntime)
 
       AgentHandler.handle_request(
-        {:initialize, %ACP.InitializeRequest{protocol_version: 1, client_capabilities: %ACP.ClientCapabilities{}}},
+        {:initialize,
+         %ACP.InitializeRequest{
+           protocol_version: 1,
+           client_capabilities: %ACP.ClientCapabilities{}
+         }},
         table
       )
 
@@ -133,10 +144,11 @@ defmodule DivergenceFixesTest do
       # Should be able to prompt on the session
       assert {:ok, %ACP.PromptResponse{stop_reason: :end_turn}} =
                AgentHandler.handle_request(
-                 {:prompt, %ACP.PromptRequest{
-                   session_id: session_id,
-                   prompt: [{:text, %ACP.TextContent{text: "hello"}}]
-                 }},
+                 {:prompt,
+                  %ACP.PromptRequest{
+                    session_id: session_id,
+                    prompt: [{:text, %ACP.TextContent{text: "hello"}}]
+                  }},
                  table
                )
     end
@@ -145,14 +157,20 @@ defmodule DivergenceFixesTest do
   describe "PROD-6: ACP session/prompt without sessionId" do
     defmodule StubRuntime2 do
       def new_session(_params), do: {:ok, %{calls: []}}
-      def prompt(session, text), do: {:ok, "echo:" <> text, %{session | calls: session.calls ++ [text]}}
+
+      def prompt(session, text),
+        do: {:ok, "echo:" <> text, %{session | calls: session.calls ++ [text]}}
     end
 
     test "session/prompt auto-selects the only session when sessionId is omitted" do
       table = AgentHandler.new(runtime: StubRuntime2)
 
       AgentHandler.handle_request(
-        {:initialize, %ACP.InitializeRequest{protocol_version: 1, client_capabilities: %ACP.ClientCapabilities{}}},
+        {:initialize,
+         %ACP.InitializeRequest{
+           protocol_version: 1,
+           client_capabilities: %ACP.ClientCapabilities{}
+         }},
         table
       )
 
@@ -165,10 +183,11 @@ defmodule DivergenceFixesTest do
       # Prompt WITHOUT sessionId — should auto-select the only session
       assert {:ok, %ACP.PromptResponse{stop_reason: :end_turn}} =
                AgentHandler.handle_request(
-                 {:prompt, %ACP.PromptRequest{
-                   session_id: nil,
-                   prompt: [{:text, %ACP.TextContent{text: "hello"}}]
-                 }},
+                 {:prompt,
+                  %ACP.PromptRequest{
+                    session_id: nil,
+                    prompt: [{:text, %ACP.TextContent{text: "hello"}}]
+                  }},
                  table
                )
     end
@@ -320,7 +339,7 @@ defmodule DivergenceFixesTest do
       parent_wards = [%{max_turns: 10, max_depth: 1}]
       child_wards = [%{max_turns: 5, max_depth: 0}]
 
-      composed = Circle.compose_wards(parent_wards, child_wards)
+      composed = Cantrip.WardPolicy.compose(parent_wards, child_wards)
 
       # min(1, 0) should be 0, not 1
       depth_ward = Enum.find(composed, fn w -> Map.has_key?(w, :max_depth) end)

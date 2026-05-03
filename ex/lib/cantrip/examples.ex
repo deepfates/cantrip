@@ -19,7 +19,7 @@ defmodule Cantrip.Examples do
 
   import Kernel, except: [send: 2]
 
-  alias Cantrip.{Circle, FakeLLM}
+  alias Cantrip.{Circle, FakeLLM, Gate}
 
   @catalog [
     %{id: "01", title: "LLM Query: Stateless Round-Trip"},
@@ -113,8 +113,14 @@ defmodule Cantrip.Examples do
       choose_llm(
         opts,
         [
-          %{content: "Revenue rose 14% QoQ, primarily driven by enterprise seat expansion (+23%) and improved onboarding conversion. Churn fell 2 points to 3.1%, suggesting the retention playbook is working. Net revenue retention sits at 118%, a strong signal for durable growth."},
-          %{content: "I don't have any prior context about your metrics. To analyze revenue and churn trends I'd need the raw data -- quarter-over-quarter figures, segment breakdowns, and cohort retention curves. Could you share those?"}
+          %{
+            content:
+              "Revenue rose 14% QoQ, primarily driven by enterprise seat expansion (+23%) and improved onboarding conversion. Churn fell 2 points to 3.1%, suggesting the retention playbook is working. Net revenue retention sits at 118%, a strong signal for durable growth."
+          },
+          %{
+            content:
+              "I don't have any prior context about your metrics. To analyze revenue and churn trends I'd need the raw data -- quarter-over-quarter figures, segment breakdowns, and cohort retention curves. Could you share those?"
+          }
         ],
         record_inputs: true
       )
@@ -182,8 +188,8 @@ defmodule Cantrip.Examples do
     IO.puts("Now calling each gate directly -- no LLM involved:\n")
 
     # NOTE: test asserts result.echo == "echo works" and result.done == "all done"
-    echo_obs = Circle.execute_gate(circle, "echo", %{text: "echo works"})
-    done_obs = Circle.execute_gate(circle, "done", %{answer: "all done"})
+    echo_obs = Gate.execute(circle, "echo", %{text: "echo works"})
+    done_obs = Gate.execute(circle, "done", %{answer: "all done"})
 
     IO.puts("  echo(text: \"echo works\")  -> #{inspect(echo_obs.result)}")
     IO.puts("  done(answer: \"all done\") -> #{inspect(done_obs.result)}")
@@ -212,7 +218,9 @@ defmodule Cantrip.Examples do
     IO.puts("you find out before any LLM call is made, not mid-conversation.\n")
 
     llm =
-      choose_llm(opts, [%{tool_calls: [%{gate: "done", args: %{answer: "quarterly trends summarized"}}]}])
+      choose_llm(opts, [
+        %{tool_calls: [%{gate: "done", args: %{answer: "quarterly trends summarized"}}]}
+      ])
 
     # Successful construction: circle with done + ward
     {:ok, cantrip} =
@@ -223,48 +231,52 @@ defmodule Cantrip.Examples do
             "You are a SaaS metrics analyst. You have two tools: echo (to log observations) and done (to return your final answer). Analyze the provided data and call done with your summary.",
           tool_choice: "required"
         },
-        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 5}, %{require_done_tool: true}]}
+        circle: %{
+          type: :conversation,
+          gates: [:done, :echo],
+          wards: [%{max_turns: 5}, %{require_done_tool: true}]
+        }
       })
 
     IO.puts("Valid circle: gates=[done, echo], wards=[max_turns: 5] -- construction succeeded.")
 
-    with {:ok, result, next_cantrip, loom, meta} <-
-           Cantrip.cast(cantrip, "Summarize quarterly revenue trends and finish.") do
-      IO.puts("Cast produced: #{inspect(result)}\n")
+    case Cantrip.cast(cantrip, "Summarize quarterly revenue trends and finish.") do
+      {:ok, result, next_cantrip, loom, meta} ->
+        IO.puts("Cast produced: #{inspect(result)}\n")
 
-      # CIRCLE-1: no done gate -> construction error
-      missing_done =
-        Cantrip.new(%{
-          llm: llm,
-          identity: %{system_prompt: "You are a metrics dashboard."},
-          circle: %{type: :conversation, gates: [:echo], wards: [%{max_turns: 3}]}
-        })
+        # CIRCLE-1: no done gate -> construction error
+        missing_done =
+          Cantrip.new(%{
+            llm: llm,
+            identity: %{system_prompt: "You are a metrics dashboard."},
+            circle: %{type: :conversation, gates: [:echo], wards: [%{max_turns: 3}]}
+          })
 
-      IO.puts("CIRCLE-1 test -- no done gate:")
-      IO.puts("  Error: #{inspect(error_text(missing_done))}")
+        IO.puts("CIRCLE-1 test -- no done gate:")
+        IO.puts("  Error: #{inspect(error_text(missing_done))}")
 
-      # CIRCLE-2: no truncation ward -> construction error
-      missing_ward =
-        Cantrip.new(%{
-          llm: llm,
-          identity: %{system_prompt: "You are a metrics dashboard."},
-          circle: %{type: :conversation, gates: [:done], wards: []}
-        })
+        # CIRCLE-2: no truncation ward -> construction error
+        missing_ward =
+          Cantrip.new(%{
+            llm: llm,
+            identity: %{system_prompt: "You are a metrics dashboard."},
+            circle: %{type: :conversation, gates: [:done], wards: []}
+          })
 
-      IO.puts("CIRCLE-2 test -- no truncation ward:")
-      IO.puts("  Error: #{inspect(error_text(missing_ward))}")
-      IO.puts("\nBoth rejected at construction time. No LLM was called. No resources wasted.")
+        IO.puts("CIRCLE-2 test -- no truncation ward:")
+        IO.puts("  Error: #{inspect(error_text(missing_ward))}")
+        IO.puts("\nBoth rejected at construction time. No LLM was called. No resources wasted.")
 
-      enriched = %{
-        ok_result: result,
-        missing_done_error: error_text(missing_done),
-        missing_ward_error: error_text(missing_ward)
-      }
+        enriched = %{
+          ok_result: result,
+          missing_done_error: error_text(missing_done),
+          missing_ward_error: error_text(missing_ward)
+        }
 
-      {:ok, enriched, next_cantrip, loom, meta}
-    else
-      {:error, reason, _cantrip} -> {:error, reason}
-      {:error, reason} -> {:error, reason}
+        {:ok, enriched, next_cantrip, loom, meta}
+
+      {:error, reason, _cantrip} ->
+        {:error, reason}
     end
   end
 
@@ -280,8 +292,26 @@ defmodule Cantrip.Examples do
 
     llm =
       choose_llm(opts, [
-        %{tool_calls: [%{gate: "done", args: %{answer: "Q3 revenue driven by enterprise tier upgrades and 23% seat expansion"}}]},
-        %{tool_calls: [%{gate: "done", args: %{answer: "Churn risk concentrated in SMB segment: 8.2% monthly vs 1.1% enterprise"}}]}
+        %{
+          tool_calls: [
+            %{
+              gate: "done",
+              args: %{
+                answer: "Q3 revenue driven by enterprise tier upgrades and 23% seat expansion"
+              }
+            }
+          ]
+        },
+        %{
+          tool_calls: [
+            %{
+              gate: "done",
+              args: %{
+                answer: "Churn risk concentrated in SMB segment: 8.2% monthly vs 1.1% enterprise"
+              }
+            }
+          ]
+        }
       ])
 
     # CANTRIP-1: bind llm + identity + circle into a reusable value
@@ -289,17 +319,24 @@ defmodule Cantrip.Examples do
       Cantrip.new(%{
         llm: llm,
         identity: %{
-          system_prompt: "You are a SaaS analyst. Examine the given data segment and call done with a one-sentence finding.",
+          system_prompt:
+            "You are a SaaS analyst. Examine the given data segment and call done with a one-sentence finding.",
           tool_choice: "required"
         },
-        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 3}, %{require_done_tool: true}]}
+        circle: %{
+          type: :conversation,
+          gates: [:done],
+          wards: [%{max_turns: 3}, %{require_done_tool: true}]
+        }
       })
 
     IO.puts("Cantrip constructed once. Now casting twice with different intents:\n")
 
     # CANTRIP-2: each cast is independent -- no shared state
-    with {:ok, first, c1, loom1, _m1} <- Cantrip.cast(cantrip, "Identify the key revenue driver in Q3."),
-         {:ok, second, c2, loom2, meta2} <- Cantrip.cast(c1, "What's the biggest risk in our churn data?") do
+    with {:ok, first, c1, loom1, _m1} <-
+           Cantrip.cast(cantrip, "Identify the key revenue driver in Q3."),
+         {:ok, second, c2, loom2, meta2} <-
+           Cantrip.cast(c1, "What's the biggest risk in our churn data?") do
       IO.puts("Cast 1 -- Revenue analysis:")
       IO.puts("  Intent:  \"Identify the key revenue driver in Q3.\"")
       IO.puts("  Result:  #{inspect(first)}")
@@ -339,50 +376,77 @@ defmodule Cantrip.Examples do
     IO.puts("  - Boolean flags:  OR wins  (any layer requiring a constraint enables it)")
     IO.puts("Children can only tighten, never loosen.\n")
 
-    llm = choose_llm(opts, [%{tool_calls: [%{gate: "done", args: %{answer: "compliance policy applied: max_turns=40, require_done=true"}}]}])
+    llm =
+      choose_llm(opts, [
+        %{
+          tool_calls: [
+            %{
+              gate: "done",
+              args: %{answer: "compliance policy applied: max_turns=40, require_done=true"}
+            }
+          ]
+        }
+      ])
 
     {:ok, cantrip} =
       Cantrip.new(%{
         llm: llm,
         identity: %{
-          system_prompt: "You are a compliance analyst reviewing SaaS data access policies. Identify the most restrictive constraint and call done with your finding.",
+          system_prompt:
+            "You are a compliance analyst reviewing SaaS data access policies. Identify the most restrictive constraint and call done with your finding.",
           tool_choice: "required"
         },
-        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 4}, %{require_done_tool: true}]}
+        circle: %{
+          type: :conversation,
+          gates: [:done],
+          wards: [%{max_turns: 4}, %{require_done_tool: true}]
+        }
       })
 
-    with {:ok, result, next_cantrip, loom, meta} <-
-           Cantrip.cast(cantrip, "Review the combined ward policy and report the effective limits.") do
-      # WARD-1: demonstrate subtractive composition
-      parent = [%{max_turns: 200}, %{require_done_tool: false}]
-      child = [%{max_turns: 40}, %{max_turns: 120}, %{require_done_tool: true}]
-      composed = Circle.compose_wards(parent, child)
+    case Cantrip.cast(
+           cantrip,
+           "Review the combined ward policy and report the effective limits."
+         ) do
+      {:ok, result, next_cantrip, loom, meta} ->
+        # WARD-1: demonstrate subtractive composition
+        parent = [%{max_turns: 200}, %{require_done_tool: false}]
+        child = [%{max_turns: 40}, %{max_turns: 120}, %{require_done_tool: true}]
+        composed = Cantrip.WardPolicy.compose(parent, child)
 
-      max_turns =
-        composed
-        |> Enum.flat_map(fn w -> if is_integer(w[:max_turns]), do: [w[:max_turns]], else: [] end)
-        |> Enum.min(fn -> nil end)
+        max_turns =
+          composed
+          |> Enum.flat_map(fn w ->
+            if is_integer(w[:max_turns]), do: [w[:max_turns]], else: []
+          end)
+          |> Enum.min(fn -> nil end)
 
-      require_done = Enum.any?(parent ++ child, &Map.get(&1, :require_done_tool, false))
+        require_done = Enum.any?(parent ++ child, &Map.get(&1, :require_done_tool, false))
 
-      IO.puts("Parent wards:   max_turns=200, require_done=false")
-      IO.puts("Child wards:    max_turns=40, max_turns=120, require_done=true")
-      IO.puts("Composed result: max_turns=#{max_turns} (min wins), require_done=#{require_done} (OR wins)")
-      IO.puts("\nThe child asked for 40 turns; the parent allowed 200. Result: 40.")
-      IO.puts("The parent said require_done=false; the child said true. Result: true.")
-      IO.puts("Subtractive composition means the child can never exceed the parent's budget (WARD-1).")
+        IO.puts("Parent wards:   max_turns=200, require_done=false")
+        IO.puts("Child wards:    max_turns=40, max_turns=120, require_done=true")
 
-      enriched = %{
-        ok_result: result,
-        composed_max_turns: max_turns,
-        composed_require_done_tool: require_done,
-        subtractive: true
-      }
+        IO.puts(
+          "Composed result: max_turns=#{max_turns} (min wins), require_done=#{require_done} (OR wins)"
+        )
 
-      {:ok, enriched, next_cantrip, loom, meta}
-    else
-      {:error, reason, _cantrip} -> {:error, reason}
-      {:error, reason} -> {:error, reason}
+        IO.puts("\nThe child asked for 40 turns; the parent allowed 200. Result: 40.")
+        IO.puts("The parent said require_done=false; the child said true. Result: true.")
+
+        IO.puts(
+          "Subtractive composition means the child can never exceed the parent's budget (WARD-1)."
+        )
+
+        enriched = %{
+          ok_result: result,
+          composed_max_turns: max_turns,
+          composed_require_done_tool: require_done,
+          subtractive: true
+        }
+
+        {:ok, enriched, next_cantrip, loom, meta}
+
+      {:error, reason, _cantrip} ->
+        {:error, reason}
     end
   end
 
@@ -426,7 +490,11 @@ defmodule Cantrip.Examples do
                  "You are a SaaS dashboard reporter. You have two tools: echo (to log an observation) and done (to finalize). First echo a finding, then call done with a summary.",
                tool_choice: "required"
              },
-             circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 4}, %{require_done_tool: true}]}
+             circle: %{
+               type: :conversation,
+               gates: [:done, :echo],
+               wards: [%{max_turns: 4}, %{require_done_tool: true}]
+             }
            }),
          {:ok, code_cantrip} <-
            Cantrip.new(%{
@@ -436,7 +504,11 @@ defmodule Cantrip.Examples do
                  "You write Elixir code to compute SaaS metrics. Write all code at the top level — do NOT use defmodule. Available host functions: echo.(opts) and done.(answer). Compute the requested value and call done.(answer) with the result string.",
                tool_choice: "required"
              },
-             circle: %{type: :code, gates: [:done, :echo], wards: [%{max_turns: 4}, %{require_done_tool: true}]}
+             circle: %{
+               type: :code,
+               gates: [:done, :echo],
+               wards: [%{max_turns: 4}, %{require_done_tool: true}]
+             }
            }),
          {:ok, convo_result, _next_convo, convo_loom, _convo_meta} <-
            Cantrip.cast(convo_cantrip, "Report the monthly active user trend and finalize."),
@@ -542,7 +614,10 @@ defmodule Cantrip.Examples do
     IO.puts("Turn 1: entity reads annual_forecast.txt -> error observation")
     IO.puts("Turn 2: entity recovers, reads quarterly_revenue.txt, compiles helper, calls done")
 
-    case Cantrip.cast(cantrip, "Read the quarterly revenue data, recover from any file errors, and summarize.") do
+    case Cantrip.cast(
+           cantrip,
+           "Read the quarterly revenue data, recover from any file errors, and summarize."
+         ) do
       {:ok, result, next_cantrip, loom, meta} ->
         IO.puts("\nResult: #{inspect(result)}")
         IO.puts("Turns: #{length(loom.turns)}")
@@ -553,9 +628,6 @@ defmodule Cantrip.Examples do
         {:ok, result, next_cantrip, loom, meta}
 
       {:error, reason, _cantrip} ->
-        {:error, reason}
-
-      {:error, reason} ->
         {:error, reason}
     end
   end
@@ -578,9 +650,27 @@ defmodule Cantrip.Examples do
         opts,
         [
           %{tool_calls: [%{gate: "echo", args: %{text: "Q1 revenue: $2.4M, up 12% YoY"}}]},
-          %{tool_calls: [%{gate: "echo", args: %{text: "Q2 revenue: $2.8M, churn dropped to 3.1%"}}]},
-          %{tool_calls: [%{gate: "echo", args: %{text: "Q3 revenue: $3.1M, enterprise seats +23%"}}]},
-          %{tool_calls: [%{gate: "done", args: %{answer: "3-quarter trend: sustained growth driven by enterprise expansion and improving retention"}}]}
+          %{
+            tool_calls: [
+              %{gate: "echo", args: %{text: "Q2 revenue: $2.8M, churn dropped to 3.1%"}}
+            ]
+          },
+          %{
+            tool_calls: [
+              %{gate: "echo", args: %{text: "Q3 revenue: $3.1M, enterprise seats +23%"}}
+            ]
+          },
+          %{
+            tool_calls: [
+              %{
+                gate: "done",
+                args: %{
+                  answer:
+                    "3-quarter trend: sustained growth driven by enterprise expansion and improving retention"
+                }
+              }
+            ]
+          }
         ],
         record_inputs: true
       )
@@ -594,43 +684,47 @@ defmodule Cantrip.Examples do
             "You are a financial analyst reviewing quarterly SaaS metrics. You have two tools: echo (to record an observation about each quarter) and done (to return your final trend summary). Examine each quarter one at a time using echo, then call done with the overall trend.",
           tool_choice: "required"
         },
-        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 8}, %{require_done_tool: true}]},
+        circle: %{
+          type: :conversation,
+          gates: [:done, :echo],
+          wards: [%{max_turns: 8}, %{require_done_tool: true}]
+        },
         folding: %{trigger_after_turns: 2}
       })
 
     IO.puts("Folding trigger: after 2 turns. By turn 3, the Q1 echo will be compressed.")
 
-    with {:ok, result, next_cantrip, loom, meta} <-
-           Cantrip.cast(cantrip, "Review Q1 through Q3 revenue metrics and summarize the trend.") do
-      # LOOM-6: verify folding appeared in prompt view
-      folded_seen =
-        case next_cantrip.llm_module do
-          FakeLLM ->
-            next_cantrip.llm_state
-            |> FakeLLM.invocations()
-            |> Enum.any?(fn req ->
-              Enum.any?(req.messages || [], fn msg ->
-                is_binary(msg[:content]) and String.starts_with?(msg[:content], "[Folded:")
+    case Cantrip.cast(cantrip, "Review Q1 through Q3 revenue metrics and summarize the trend.") do
+      {:ok, result, next_cantrip, loom, meta} ->
+        # LOOM-6: verify folding appeared in prompt view
+        folded_seen =
+          case next_cantrip.llm_module do
+            FakeLLM ->
+              next_cantrip.llm_state
+              |> FakeLLM.invocations()
+              |> Enum.any?(fn req ->
+                Enum.any?(req.messages || [], fn msg ->
+                  is_binary(msg[:content]) and String.starts_with?(msg[:content], "[Folded:")
+                end)
               end)
-            end)
 
-          _ ->
-            false
-        end
+            _ ->
+              false
+          end
 
-      IO.puts("\nLoom turns: #{length(loom.turns)} (all 4 retained)")
-      IO.puts("Folded marker in LLM input: #{folded_seen}")
-      IO.puts("Result: #{inspect(result)}")
-      IO.puts("\nKey insight (LOOM-5, LOOM-6):")
-      IO.puts("  The prompt view was compressed (older turns replaced with [Folded:...]).")
-      IO.puts("  The loom was NOT compressed -- all 4 turns are preserved verbatim.")
-      IO.puts("  Folding is a prompt optimization, not a data loss mechanism.")
+        IO.puts("\nLoom turns: #{length(loom.turns)} (all 4 retained)")
+        IO.puts("Folded marker in LLM input: #{folded_seen}")
+        IO.puts("Result: #{inspect(result)}")
+        IO.puts("\nKey insight (LOOM-5, LOOM-6):")
+        IO.puts("  The prompt view was compressed (older turns replaced with [Folded:...]).")
+        IO.puts("  The loom was NOT compressed -- all 4 turns are preserved verbatim.")
+        IO.puts("  Folding is a prompt optimization, not a data loss mechanism.")
 
-      enriched = %{ok_result: result, folded_seen: folded_seen}
-      {:ok, enriched, next_cantrip, loom, meta}
-    else
-      {:error, reason, _cantrip} -> {:error, reason}
-      {:error, reason} -> {:error, reason}
+        enriched = %{ok_result: result, folded_seen: folded_seen}
+        {:ok, enriched, next_cantrip, loom, meta}
+
+      {:error, reason, _cantrip} ->
+        {:error, reason}
     end
   end
 
@@ -673,9 +767,18 @@ defmodule Cantrip.Examples do
         scripted_mode?(opts) ->
           {FakeLLM,
            FakeLLM.new([
-             %{code: "done.(\"revenue: top-10 accounts represent 62% of ARR, concentration risk moderate\")"},
-             %{code: "done.(\"support: ticket volume down 18%, resolution time improved 2.3 days\")"},
-             %{code: "done.(\"growth: enterprise pipeline up 34%, SMB flat quarter-over-quarter\")"}
+             %{
+               code:
+                 "done.(\"revenue: top-10 accounts represent 62% of ARR, concentration risk moderate\")"
+             },
+             %{
+               code:
+                 "done.(\"support: ticket volume down 18%, resolution time improved 2.3 days\")"
+             },
+             %{
+               code:
+                 "done.(\"growth: enterprise pipeline up 34%, SMB flat quarter-over-quarter\")"
+             }
            ])}
 
         true ->
@@ -701,11 +804,19 @@ defmodule Cantrip.Examples do
         circle: %{
           type: :code,
           gates: [:done, :call_entity, :call_entity_batch],
-          wards: [%{max_turns: 8}, %{max_depth: 2}, %{max_batch_size: 4}, %{require_done_tool: true}]
+          wards: [
+            %{max_turns: 8},
+            %{max_depth: 2},
+            %{max_batch_size: 4},
+            %{require_done_tool: true}
+          ]
         }
       })
 
-    case Cantrip.cast(cantrip, "Conduct a full portfolio review: revenue risk, support trends, and growth velocity.") do
+    case Cantrip.cast(
+           cantrip,
+           "Conduct a full portfolio review: revenue risk, support trends, and growth velocity."
+         ) do
       {:ok, result, next_cantrip, loom, meta} ->
         IO.puts("Result: #{inspect(result)}")
         IO.puts("Parent loom turns: #{length(loom.turns)}")
@@ -715,9 +826,6 @@ defmodule Cantrip.Examples do
         {:ok, result, next_cantrip, loom, meta}
 
       {:error, reason, _cantrip} ->
-        {:error, reason}
-
-      {:error, reason} ->
         {:error, reason}
     end
   end
@@ -735,8 +843,22 @@ defmodule Cantrip.Examples do
 
     llm =
       choose_llm(opts, [
-        %{tool_calls: [%{gate: "echo", args: %{text: "MRR grew 11% to $847K; net revenue retention at 118%"}}]},
-        %{tool_calls: [%{gate: "done", args: %{answer: "healthy growth: MRR acceleration with strong net retention signals continued expansion"}}]}
+        %{
+          tool_calls: [
+            %{gate: "echo", args: %{text: "MRR grew 11% to $847K; net revenue retention at 118%"}}
+          ]
+        },
+        %{
+          tool_calls: [
+            %{
+              gate: "done",
+              args: %{
+                answer:
+                  "healthy growth: MRR acceleration with strong net retention signals continued expansion"
+              }
+            }
+          ]
+        }
       ])
 
     {:ok, cantrip} =
@@ -747,43 +869,50 @@ defmodule Cantrip.Examples do
             "You are a SaaS metrics analyst. You have two tools: echo (to record a key metric observation) and done (to return your final assessment). First echo the most important metric, then call done with a one-line assessment.",
           tool_choice: "required"
         },
-        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 5}, %{require_done_tool: true}]}
+        circle: %{
+          type: :conversation,
+          gates: [:done, :echo],
+          wards: [%{max_turns: 5}, %{require_done_tool: true}]
+        }
       })
 
-    with {:ok, result, _next_cantrip, loom, meta} <-
-           Cantrip.cast(cantrip, "Assess MRR growth and net revenue retention, then provide a health verdict.") do
-      # LOOM-3: append-only, LOOM-7: each turn has utterance, observation, usage, timing
-      gates_called =
-        loom.turns
-        |> Enum.flat_map(&(&1.gate_calls || []))
-        |> Enum.uniq()
+    case Cantrip.cast(
+           cantrip,
+           "Assess MRR growth and net revenue retention, then provide a health verdict."
+         ) do
+      {:ok, result, _next_cantrip, loom, meta} ->
+        # LOOM-3: append-only, LOOM-7: each turn has utterance, observation, usage, timing
+        gates_called =
+          loom.turns
+          |> Enum.flat_map(&(&1.gate_calls || []))
+          |> Enum.uniq()
 
-      thread = Cantrip.extract_thread(cantrip, loom)
+        thread = Cantrip.extract_thread(cantrip, loom)
 
-      IO.puts("Loom contents:")
-      IO.puts("  Turn count:       #{length(loom.turns)}")
-      IO.puts("  Thread length:    #{length(thread)}")
-      IO.puts("  Gates called:     #{inspect(gates_called)}")
-      IO.puts("  Terminated turns: #{Enum.count(loom.turns, &Map.get(&1, :terminated, false))}")
-      IO.puts("  Truncated turns:  #{Enum.count(loom.turns, &Map.get(&1, :truncated, false))}")
-      IO.puts("  Token usage:      #{inspect(Map.get(meta, :cumulative_usage, %{}))}")
-      IO.puts("\nEvery turn is preserved. The loom is the canonical record of what")
-      IO.puts("happened -- not the prompt, not the LLM's memory, the loom (LOOM-3).")
+        IO.puts("Loom contents:")
+        IO.puts("  Turn count:       #{length(loom.turns)}")
+        IO.puts("  Thread length:    #{length(thread)}")
+        IO.puts("  Gates called:     #{inspect(gates_called)}")
+        IO.puts("  Terminated turns: #{Enum.count(loom.turns, &Map.get(&1, :terminated, false))}")
+        IO.puts("  Truncated turns:  #{Enum.count(loom.turns, &Map.get(&1, :truncated, false))}")
+        IO.puts("  Token usage:      #{inspect(Map.get(meta, :cumulative_usage, %{}))}")
+        IO.puts("\nEvery turn is preserved. The loom is the canonical record of what")
+        IO.puts("happened -- not the prompt, not the LLM's memory, the loom (LOOM-3).")
 
-      enriched = %{
-        ok_result: result,
-        turn_count: length(loom.turns),
-        thread_length: length(thread),
-        terminated_turns: Enum.count(loom.turns, &Map.get(&1, :terminated, false)),
-        truncated_turns: Enum.count(loom.turns, &Map.get(&1, :truncated, false)),
-        gates_called: gates_called,
-        token_usage: Map.get(meta, :cumulative_usage, %{})
-      }
+        enriched = %{
+          ok_result: result,
+          turn_count: length(loom.turns),
+          thread_length: length(thread),
+          terminated_turns: Enum.count(loom.turns, &Map.get(&1, :terminated, false)),
+          truncated_turns: Enum.count(loom.turns, &Map.get(&1, :truncated, false)),
+          gates_called: gates_called,
+          token_usage: Map.get(meta, :cumulative_usage, %{})
+        }
 
-      {:ok, enriched, cantrip, loom, meta}
-    else
-      {:error, reason, _cantrip} -> {:error, reason}
-      {:error, reason} -> {:error, reason}
+        {:ok, enriched, cantrip, loom, meta}
+
+      {:error, reason, _cantrip} ->
+        {:error, reason}
     end
   end
 
@@ -843,20 +972,38 @@ defmodule Cantrip.Examples do
             "You write Elixir code to build a regional SaaS performance model. Write all code at the top level — do NOT use defmodule, because host functions are closure bindings only accessible at top level. Variables persist across turns and across sends. Define variables to accumulate metrics, then call done.(answer) with a summary map. Available host function: done.(answer).",
           tool_choice: "required"
         },
-        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 4}, %{require_done_tool: true}]}
+        circle: %{
+          type: :code,
+          gates: [:done],
+          wards: [%{max_turns: 4}, %{require_done_tool: true}]
+        }
       })
 
     with {:ok, pid} <- Cantrip.summon(cantrip),
          {:ok, first, _c1, loom1, meta1} <-
-           Cantrip.send(pid, "Set up regional performance categories and record the Q1 revenue observation."),
+           Cantrip.send(
+             pid,
+             "Set up regional performance categories and record the Q1 revenue observation."
+           ),
          {:ok, second, c2, loom2, meta2} <-
-           Cantrip.send(pid, "Add Q2 cost and Q3 pipeline observations, then summarize all regions.") do
+           Cantrip.send(
+             pid,
+             "Add Q2 cost and Q3 pipeline observations, then summarize all regions."
+           ) do
       _ = Process.exit(pid, :normal)
 
       IO.puts("Send 1 result: #{inspect(first)}")
-      IO.puts("  Turns: #{length(loom1.turns)}, terminated: #{Map.get(meta1, :terminated, false)}")
+
+      IO.puts(
+        "  Turns: #{length(loom1.turns)}, terminated: #{Map.get(meta1, :terminated, false)}"
+      )
+
       IO.puts("Send 2 result: #{inspect(second)}")
-      IO.puts("  Turns: #{length(loom2.turns)}, terminated: #{Map.get(meta2, :terminated, false)}")
+
+      IO.puts(
+        "  Turns: #{length(loom2.turns)}, terminated: #{Map.get(meta2, :terminated, false)}"
+      )
+
       IO.puts("\nSend 2 used 'categories' and 'observations' defined in send 1.")
       IO.puts("The entity didn't need to be reminded -- the code sandbox preserved")
       IO.puts("all variable bindings. This is the core of persistent entities (ENTITY-5).")
@@ -937,16 +1084,26 @@ defmodule Cantrip.Examples do
             "You write Elixir code to coordinate SaaS analysis. Write all code at the top level — do NOT use defmodule.\n\nAvailable host functions:\n- call_entity.(%{intent: \"task description\"}) — delegate to a child entity, returns the child's answer as a string\n- call_entity_batch.([%{intent: \"task1\"}, %{intent: \"task2\"}]) — delegate multiple tasks in parallel, returns list of answers\n- done.(answer) — finish and return your final answer\n\nOptional keys for call_entity: :context (data map), :system_prompt, :gates, :wards\n\nVariables persist across turns and sends. Use Process.put/get for cross-send memory.\n\nYour job: break the request into subtasks, delegate via call_entity, combine results, call done.",
           tool_choice: "required"
         },
-        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 8}, %{require_done_tool: true}]},
+        circle: %{
+          type: :code,
+          gates: [:done],
+          wards: [%{max_turns: 8}, %{require_done_tool: true}]
+        },
         loom_storage: {:jsonl, loom_path}
       })
 
-    IO.puts("Send 1: construct a conversation child (retention) and a code child (anomaly scoring).")
+    IO.puts(
+      "Send 1: construct a conversation child (retention) and a code child (anomaly scoring)."
+    )
+
     IO.puts("Send 2: recall accumulated memory from send 1 and add a session marker.\n")
 
     with {:ok, pid} <- Cantrip.summon(cantrip),
          {:ok, first, _c1, loom1, _meta1} <-
-           Cantrip.send(pid, "Construct specialist children for retention analysis and anomaly scoring."),
+           Cantrip.send(
+             pid,
+             "Construct specialist children for retention analysis and anomaly scoring."
+           ),
          {:ok, second, c2, loom2, meta2} <-
            Cantrip.send(pid, "Recall your previous analysis results and add this session marker.") do
       _ = Process.exit(pid, :normal)
@@ -964,7 +1121,11 @@ defmodule Cantrip.Examples do
       IO.puts("  Total turns: #{length(loom2.turns)}")
       IO.puts("Loom persisted to: #{persisted_path}")
       IO.puts("File exists: #{is_binary(persisted_path) and File.exists?(persisted_path)}")
-      IO.puts("\nThe familiar pattern: a persistent coordinator that spawns ephemeral specialists.")
+
+      IO.puts(
+        "\nThe familiar pattern: a persistent coordinator that spawns ephemeral specialists."
+      )
+
       IO.puts("Loom persistence means the coordinator can be stopped and resumed later.")
 
       result = %{

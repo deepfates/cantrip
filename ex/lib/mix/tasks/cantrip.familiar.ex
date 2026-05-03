@@ -10,6 +10,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   ## Options
 
     * `--acp` — start as an ACP stdio server instead of REPL
+    * `--diagnostics` — with `--acp`, open an opt-in distributed Erlang remsh node
     * `--json` — output events as JSONL stream (for piping/scripting)
     * `--loom-path PATH` — path for persistent JSONL loom (default: .cantrip/familiar.jsonl)
     * `--max-turns N` — maximum turns per episode (default: 20)
@@ -30,6 +31,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
           max_turns: :integer,
           help: :boolean,
           acp: :boolean,
+          diagnostics: :boolean,
           json: :boolean
         ],
         aliases: [h: :help]
@@ -40,7 +42,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
         Mix.shell().info(usage())
 
       opts[:acp] ->
-        run_acp()
+        run_acp(opts)
 
       true ->
         intent = List.first(positional)
@@ -48,9 +50,71 @@ defmodule Mix.Tasks.Cantrip.Familiar do
     end
   end
 
-  defp run_acp do
+  defp run_acp(opts) do
+    if opts[:diagnostics], do: start_diagnostic_node()
     IO.puts(:stderr, "Familiar ACP server starting on stdio...")
     Cantrip.ACP.Server.run(runtime: Cantrip.ACP.Runtime.Familiar)
+  end
+
+  # Register a node name + cookie so `iex --sname … --remsh …` can attach to
+  # the running BEAM for live inspection. ACP runs on stdio with no other
+  # interactive surface, so without this you cannot dump session state,
+  # walk a hung GenServer, or see in-flight bridges from outside.
+  #
+  # The node name embeds the OS pid so multiple instances don't collide. The
+  # cookie is generated per run and printed with the exact remsh command.
+  defp start_diagnostic_node do
+    cookie = random_cookie()
+    name = :"familiar-#{System.pid()}@127.0.0.1"
+
+    # net_kernel.start auto-spawns epmd, but under some launchers (Zed,
+    # systemd, anything that scrubs PATH or restricts subprocess
+    # creation) that auto-spawn silently fails and registration goes
+    # nowhere. Try to start epmd ourselves first; ignore the result —
+    # if it's already up, the call no-ops; if it fails, net_kernel
+    # will surface a clear error below.
+    System.cmd("epmd", ["-daemon"], stderr_to_stdout: true)
+
+    case :net_kernel.start([name, :longnames]) do
+      {:ok, _} ->
+        :erlang.set_cookie(node(), cookie)
+        announce_diagnostic_node(name, cookie)
+
+      {:error, {:already_started, _}} ->
+        :ok
+
+      {:error, reason} ->
+        IO.puts(:stderr, "warning: could not register diagnostic node: #{inspect(reason)}")
+
+        IO.puts(
+          :stderr,
+          "  (live introspection unavailable; check that epmd is running and reachable)"
+        )
+    end
+  rescue
+    e ->
+      IO.puts(:stderr, "warning: diagnostic node setup raised: #{Exception.message(e)}")
+  end
+
+  defp random_cookie do
+    suffix = :crypto.strong_rand_bytes(18) |> Base.encode16(case: :lower)
+    String.to_atom("cantrip_" <> suffix)
+  end
+
+  defp announce_diagnostic_node(name, cookie) do
+    cookie_text = Atom.to_string(cookie)
+
+    IO.puts(:stderr, "Diagnostic node: #{name}  (cookie: #{cookie_text})")
+
+    IO.puts(
+      :stderr,
+      "Attach with: iex --name inspector@127.0.0.1 --cookie #{cookie_text} --remsh #{name}"
+    )
+
+    IO.puts(
+      :stderr,
+      "Then try: Cantrip.ACP.Diagnostics.dump()"
+    )
   end
 
   defp run_familiar(intent, opts) do
@@ -77,7 +141,10 @@ defmodule Mix.Tasks.Cantrip.Familiar do
 
       {:error, reason} ->
         Mix.shell().error("Cannot resolve LLM: #{reason}")
-        Mix.shell().error("Set CANTRIP_MODEL and CANTRIP_API_KEY (or provider-specific env vars).")
+
+        Mix.shell().error(
+          "Set CANTRIP_MODEL and CANTRIP_API_KEY (or provider-specific env vars)."
+        )
     end
   end
 
@@ -161,14 +228,23 @@ defmodule Mix.Tasks.Cantrip.Familiar do
             :ok
 
           {:error, reason, _cantrip} ->
-            IO.write(:stderr, IO.ANSI.red() <> "Error: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n")
+            IO.write(
+              :stderr,
+              IO.ANSI.red() <> "Error: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n"
+            )
 
           {:error, reason} ->
-            IO.write(:stderr, IO.ANSI.red() <> "Error: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n")
+            IO.write(
+              :stderr,
+              IO.ANSI.red() <> "Error: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n"
+            )
         end
 
       {:DOWN, _ref, :process, _pid, reason} ->
-        IO.write(:stderr, IO.ANSI.red() <> "Entity crashed: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n")
+        IO.write(
+          :stderr,
+          IO.ANSI.red() <> "Entity crashed: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n"
+        )
     end
   end
 
@@ -199,12 +275,13 @@ defmodule Mix.Tasks.Cantrip.Familiar do
 
   defp usage do
     """
-    usage: mix cantrip.familiar [intent] [--loom-path PATH] [--max-turns N] [--help]
+    usage: mix cantrip.familiar [intent] [--acp] [--diagnostics] [--loom-path PATH] [--max-turns N] [--help]
 
     Run the Familiar — a persistent coding assistant with filesystem observation.
 
     Without an intent argument, starts in interactive REPL mode.
     With an intent, runs single-shot and exits.
+    With --acp, starts an ACP stdio server. Add --diagnostics to open an opt-in remsh node.
     """
   end
 end

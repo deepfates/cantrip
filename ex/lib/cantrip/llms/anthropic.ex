@@ -200,7 +200,6 @@ defmodule Cantrip.LLMs.Anthropic do
 
     %{
       content: content,
-
       tool_calls: normalized_tool_calls,
       usage: %{
         prompt_tokens: usage["input_tokens"] || 0,

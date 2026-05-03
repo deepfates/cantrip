@@ -17,7 +17,10 @@ defmodule CantripM23StreamingTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]})
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]}
+      )
 
     {stream, _task} = Cantrip.cast_stream(cantrip, "test streaming")
 
@@ -48,13 +51,16 @@ defmodule CantripM23StreamingTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+      )
 
     {stream, _task} = Cantrip.cast_stream(cantrip, "usage test")
 
     events = Enum.to_list(stream)
     usage_events = Enum.filter(events, &(event_type(&1) == :usage))
-    assert length(usage_events) >= 1
+    assert usage_events != []
   end
 
   test "cast_stream emits step_complete with terminated flag" do
@@ -65,7 +71,10 @@ defmodule CantripM23StreamingTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+      )
 
     {stream, _task} = Cantrip.cast_stream(cantrip, "completion test")
 

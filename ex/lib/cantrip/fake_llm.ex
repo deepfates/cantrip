@@ -39,6 +39,7 @@ defmodule Cantrip.FakeLLM do
           [{_, idx}] = :ets.lookup(table, ref)
           :ets.update_counter(table, ref, {2, 1})
           idx
+
         nil ->
           state.index
       end

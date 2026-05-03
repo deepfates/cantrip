@@ -3,6 +3,30 @@ defmodule CantripM3LoomStorageTest do
 
   alias Cantrip.FakeLLM
 
+  test "loom writes generic events to jsonl storage" do
+    path = tmp_jsonl_path()
+    File.rm(path)
+
+    loom =
+      %{system_prompt: nil}
+      |> Cantrip.Loom.new(storage: {:jsonl, path})
+      |> Cantrip.Loom.append_event(%{type: :runtime_note, message: "stored"})
+
+    assert [%{type: :runtime_note}] = loom.events
+
+    entries = read_jsonl(path)
+
+    assert [
+             %{
+               "type" => "event",
+               "event" => %{
+                 "type" => "runtime_note",
+                 "message" => "stored"
+               }
+             }
+           ] = entries
+  end
+
   test "loom writes turn events to jsonl storage during cast" do
     path = tmp_jsonl_path()
     File.rm(path)

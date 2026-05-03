@@ -7,7 +7,10 @@ defmodule CantripM1LlmContractTest do
     llm = {FakeLLM, FakeLLM.new([%{content: nil, tool_calls: nil}])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+      )
 
     assert {:error, "llm returned neither content nor tool_calls", _} =
              Cantrip.llm_query(cantrip, %{messages: [], tools: []})
@@ -26,7 +29,10 @@ defmodule CantripM1LlmContractTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]})
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]}
+      )
 
     assert {:error, "duplicate tool call ID", _} =
              Cantrip.llm_query(cantrip, %{messages: [], tools: []})
@@ -70,7 +76,10 @@ defmodule CantripM1LlmContractTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+      )
 
     {:ok, response, _cantrip} = Cantrip.llm_query(cantrip, %{messages: [], tools: []})
 

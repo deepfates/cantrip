@@ -7,7 +7,7 @@ defmodule Cantrip.CodeMedium do
   - `call_entity/1` synchronously delegates to a child entity and returns its value.
   """
 
-  alias Cantrip.Circle
+  alias Cantrip.{Circle, Gate}
   import Cantrip.LLMs.Helpers, only: [normalize_opts: 1]
 
   @reserved_bindings [
@@ -64,6 +64,7 @@ defmodule Cantrip.CodeMedium do
           catch
             {:cantrip_done, answer} ->
               {binding, answer, true}
+
             {:cantrip_error, msg} ->
               push_observation(%{gate: "code", result: msg, is_error: true})
               {binding, {:cantrip_error, msg}, true}
@@ -84,7 +85,7 @@ defmodule Cantrip.CodeMedium do
       |> Keyword.drop(@reserved_bindings)
 
     done_fun = fn answer ->
-      observation = Circle.execute_gate(runtime.circle, "done", %{"answer" => answer})
+      observation = Gate.execute(runtime.circle, "done", %{"answer" => answer})
       push_observation(observation)
       throw({:cantrip_done, answer})
     end
@@ -104,7 +105,6 @@ defmodule Cantrip.CodeMedium do
       if payload.observation[:is_error] do
         raise payload.observation[:result] || "call_entity failed"
       end
-
 
       payload.value
     end
@@ -155,7 +155,7 @@ defmodule Cantrip.CodeMedium do
 
     # Familiar orchestration gates: cantrip/cast/cast_batch/dispose
     # These are only bound when the circle has the corresponding gates.
-    gate_names = Circle.gate_names(runtime.circle)
+    gate_names = Gate.names(runtime.circle)
 
     if "cantrip" in gate_names do
       put_familiar_bindings(binding, runtime)
@@ -173,6 +173,7 @@ defmodule Cantrip.CodeMedium do
           is_list(config) -> Map.new(config)
           true -> raise "cantrip.() requires a map config, got: #{inspect(config)}"
         end
+
       id = "fam_child_" <> Integer.to_string(System.unique_integer([:positive]))
       store = Process.get(:cantrip_familiar_store, %{})
       Process.put(:cantrip_familiar_store, Map.put(store, id, config))
@@ -214,6 +215,7 @@ defmodule Cantrip.CodeMedium do
               is_list(item) -> Map.new(item)
               true -> raise "cast_batch items must be maps, got: #{inspect(item)}"
             end
+
           id = item[:cantrip] || item[:id]
           intent = item[:intent]
 
@@ -323,6 +325,14 @@ defmodule Cantrip.CodeMedium do
   end
 
   defp push_observation(observation) do
+    # Ensure every observation carries a stable tool_call_id from the moment
+    # it's recorded. Downstream consumers (EventBridge, ACP, telemetry) can
+    # rely on it being present without inventing fallbacks.
+    observation =
+      Map.put_new_lazy(observation, :tool_call_id, fn ->
+        "call_" <> Integer.to_string(System.unique_integer([:positive]))
+      end)
+
     observations = Process.get(:cantrip_code_observations, [])
     Process.put(:cantrip_code_observations, observations ++ [observation])
   end
@@ -334,7 +344,7 @@ defmodule Cantrip.CodeMedium do
 
       execute_gate ->
         runtime.circle
-        |> Circle.gate_names()
+        |> Gate.names()
         |> Enum.reduce(binding, fn gate_name, acc ->
           binding_name = String.to_atom(gate_name)
 
@@ -362,7 +372,6 @@ defmodule Cantrip.CodeMedium do
         end)
     end
   end
-
 
   defp normalize_batch(opts) when is_list(opts) do
     Enum.map(opts, &normalize_opts/1)

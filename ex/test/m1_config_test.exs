@@ -5,14 +5,19 @@ defmodule CantripM1ConfigTest do
 
   test "CANTRIP-1 rejects missing llm" do
     assert {:error, "cantrip requires a llm"} =
-             Cantrip.new(circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
+             Cantrip.new(
+               circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+             )
   end
 
   test "CIRCLE-1 rejects circle without done gate" do
     llm = {FakeLLM, FakeLLM.new([%{content: "hello"}])}
 
     assert {:error, "circle must have a done gate"} =
-             Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [], wards: [%{max_turns: 10}]})
+             Cantrip.new(
+               llm: llm,
+               circle: %{type: :conversation, gates: [], wards: [%{max_turns: 10}]}
+             )
   end
 
   test "LOOP-2 rejects circle without truncation ward" do
@@ -28,11 +33,15 @@ defmodule CantripM1ConfigTest do
     assert {:error, "cantrip with require_done must have a done gate"} =
              Cantrip.new(
                llm: llm,
-               circle: %{type: :conversation, gates: [], wards: [%{max_turns: 10}, %{require_done_tool: true}]}
+               circle: %{
+                 type: :conversation,
+                 gates: [],
+                 wards: [%{max_turns: 10}, %{require_done_tool: true}]
+               }
              )
   end
 
-  test "valid m1 cantrip builds with normalized circle tool definitions" do
+  test "valid m1 cantrip builds with normalized medium presentation" do
     llm = {FakeLLM, FakeLLM.new([%{content: "ok"}], record_inputs: true)}
 
     {:ok, cantrip} =
@@ -51,10 +60,11 @@ defmodule CantripM1ConfigTest do
 
     assert cantrip.identity.system_prompt == "You are helpful"
 
-    assert Enum.map(Cantrip.Circle.tool_definitions(cantrip.circle), & &1.name) == [
+    presentation = Cantrip.Medium.Registry.present(cantrip.circle)
+
+    assert Enum.map(presentation.tools, & &1.name) == [
              "done",
              "echo"
            ]
   end
-
 end

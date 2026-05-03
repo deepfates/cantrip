@@ -48,6 +48,21 @@ defmodule Cantrip.Loom.Storage.Auto do
   end
 
   @impl true
+  def append_event(%{module: module, state: state} = storage, event) do
+    result =
+      if function_exported?(module, :append_event, 2) do
+        module.append_event(state, event)
+      else
+        append_event_compat(module, state, event)
+      end
+
+    case result do
+      {:ok, next_state} -> {:ok, %{storage | state: next_state}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @impl true
   def annotate_reward(%{module: module, state: state} = storage, index, reward) do
     case module.annotate_reward(state, index, reward) do
       {:ok, next_state} -> {:ok, %{storage | state: next_state}}
@@ -65,6 +80,20 @@ defmodule Cantrip.Loom.Storage.Auto do
 
   def read_events(_), do: {:error, "invalid auto storage state"}
 
+  defp append_event_compat(module, state, event) do
+    case event_type(event) do
+      :turn ->
+        module.append_turn(state, Map.fetch!(event, :turn))
+
+      :reward ->
+        module.annotate_reward(state, Map.fetch!(event, :index), Map.fetch!(event, :reward))
+
+      _ ->
+        {:ok, state}
+    end
+  end
+
+  defp event_type(event), do: Map.get(event, :type) || Map.get(event, "type")
 
   defp default_mnesia_table do
     :"cantrip_loom_auto_#{System.unique_integer([:positive])}"

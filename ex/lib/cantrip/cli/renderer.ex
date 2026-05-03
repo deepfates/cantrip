@@ -75,9 +75,14 @@ defmodule Cantrip.CLI.Renderer do
 
   # Suppress the internal "code" eval gate — the code block covers it.
   def render_event(state, {_, {:tool_call, %{gate: "code"}}}), do: {"", :stderr, state}
-  def render_event(state, {_, {:tool_result, %{gate: "code", is_error: false}}}), do: {"", :stderr, state}
 
-  def render_event(state, {%{depth: d}, {:tool_result, %{gate: "code", is_error: true, result: result}}}) do
+  def render_event(state, {_, {:tool_result, %{gate: "code", is_error: false}}}),
+    do: {"", :stderr, state}
+
+  def render_event(
+        state,
+        {%{depth: d}, {:tool_result, %{gate: "code", is_error: true, result: result}}}
+      ) do
     text = summarize(result)
     line = Owl.Data.tag(["  ✗ eval: ", text], :red) |> Owl.Data.to_chardata()
     {[indent(d, line), "\n"], :stderr, state}
@@ -94,13 +99,19 @@ defmodule Cantrip.CLI.Renderer do
     {[indent(d, line), "\n"], :stderr, state}
   end
 
-  def render_event(state, {%{depth: d}, {:tool_result, %{gate: gate, result: result, is_error: true}}}) do
+  def render_event(
+        state,
+        {%{depth: d}, {:tool_result, %{gate: gate, result: result, is_error: true}}}
+      ) do
     text = summarize(result)
     line = Owl.Data.tag(["  ✗ ", gate, ": ", text], :red) |> Owl.Data.to_chardata()
     {[indent(d, line), "\n"], :stderr, state}
   end
 
-  def render_event(state, {%{depth: d}, {:tool_result, %{gate: gate, result: result, is_error: false}}}) do
+  def render_event(
+        state,
+        {%{depth: d}, {:tool_result, %{gate: gate, result: result, is_error: false}}}
+      ) do
     text = summarize(result)
     line = Owl.Data.tag(["  ✓ ", gate, ": ", text], :green) |> Owl.Data.to_chardata()
     {[indent(d, line), "\n"], :stderr, state}
@@ -126,7 +137,14 @@ defmodule Cantrip.CLI.Renderer do
   # -- Child delegation --
 
   def render_event(state, {%{depth: d}, {:child_start, %{intent: intent}}}) do
-    line = ["  ", Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(), "cast: \"", to_string(intent), "\""]
+    line = [
+      "  ",
+      Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(),
+      "cast: \"",
+      to_string(intent),
+      "\""
+    ]
+
     {[indent(d, line), "\n"], :stderr, state}
   end
 

@@ -3,16 +3,56 @@ defmodule CantripM2LoomApiTest do
 
   alias Cantrip.FakeLLM
 
+  test "LOOM event log records non-turn events without changing turn projection" do
+    loom = Cantrip.Loom.new(%{system_prompt: nil})
+
+    loom =
+      Cantrip.Loom.append_event(
+        loom,
+        %{type: :runtime_note, message: "non-turn event"}
+      )
+
+    assert loom.turns == []
+
+    assert [
+             %{
+               type: :runtime_note,
+               message: "non-turn event"
+             }
+           ] = loom.events
+  end
+
+  test "LOOM event log accepts caller-defined event payloads without projections" do
+    loom =
+      %{system_prompt: nil}
+      |> Cantrip.Loom.new()
+      |> Cantrip.Loom.append_event(%{type: :protocol_update, session_id: "sess_1"})
+      |> Cantrip.Loom.append_event(%{type: :diagnostic_marker, status: :ok})
+
+    assert [
+             %{type: :protocol_update, session_id: "sess_1"},
+             %{type: :diagnostic_marker, status: :ok}
+           ] = loom.events
+  end
+
   test "LOOM-3 reward may be annotated after turn creation" do
     llm =
       {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+      )
 
     {:ok, "ok", cantrip, loom, _meta} = Cantrip.cast(cantrip, "reward annotation")
     assert {:ok, updated_loom, _cantrip} = Cantrip.annotate_reward(cantrip, loom, 0, 1.0)
     assert hd(updated_loom.turns).reward == 1.0
+
+    assert Enum.any?(
+             updated_loom.events,
+             &(&1.type == :reward and &1.index == 0 and &1.reward == 1.0)
+           )
   end
 
   test "LOOM-10 thread extraction returns utterance and observation trajectory" do
@@ -24,7 +64,10 @@ defmodule CantripM2LoomApiTest do
        ])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]})
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 10}]}
+      )
 
     {:ok, "ok", cantrip, loom, _meta} = Cantrip.cast(cantrip, "extract")
 
@@ -38,7 +81,10 @@ defmodule CantripM2LoomApiTest do
       {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+      )
 
     {:ok, _val, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "fields test")
 
@@ -54,7 +100,10 @@ defmodule CantripM2LoomApiTest do
       {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
 
     {:ok, cantrip} =
-      Cantrip.new(llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]})
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+      )
 
     {:ok, _val, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "cached tokens test")
 

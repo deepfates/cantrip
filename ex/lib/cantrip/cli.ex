@@ -33,14 +33,10 @@ defmodule Cantrip.CLI do
         0
 
       ["acp"] ->
-        with :ok <- ensure_started() do
+        run_started(fn ->
           Cantrip.ACP.Server.run()
           0
-        else
-          {:error, reason} ->
-            IO.puts(:stderr, "failed to start cantrip application: #{inspect(reason)}")
-            1
-        end
+        end)
 
       ["acp", "--help"] ->
         IO.puts(acp_usage())
@@ -51,22 +47,10 @@ defmodule Cantrip.CLI do
         0
 
       ["example" | rest] ->
-        with :ok <- ensure_started() do
-          run_example(rest)
-        else
-          {:error, reason} ->
-            IO.puts(:stderr, "failed to start cantrip application: #{inspect(reason)}")
-            1
-        end
+        run_started(fn -> run_example(rest) end)
 
       ["repl" | rest] ->
-        with :ok <- ensure_started() do
-          run_repl(rest)
-        else
-          {:error, reason} ->
-            IO.puts(:stderr, "failed to start cantrip application: #{inspect(reason)}")
-            1
-        end
+        run_started(fn -> run_repl(rest) end)
 
       _ ->
         IO.puts(:stderr, usage())
@@ -75,12 +59,13 @@ defmodule Cantrip.CLI do
   end
 
   defp run_example(["list"]) do
-    Enum.reduce_while(Cantrip.Examples.catalog(), :ok, fn item, :ok ->
-      case safe_puts(:stdio, "#{item.id}  #{item.title}") do
-        :ok -> {:cont, :ok}
-        :closed -> {:halt, :ok}
-      end
-    end)
+    :ok =
+      Enum.reduce_while(Cantrip.Examples.catalog(), :ok, fn item, :ok ->
+        case safe_puts(:stdio, "#{item.id}  #{item.title}") do
+          :ok -> {:cont, :ok}
+          :closed -> {:halt, :ok}
+        end
+      end)
 
     0
   end
@@ -164,6 +149,17 @@ defmodule Cantrip.CLI do
           IO.puts(:stderr, "error: #{inspect(reason)}")
         end
 
+        1
+    end
+  end
+
+  defp run_started(fun) do
+    case ensure_started() do
+      :ok ->
+        fun.()
+
+      {:error, reason} ->
+        IO.puts(:stderr, "failed to start cantrip application: #{inspect(reason)}")
         1
     end
   end

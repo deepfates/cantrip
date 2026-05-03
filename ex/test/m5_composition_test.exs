@@ -7,16 +7,16 @@ defmodule CantripM5CompositionTest do
     test "compose_wards takes min of numeric wards" do
       parent = [%{max_turns: 20}, %{max_depth: 3}]
       child = [%{max_turns: 10}, %{max_depth: 5}]
-      composed = Cantrip.Circle.compose_wards(parent, child)
-      assert Cantrip.Circle.max_turns(%Cantrip.Circle{wards: composed}) == 10
-      assert Cantrip.Circle.max_depth(%Cantrip.Circle{wards: composed}) == 3
+      composed = Cantrip.WardPolicy.compose(parent, child)
+      assert Cantrip.WardPolicy.get(composed, :max_turns) == 10
+      assert Cantrip.WardPolicy.get(composed, :max_depth) == 3
     end
 
     test "compose_wards with empty child returns parent wards" do
       parent = [%{max_turns: 10}, %{max_depth: 2}]
-      composed = Cantrip.Circle.compose_wards(parent, [])
-      assert Cantrip.Circle.max_turns(%Cantrip.Circle{wards: composed}) == 10
-      assert Cantrip.Circle.max_depth(%Cantrip.Circle{wards: composed}) == 2
+      composed = Cantrip.WardPolicy.compose(parent, [])
+      assert Cantrip.WardPolicy.get(composed, :max_turns) == 10
+      assert Cantrip.WardPolicy.get(composed, :max_depth) == 2
     end
 
     test "child cannot loosen parent's max_turns via call_entity" do

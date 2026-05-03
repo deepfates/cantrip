@@ -2,8 +2,8 @@ defmodule Cantrip.CLI.JsonRenderer do
   @moduledoc """
   Renders EntityServer streaming events as JSONL to stdout.
 
-  Each event is one JSON line with `type`, `entity_id`, `depth`, `medium`,
-  and `data` keys. Events arrive as {envelope, {type, data}}.
+  Each event is one JSON line with `type`, versioned envelope metadata, and
+  `data`. Events arrive as {envelope, {type, data}}.
   """
 
   defstruct []
@@ -20,9 +20,14 @@ defmodule Cantrip.CLI.JsonRenderer do
     json =
       %{
         type: Atom.to_string(type),
+        version: envelope[:version],
         entity_id: envelope[:entity_id],
+        turn_id: envelope[:turn_id],
+        correlation_id: envelope[:correlation_id],
         depth: envelope[:depth] || 0,
         medium: to_string(envelope[:medium] || "unknown"),
+        sequence: envelope[:sequence],
+        timestamp: serialize_timestamp(envelope[:timestamp]),
         data: serialize_data(data)
       }
       |> Jason.encode!()
@@ -46,6 +51,12 @@ defmodule Cantrip.CLI.JsonRenderer do
   defp serialize_value(v) when is_boolean(v), do: v
   defp serialize_value(v) when is_atom(v), do: Atom.to_string(v)
   defp serialize_value(v) when is_list(v), do: Enum.map(v, &serialize_value/1)
-  defp serialize_value(v) when is_map(v), do: Map.new(v, fn {k, val} -> {to_string(k), serialize_value(val)} end)
+
+  defp serialize_value(v) when is_map(v),
+    do: Map.new(v, fn {k, val} -> {to_string(k), serialize_value(val)} end)
+
   defp serialize_value(v), do: inspect(v)
+
+  defp serialize_timestamp(%DateTime{} = timestamp), do: DateTime.to_iso8601(timestamp)
+  defp serialize_timestamp(timestamp), do: timestamp
 end

@@ -21,7 +21,7 @@ defmodule CantripM19CodeSandboxTest do
            %{code: ~s[done.("recovered")]}
          ])}
 
-      {:ok, cantrip} = code_cantrip(llm, wards: [%{max_turns: 10}])
+      {:ok, cantrip} = code_cantrip(llm, wards: [%{max_turns: 10}, %{code_eval_timeout_ms: 50}])
 
       assert {:ok, "recovered", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "timeout test")
 

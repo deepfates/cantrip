@@ -39,14 +39,16 @@ defmodule CantripM5CompositionExtendedTest do
     parent =
       {FakeLLM,
        FakeLLM.new([
-         %{code: ~s"""
+         %{
+           code: ~s"""
            try do
              call_entity.(%{intent: "sub"})
              done.("should not reach")
            rescue
              e -> done.("blocked: " <> Exception.message(e))
            end
-           """}
+           """
+         }
        ])}
 
     {:ok, cantrip} =
@@ -67,14 +69,16 @@ defmodule CantripM5CompositionExtendedTest do
     parent =
       {FakeLLM,
        FakeLLM.new([
-         %{code: ~s"""
+         %{
+           code: ~s"""
            try do
              result = call_entity.(%{intent: "will fail"})
              done.("got: " <> to_string(result))
            rescue
              e -> done.("caught: " <> Exception.message(e))
            end
-           """}
+           """
+         }
        ])}
 
     child = {FakeLLM, FakeLLM.new([%{error: %{status: 500, message: "child exploded"}}])}

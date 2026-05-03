@@ -1,11 +1,20 @@
 defmodule Cantrip.Loom do
   @moduledoc """
-  M2 in-memory append-only loom for turn records.
+  Append-only durable reality for an entity.
+
+  The loom keeps the turn-shaped compatibility surface used by the existing
+  runtime while also storing generic events. In Solid V1, compaction and prompt
+  folding are projections over this record; they do not delete the underlying
+  turns or events.
+
+  Later evolution work can project richer views from this event log, but this
+  module intentionally stays generic: append events, append turns, graft child
+  subtrees, and extract threads.
   """
 
   alias Cantrip.Loom.Storage.Memory
 
-  defstruct identity: nil, turns: [], storage_module: Memory, storage_state: %{}
+  defstruct identity: nil, events: [], turns: [], storage_module: Memory, storage_state: %{}
 
   def new(identity, opts \\ []) do
     {storage_module, storage_opts} = normalize_storage(Keyword.get(opts, :storage))
@@ -14,17 +23,43 @@ defmodule Cantrip.Loom do
       {:ok, storage_state} ->
         %__MODULE__{
           identity: identity,
+          events: [],
           turns: [],
           storage_module: storage_module,
           storage_state: storage_state
         }
 
       {:error, _reason} ->
-        %__MODULE__{identity: identity, turns: [], storage_module: Memory, storage_state: %{}}
+        %__MODULE__{
+          identity: identity,
+          events: [],
+          turns: [],
+          storage_module: Memory,
+          storage_state: %{}
+        }
     end
   end
 
-  def append_turn(%__MODULE__{turns: turns, storage_module: module} = loom, attrs) do
+  def append_event(%__MODULE__{events: events, storage_module: module} = loom, attrs) do
+    event =
+      Map.merge(
+        %{
+          id: "event_" <> Integer.to_string(System.unique_integer([:positive])),
+          sequence: length(events) + 1,
+          timestamp: DateTime.utc_now()
+        },
+        Map.new(attrs)
+      )
+
+    loom = %{loom | events: events ++ [event]}
+
+    case persist_event(module, loom.storage_state, event) do
+      {:ok, storage_state} -> %{loom | storage_state: storage_state}
+      {:error, _reason} -> loom
+    end
+  end
+
+  def append_turn(%__MODULE__{turns: turns} = loom, attrs) do
     id = "turn_" <> Integer.to_string(System.unique_integer([:positive]))
 
     parent_id =
@@ -50,15 +85,90 @@ defmodule Cantrip.Loom do
         Map.new(attrs)
       )
 
-    loom = %{loom | turns: turns ++ [turn]}
-
-    case module.append_turn(loom.storage_state, turn) do
-      {:ok, storage_state} -> %{loom | storage_state: storage_state}
-      {:error, _reason} -> loom
-    end
+    loom
+    |> Map.put(:turns, turns ++ [turn])
+    |> append_event(%{type: :turn, turn: turn})
   end
 
-  def annotate_reward(%__MODULE__{turns: turns, storage_module: module} = loom, index, reward) do
+  def append_executed_turn(%__MODULE__{} = loom, turn_attrs, observations, opts \\ []) do
+    initial_turn_count = length(loom.turns)
+
+    loom = append_turn(loom, turn_attrs)
+    parent_turn = List.last(loom.turns)
+
+    loom = append_child_subtrees(loom, observations)
+    had_child_turns = length(loom.turns) > initial_turn_count + 1
+
+    append_parent_continuation(
+      loom,
+      had_child_turns and Keyword.get(opts, :append_continuation?, false),
+      %{
+        cantrip_id: Map.fetch!(turn_attrs, :cantrip_id),
+        entity_id: Map.fetch!(turn_attrs, :entity_id)
+      },
+      parent_turn.id,
+      parent_turn.sequence + 1
+    )
+  end
+
+  def append_child_subtrees(%__MODULE__{} = loom, observations) do
+    parent_turn_id = loom.turns |> List.last() |> Map.get(:id)
+
+    child_turns =
+      observations
+      |> Enum.flat_map(&Map.get(&1, :child_turns, []))
+
+    {loom, _id_map} =
+      Enum.reduce(child_turns, {loom, %{}}, fn turn, {acc_loom, id_map} ->
+        old_parent = Map.get(turn, :parent_id)
+
+        new_parent =
+          cond do
+            is_nil(old_parent) -> parent_turn_id
+            Map.has_key?(id_map, old_parent) -> Map.fetch!(id_map, old_parent)
+            true -> parent_turn_id
+          end
+
+        attrs =
+          turn
+          |> Map.drop([:id])
+          |> Map.put(:parent_id, new_parent)
+
+        next_loom = append_turn(acc_loom, attrs)
+        new_id = next_loom.turns |> List.last() |> Map.fetch!(:id)
+        {next_loom, Map.put(id_map, turn.id, new_id)}
+      end)
+
+    loom
+  end
+
+  def append_parent_continuation(
+        %__MODULE__{} = loom,
+        false,
+        _context,
+        _parent_turn_id,
+        _sequence
+      ) do
+    loom
+  end
+
+  def append_parent_continuation(%__MODULE__{} = loom, true, context, parent_turn_id, sequence) do
+    append_turn(loom, %{
+      cantrip_id: context.cantrip_id,
+      entity_id: context.entity_id,
+      role: "turn",
+      utterance: nil,
+      observation: [],
+      gate_calls: [],
+      terminated: true,
+      truncated: false,
+      parent_id: parent_turn_id,
+      sequence: sequence,
+      metadata: %{continuation: true, timestamp: DateTime.utc_now()}
+    })
+  end
+
+  def annotate_reward(%__MODULE__{turns: turns} = loom, index, reward) do
     case Enum.fetch(turns, index) do
       :error ->
         {:error, "invalid turn index"}
@@ -66,13 +176,7 @@ defmodule Cantrip.Loom do
       {:ok, turn} ->
         updated = %{loom | turns: List.replace_at(turns, index, %{turn | reward: reward})}
 
-        updated =
-          case module.annotate_reward(updated.storage_state, index, reward) do
-            {:ok, storage_state} -> %{updated | storage_state: storage_state}
-            {:error, _reason} -> updated
-          end
-
-        {:ok, updated}
+        {:ok, append_event(updated, %{type: :reward, index: index, reward: reward})}
     end
   end
 
@@ -125,4 +229,28 @@ defmodule Cantrip.Loom do
   defp normalize_storage({module, opts}) when is_atom(module), do: {module, opts}
 
   defp normalize_storage(_), do: {Memory, %{}}
+
+  defp persist_event(module, storage_state, event) do
+    cond do
+      function_exported?(module, :append_event, 2) ->
+        module.append_event(storage_state, event)
+
+      event_type(event) == :turn ->
+        module.append_turn(storage_state, Map.fetch!(event, :turn))
+
+      event_type(event) == :reward ->
+        module.annotate_reward(
+          storage_state,
+          Map.fetch!(event, :index),
+          Map.fetch!(event, :reward)
+        )
+
+      true ->
+        {:ok, storage_state}
+    end
+  end
+
+  defp event_type(event) do
+    Map.get(event, :type) || Map.get(event, "type")
+  end
 end

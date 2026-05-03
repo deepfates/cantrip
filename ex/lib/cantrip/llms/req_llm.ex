@@ -44,11 +44,13 @@ if Code.ensure_loaded?(ReqLLM) do
       model = state.model
       context = build_context(request)
       opts = build_opts(state, request)
+      emit_event = Map.get(request, :emit_event)
       stream_to = Map.get(request, :stream_to)
+      event_sink = event_sink(emit_event, stream_to)
 
       result =
         if state.stream do
-          stream_query(model, context, opts, stream_to)
+          stream_query(model, context, opts, event_sink)
         else
           sync_query(model, context, opts)
         end
@@ -79,17 +81,16 @@ if Code.ensure_loaded?(ReqLLM) do
 
     # -- Streaming path --
 
-    defp stream_query(model, context, opts, stream_to) do
+    defp stream_query(model, context, opts, event_sink) do
       case ReqLLM.stream_text(model, context, opts) do
         {:ok, %ReqLLM.StreamResponse{} = sr} ->
-          # Stream tokens, emitting deltas to stream_to as they arrive
+          # Stream tokens through the runtime callback as they arrive. This
+          # preserves BEAM message ordering with subsequent runtime events.
           text =
             sr
             |> ReqLLM.StreamResponse.tokens()
             |> Enum.reduce("", fn chunk, acc ->
-              if is_pid(stream_to) and is_binary(chunk) and chunk != "" do
-                send(stream_to, {:cantrip_event, {:text_delta, chunk}})
-              end
+              emit_stream_event(event_sink, {:text_delta, chunk})
 
               acc <> chunk
             end)
@@ -112,9 +113,7 @@ if Code.ensure_loaded?(ReqLLM) do
         {:ok, %ReqLLM.Response{} = response} ->
           text = ReqLLM.Response.text(response)
 
-          if is_pid(stream_to) and is_binary(text) and text != "" do
-            send(stream_to, {:cantrip_event, {:text_delta, text}})
-          end
+          emit_stream_event(event_sink, {:text_delta, text})
 
           usage = ReqLLM.Response.usage(response) || %{}
 
@@ -130,6 +129,21 @@ if Code.ensure_loaded?(ReqLLM) do
           {:error, reason}
       end
     end
+
+    defp event_sink(emit_event, _stream_to) when is_function(emit_event, 1), do: emit_event
+
+    defp event_sink(_emit_event, stream_to) when is_pid(stream_to) do
+      fn event -> send(stream_to, {:cantrip_event, event}) end
+    end
+
+    defp event_sink(_emit_event, _stream_to), do: nil
+
+    defp emit_stream_event(event_sink, {_type, chunk} = event)
+         when is_function(event_sink, 1) and is_binary(chunk) and chunk != "" do
+      event_sink.(event)
+    end
+
+    defp emit_stream_event(_event_sink, _event), do: :ok
 
     # -- Context building --
 
@@ -168,6 +182,7 @@ if Code.ensure_loaded?(ReqLLM) do
         else
           opts
         end
+
       opts = if state.timeout_ms, do: [{:receive_timeout, state.timeout_ms} | opts], else: opts
       opts = if state.base_url, do: [{:base_url, state.base_url} | opts], else: opts
       opts = if state.api_key, do: [{:api_key, state.api_key} | opts], else: opts
@@ -218,13 +233,17 @@ if Code.ensure_loaded?(ReqLLM) do
 
         args =
           cond do
-            is_map(args_raw) -> args_raw
+            is_map(args_raw) ->
+              args_raw
+
             is_binary(args_raw) ->
               case Jason.decode(args_raw) do
                 {:ok, map} when is_map(map) -> map
                 _ -> %{}
               end
-            true -> %{}
+
+            true ->
+              %{}
           end
 
         %{
@@ -276,10 +295,11 @@ if Code.ensure_loaded?(ReqLLM) do
 
     defp reasoning_model?(model) when is_binary(model) do
       # Strip provider prefix (e.g., "openai:o3" → "o3")
-      bare = case String.split(model, ":", parts: 2) do
-        [_prefix, name] -> name
-        [name] -> name
-      end
+      bare =
+        case String.split(model, ":", parts: 2) do
+          [_prefix, name] -> name
+          [name] -> name
+        end
 
       String.starts_with?(bare, "o1") or String.starts_with?(bare, "o3") or
         String.starts_with?(bare, "o4") or String.starts_with?(bare, "gpt-4.1") or

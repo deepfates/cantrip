@@ -107,7 +107,7 @@ defmodule CantripExamplesTest do
 
   describe "04 Cantrip" do
     test "two casts are independent with separate results" do
-      assert {:ok, result, _cantrip, loom, meta} = Examples.run("04", mode: :scripted)
+      assert {:ok, result, _cantrip, _loom, meta} = Examples.run("04", mode: :scripted)
       # Each cast produces a result
       assert is_binary(result.first) or is_map(result.first)
       assert is_binary(result.second) or is_map(result.second)
@@ -157,16 +157,20 @@ defmodule CantripExamplesTest do
       # DEEP CHECK: first turn observation has is_error: true (read of missing file)
       first_turn = Enum.at(loom.turns, 0)
       assert is_list(first_turn.observation)
+
       assert Enum.any?(first_turn.observation, fn obs ->
-        obs.is_error == true
-      end), "first turn must contain an error observation"
+               obs.is_error == true
+             end),
+             "first turn must contain an error observation"
 
       # DEEP CHECK: second turn observation has a non-error (successful recovery)
       second_turn = Enum.at(loom.turns, 1)
       assert is_list(second_turn.observation)
+
       assert Enum.any?(second_turn.observation, fn obs ->
-        obs.is_error == false
-      end), "second turn must contain a non-error observation (recovery)"
+               obs.is_error == false
+             end),
+             "second turn must contain a non-error observation (recovery)"
 
       assert meta.terminated
     end
@@ -200,10 +204,11 @@ defmodule CantripExamplesTest do
 
       # DEEP CHECK: delegation gate (call_entity_batch) appears in loom observations
       assert Enum.any?(loom.turns, fn turn ->
-        Enum.any?(turn.observation || [], fn obs ->
-          obs.gate == "call_entity_batch"
-        end)
-      end), "loom must record call_entity_batch gate invocation"
+               Enum.any?(turn.observation || [], fn obs ->
+                 obs.gate == "call_entity_batch"
+               end)
+             end),
+             "loom must record call_entity_batch gate invocation"
 
       assert meta.terminated
     end
@@ -226,13 +231,15 @@ defmodule CantripExamplesTest do
       # DEEP CHECK: loom turns contain both terminated and truncated flags
       # At least one turn should be terminated (the final done turn)
       assert Enum.any?(loom.turns, fn turn ->
-        Map.get(turn, :terminated, false) == true
-      end), "at least one loom turn must be terminated"
+               Map.get(turn, :terminated, false) == true
+             end),
+             "at least one loom turn must be terminated"
 
       # Check that turns have the truncated field
       assert Enum.all?(loom.turns, fn turn ->
-        Map.has_key?(turn, :truncated)
-      end), "every loom turn must have a :truncated field"
+               Map.has_key?(turn, :truncated)
+             end),
+             "every loom turn must have a :truncated field"
     end
   end
 
@@ -276,6 +283,7 @@ defmodule CantripExamplesTest do
 
       # DEEP CHECK: file actually exists at the loom_path
       assert is_binary(result.loom_path)
+
       assert File.exists?(result.loom_path),
              "loom file must actually exist at #{result.loom_path}"
 
@@ -291,17 +299,19 @@ defmodule CantripExamplesTest do
     test "done gate tool definition must include answer parameter" do
       # The done gate needs {type: "object", properties: {answer: ...}}
       # so LLMs know to call done(answer: "...") not done({})
-      circle = Cantrip.Circle.new(%{
-        gates: [:done, :echo],
-        wards: [%{max_turns: 3}]
-      })
+      circle =
+        Cantrip.Circle.new(%{
+          gates: [:done, :echo],
+          wards: [%{max_turns: 3}]
+        })
 
-      tool_defs = Cantrip.Circle.tool_definitions(circle)
+      tool_defs = Cantrip.Medium.Registry.present(circle).tools
       done_def = Enum.find(tool_defs, &(&1.name == "done"))
 
       assert done_def != nil, "done must appear in tool_definitions"
       assert is_map(done_def.parameters), "done must have parameters"
       props = Map.get(done_def.parameters, :properties, %{})
+
       assert Map.has_key?(props, :answer) or Map.has_key?(props, "answer"),
              "done parameters must include 'answer' property, got: #{inspect(props)}"
     end
@@ -315,7 +325,10 @@ defmodule CantripExamplesTest do
       parent_llm =
         {Cantrip.FakeLLM,
          Cantrip.FakeLLM.new([
-           %{code: "result = call_entity.(%{intent: \"child task\", gates: [\"done\"]})\ndone.(result)"}
+           %{
+             code:
+               "result = call_entity.(%{intent: \"child task\", gates: [\"done\"]})\ndone.(result)"
+           }
          ])}
 
       child_llm =
@@ -329,7 +342,8 @@ defmodule CantripExamplesTest do
           llm: parent_llm,
           child_llm: child_llm,
           identity: %{
-            system_prompt: "You are a coordinator. Use call_entity to delegate. Use done when finished.",
+            system_prompt:
+              "You are a coordinator. Use call_entity to delegate. Use done when finished.",
             tool_choice: "required"
           },
           circle: %{
@@ -344,9 +358,6 @@ defmodule CantripExamplesTest do
           assert meta.terminated
 
         {:error, reason, _cantrip} ->
-          flunk("cast failed: #{inspect(reason)}")
-
-        {:error, reason} ->
           flunk("cast failed: #{inspect(reason)}")
       end
     end

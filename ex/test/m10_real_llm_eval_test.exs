@@ -74,7 +74,7 @@ defmodule CantripM10RealLlmEvalTest do
           child_llm: child,
           identity: %{
             system_prompt:
-              "Use call_entity exactly once with any intent, then call done with the exact child result string.",
+              "Use call_entity exactly once with any intent, then call done with the exact child result string."
           },
           circle: %{
             type: :code,

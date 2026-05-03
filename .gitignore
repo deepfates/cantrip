@@ -1,7 +1,7 @@
 .env
 .DS_Store
 .cantrip/
-.claude/
+.claude*/
 .clj-kondo/
 .lsp/
 _investigation/

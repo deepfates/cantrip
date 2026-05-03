@@ -19,17 +19,17 @@ defmodule CantripTelemetryTest do
     cantrip
   end
 
-  defp attach(event_name, handler_id \\ nil) do
+  defp attach(event_name, handler_id) do
     ref = make_ref()
     id = handler_id || "test-#{inspect(ref)}"
 
-    handler = fn event, measurements, metadata, {ref, pid} ->
-      send(pid, {ref, event, measurements, metadata})
-    end
-
-    :telemetry.attach(id, event_name, handler, {ref, self()})
+    :telemetry.attach(id, event_name, &__MODULE__.handle_event/4, {ref, self()})
     on_exit(fn -> :telemetry.detach(id) end)
     ref
+  end
+
+  def handle_event(event, measurements, metadata, {ref, pid}) do
+    send(pid, {ref, event, measurements, metadata})
   end
 
   describe "entity lifecycle" do
@@ -102,7 +102,10 @@ defmodule CantripTelemetryTest do
       {:ok, "ok", _, _, _} = Cantrip.cast(cantrip, "hello")
 
       assert_received {^ref_start, [:cantrip, :turn, :start], _, %{entity_id: _, turn_number: 1}}
-      assert_received {^ref_stop, [:cantrip, :turn, :stop], %{duration: d}, %{entity_id: _, turn_number: 1}}
+
+      assert_received {^ref_stop, [:cantrip, :turn, :stop], %{duration: d},
+                       %{entity_id: _, turn_number: 1}}
+
       assert is_integer(d) and d >= 0
     end
 
@@ -138,13 +141,19 @@ defmodule CantripTelemetryTest do
 
       {:ok, "ok", _, _, _} = Cantrip.cast(cantrip, "hello")
 
-      assert_received {^ref_start, [:cantrip, :gate, :start], _, %{entity_id: _, gate_name: "echo"}}
-      assert_received {^ref_stop, [:cantrip, :gate, :stop], %{duration: d}, %{entity_id: _, gate_name: "echo", is_error: false}}
+      assert_received {^ref_start, [:cantrip, :gate, :start], _,
+                       %{entity_id: _, gate_name: "echo"}}
+
+      assert_received {^ref_stop, [:cantrip, :gate, :stop], %{duration: d},
+                       %{entity_id: _, gate_name: "echo", is_error: false}}
+
       assert is_integer(d) and d >= 0
 
       # done gate also emits
       assert_received {^ref_start, [:cantrip, :gate, :start], _, %{gate_name: "done"}}
-      assert_received {^ref_stop, [:cantrip, :gate, :stop], _, %{gate_name: "done", is_error: false}}
+
+      assert_received {^ref_stop, [:cantrip, :gate, :stop], _,
+                       %{gate_name: "done", is_error: false}}
     end
   end
 
@@ -168,6 +177,30 @@ defmodule CantripTelemetryTest do
       {:ok, "result", _, _, _} = Cantrip.cast(cantrip, "hello")
 
       assert_received {^ref, [:cantrip, :code, :eval], %{duration: d}, %{entity_id: _}}
+      assert is_integer(d) and d >= 0
+    end
+  end
+
+  describe "bash medium" do
+    test "emits :bash :eval event when bash is evaluated" do
+      ref = attach([:cantrip, :bash, :eval], "bash-eval-1")
+
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{content: "echo SUBMIT: ok"}
+         ])}
+
+      {:ok, cantrip} =
+        Cantrip.new(
+          llm: llm,
+          identity: %{system_prompt: "test"},
+          circle: %{type: :bash, gates: [:done], wards: [%{max_turns: 10}]}
+        )
+
+      {:ok, "ok", _, _, _} = Cantrip.cast(cantrip, "hello")
+
+      assert_received {^ref, [:cantrip, :bash, :eval], %{duration: d}, %{entity_id: _}}
       assert is_integer(d) and d >= 0
     end
   end

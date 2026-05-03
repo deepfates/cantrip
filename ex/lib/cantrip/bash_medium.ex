@@ -25,7 +25,9 @@ defmodule Cantrip.BashMedium do
     timeout = get_timeout(runtime)
 
     if String.length(command) > @max_command_length do
-      error = "Error: Command too long (#{String.length(command)} chars). Maximum #{@max_command_length}."
+      error =
+        "Error: Command too long (#{String.length(command)} chars). Maximum #{@max_command_length}."
+
       {state, [%{gate: "bash", result: error, is_error: true}], nil, false}
     else
       {output, exit_code} = execute_command(command, cwd, timeout)
@@ -40,6 +42,7 @@ defmodule Cantrip.BashMedium do
             result: "Task completed: #{answer}",
             is_error: false
           }
+
           {state, [observation], answer, true}
 
         :none ->
@@ -73,6 +76,7 @@ defmodule Cantrip.BashMedium do
     |> String.split("\n")
     |> Enum.find_value(:none, fn line ->
       line = String.trim(line)
+
       case Regex.run(~r/^SUBMIT:\s*(.+)$/i, line) do
         [_, value] -> {:ok, String.trim(value)}
         _ -> nil

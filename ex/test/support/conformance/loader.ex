@@ -23,29 +23,33 @@ defmodule Cantrip.Conformance.Loader do
   end
 
   defp normalize_setup(setup) do
-    Enum.reduce(setup, %{llms: %{}, circle: %{}, identity: %{}, folding: %{}, retry: %{}, filesystem: %{}}, fn
-      {"circle", v}, acc ->
-        %{acc | circle: normalize_circle_setup(v || %{})}
+    Enum.reduce(
+      setup,
+      %{llms: %{}, circle: %{}, identity: %{}, folding: %{}, retry: %{}, filesystem: %{}},
+      fn
+        {"circle", v}, acc ->
+          %{acc | circle: normalize_circle_setup(v || %{})}
 
-      {"identity", v}, acc ->
-        %{acc | identity: v || %{}}
+        {"identity", v}, acc ->
+          %{acc | identity: v || %{}}
 
-      {"folding", v}, acc ->
-        %{acc | folding: v || %{}}
+        {"folding", v}, acc ->
+          %{acc | folding: v || %{}}
 
-      {"retry", v}, acc ->
-        %{acc | retry: v || %{}}
+        {"retry", v}, acc ->
+          %{acc | retry: v || %{}}
 
-      {"filesystem", v}, acc ->
-        %{acc | filesystem: v || %{}}
+        {"filesystem", v}, acc ->
+          %{acc | filesystem: v || %{}}
 
-      {key, v}, acc ->
-        if String.contains?(key, "llm") do
-          %{acc | llms: Map.put(acc.llms, key, normalize_llm(key, v))}
-        else
-          acc
-        end
-    end)
+        {key, v}, acc ->
+          if String.contains?(key, "llm") do
+            %{acc | llms: Map.put(acc.llms, key, normalize_llm(key, v))}
+          else
+            acc
+          end
+      end
+    )
   end
 
   defp normalize_llm(_key, nil), do: nil
@@ -78,15 +82,30 @@ defmodule Cantrip.Conformance.Loader do
             tc = %{gate: call["gate"], args: atomize_shallow(call["args"] || %{})}
             if call["id"], do: Map.put(tc, :id, call["id"]), else: tc
           end)
-        _ -> nil
+
+        _ ->
+          nil
       end
 
-    result = if Map.has_key?(resp, "content"), do: Map.put(result, :content, resp["content"]), else: result
+    result =
+      if Map.has_key?(resp, "content"),
+        do: Map.put(result, :content, resp["content"]),
+        else: result
+
     result = if tool_calls, do: Map.put(result, :tool_calls, tool_calls), else: result
     result = if resp["code"], do: Map.put(result, :code, resp["code"]), else: result
-    result = if resp["error"], do: Map.put(result, :error, normalize_error(resp["error"])), else: result
-    result = if resp["usage"], do: Map.put(result, :usage, atomize_shallow(resp["usage"])), else: result
-    result = if resp["tool_result"], do: Map.put(result, :tool_result, atomize_shallow(resp["tool_result"])), else: result
+
+    result =
+      if resp["error"], do: Map.put(result, :error, normalize_error(resp["error"])), else: result
+
+    result =
+      if resp["usage"], do: Map.put(result, :usage, atomize_shallow(resp["usage"])), else: result
+
+    result =
+      if resp["tool_result"],
+        do: Map.put(result, :tool_result, atomize_shallow(resp["tool_result"])),
+        else: result
+
     result
   end
 
@@ -133,7 +152,9 @@ defmodule Cantrip.Conformance.Loader do
     end)
   end
 
-  defp normalize_action(action) when is_list(action), do: Enum.map(action, &normalize_single_action/1)
+  defp normalize_action(action) when is_list(action),
+    do: Enum.map(action, &normalize_single_action/1)
+
   defp normalize_action(action) when is_map(action), do: [normalize_single_action(action)]
   defp normalize_action(_), do: []
 

@@ -75,6 +75,8 @@ defmodule Cantrip.ACP.AgentStdioTest do
       |> Enum.map(&List.to_string/1)
       |> Enum.filter(&String.contains?(&1, "/_build/test/lib/"))
 
+    parent_pid = System.pid()
+
     eval = """
     defmodule StubRuntime do
       def new_session(%{"cwd" => cwd}), do: {:ok, %{cwd: cwd, n: 0}}
@@ -94,7 +96,21 @@ defmodule Cantrip.ACP.AgentStdioTest do
 
     Cantrip.ACP.AgentHandler.set_connection(table, conn)
 
-    # Keep the process alive
+    # Watchdog: exit when the test parent dies so we never leak this BEAM.
+    # Port.close from the test side does not deliver SIGTERM to the spawned
+    # executable on macOS, so without this watchdog every test run leaves
+    # an idle beam.smp behind.
+    parent = #{parent_pid}
+    spawn(fn ->
+      :timer.sleep(500)
+      Stream.repeatedly(fn -> :timer.sleep(500) end)
+      |> Enum.find(fn _ ->
+        {_, status} = System.cmd("kill", ["-0", to_string(parent)], stderr_to_stdout: true)
+        status != 0
+      end)
+      System.halt(0)
+    end)
+
     Process.sleep(:infinity)
     """
 
@@ -126,6 +142,16 @@ defmodule Cantrip.ACP.AgentStdioTest do
   end
 
   defp safe_close_port(port) do
+    # Port.close/1 only closes the port from the BEAM side; on macOS the
+    # spawned executable keeps running. Kill the OS process explicitly.
+    case Port.info(port, :os_pid) do
+      {:os_pid, os_pid} ->
+        System.cmd("kill", ["-9", to_string(os_pid)], stderr_to_stdout: true)
+
+      nil ->
+        :ok
+    end
+
     try do
       Port.close(port)
     catch

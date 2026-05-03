@@ -213,5 +213,4 @@ defmodule Cantrip.LLMs.Gemini do
       raw_response: body
     }
   end
-
 end

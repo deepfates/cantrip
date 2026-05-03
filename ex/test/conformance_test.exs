@@ -171,13 +171,33 @@ defmodule CantripConformanceTest do
 
     test "checks turn count" do
       thread = %{turns: [%{}, %{}, %{}]}
-      ctx = %{results: ["ok"], last_error: nil, threads: [thread], last_thread: thread, entities: []}
+
+      ctx = %{
+        results: ["ok"],
+        last_error: nil,
+        threads: [thread],
+        last_thread: thread,
+        entities: []
+      }
+
       Cantrip.Conformance.Expect.check(ctx, %{"turns" => 3})
     end
 
     test "checks terminated and truncated" do
-      thread = %{turns: [%{terminated: true, truncated: false}], terminated: true, truncated: false}
-      ctx = %{results: ["ok"], last_error: nil, threads: [thread], last_thread: thread, entities: []}
+      thread = %{
+        turns: [%{terminated: true, truncated: false}],
+        terminated: true,
+        truncated: false
+      }
+
+      ctx = %{
+        results: ["ok"],
+        last_error: nil,
+        threads: [thread],
+        last_thread: thread,
+        entities: []
+      }
+
       Cantrip.Conformance.Expect.check(ctx, %{"terminated" => true, "truncated" => false})
     end
   end

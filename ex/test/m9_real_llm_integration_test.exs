@@ -44,7 +44,7 @@ defmodule CantripM9RealLlmIntegrationTest do
                Cantrip.cast(cantrip, "Echo this exact token and then finish: #{token}")
 
       assert meta.terminated
-      assert length(loom.turns) >= 1
+      assert loom.turns != []
 
       assert Enum.any?(loom.turns, fn turn ->
                Enum.any?(turn.observation || [], fn obs ->

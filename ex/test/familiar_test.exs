@@ -1,7 +1,7 @@
 defmodule Cantrip.FamiliarTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.{Familiar, FakeLLM, Circle}
+  alias Cantrip.{Familiar, FakeLLM}
 
   describe "Familiar.new/1 — spec-conformant orchestrator" do
     test "returns a cantrip with code medium (not conversation)" do
@@ -50,19 +50,21 @@ defmodule Cantrip.FamiliarTest do
       llm = {FakeLLM, FakeLLM.new([])}
       {:ok, cantrip} = Familiar.new(llm: llm, max_turns: 10)
 
-      assert Circle.max_turns(cantrip.circle) == 10
+      assert Cantrip.WardPolicy.get(cantrip.circle.wards, :max_turns) == 10
     end
 
     test "defaults max_turns to 20" do
       llm = {FakeLLM, FakeLLM.new([])}
       {:ok, cantrip} = Familiar.new(llm: llm)
 
-      assert Circle.max_turns(cantrip.circle) == 20
+      assert Cantrip.WardPolicy.get(cantrip.circle.wards, :max_turns) == 20
     end
 
     test "configures JSONL loom storage when loom_path given" do
       llm = {FakeLLM, FakeLLM.new([])}
-      path = Path.join(System.tmp_dir!(), "familiar_test_#{System.unique_integer([:positive])}.jsonl")
+
+      path =
+        Path.join(System.tmp_dir!(), "familiar_test_#{System.unique_integer([:positive])}.jsonl")
 
       {:ok, cantrip} = Familiar.new(llm: llm, loom_path: path)
       assert cantrip.loom_storage == {:jsonl, path}
@@ -84,6 +86,9 @@ defmodule Cantrip.FamiliarTest do
 
       {:ok, cantrip} = Familiar.new(llm: llm)
       {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "list dir")
+      # list_dir returns a list of "name (type)" strings (sandbox-aware,
+      # type-annotated). done() preserves the raw value the script passed
+      # in, so the cast result is the list itself.
       assert is_list(result)
       assert "a.txt (file)" in result
       assert "b.txt (file)" in result
@@ -94,12 +99,19 @@ defmodule Cantrip.FamiliarTest do
     test "search gate finds pattern in temp files via code" do
       tmp_dir = Path.join(System.tmp_dir!(), "familiar_sr_#{System.unique_integer([:positive])}")
       File.mkdir_p!(tmp_dir)
-      File.write!(Path.join(tmp_dir, "code.ex"), "defmodule Foo do\n  def hello, do: :world\nend\n")
+
+      File.write!(
+        Path.join(tmp_dir, "code.ex"),
+        "defmodule Foo do\n  def hello, do: :world\nend\n"
+      )
 
       llm =
         {FakeLLM,
          FakeLLM.new([
-           %{code: ~s[result = search.(%{pattern: "defmodule", path: "#{tmp_dir}"})\ndone.(result)]}
+           %{
+             code:
+               ~s[result = search.(%{pattern: "defmodule", path: "#{tmp_dir}"})\ndone.(result)]
+           }
          ])}
 
       {:ok, cantrip} = Familiar.new(llm: llm)
@@ -116,7 +128,9 @@ defmodule Cantrip.FamiliarTest do
 
   describe "filesystem gate sandboxing" do
     test "list_dir rejects traversal outside root" do
-      tmp_dir = Path.join(System.tmp_dir!(), "familiar_sandbox_ld_#{System.unique_integer([:positive])}")
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "familiar_sandbox_ld_#{System.unique_integer([:positive])}")
+
       File.mkdir_p!(tmp_dir)
 
       llm =
@@ -131,7 +145,6 @@ defmodule Cantrip.FamiliarTest do
     after
       File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_sandbox_ld_*"))
     end
-
   end
 
   describe "cantrip() + cast() orchestration pattern" do
@@ -339,7 +352,8 @@ defmodule Cantrip.FamiliarTest do
 
   describe "JSONL loom persistence" do
     test "loom persists to JSONL file" do
-      path = Path.join(System.tmp_dir!(), "familiar_loom_#{System.unique_integer([:positive])}.jsonl")
+      path =
+        Path.join(System.tmp_dir!(), "familiar_loom_#{System.unique_integer([:positive])}.jsonl")
 
       llm =
         {FakeLLM,

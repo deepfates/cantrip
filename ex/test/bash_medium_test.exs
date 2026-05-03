@@ -36,14 +36,16 @@ defmodule Cantrip.BashMediumTest do
     end
 
     test "SUBMIT: works with shell expansion" do
-      {_state, _obs, result, terminated} = BashMedium.eval(~s[echo "SUBMIT: $(expr 6 \\* 7)"], %{}, runtime())
+      {_state, _obs, result, terminated} =
+        BashMedium.eval(~s[echo "SUBMIT: $(expr 6 \\* 7)"], %{}, runtime())
 
       assert terminated
       assert result == "42"
     end
 
     test "SUBMIT: is case insensitive" do
-      {_state, _obs, result, terminated} = BashMedium.eval(~s[echo "submit: done"], %{}, runtime())
+      {_state, _obs, result, terminated} =
+        BashMedium.eval(~s[echo "submit: done"], %{}, runtime())
 
       assert terminated
       assert result == "done"
@@ -87,7 +89,9 @@ defmodule Cantrip.BashMediumTest do
 
   describe "bash medium integration with cantrip" do
     test "bash circle can be constructed and validates" do
-      llm = {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "bash", args: %{command: ~s[echo "SUBMIT: ok"]}}]}])}
+      llm =
+        {FakeLLM,
+         FakeLLM.new([%{tool_calls: [%{gate: "bash", args: %{command: ~s[echo "SUBMIT: ok"]}}]}])}
 
       assert {:ok, cantrip} =
                Cantrip.new(
@@ -98,15 +102,15 @@ defmodule Cantrip.BashMediumTest do
       assert cantrip.circle.type == :bash
     end
 
-    test "bash circle tool_view returns single bash tool with required" do
+    test "bash medium presentation returns single bash tool with required" do
       circle = Cantrip.Circle.new(%{type: :bash, gates: [:done], wards: [%{max_turns: 5}]})
-      {tools, choice, capability} = Cantrip.Circle.tool_view(circle)
+      presentation = Cantrip.Medium.Registry.present(circle)
 
-      assert length(tools) == 1
-      assert hd(tools).name == "bash"
-      assert choice == "required"
-      assert is_binary(capability)
-      assert String.contains?(capability, "SUBMIT:")
+      assert length(presentation.tools) == 1
+      assert hd(presentation.tools).name == "bash"
+      assert presentation.tool_choice == "required"
+      assert is_binary(presentation.capability_text)
+      assert String.contains?(presentation.capability_text, "SUBMIT:")
     end
 
     test "cast with bash medium executes command and terminates via SUBMIT:" do

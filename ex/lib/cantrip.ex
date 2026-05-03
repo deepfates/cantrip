@@ -9,7 +9,8 @@ defmodule Cantrip do
 
   import Kernel, except: [send: 2]
 
-  alias Cantrip.{Identity, Circle, LLM, EntityServer, Loom}
+  alias Cantrip.{Identity, Circle, LLM, EntityServer, Loom, WardPolicy}
+  alias Cantrip.Medium.Registry, as: MediumRegistry
 
   defstruct id: nil,
             llm_module: nil,
@@ -190,8 +191,7 @@ defmodule Cantrip do
             %{
               model: model,
               api_key: env_first(["ANTHROPIC_API_KEY", "CANTRIP_API_KEY"]),
-              base_url:
-                System.get_env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com",
+              base_url: System.get_env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com",
               timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 120_000),
               max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), 4096)
             }}}
@@ -398,7 +398,7 @@ defmodule Cantrip do
     prefix_messages = messages_from_turns(prefix_turns, cantrip.identity)
 
     # CIRCLE-11: inject capability presentation for code/bash circles
-    {_tools, _tc, capability_text} = Circle.tool_view(cantrip.circle)
+    capability_text = MediumRegistry.present(cantrip.circle).capability_text
 
     prefix_messages =
       if capability_text do
@@ -447,18 +447,19 @@ defmodule Cantrip do
     spec = {EntityServer, cantrip: cantrip, intent: intent}
     spec = put_elem(spec, 1, Keyword.merge(elem(spec, 1), extra_opts))
 
-    with {:ok, pid} <- DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec) do
-      case safe_run_entity(pid) do
-        {:ok, result, next_cantrip, loom, meta} ->
-          {:ok, result, next_cantrip, loom, meta}
+    case DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec) do
+      {:ok, pid} ->
+        case safe_run_entity(pid) do
+          {:ok, result, next_cantrip, loom, meta} ->
+            {:ok, result, next_cantrip, loom, meta}
 
-        {:error, reason, next_cantrip} ->
-          {:error, reason, next_cantrip}
+          {:error, reason, next_cantrip} ->
+            {:error, reason, next_cantrip}
 
-        {:error, reason} ->
-          {:error, reason, cantrip}
-      end
-    else
+          {:error, reason} ->
+            {:error, reason, cantrip}
+        end
+
       {:error, reason} ->
         {:error, reason, cantrip}
     end
@@ -535,13 +536,13 @@ defmodule Cantrip do
 
   defp validate_circle(circle, _identity) do
     cond do
-      Circle.require_done_tool?(circle) and not Circle.has_done?(circle) ->
+      WardPolicy.require_done_tool?(circle.wards) and not Circle.has_done?(circle) ->
         {:error, "cantrip with require_done must have a done gate"}
 
       not Circle.has_done?(circle) ->
         {:error, "circle must have a done gate"}
 
-      is_nil(Circle.max_turns(circle)) ->
+      is_nil(WardPolicy.max_turns(circle.wards)) ->
         {:error, "cantrip must have at least one truncation ward"}
 
       true ->

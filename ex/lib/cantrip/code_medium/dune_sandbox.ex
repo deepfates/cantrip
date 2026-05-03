@@ -28,7 +28,7 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
   - The `compile_and_load` gate is not available in the Dune sandbox
   """
 
-  alias Cantrip.Circle
+  alias Cantrip.Gate
   import Cantrip.LLMs.Helpers, only: [normalize_opts: 1]
 
   @reserved_bindings [
@@ -168,7 +168,7 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
 
     # done.() -- sets flag, returns the answer (no raise, so bindings persist)
     done_fun = fn answer ->
-      observation = Circle.execute_gate(runtime.circle, "done", %{"answer" => answer})
+      observation = Gate.execute(runtime.circle, "done", %{"answer" => answer})
       push_agent_observation(agent, observation)
       Agent.update(agent, fn state -> %{state | done: answer} end)
       answer
@@ -222,7 +222,7 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
 
       execute_gate ->
         runtime.circle
-        |> Circle.gate_names()
+        |> Gate.names()
         |> Enum.reduce(bindings, fn gate_name, acc ->
           binding_name = String.to_atom(gate_name)
 
@@ -268,7 +268,7 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
   defp normalize_batch(_), do: []
 
   defp dune_opts_from_circle(circle) do
-    timeout = Circle.code_eval_timeout_ms(circle)
+    timeout = Cantrip.WardPolicy.code_eval_timeout_ms(circle.wards)
 
     [
       timeout: timeout,

@@ -66,7 +66,9 @@ defmodule Mix.Tasks.Cantrip.Cast do
       {:ok, llm} ->
         Cantrip.new(
           llm: llm,
-          identity: %{system_prompt: "You are a helpful assistant. Call done(answer) with your response."},
+          identity: %{
+            system_prompt: "You are a helpful assistant. Call done(answer) with your response."
+          },
           circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: max_turns}]}
         )
 
@@ -95,7 +97,10 @@ defmodule Mix.Tasks.Cantrip.Cast do
 
   defp do_cast(cantrip, intent, opts) do
     caller = self()
-    renderer = if opts[:json], do: Cantrip.CLI.JsonRenderer.new(), else: Cantrip.CLI.Renderer.new()
+
+    renderer =
+      if opts[:json], do: Cantrip.CLI.JsonRenderer.new(), else: Cantrip.CLI.Renderer.new()
+
     renderer_mod = renderer.__struct__
 
     task =
@@ -125,13 +130,21 @@ defmodule Mix.Tasks.Cantrip.Cast do
         Process.demonitor(ref, [:flush])
 
         case result do
-          {:ok, _result, _cantrip, _loom, _meta} -> :ok
+          {:ok, _result, _cantrip, _loom, _meta} ->
+            :ok
+
           {:error, reason, _cantrip} ->
-            IO.write(:stderr, IO.ANSI.red() <> "Error: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n")
+            IO.write(
+              :stderr,
+              IO.ANSI.red() <> "Error: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n"
+            )
         end
 
       {:DOWN, _ref, :process, _pid, reason} ->
-        IO.write(:stderr, IO.ANSI.red() <> "Crashed: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n")
+        IO.write(
+          :stderr,
+          IO.ANSI.red() <> "Crashed: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n"
+        )
     end
   end
 

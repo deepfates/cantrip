@@ -38,7 +38,10 @@ defmodule Cantrip.ACP.AgentHandlerTest do
       table = initialized_table()
 
       assert {:ok, %ACP.NewSessionResponse{session_id: session_id}} =
-               AgentHandler.handle_request({:new_session, %ACP.NewSessionRequest{cwd: "/tmp"}}, table)
+               AgentHandler.handle_request(
+                 {:new_session, %ACP.NewSessionRequest{cwd: "/tmp"}},
+                 table
+               )
 
       assert is_binary(session_id)
     end
@@ -47,7 +50,10 @@ defmodule Cantrip.ACP.AgentHandlerTest do
       table = AgentHandler.new(runtime: StubRuntime)
 
       assert {:error, %ACP.Error{message: "not initialized"}} =
-               AgentHandler.handle_request({:new_session, %ACP.NewSessionRequest{cwd: "/tmp"}}, table)
+               AgentHandler.handle_request(
+                 {:new_session, %ACP.NewSessionRequest{cwd: "/tmp"}},
+                 table
+               )
     end
 
     test "prompt returns stop_reason end_turn" do
@@ -91,7 +97,7 @@ defmodule Cantrip.ACP.AgentHandlerTest do
     test "new_session validates cwd is absolute" do
       table = initialized_table()
 
-      assert {:error, %ACP.Error{code: -32602}} =
+      assert {:error, %ACP.Error{code: -32_602}} =
                AgentHandler.handle_request(
                  {:new_session, %ACP.NewSessionRequest{cwd: "relative/path"}},
                  table
@@ -105,10 +111,11 @@ defmodule Cantrip.ACP.AgentHandlerTest do
         AgentHandler.handle_request({:new_session, %ACP.NewSessionRequest{cwd: "/tmp"}}, table)
 
       AgentHandler.handle_request(
-        {:prompt, %ACP.PromptRequest{
-          session_id: session_id,
-          prompt: [{:text, %ACP.TextContent{text: "hello"}}]
-        }},
+        {:prompt,
+         %ACP.PromptRequest{
+           session_id: session_id,
+           prompt: [{:text, %ACP.TextContent{text: "hello"}}]
+         }},
         table
       )
 
@@ -120,13 +127,64 @@ defmodule Cantrip.ACP.AgentHandlerTest do
       table = AgentHandler.new(runtime: StubRuntime)
 
       assert {:ok, %ACP.AuthenticateResponse{}} =
-               AgentHandler.handle_request({:authenticate, %ACP.AuthenticateRequest{method_id: "test"}}, table)
+               AgentHandler.handle_request(
+                 {:authenticate, %ACP.AuthenticateRequest{method_id: "test"}},
+                 table
+               )
     end
 
     test "cancel returns ok" do
       table = initialized_table()
 
-      assert :ok = AgentHandler.handle_request({:cancel, %ACP.CancelNotification{session_id: "test"}}, table)
+      assert :ok =
+               AgentHandler.handle_request(
+                 {:cancel, %ACP.CancelNotification{session_id: "test"}},
+                 table
+               )
+    end
+  end
+
+  describe "set_connection/2 — one-shot connection binding" do
+    test "binds the connection on first call" do
+      table = AgentHandler.new(runtime: StubRuntime)
+      conn = %{conn: self()}
+
+      assert :ok = AgentHandler.set_connection(table, conn)
+      assert [{:conn, ^conn}] = :ets.lookup(table, :conn)
+    end
+
+    test "is idempotent for the same connection" do
+      table = AgentHandler.new(runtime: StubRuntime)
+      conn = %{conn: self()}
+
+      :ok = AgentHandler.set_connection(table, conn)
+      assert :ok = AgentHandler.set_connection(table, conn)
+    end
+
+    test "raises if a different connection is bound" do
+      table = AgentHandler.new(runtime: StubRuntime)
+      conn1 = %{conn: self()}
+      conn2 = %{conn: spawn(fn -> :ok end)}
+
+      :ok = AgentHandler.set_connection(table, conn1)
+
+      assert_raise ArgumentError, ~r/already bound/, fn ->
+        AgentHandler.set_connection(table, conn2)
+      end
+    end
+
+    test "fresh tables don't share state" do
+      table_a = AgentHandler.new(runtime: StubRuntime)
+      table_b = AgentHandler.new(runtime: StubRuntime)
+
+      conn_a = %{conn: self()}
+      conn_b = %{conn: spawn(fn -> :ok end)}
+
+      :ok = AgentHandler.set_connection(table_a, conn_a)
+      :ok = AgentHandler.set_connection(table_b, conn_b)
+
+      assert [{:conn, ^conn_a}] = :ets.lookup(table_a, :conn)
+      assert [{:conn, ^conn_b}] = :ets.lookup(table_b, :conn)
     end
   end
 
