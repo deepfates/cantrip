@@ -68,7 +68,7 @@ defmodule Cantrip.ACP.Runtime.Cantrip do
 
   defp normalize_answer(nil), do: ""
   defp normalize_answer(answer) when is_binary(answer), do: String.trim(answer)
-  defp normalize_answer(answer), do: to_string(answer) |> String.trim()
+  defp normalize_answer(answer), do: Cantrip.ACP.EventBridge.stringify(answer) |> String.trim()
 
   defp stream_opts(%{stream_to: stream_to}) when is_pid(stream_to),
     do: [stream_to: stream_to, stream_barrier?: true]

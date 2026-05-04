@@ -28,7 +28,8 @@ defmodule Cantrip.Medium.Conversation do
   @spec tool_definitions(Cantrip.Circle.t()) :: list(map())
   def tool_definitions(%Cantrip.Circle{gates: gates}) do
     gates
-    |> Map.values()
+    |> Enum.sort_by(fn {name, _gate} -> name end)
+    |> Enum.map(fn {_name, gate} -> gate end)
     |> Enum.map(&tool_definition/1)
   end
 

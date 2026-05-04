@@ -24,6 +24,19 @@ defmodule CantripRuntimeBoundarySpikeTest do
       assert Enum.any?(tools, &(&1.name == "echo"))
     end
 
+    test "conversation presentation orders tools deterministically by gate name" do
+      circle =
+        Cantrip.Circle.new(%{
+          type: :conversation,
+          gates: [:search, :done, :echo],
+          wards: [%{max_turns: 3}]
+        })
+
+      %{tools: tools} = Cantrip.Medium.Registry.present(circle)
+
+      assert Enum.map(tools, & &1.name) == ["done", "echo", "search"]
+    end
+
     test "code presentation requires the elixir tool and capability text" do
       circle = Cantrip.Circle.new(%{type: :code, gates: [:done, :echo], wards: [%{max_turns: 3}]})
 

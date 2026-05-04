@@ -21,8 +21,10 @@ defmodule Cantrip.ACP.AgentHandler do
   """
   def new(opts \\ []) do
     runtime = Keyword.get(opts, :runtime, Cantrip.ACP.Runtime.Cantrip)
+    bridge_flush_timeout_ms = Keyword.get(opts, :bridge_flush_timeout_ms, 5_000)
     table = :ets.new(:acp_handler, [:set, :public])
     :ets.insert(table, {:runtime, runtime})
+    :ets.insert(table, {:bridge_flush_timeout_ms, bridge_flush_timeout_ms})
     :ets.insert(table, {:initialized, false})
     table
   end
@@ -159,14 +161,17 @@ defmodule Cantrip.ACP.AgentHandler do
   end
 
   defp handle_prompt_answer(table, session_id, bridge, answer, next_session) do
-    bridge_status = if bridge, do: Cantrip.ACP.EventBridge.flush(bridge), else: nil
+    bridge_status =
+      if bridge, do: Cantrip.ACP.EventBridge.flush(bridge, bridge_flush_timeout(table)), else: nil
+
     :ets.insert(table, {{:session, session_id}, next_session})
     :ets.insert(table, {{:last_answer, session_id}, answer})
 
     # Stream-aware runtimes deliver the answer via :final_response through the
     # bridge. Non-streaming runtimes do not emit a final event, so :no_answer
-    # falls back to direct send. A :timeout is different: the bridge may still
-    # catch up later, so direct-send there can duplicate the final answer.
+    # and :timeout both fall back to direct send. Streaming runtimes never
+    # direct-send on :timeout because the bridge may still catch up later and
+    # duplicate the final answer.
     if should_send_answer_directly?(bridge_status, next_session),
       do: send_answer_directly(table, session_id, answer)
 
@@ -199,16 +204,28 @@ defmodule Cantrip.ACP.AgentHandler do
   end
 
   defp send_answer_directly(table, session_id, answer) do
+    notification = %ACP.SessionNotification{
+      session_id: session_id,
+      update:
+        {:agent_message_chunk,
+         %ACP.ContentChunk{
+           content: {:text, %ACP.TextContent{text: Cantrip.ACP.EventBridge.stringify(answer)}}
+         }}
+    }
+
+    case :ets.lookup(table, :session_notify_fn) do
+      [{:session_notify_fn, fun}] when is_function(fun, 1) ->
+        fun.(notification)
+
+      [] ->
+        send_answer_to_connection(table, notification)
+    end
+  end
+
+  defp send_answer_to_connection(table, notification) do
     case :ets.lookup(table, :conn) do
       [{:conn, conn}] ->
-        ACP.AgentSideConnection.session_notification(conn, %ACP.SessionNotification{
-          session_id: session_id,
-          update:
-            {:agent_message_chunk,
-             %ACP.ContentChunk{
-               content: {:text, %ACP.TextContent{text: Cantrip.ACP.EventBridge.stringify(answer)}}
-             }}
-        })
+        ACP.AgentSideConnection.session_notification(conn, notification)
 
       [] ->
         :ok
@@ -221,7 +238,12 @@ defmodule Cantrip.ACP.AgentHandler do
   defp should_send_answer_directly?(:no_answer, session),
     do: not Map.get(session, :streaming?, false)
 
+  defp should_send_answer_directly?(:timeout, session),
+    do: not Map.get(session, :streaming?, false)
+
   defp should_send_answer_directly?(_status, _session), do: false
+
+  defp bridge_flush_timeout(table), do: :ets.lookup_element(table, :bridge_flush_timeout_ms, 2)
 
   # --- Helpers ---
 

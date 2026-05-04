@@ -118,10 +118,12 @@ First cuts are in place for the runtime spine:
   rather than in the Solid V1 runtime API.
 - ACP bridge lifecycle, timeout fallback, diagnostics opt-in, random diagnostic
   cookies, and last-answer redaction have first-pass fixes.
+- Solid V1 landed on `main` via PR #5. The review-leftover cleanup addresses
+  gate observation accumulation, ACP answer normalization, deterministic tool
+  order, and non-streaming timeout delivery.
 
-The next step is not to add UI or autonomy. It is to finish moving turn
-execution out of `EntityServer` in testable slices while keeping Solid V1
-reviewable and boringly reliable.
+The next step is not to add UI or autonomy. After review-leftover cleanup lands,
+take only small Solid V1 hardening slices from this document.
 
 ### Phase 1: Make Runtime Events Mechanically Ordered
 
@@ -217,11 +219,11 @@ Do not build a chat page first. Build an entity workbench.
 
 #### P0: Make Solid V1 Reviewable
 
-- Run full test suite and keep it green.
-- Run `mix format --check-formatted`.
-- Decide whether the current branch should be split into two PRs:
-  runtime-boundary/event fixes and loom-evolution groundwork.
-- Write a crisp PR summary that explains the spine, not just the modules.
+- Keep review-leftover cleanup small, focused, and mergeable.
+- Keep full test suite green after cleanup lands.
+- Keep `mix format --check-formatted` green.
+- Treat any new review thread on the active Solid V1 cleanup PR as the
+  immediate next task.
 
 #### P1: Complete The Runtime Spine
 

@@ -91,6 +91,17 @@ defmodule Cantrip.ACP.AgentHandlerStreamingTest do
     def prompt(session, _text), do: {:ok, "fallback would duplicate", session}
   end
 
+  defmodule NonStreamingRuntime do
+    @moduledoc false
+    @behaviour Cantrip.ACP.Runtime
+
+    @impl true
+    def new_session(_params), do: {:ok, %{streaming?: false}}
+
+    @impl true
+    def prompt(session, _text), do: {:ok, "non-streaming answer", session}
+  end
+
   setup do
     test_pid = self()
 
@@ -318,6 +329,58 @@ defmodule Cantrip.ACP.AgentHandlerStreamingTest do
              )
 
     refute_receive {:notified, _}, 50
+  end
+
+  test "non-streaming sessions direct-send on bridge :timeout", %{test_pid: test_pid} do
+    table = AgentHandler.new(runtime: NonStreamingRuntime, bridge_flush_timeout_ms: 10)
+    :ets.insert(table, {:conn, %{conn: test_pid}})
+
+    :ets.insert(
+      table,
+      {:session_notify_fn, fn n -> Kernel.send(test_pid, {:direct_notified, n}) end}
+    )
+
+    AgentHandler.handle_request(
+      {:initialize,
+       %ACP.InitializeRequest{
+         protocol_version: 1,
+         client_capabilities: %ACP.ClientCapabilities{},
+         client_info: %{"name" => "test"}
+       }},
+      table
+    )
+
+    {:ok, %ACP.NewSessionResponse{session_id: sid}} =
+      AgentHandler.handle_request({:new_session, %ACP.NewSessionRequest{cwd: "/tmp"}}, table)
+
+    unresponsive_bridge = spawn(fn -> Process.sleep(:infinity) end)
+
+    try do
+      :ets.insert(table, {{:bridge, sid}, unresponsive_bridge})
+
+      assert {:ok, %ACP.PromptResponse{stop_reason: :end_turn}} =
+               AgentHandler.handle_request(
+                 {:prompt,
+                  %ACP.PromptRequest{
+                    session_id: sid,
+                    prompt: [{:text, %ACP.TextContent{text: "go"}}]
+                  }},
+                 table
+               )
+
+      assert_receive {:direct_notified,
+                      %ACP.SessionNotification{
+                        session_id: ^sid,
+                        update:
+                          {:agent_message_chunk,
+                           %ACP.ContentChunk{
+                             content: {:text, %ACP.TextContent{text: "non-streaming answer"}}
+                           }}
+                      }},
+                     100
+    after
+      Process.exit(unresponsive_bridge, :kill)
+    end
   end
 
   # ---- helpers ----

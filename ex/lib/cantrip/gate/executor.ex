@@ -34,14 +34,16 @@ defmodule Cantrip.Gate.Executor do
 
         emit_gate_stop(entity_id, gate, gate_start, observation)
 
-        acc = acc ++ [observation]
+        acc = [observation | acc]
 
         if gate == "done" and not observation.is_error do
-          {:halt, {acc, observation.result, true}}
+          {:halt, {Enum.reverse(acc), observation.result, true}}
         else
           {:cont, {acc, nil, false}}
         end
       end)
+
+    observations = if terminated?, do: observations, else: Enum.reverse(observations)
 
     %{observations: observations, result: result, terminated?: terminated?}
   end
