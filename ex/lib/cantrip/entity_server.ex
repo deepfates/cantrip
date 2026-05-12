@@ -30,7 +30,12 @@ defmodule Cantrip.EntityServer do
             usage: %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0},
             code_state: %{},
             stream_to: nil,
-            stream_barrier?: false
+            stream_barrier?: false,
+            # The summary text from this turn's fold (if folding fired
+            # in `prepare_request`). Threaded into the medium's runtime
+            # so the entity can read it as a `folded_summary` binding
+            # per SPEC §6.8 ("summaries in the sandbox").
+            folded_summary: nil
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
@@ -224,6 +229,11 @@ defmodule Cantrip.EntityServer do
       emit_event(state, {:step_start, %{turn: turn_number, entity_id: state.entity_id}})
       request = Cantrip.Turn.prepare_request(state)
 
+      # If folding fired this turn, capture the summary so the medium
+      # runtime can expose it as a binding (§6.8). Otherwise clear any
+      # stale summary from a prior turn.
+      state = %{state | folded_summary: Map.get(request, :folded_summary)}
+
       emit_event(state, {:message_start, %{turn: state.turns + 1}})
 
       case ProviderCall.invoke(state.cantrip, request) do
@@ -400,14 +410,13 @@ defmodule Cantrip.EntityServer do
       child_depth = state.depth + 1
       strip_delegation = is_integer(max_depth) and child_depth >= max_depth
 
+      parent_dependencies = collect_parent_dependencies(parent_gate_map)
+
       child_gates =
         requested_gates
         |> Enum.reject(fn name -> strip_delegation and MapSet.member?(delegation_gates, name) end)
         |> Enum.map(fn name ->
-          case Map.get(parent_gate_map, name) do
-            nil -> {name, %{name: name}}
-            gate -> {name, gate}
-          end
+          {name, resolve_child_gate(name, parent_gate_map, parent_dependencies)}
         end)
         |> Map.new()
 
@@ -504,6 +513,79 @@ defmodule Cantrip.EntityServer do
     end
   end
 
+  # SpawnFn dependency wiring (SPEC §5.1, CIRCLE-10).
+  #
+  # When a parent proposes `gates: ["read_file"]` (a bare name), the runtime
+  # must expand it into a fully-configured child gate — description,
+  # parameter schema, and any filesystem/auth dependencies — so the child's
+  # medium can present it correctly and the gate can execute. Without this,
+  # a bare-named child read_file gate has no root, no schema, and crashes
+  # the moment its LLM forgets to supply `path`.
+  #
+  # Resolution rules, in order:
+  #   1. If the parent has the gate, the child inherits it verbatim. The
+  #      parent has already construction-time-configured its own deps;
+  #      reuse that configuration.
+  #   2. Otherwise, build the gate from `Gate.spec/1` (description, schema,
+  #      kind) and merge in the parent's `:dependencies` for any dep keys
+  #      the spec declares as required.
+  defp resolve_child_gate(name, parent_gate_map, parent_dependencies) do
+    case Map.get(parent_gate_map, name) do
+      nil -> build_canonical_gate(name, parent_dependencies)
+      gate -> gate
+    end
+  end
+
+  defp build_canonical_gate(name, parent_dependencies) do
+    spec = Cantrip.Gate.spec(name)
+
+    inherited =
+      spec.depends_required
+      |> Enum.reduce(%{}, fn key, acc ->
+        case Map.get(parent_dependencies, key) do
+          nil -> acc
+          value -> Map.put(acc, key, value)
+        end
+      end)
+
+    base = %{name: name, description: spec.description, parameters: spec.parameters}
+    if map_size(inherited) > 0, do: Map.put(base, :dependencies, inherited), else: base
+  end
+
+  # Parents may carry filesystem roots either under :dependencies (per
+  # CIRCLE-10 vocabulary) or at the top-level of a gate map (the legacy
+  # convention Familiar.new still uses). Collect both into one dependency
+  # map keyed by atom so SpawnFn can hand them to bare children.
+  defp collect_parent_dependencies(parent_gate_map) do
+    parent_gate_map
+    |> Map.values()
+    |> Enum.reduce(%{}, fn gate, acc ->
+      acc
+      |> merge_explicit_deps(gate)
+      |> maybe_take_top_level(gate, :root)
+    end)
+  end
+
+  defp merge_explicit_deps(acc, gate) do
+    case Map.get(gate, :dependencies) || Map.get(gate, "dependencies") do
+      %{} = deps ->
+        Enum.reduce(deps, acc, fn {k, v}, acc ->
+          key = if is_atom(k), do: k, else: String.to_atom(to_string(k))
+          if Map.has_key?(acc, key), do: acc, else: Map.put(acc, key, v)
+        end)
+
+      _ ->
+        acc
+    end
+  end
+
+  defp maybe_take_top_level(acc, gate, key) do
+    case Map.get(gate, key) || Map.get(gate, Atom.to_string(key)) do
+      nil -> acc
+      value -> if Map.has_key?(acc, key), do: acc, else: Map.put(acc, key, value)
+    end
+  end
+
   defp default_child_llm(state),
     do: {state.cantrip.llm_module, state.cantrip.llm_state}
 
@@ -586,7 +668,7 @@ defmodule Cantrip.EntityServer do
   end
 
   defp turn_runtime(state, %{mode: :code_eval}) do
-    %{
+    base = %{
       circle: state.cantrip.circle,
       loom: state.loom,
       entity_id: state.entity_id,
@@ -597,6 +679,10 @@ defmodule Cantrip.EntityServer do
       call_entity_batch: fn opts -> execute_call_entity_batch(state, opts) end,
       compile_and_load: fn opts -> execute_compile_and_load(state, opts) end
     }
+
+    if state.folded_summary,
+      do: Map.put(base, :folded_summary, state.folded_summary),
+      else: base
   end
 
   defp turn_runtime(state, %{mode: :code_contract_error}) do

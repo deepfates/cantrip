@@ -1,0 +1,63 @@
+defmodule Cantrip.Redact do
+  @moduledoc """
+  PROD-8: credential redaction over arbitrary content before it reaches an
+  entity's observation channel.
+
+  The substrate's claim is that an entity can navigate user-provided
+  filesystems and data safely. That claim is hollow if observations leak
+  API keys, tokens, or env-shaped secrets verbatim. This module patches
+  common credential shapes with `[REDACTED]` while leaving the surrounding
+  text — including the variable name that held the secret — intact, so the
+  entity (and any human watching) can see *that* something was filtered
+  and *what kind of thing* it was, without seeing the value.
+
+  Conservative by design: matches well-known prefixes (`sk-`, `sk-ant-`,
+  `AIza`, `AKIA`, `ASIA`, `Bearer …`) plus a generic catch for env-style
+  assignments to variables named `*KEY`, `*SECRET`, `*TOKEN`, or
+  `*PASSWORD`. False positives are preferable to leaks.
+  """
+
+  @redacted "[REDACTED]"
+
+  # Order matters: more-specific patterns first so they win over the generic
+  # env-assignment catch-all. Each entry: {regex, replacement}.
+  @patterns [
+    # Anthropic — must come before the generic `sk-...` rule because of the
+    # `sk-ant-` prefix; otherwise the generic rule grabs the leading `sk-`.
+    {~r/sk-ant-[A-Za-z0-9_\-]{8,}/, @redacted},
+
+    # OpenAI-shaped (sk-..., sk-proj-...).
+    {~r/sk-[A-Za-z0-9_\-]{16,}/, @redacted},
+
+    # Google AIza (~39 chars in practice; allow a small range).
+    {~r/AIza[A-Za-z0-9_\-]{30,}/, @redacted},
+
+    # AWS access keys (AKIA*, ASIA*) — exactly 16 char tails per AWS spec,
+    # uppercase + digits.
+    {~r/(?:AKIA|ASIA)[A-Z0-9]{16,}/, @redacted},
+
+    # Bearer <token> in Authorization-style strings.
+    {~r/Bearer\s+[A-Za-z0-9_\-.=]{8,}/, "Bearer " <> @redacted},
+
+    # Generic env-style assignment to a credential-named variable. Captures
+    # the LHS and the `=`, redacts the RHS. Tolerates whitespace and quotes.
+    {~r/((?:^|[\s])[A-Z][A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD))\s*=\s*["']?[^\s"']+["']?/,
+     "\\1=" <> @redacted}
+  ]
+
+  @doc """
+  Replace credential-shaped substrings in `value` with `[REDACTED]`. Only
+  operates on binaries — other terms pass through unchanged so callers can
+  pipe arbitrary observation `result` values through without worrying.
+
+  Idempotent: redacting an already-redacted string is a no-op.
+  """
+  @spec scan(term()) :: term()
+  def scan(value) when is_binary(value) do
+    Enum.reduce(@patterns, value, fn {pattern, replacement}, acc ->
+      Regex.replace(pattern, acc, replacement)
+    end)
+  end
+
+  def scan(value), do: value
+end

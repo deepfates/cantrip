@@ -33,7 +33,9 @@ defmodule Cantrip.Examples do
     %{id: "09", title: "Composition: call_entity + call_entity_batch"},
     %{id: "10", title: "Loom: Inspect the Artifact"},
     %{id: "11", title: "Persistent Entity: summon/send/send"},
-    %{id: "12", title: "Familiar: Child Cantrips Through Code"}
+    %{id: "12", title: "Persistent Coordinator: Direct call_entity Delegation"},
+    %{id: "15", title: "Familiar Research Fanout: cast_batch Readers + Synthesis"},
+    %{id: "16", title: "Familiar Coordinator: Persistent Loom + Filesystem Children"}
   ]
 
   @ids Enum.map(@catalog, & &1.id)
@@ -92,6 +94,16 @@ defmodule Cantrip.Examples do
       # A.12 Familiar: Persistent entity constructs child cantrips through code.
       "12" ->
         run_12(opts)
+
+      # A.15 Research Fanout: Familiar navigates with list_dir/search, spawns
+      # specialist readers in parallel via cast_batch, synthesizes results.
+      "15" ->
+        run_15(opts)
+
+      # A.16 Familiar Coordinator: production-shape Familiar with persistent
+      # JSONL loom, code-medium children doing real filesystem work.
+      "16" ->
+        run_16(opts)
 
       _ ->
         {:error, "unknown pattern id"}
@@ -1142,6 +1154,207 @@ defmodule Cantrip.Examples do
       {:error, reason, _cantrip} -> {:error, reason}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # A.15 Familiar Research Fanout (PATTERNS pattern 15)
+  # The Familiar navigates with list_dir, spawns parallel readers via
+  # cast_batch, each child reads its assigned file, parent synthesizes.
+  # SpawnFn hands each child the parent's sandbox root so relative paths
+  # resolve (CIRCLE-10). Uses the production Cantrip.Familiar.new — same
+  # code path a real user would call.
+  # ---------------------------------------------------------------------------
+  @run_15_facts [
+    {"facts_a.md", "Q1 ARR rose 12% QoQ."},
+    {"facts_b.md", "Q1 churn fell to 2.4%."},
+    {"facts_c.md", "Net retention sits at 118%."}
+  ]
+
+  defp run_15(opts) do
+    IO.puts("=== Pattern 15: Familiar Research Fanout ===")
+    IO.puts("The Familiar navigates a sandbox, fans out reader children in")
+    IO.puts("parallel, and synthesizes their results. Each child inherits the")
+    IO.puts("parent's sandbox root for read_file (SpawnFn / CIRCLE-10).\n")
+
+    root = temp_root("cantrip_research_fanout")
+
+    Enum.each(@run_15_facts, fn {name, body} ->
+      File.write!(Path.join(root, name), body <> "\n")
+    end)
+
+    IO.puts("Sandbox: #{root}\n")
+
+    # Parent: deterministic Elixir using the Familiar's own gate bindings.
+    parent_code = """
+    entries = list_dir.(path: ".")
+    files =
+      entries
+      |> Enum.filter(fn name -> String.ends_with?(name, ".md") end)
+      |> Enum.sort()
+
+    spec = %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}
+    ids = Enum.map(files, fn _ ->
+      cantrip.(%{
+        identity: "Read the file named in your task and return its first non-empty line via done().",
+        circle: spec
+      })
+    end)
+    items =
+      Enum.zip(ids, files)
+      |> Enum.map(fn {id, f} -> %{cantrip: id, intent: "Read " <> f} end)
+    lines = cast_batch.(items)
+    Enum.each(ids, &dispose.(&1))
+    done.(Enum.join(lines, " | "))
+    """
+
+    llm = choose_llm(opts, [%{code: parent_code}])
+
+    # In scripted mode each child gets a script with its file path baked
+    # in — FakeLLM can't read its own intent. In real mode the child's
+    # LLM extracts the path from the intent text.
+    child_llm =
+      if scripted_mode?(opts) do
+        responses =
+          Enum.map(@run_15_facts, fn {name, _body} ->
+            %{
+              code: """
+              content = read_file.(%{path: "#{name}"})
+              line = content |> String.split("\\n") |> Enum.find(&(String.trim(&1) != ""))
+              done.(line)
+              """
+            }
+          end)
+
+        {FakeLLM, FakeLLM.new(responses, shared: true)}
+      else
+        nil
+      end
+
+    familiar_opts = [llm: llm, root: root]
+
+    familiar_opts =
+      if child_llm, do: Keyword.put(familiar_opts, :child_llm, child_llm), else: familiar_opts
+
+    {:ok, cantrip} = Cantrip.Familiar.new(familiar_opts)
+
+    case Cantrip.cast(cantrip, "Survey the markdown facts and return one line from each.") do
+      {:ok, result, next_cantrip, loom, meta} ->
+        IO.puts("Result: #{inspect(result)}")
+        IO.puts("Parent turns: #{length(loom.turns)}")
+        IO.puts("Total child turns (grafted): #{count_grafted_child_turns(loom.turns)}")
+        IO.puts("\nThe parent never touched a file directly. Each child was given")
+        IO.puts("read_file as a bare name; SpawnFn wired the sandbox root onto")
+        IO.puts("the child's gate so the relative paths resolved.")
+        {:ok, result, next_cantrip, loom, meta}
+
+      {:error, reason, _cantrip} ->
+        {:error, reason}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # A.16 Familiar Coordinator (PATTERNS pattern 16)
+  # Production-shape Familiar: code-medium parent, navigation gates,
+  # persistent JSONL loom, code-medium children performing real file
+  # reads. The full pattern-16 contract end-to-end with FakeLLM.
+  # ---------------------------------------------------------------------------
+  defp run_16(opts) do
+    IO.puts("=== Pattern 16: Familiar Coordinator with Persistent Loom ===")
+    IO.puts("Production-shape Familiar: navigation gates + orchestration gates,")
+    IO.puts("JSONL loom for cross-session memory, code-medium children doing")
+    IO.puts("real filesystem work.\n")
+
+    root = temp_root("cantrip_familiar_coord")
+    File.write!(Path.join(root, "todo.md"), "milestone-A\nmilestone-B\n")
+
+    loom_path =
+      Map.get(
+        opts,
+        :loom_path,
+        Path.join(
+          System.tmp_dir!(),
+          "cantrip_familiar_coord_#{System.unique_integer([:positive])}.jsonl"
+        )
+      )
+
+    IO.puts("Sandbox: #{root}")
+    IO.puts("Loom: #{loom_path}\n")
+
+    # Variables persist across turns AND across sends within a summoned
+    # entity (ENTITY-5 / MEDIUM-3). Per-statement evaluation in code
+    # medium means assignments before a `done.(...)` survive into the
+    # next send — so the natural "compute then done" pattern works.
+    send1_code = """
+    spec = %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}
+    reader = cantrip.(%{identity: "Read todo.md; return its lines as a list.", circle: spec})
+    lines = cast.(reader, "Read todo.md")
+    dispose.(reader)
+    done.(lines)
+    """
+
+    send2_code = ~s|done.(%{prior: lines, marker: "second-send"})|
+
+    llm = choose_llm(opts, [%{code: send1_code}, %{code: send2_code}])
+
+    child_llm =
+      if scripted_mode?(opts) do
+        child_code = """
+        content = read_file.(%{path: "todo.md"})
+        done.(content |> String.split("\\n", trim: true))
+        """
+
+        {FakeLLM, FakeLLM.new([%{code: child_code}])}
+      else
+        nil
+      end
+
+    familiar_opts = [llm: llm, root: root, loom_path: loom_path]
+
+    familiar_opts =
+      if child_llm, do: Keyword.put(familiar_opts, :child_llm, child_llm), else: familiar_opts
+
+    {:ok, cantrip} = Cantrip.Familiar.new(familiar_opts)
+
+    with {:ok, pid} <- Cantrip.summon(cantrip),
+         {:ok, first, _c1, _loom1, _meta1} <- Cantrip.send(pid, "Bootstrap by reading todo.md."),
+         {:ok, second, c2, loom2, meta2} <- Cantrip.send(pid, "Recall and add session marker.") do
+      _ = Process.exit(pid, :normal)
+
+      persisted = match?({:jsonl, _}, c2.loom_storage)
+
+      persisted_path =
+        case c2.loom_storage do
+          {:jsonl, p} -> p
+          _ -> nil
+        end
+
+      IO.puts("Send 1 result: #{inspect(first)}")
+      IO.puts("  Child read_file succeeded with inherited sandbox root.")
+      IO.puts("Send 2 result: #{inspect(second)}")
+      IO.puts("  Coordinator recalled prior memory across sends.")
+      IO.puts("Total turns: #{length(loom2.turns)}")
+
+      IO.puts(
+        "Loom persisted: #{persisted and is_binary(persisted_path) and File.exists?(persisted_path)}"
+      )
+
+      result = %{
+        first: first,
+        second: second,
+        turns: length(loom2.turns),
+        persisted_loom: persisted and is_binary(persisted_path),
+        loom_path: persisted_path
+      }
+
+      {:ok, result, c2, loom2, meta2}
+    else
+      {:error, reason, _cantrip} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp count_grafted_child_turns(turns) do
+    Enum.count(turns, fn turn -> Map.get(turn, :parent_id) != nil end)
   end
 
   # ---------------------------------------------------------------------------

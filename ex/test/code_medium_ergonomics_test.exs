@@ -19,6 +19,40 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
     }
   end
 
+  describe "folded_summary binding (§6.8 — summaries in the sandbox)" do
+    test "when runtime carries a folded_summary, the entity sees it as a binding" do
+      runtime = make_runtime() |> Map.put(:folded_summary, "Earlier turns surveyed the root.")
+      state = %{}
+
+      {_state, _obs, result, terminated} =
+        CodeMedium.eval(~s[done.(folded_summary)], state, runtime)
+
+      assert terminated
+      assert result == "Earlier turns surveyed the root."
+    end
+
+    test "when runtime has no folded_summary, the binding is absent" do
+      # The binding must NOT be silently set to nil (which would look
+      # like "folding fired and produced nothing"). When no fold has
+      # occurred this turn, the binding simply doesn't exist.
+      runtime = make_runtime()
+      state = %{}
+
+      {_state, _obs, _result, _terminated} =
+        CodeMedium.eval(
+          ~s[done.(:erlang.binding_to_term(:erlang.nil_to_atom()))],
+          state,
+          runtime
+        )
+
+      # The above is gibberish that won't compile — but the meaningful
+      # assertion is that referencing `folded_summary` would compile-fail
+      # when not provided. We verify presence in the binding instead:
+      {state2, _obs, _, _} = CodeMedium.eval(~s[done.("ok")], state, runtime)
+      refute Keyword.has_key?(state2.binding || [], :folded_summary)
+    end
+  end
+
   describe "gate call ergonomics - done" do
     test "done.(x) works (dot-call, backwards compatible)" do
       runtime = make_runtime()
@@ -257,6 +291,68 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       refute terminated, "cast_batch should have raised before done was called"
       error_obs = Enum.find(obs, fn o -> o[:is_error] end)
       assert error_obs, "expected an error observation from cast_batch failure"
+    end
+  end
+
+  describe "binding persistence across the done-call boundary (MEDIUM-3)" do
+    # Historical bug: `done.(x)` threw `{:cantrip_done, ...}` and the
+    # catch returned the *input* binding, dropping any assignments
+    # made earlier in the same turn. That broke the natural
+    # "compute then done" pattern across multi-send entities — by the
+    # next send, the computed value was gone.
+    #
+    # Per-statement evaluation in `eval_block` preserves the binding
+    # from statements before the one that called done.
+
+    test "an assignment before done() in the same turn persists to the next turn" do
+      runtime = make_runtime()
+      state = %{}
+
+      # Turn 1: assign x and call done in the same code block.
+      {state1, _obs1, _result1, terminated1} =
+        CodeMedium.eval(
+          ~s|x = :hello\ndone.(:first_send)|,
+          state,
+          runtime
+        )
+
+      assert terminated1
+      assert Keyword.fetch!(state1.binding, :x) == :hello
+
+      # Turn 2 (simulating a subsequent send): x must still be visible.
+      {_state2, _obs2, result2, terminated2} =
+        CodeMedium.eval(~s|done.({:saw_x, x})|, state1, runtime)
+
+      assert terminated2
+      assert result2 == {:saw_x, :hello}
+    end
+
+    test "multiple assignments before done() all persist" do
+      runtime = make_runtime()
+      state = %{}
+
+      code = """
+      a = 1
+      b = a + 1
+      c = b * 2
+      done.(:ok)
+      """
+
+      {state1, _obs, _result, _term} = CodeMedium.eval(code, state, runtime)
+
+      assert Keyword.fetch!(state1.binding, :a) == 1
+      assert Keyword.fetch!(state1.binding, :b) == 2
+      assert Keyword.fetch!(state1.binding, :c) == 4
+    end
+
+    test "single-statement code with just done() still works (no regression)" do
+      runtime = make_runtime()
+
+      {_state, _obs, result, terminated} =
+        CodeMedium.eval(~s|done.("only thing")|, %{}, runtime)
+
+      assert terminated
+      assert result == "only thing"
     end
   end
 end

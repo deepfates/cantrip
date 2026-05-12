@@ -34,16 +34,20 @@ defmodule Cantrip.FamiliarTest do
       assert "dispose" in gate_names
     end
 
-    test "system prompt mentions orchestration and child cantrips" do
+    test "system prompt teaches the helper-summoning paradigm" do
       llm = {FakeLLM, FakeLLM.new([])}
       {:ok, cantrip} = Familiar.new(llm: llm)
 
       prompt = cantrip.identity.system_prompt
       assert is_binary(prompt)
+      # Operative naming: the Familiar is a long-lived companion that
+      # summons helpers via cantrips, into circles bounded by gates/wards.
       assert prompt =~ "Familiar"
-      assert prompt =~ "orchestrat"
       assert prompt =~ "cantrip"
-      assert prompt =~ "child"
+      assert prompt =~ "helper"
+      assert prompt =~ ~r/gates?/
+      assert prompt =~ ~r/wards?/
+      assert prompt =~ "loom"
     end
 
     test "respects custom max_turns" do
@@ -86,12 +90,11 @@ defmodule Cantrip.FamiliarTest do
 
       {:ok, cantrip} = Familiar.new(llm: llm)
       {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "list dir")
-      # list_dir returns a list of "name (type)" strings (sandbox-aware,
-      # type-annotated). done() preserves the raw value the script passed
-      # in, so the cast result is the list itself.
+      # SPEC §1.7: list_dir returns plain bare names. done() preserves the
+      # value the script passed, so the cast result is the list itself.
       assert is_list(result)
-      assert "a.txt (file)" in result
-      assert "b.txt (file)" in result
+      assert "a.txt" in result
+      assert "b.txt" in result
     after
       File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_ld_*"))
     end
@@ -105,12 +108,15 @@ defmodule Cantrip.FamiliarTest do
         "defmodule Foo do\n  def hello, do: :world\nend\n"
       )
 
+      # search returns a list of %{path, line, text} maps (consistent
+      # with list_dir returning a list). The entity composes that list
+      # in code rather than parsing a joined string.
       llm =
         {FakeLLM,
          FakeLLM.new([
            %{
              code:
-               ~s[result = search.(%{pattern: "defmodule", path: "#{tmp_dir}"})\ndone.(result)]
+               ~s[matches = search.(%{pattern: "defmodule", path: "#{tmp_dir}"})\nfirst = List.first(matches)\ndone.(first.text)]
            }
          ])}
 
@@ -237,10 +243,16 @@ defmodule Cantrip.FamiliarTest do
       assert result == "disposed"
     end
 
-    test "cast() with a disposed cantrip raises an error" do
+    test "cast() with a disposed cantrip surfaces an error observation" do
+      # Under the production posture (Dune sandbox), a closure raise
+      # does not propagate as a user-code-catchable exception — it
+      # lands on the loom as an `is_error: true` observation. The SPEC
+      # behavior is "cast on a disposed ID fails visibly"; the
+      # observation channel is the canonical way to make it visible.
       parent =
         {FakeLLM,
          FakeLLM.new([
+           # Turn 1: construct, dispose, try to cast — fails as observation.
            %{
              code: """
              id = cantrip.(%{
@@ -248,19 +260,27 @@ defmodule Cantrip.FamiliarTest do
                circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
              })
              dispose.(id)
-             try do
-               cast.(id, "should fail")
-               done.("should not reach")
-             rescue
-               e -> done.("error: " <> Exception.message(e))
-             end
+             cast.(id, "should fail")
              """
-           }
+           },
+           # Turn 2: parent saw the failure observation and recovers.
+           %{code: ~s|done.("observed disposed-cast failure")|}
          ])}
 
       {:ok, cantrip} = Familiar.new(llm: parent)
-      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "cast after dispose")
-      assert result =~ "error:"
+
+      {:ok, result, _c, loom, _meta} =
+        Cantrip.cast(cantrip, "cast after dispose")
+
+      assert result == "observed disposed-cast failure"
+
+      observations = Enum.flat_map(loom.turns, & &1.observation)
+
+      assert Enum.any?(observations, fn obs ->
+               obs.is_error and is_binary(obs.result) and
+                 String.contains?(obs.result, "unknown cantrip")
+             end),
+             "expected an `unknown cantrip ID` error observation on the parent's loom"
     end
   end
 

@@ -1,5 +1,5 @@
 defmodule Mix.Tasks.Cantrip.Familiar do
-  @shortdoc "Run the Familiar — a persistent coding assistant"
+  @shortdoc "Run the Familiar — a persistent computational entity"
   @moduledoc """
   Run the Familiar in REPL mode (interactive), single-shot mode, or ACP server mode.
 
@@ -24,6 +24,40 @@ defmodule Mix.Tasks.Cantrip.Familiar do
 
   @impl true
   def run(args) do
+    case parse_args(args) do
+      {:help, _} ->
+        Mix.shell().info(usage())
+
+      {:acp, ctx} ->
+        if ctx.diagnostics, do: start_diagnostic_node()
+        run_acp(ctx.opts)
+
+      {:repl, ctx} ->
+        if ctx.diagnostics, do: start_diagnostic_node()
+        run_familiar(ctx.intent, ctx.opts)
+    end
+  end
+
+  @doc """
+  Parses the task arguments into a routing decision.
+
+  Pure function returning one of:
+
+    * `{:help, %{opts: opts}}` — print usage and exit
+    * `{:acp, %{opts: opts, diagnostics: bool}}` — run as ACP stdio server
+    * `{:repl, %{opts: opts, intent: nil | binary, diagnostics: bool}}` —
+      run interactive REPL (when intent is nil) or single-shot
+
+  `diagnostics` is mode-agnostic: any mode (REPL, single-shot, ACP) may
+  request the remsh-attach affordance via `--diagnostics`. The Solid V1
+  spike calls for ACP/REPL/CLI to be projections of one runtime; the
+  diagnostic node is part of that runtime, not an ACP-specific concern.
+  """
+  @spec parse_args([String.t()]) ::
+          {:help, %{opts: keyword()}}
+          | {:acp, %{opts: keyword(), diagnostics: boolean()}}
+          | {:repl, %{opts: keyword(), intent: nil | String.t(), diagnostics: boolean()}}
+  def parse_args(args) do
     {opts, positional, _} =
       OptionParser.parse(args,
         strict: [
@@ -37,21 +71,16 @@ defmodule Mix.Tasks.Cantrip.Familiar do
         aliases: [h: :help]
       )
 
+    diagnostics = !!opts[:diagnostics]
+
     cond do
-      opts[:help] ->
-        Mix.shell().info(usage())
-
-      opts[:acp] ->
-        run_acp(opts)
-
-      true ->
-        intent = List.first(positional)
-        run_familiar(intent, opts)
+      opts[:help] -> {:help, %{opts: opts}}
+      opts[:acp] -> {:acp, %{opts: opts, diagnostics: diagnostics}}
+      true -> {:repl, %{opts: opts, intent: List.first(positional), diagnostics: diagnostics}}
     end
   end
 
-  defp run_acp(opts) do
-    if opts[:diagnostics], do: start_diagnostic_node()
+  defp run_acp(_opts) do
     IO.puts(:stderr, "Familiar ACP server starting on stdio...")
     Cantrip.ACP.Server.run(runtime: Cantrip.ACP.Runtime.Familiar)
   end
@@ -169,7 +198,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   # -- REPL: summon + send in a loop --
 
   defp run_repl(cantrip, renderer) do
-    IO.write(:stderr, "Familiar REPL — persistent coding assistant\n")
+    IO.write(:stderr, "Familiar REPL — persistent computational entity\n")
     IO.write(:stderr, "Type your intents. Ctrl-C to exit.\n\n")
 
     {:ok, pid} = Cantrip.summon(cantrip)
@@ -277,7 +306,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
     """
     usage: mix cantrip.familiar [intent] [--acp] [--diagnostics] [--loom-path PATH] [--max-turns N] [--help]
 
-    Run the Familiar — a persistent coding assistant with filesystem observation.
+    Run the Familiar — a persistent computatational entity with filesystem observation.
 
     Without an intent argument, starts in interactive REPL mode.
     With an intent, runs single-shot and exits.

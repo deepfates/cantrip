@@ -37,13 +37,14 @@ defmodule CantripExamplesTest do
   # ── Cross-cutting: catalog and ids ─────────────────────────────────────────
 
   test "catalog and ids expose the progression" do
-    assert Examples.ids() == Enum.map(1..12, &String.pad_leading(Integer.to_string(&1), 2, "0"))
+    base = Enum.map(1..12, &String.pad_leading(Integer.to_string(&1), 2, "0"))
+    assert Examples.ids() == base ++ ~w(15 16)
     assert Enum.all?(Examples.catalog(), &(is_binary(&1.id) and is_binary(&1.title)))
   end
 
   # ── Cross-cutting: mode: :scripted always works without env vars ───────────
 
-  for id <- ~w(01 02 03 04 05 06 07 08 09 10 11 12) do
+  for id <- ~w(01 02 03 04 05 06 07 08 09 10 11 12 15 16) do
     test "#{id} runs in scripted mode without env vars" do
       result = Examples.run(unquote(id), mode: :scripted)
       assert {:ok, _, _, _, _} = result
@@ -54,7 +55,7 @@ defmodule CantripExamplesTest do
 
   # Examples that need an LLM must fail when called with mode: :real and no env vars.
   # 02 is excluded because it only exercises gates directly (no LLM call).
-  for id <- ~w(01 03 04 05 06 07 08 09 10 11 12) do
+  for id <- ~w(01 03 04 05 06 07 08 09 10 11 12 15 16) do
     test "#{id} raises without env vars when not scripted" do
       assert_raise RuntimeError, ~r/Cannot resolve LLM from environment/, fn ->
         Examples.run(unquote(id), mode: :real)
@@ -290,6 +291,63 @@ defmodule CantripExamplesTest do
       # Loom has parent turns + child subtree turns (2 parent + 2 child from send 1)
       assert length(loom.turns) >= 2
       assert meta.terminated
+    end
+  end
+
+  describe "15 Familiar Research Fanout" do
+    test "Familiar fans out file-reading children and synthesizes their results" do
+      assert {:ok, result, _c, loom, meta} = Examples.run("15", mode: :scripted)
+
+      # Each child returned a real line from its file. The parent joined
+      # them in deterministic (alphabetical-by-filename) order.
+      assert is_binary(result)
+      assert result =~ "Q1 ARR rose 12% QoQ."
+      assert result =~ "Q1 churn fell to 2.4%."
+      assert result =~ "Net retention sits at 118%."
+
+      # The Familiar's loom grafts the three child subtrees onto the
+      # parent turn (LOOM-8, COMP-5). Each child contributed one turn.
+      child_turns = Enum.filter(loom.turns, fn t -> Map.get(t, :parent_id) != nil end)
+      assert length(child_turns) >= 3
+
+      assert meta.terminated
+    end
+
+    test "uses Cantrip.Familiar.new (not a parallel coordinator code path)" do
+      # Regression: ensure run_15 exercises the same module a real user
+      # would call, not a hand-rolled Cantrip.new coordinator.
+      source = File.read!("lib/cantrip/examples.ex")
+      [_, run_15_body | _] = String.split(source, "defp run_15(opts) do", parts: 3)
+      [run_15_body | _] = String.split(run_15_body, "defp run_16", parts: 2)
+      assert run_15_body =~ "Cantrip.Familiar.new"
+      refute run_15_body =~ "Cantrip.new("
+    end
+  end
+
+  describe "16 Familiar Coordinator" do
+    test "production Familiar reads a file via a child, persists loom across sends" do
+      assert {:ok, result, _c, _loom, meta} = Examples.run("16", mode: :scripted)
+
+      # Send 1: child actually read todo.md and returned its lines.
+      assert result.first == ["milestone-A", "milestone-B"]
+
+      # Send 2: coordinator recalled prior state and added the marker.
+      assert result.second.prior == ["milestone-A", "milestone-B"]
+      assert result.second.marker == "second-send"
+
+      # Loom persisted to disk; file actually exists.
+      assert result.persisted_loom == true
+      assert File.exists?(result.loom_path)
+
+      assert meta.terminated
+    end
+
+    test "uses Cantrip.Familiar.new (not a parallel coordinator code path)" do
+      source = File.read!("lib/cantrip/examples.ex")
+      [_, run_16_body] = String.split(source, "defp run_16(opts) do", parts: 2)
+      [run_16_body | _] = String.split(run_16_body, "defp count_grafted_child_turns", parts: 2)
+      assert run_16_body =~ "Cantrip.Familiar.new"
+      refute run_16_body =~ "Cantrip.new("
     end
   end
 

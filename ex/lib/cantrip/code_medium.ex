@@ -19,7 +19,8 @@ defmodule Cantrip.CodeMedium do
     :cast,
     :cast_batch,
     :dispose,
-    :loom
+    :loom,
+    :folded_summary
   ]
 
   @type runtime :: %{
@@ -54,27 +55,50 @@ defmodule Cantrip.CodeMedium do
 
       case Code.string_to_quoted(code) do
         {:ok, quoted} ->
-          try do
-            {value, next_binding} = Code.eval_quoted(quoted, binding)
-            {next_binding, value, false}
-          rescue
-            e ->
-              push_observation(%{gate: "code", result: Exception.message(e), is_error: true})
-              {binding, nil, false}
-          catch
-            {:cantrip_done, answer} ->
-              {binding, answer, true}
-
-            {:cantrip_error, msg} ->
-              push_observation(%{gate: "code", result: msg, is_error: true})
-              {binding, {:cantrip_error, msg}, true}
-          end
+          # Evaluate top-level statements one at a time so that any
+          # bindings assigned before a `done.(...)` (or any other
+          # control-flow throw) are preserved across the call boundary.
+          # Without this, `done` short-circuits Code.eval_quoted and the
+          # accumulated binding is lost, which breaks the natural
+          # "compute then done" pattern across multi-send entities
+          # (MEDIUM-3 / ENTITY-5).
+          eval_statements(extract_statements(quoted), binding)
 
         {:error, {line, error, token}} ->
           msg = "parse error at #{inspect(line)}: #{inspect(error)} #{inspect(token)}"
           push_observation(%{gate: "code", result: msg, is_error: true})
           {binding, nil, false}
       end
+    end
+  end
+
+  # A top-level Elixir script parses to either a __block__ wrapping the
+  # statements, or — for a single expression — a bare AST node.
+  defp extract_statements({:__block__, _, stmts}), do: stmts
+  defp extract_statements(single), do: [single]
+
+  defp eval_statements([], binding), do: {binding, nil, false}
+
+  defp eval_statements([stmt | rest], binding) do
+    try do
+      {value, next_binding} = Code.eval_quoted(stmt, binding)
+
+      if rest == [] do
+        {next_binding, value, false}
+      else
+        eval_statements(rest, next_binding)
+      end
+    rescue
+      e ->
+        push_observation(%{gate: "code", result: Exception.message(e), is_error: true})
+        {binding, nil, false}
+    catch
+      {:cantrip_done, answer} ->
+        {binding, answer, true}
+
+      {:cantrip_error, msg} ->
+        push_observation(%{gate: "code", result: msg, is_error: true})
+        {binding, {:cantrip_error, msg}, true}
     end
   end
 
@@ -114,6 +138,7 @@ defmodule Cantrip.CodeMedium do
       |> Keyword.put(:done, done_fun)
       |> Keyword.put(:call_entity, call_entity_fun)
       |> Keyword.put(:loom, Map.get(runtime, :loom))
+      |> maybe_put_folded_summary(runtime)
       |> put_circle_gate_bindings(runtime)
 
     binding =
@@ -322,6 +347,21 @@ defmodule Cantrip.CodeMedium do
     binding
     |> Keyword.drop(@reserved_bindings)
     |> Enum.reject(fn {_k, v} -> is_function(v) end)
+  end
+
+  # §6.8: when folding fired this turn, the substrate threads the
+  # summary text through the medium runtime so the entity can read it
+  # as a binding (`folded_summary`) alongside its other variables. The
+  # binding is only present when folding occurred — its absence is
+  # meaningful ("no fold this turn"), so we don't bind `nil` to it.
+  defp maybe_put_folded_summary(binding, runtime) do
+    case Map.get(runtime, :folded_summary) do
+      summary when is_binary(summary) and summary != "" ->
+        Keyword.put(binding, :folded_summary, summary)
+
+      _ ->
+        binding
+    end
   end
 
   defp push_observation(observation) do

@@ -35,7 +35,9 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
     :done,
     :call_entity,
     :call_entity_batch,
-    :compile_and_load
+    :compile_and_load,
+    :folded_summary,
+    :loom
   ]
 
   @type runtime :: Cantrip.CodeMedium.runtime()
@@ -60,7 +62,7 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
   end
 
   defp do_eval(code, state, runtime) do
-    # Start an agent to collect observations and done signal
+    # Start an agent to collect observations and the done signal.
     {:ok, agent} = Agent.start_link(fn -> %{observations: [], done: nil} end)
 
     try do
@@ -164,11 +166,21 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
   end
 
   defp build_gate_bindings(runtime, agent) do
+    # Bind out the few fields we need from `runtime` so each closure
+    # captures only the values it uses, not the whole runtime map.
+    # Smaller captures keep the per-eval heap modest — closures are
+    # injected via session bindings and live in the Dune worker's
+    # process memory.
+    circle = runtime.circle
+    call_entity = runtime.call_entity
+    call_entity_batch = Map.get(runtime, :call_entity_batch)
+    execute_gate = Map.get(runtime, :execute_gate)
+
     bindings = []
 
     # done.() -- sets flag, returns the answer (no raise, so bindings persist)
     done_fun = fn answer ->
-      observation = Gate.execute(runtime.circle, "done", %{"answer" => answer})
+      observation = Gate.execute(circle, "done", %{"answer" => answer})
       push_agent_observation(agent, observation)
       Agent.update(agent, fn state -> %{state | done: answer} end)
       answer
@@ -176,9 +188,31 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
 
     bindings = Keyword.put(bindings, :done, done_fun)
 
+    # LOOM-11: the loom is exposed as a readable object the entity
+    # accesses through code. The prompt teaches `loom.turns`; this
+    # makes that reference resolve under the Dune sandbox path the
+    # same way it does under unrestricted code medium.
+    bindings =
+      case Map.get(runtime, :loom) do
+        nil -> bindings
+        loom -> Keyword.put(bindings, :loom, loom)
+      end
+
+    # §6.8 — when folding fired this turn, expose the summary as a
+    # binding the entity can read alongside its other variables.
+    # Absent when no fold occurred.
+    bindings =
+      case Map.get(runtime, :folded_summary) do
+        summary when is_binary(summary) and summary != "" ->
+          Keyword.put(bindings, :folded_summary, summary)
+
+        _ ->
+          bindings
+      end
+
     # call_entity.()
     call_entity_fun = fn opts ->
-      payload = runtime.call_entity.(normalize_opts(opts))
+      payload = call_entity.(normalize_opts(opts))
       push_agent_observation(agent, payload.observation)
 
       if payload.observation[:is_error] do
@@ -191,11 +225,11 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
     bindings = Keyword.put(bindings, :call_entity, call_entity_fun)
 
     # Circle gate bindings (echo, read, etc.)
-    bindings = put_circle_gate_bindings(bindings, runtime, agent)
+    bindings = put_circle_gate_bindings(bindings, circle, execute_gate, agent)
 
     # call_entity_batch.()
     bindings =
-      case Map.get(runtime, :call_entity_batch) do
+      case call_entity_batch do
         nil ->
           bindings
 
@@ -209,36 +243,54 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
           Keyword.put(bindings, :call_entity_batch, call_entity_batch_fun)
       end
 
-    # compile_and_load is intentionally NOT available in the Dune sandbox
-    # since Dune blocks module definitions anyway
+    # Familiar-shape closures (cantrip / cast / cast_batch / dispose)
+    # are intentionally NOT mirrored here. They live in `Cantrip.CodeMedium`
+    # and are the subject of issue #3 — when that refactor lands, both
+    # the unrestricted and Dune sandbox paths will get isomorphic
+    # wrappers around `Cantrip.new` / `Cantrip.cast` / `Cantrip.stop`
+    # in a single place, instead of two parallel bespoke implementations.
+    # Opt-in `:dune` users today get the lower-level `call_entity` /
+    # `call_entity_batch` surface and the loom binding; the higher-level
+    # Familiar vocabulary works in unrestricted code medium.
+    #
+    # compile_and_load is also intentionally not exposed here: Dune
+    # blocks module definitions in user code.
 
     bindings
   end
 
-  defp put_circle_gate_bindings(bindings, runtime, agent) do
-    case Map.get(runtime, :execute_gate) do
-      nil ->
-        bindings
+  defp put_circle_gate_bindings(bindings, _circle, nil, _agent), do: bindings
 
-      execute_gate ->
-        runtime.circle
-        |> Gate.names()
-        |> Enum.reduce(bindings, fn gate_name, acc ->
-          binding_name = String.to_atom(gate_name)
+  defp put_circle_gate_bindings(bindings, circle, execute_gate, agent) do
+    circle
+    |> Gate.names()
+    |> Enum.reduce(bindings, fn gate_name, acc ->
+      binding_name = String.to_atom(gate_name)
 
-          if binding_name in @reserved_bindings do
-            acc
-          else
-            gate_fun = fn opts ->
-              observation = execute_gate.(gate_name, normalize_opts(opts))
-              push_agent_observation(agent, observation)
-              observation.result
+      if binding_name in @reserved_bindings do
+        acc
+      else
+        gate_fun = fn opts ->
+          # Match unrestricted code medium's behavior: bare values
+          # (binaries, numbers) pass through to the gate handler,
+          # which has its own clauses for handling them. Mapping
+          # binaries to `%{}` here strips path arguments that the
+          # entity expected the gate to validate.
+          args =
+            cond do
+              is_map(opts) -> opts
+              is_list(opts) -> Map.new(opts)
+              true -> opts
             end
 
-            Keyword.put(acc, binding_name, gate_fun)
-          end
-        end)
-    end
+          observation = execute_gate.(gate_name, args)
+          push_agent_observation(agent, observation)
+          observation.result
+        end
+
+        Keyword.put(acc, binding_name, gate_fun)
+      end
+    end)
   end
 
   defp push_agent_observation(agent, observation) do
@@ -270,10 +322,17 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
   defp dune_opts_from_circle(circle) do
     timeout = Cantrip.WardPolicy.code_eval_timeout_ms(circle.wards)
 
+    # Heap and reductions need to be generous: the Familiar's circle
+    # carries cantrip/cast/cast_batch/dispose closures plus the
+    # accumulated user bindings (lines, spec, child cantrip IDs)
+    # across turns, all of which the eval must page in. The earlier
+    # 100K/300K defaults were tight enough that a second send into
+    # the same Dune session failed with `:memory` on a trivial
+    # `done.(%{prior: lines, marker: "..."})`.
     [
       timeout: timeout,
-      max_reductions: 300_000,
-      max_heap_size: 100_000,
+      max_reductions: 5_000_000,
+      max_heap_size: 1_000_000,
       max_length: 50_000
     ]
   end

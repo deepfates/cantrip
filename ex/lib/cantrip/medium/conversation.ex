@@ -10,11 +10,7 @@ defmodule Cantrip.Medium.Conversation do
 
   @behaviour Cantrip.Medium
 
-  @done_parameters %{
-    type: "object",
-    properties: %{answer: %{type: "string", description: "Your final answer"}},
-    required: ["answer"]
-  }
+  alias Cantrip.Gate
 
   @impl true
   def present(circle, _state) do
@@ -64,15 +60,14 @@ defmodule Cantrip.Medium.Conversation do
   def restore(_), do: %{}
 
   defp tool_definition(gate) do
-    default_params =
-      if gate.name == "done", do: @done_parameters, else: %{type: "object", properties: %{}}
+    spec = Gate.spec(gate.name)
 
     tool = %{
       name: gate.name,
-      parameters: Map.get(gate, :parameters, default_params)
+      parameters: Map.get(gate, :parameters) || spec.parameters
     }
 
-    desc = Map.get(gate, :description) || Map.get(gate, "description")
+    desc = Map.get(gate, :description) || Map.get(gate, "description") || spec.description
     if desc, do: Map.put(tool, :description, desc), else: tool
   end
 

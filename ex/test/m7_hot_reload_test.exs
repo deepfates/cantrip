@@ -46,6 +46,96 @@ defmodule CantripM7HotReloadTest do
     purge_module(module)
   end
 
+  test "hot-reload gate accepts modules in an allowed namespace" do
+    # The Familiar uses namespace prefixes rather than exact allowlists
+    # so it can write new modules at runtime as long as they live in a
+    # scoped sub-tree (e.g., `Cantrip.Hot.*`) without redefining core
+    # framework modules.
+    module_name = "Elixir.Cantrip.Hot.SafeNs"
+    module = String.to_atom(module_name)
+    purge_module(module)
+
+    source = """
+    defmodule Cantrip.Hot.SafeNs do
+      def version, do: 7
+    end
+    """
+
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{
+           tool_calls: [
+             %{gate: "compile_and_load", args: %{module: module_name, source: source}},
+             %{gate: "done", args: %{answer: "loaded"}}
+           ]
+         }
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        llm: llm,
+        circle: %{
+          type: :conversation,
+          gates: [:done, :compile_and_load],
+          wards: [
+            %{max_turns: 10},
+            %{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}
+          ]
+        }
+      )
+
+    assert {:ok, "loaded", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "namespace ok")
+
+    assert Enum.any?(loom.turns, fn turn ->
+             Enum.any?(turn.observation, &(&1.gate == "compile_and_load" and not &1.is_error))
+           end)
+
+    purge_module(module)
+  end
+
+  test "hot-reload gate rejects modules outside the allowed namespace" do
+    module_name = "Elixir.Cantrip.Familiar"
+
+    source = """
+    defmodule Cantrip.Familiar do
+      def version, do: 666
+    end
+    """
+
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{
+           tool_calls: [
+             %{gate: "compile_and_load", args: %{module: module_name, source: source}},
+             %{gate: "done", args: %{answer: "blocked"}}
+           ]
+         }
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        llm: llm,
+        circle: %{
+          type: :conversation,
+          gates: [:done, :compile_and_load],
+          wards: [
+            %{max_turns: 10},
+            %{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}
+          ]
+        }
+      )
+
+    assert {:ok, "blocked", _cantrip, loom, _meta} =
+             Cantrip.cast(cantrip, "namespace blocks Familiar redefinition")
+
+    [turn] = loom.turns
+    [obs | _] = turn.observation
+    assert obs.is_error
+    assert obs.result =~ "module not allowed"
+  end
+
   test "hot-reload gate rejects non-warded modules" do
     module_name = "Elixir.Cantrip.ForbiddenReload"
     module = String.to_atom(module_name)

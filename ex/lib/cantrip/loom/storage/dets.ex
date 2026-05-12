@@ -37,6 +37,49 @@ defmodule Cantrip.Loom.Storage.Dets do
     e -> {:error, Exception.message(e)}
   end
 
+  # Rehydrate events / turns from the on-disk DETS table. DETS stores
+  # Erlang terms natively, so values (atoms, tuples, atom-keyed maps)
+  # come back with the same shapes they were written with — no
+  # tagging or atomize step needed.
+  @impl true
+  def load(%{path: path}) do
+    case read_events(path) do
+      {:ok, events} ->
+        {evts, trns} = classify_native(events)
+        {:ok, %{events: evts, turns: trns}}
+
+      {:error, _reason} = err ->
+        err
+    end
+  end
+
+  defp classify_native(events) do
+    {evts, trns} =
+      Enum.reduce(events, {[], []}, fn event, {evts_acc, trns_acc} ->
+        type = Map.get(event, :type) || Map.get(event, "type")
+
+        cond do
+          type in [:turn, "turn"] ->
+            turn = Map.get(event, :turn) || Map.get(event, "turn")
+            {[%{type: :turn, turn: turn} | evts_acc], [turn | trns_acc]}
+
+          type in [:reward, "reward"] ->
+            reward_event = %{
+              type: :reward,
+              index: Map.get(event, :index) || Map.get(event, "index"),
+              reward: Map.get(event, :reward) || Map.get(event, "reward")
+            }
+
+            {[reward_event | evts_acc], trns_acc}
+
+          true ->
+            {[event | evts_acc], trns_acc}
+        end
+      end)
+
+    {Enum.reverse(evts), Enum.reverse(trns)}
+  end
+
   def read_events(path) when is_binary(path) do
     with {:ok, table} <- open_table(path) do
       events =

@@ -14,6 +14,207 @@ defmodule Cantrip.Gate do
   @spec names(Cantrip.Circle.t()) :: [String.t()]
   def names(%Cantrip.Circle{gates: gates}), do: Map.keys(gates)
 
+  @type spec :: %{
+          description: String.t(),
+          parameters: map(),
+          depends_required: [atom()],
+          kind: :read | :search | :edit | :execute,
+          args_summary_key: atom() | nil
+        }
+
+  @doc """
+  Returns the canonical metadata for a built-in gate name.
+
+  This is the single source of truth used by:
+    * `Cantrip.Medium.Conversation` to produce JSON tool definitions
+    * `Cantrip.Medium.Code` to produce capability-text descriptions
+    * `Cantrip.EntityServer` SpawnFn to expand bare child gate names
+
+  Unknown names return a usable generic spec rather than nil, so callers
+  can always build a presentation without special-casing absence.
+  """
+  @spec spec(String.t()) :: spec()
+  def spec("done") do
+    %{
+      description: "complete the task and return the answer",
+      parameters: %{
+        type: "object",
+        properties: %{answer: %{type: "string", description: "Your final answer"}},
+        required: ["answer"]
+      },
+      depends_required: [],
+      kind: :execute,
+      args_summary_key: :answer
+    }
+  end
+
+  def spec("echo") do
+    %{
+      description: "echo text back",
+      parameters: %{
+        type: "object",
+        properties: %{text: %{type: "string"}},
+        required: []
+      },
+      depends_required: [],
+      kind: :execute,
+      args_summary_key: :text
+    }
+  end
+
+  def spec("read_file") do
+    %{
+      description: "read_file.(path) - read a file; path is relative to the working directory",
+      parameters: %{
+        type: "object",
+        properties: %{
+          path: %{type: "string", description: "path relative to the working directory"}
+        },
+        required: ["path"]
+      },
+      depends_required: [:root],
+      kind: :read,
+      args_summary_key: :path
+    }
+  end
+
+  def spec("read") do
+    spec = spec("read_file")
+    %{spec | description: "read.(path) - read a file; path is relative to the working directory"}
+  end
+
+  def spec("list_dir") do
+    %{
+      description:
+        "list_dir.(path) - list directory contents; path is relative to the working directory",
+      parameters: %{
+        type: "object",
+        properties: %{
+          path: %{type: "string", description: "path relative to the working directory"}
+        },
+        required: ["path"]
+      },
+      depends_required: [:root],
+      kind: :read,
+      args_summary_key: :path
+    }
+  end
+
+  def spec("search") do
+    %{
+      description:
+        "search.(%{pattern: regex, path: \".\"}) - search file contents; returns a list of %{path, line, text} matches",
+      parameters: %{
+        type: "object",
+        properties: %{
+          pattern: %{type: "string", description: "regex pattern"},
+          path: %{type: "string", description: "path to search; defaults to '.'"}
+        },
+        required: ["pattern"]
+      },
+      depends_required: [:root],
+      kind: :search,
+      args_summary_key: :pattern
+    }
+  end
+
+  def spec("compile_and_load") do
+    %{
+      description: "compile_and_load.(opts) - compile and load an Elixir module",
+      parameters: %{
+        type: "object",
+        properties: %{
+          module: %{type: "string"},
+          source: %{type: "string"},
+          path: %{type: "string"},
+          sha256: %{type: "string"},
+          key_id: %{type: "string"},
+          signature: %{type: "string"}
+        },
+        required: ["module", "source"]
+      },
+      depends_required: [],
+      kind: :edit,
+      args_summary_key: :module
+    }
+  end
+
+  def spec("cantrip") do
+    %{
+      description:
+        "cantrip.(config) - construct a child cantrip; config includes :identity, :circle",
+      parameters: %{type: "object", properties: %{}, required: []},
+      depends_required: [],
+      kind: :execute,
+      args_summary_key: nil
+    }
+  end
+
+  def spec("cast") do
+    %{
+      description: "cast.(cantrip_id, intent) - send an intent to a constructed child cantrip",
+      parameters: %{type: "object", properties: %{}, required: []},
+      depends_required: [],
+      kind: :execute,
+      args_summary_key: :intent
+    }
+  end
+
+  def spec("cast_batch") do
+    %{
+      description:
+        "cast_batch.(items) - execute multiple child cantrips in parallel; items are [%{cantrip: id, intent: text}]",
+      parameters: %{type: "object", properties: %{}, required: []},
+      depends_required: [],
+      kind: :execute,
+      args_summary_key: nil
+    }
+  end
+
+  def spec("dispose") do
+    %{
+      description: "dispose.(cantrip_id) - clean up a child cantrip's resources",
+      parameters: %{type: "object", properties: %{}, required: []},
+      depends_required: [],
+      kind: :execute,
+      args_summary_key: nil
+    }
+  end
+
+  def spec("call_entity") do
+    %{
+      description: "call_entity.(opts) - delegate to a child entity; opts must include :intent",
+      parameters: %{
+        type: "object",
+        properties: %{intent: %{type: "string"}},
+        required: ["intent"]
+      },
+      depends_required: [],
+      kind: :execute,
+      args_summary_key: :intent
+    }
+  end
+
+  def spec("call_entity_batch") do
+    %{
+      description: "call_entity_batch.(list) - delegate to multiple child entities in parallel",
+      parameters: %{type: "object", properties: %{}, required: []},
+      depends_required: [],
+      kind: :execute,
+      args_summary_key: nil
+    }
+  end
+
+  def spec(_other) do
+    %{
+      description: "invoke this gate",
+      parameters: %{type: "object", properties: %{}},
+      depends_required: [],
+      kind: :execute,
+      args_summary_key: nil
+    }
+  end
+
   @spec execute(Cantrip.Circle.t(), String.t(), map() | term()) :: %{
           gate: String.t(),
           result: term(),
@@ -35,9 +236,30 @@ defmodule Cantrip.Gate do
 
       {:ok, gate} ->
         run_gate(gate, args, wards)
+        |> redact_observation()
         |> Map.put(:ephemeral, Map.get(gate, :ephemeral, false))
     end
   end
+
+  # PROD-8: every gate observation passes through credential redaction
+  # before reaching the entity. The patterns target well-known credential
+  # shapes (sk-*, sk-ant-*, AIza*, AKIA*, Bearer …) and env-style
+  # assignments to *KEY / *SECRET / *TOKEN / *PASSWORD variables. Non-string
+  # results pass through untouched; lists of strings have each element
+  # redacted so list_dir / search results stay safe even if a filename or
+  # matched line carries a secret.
+  defp redact_observation(%{result: result} = obs) do
+    %{obs | result: redact_value(result)}
+  end
+
+  defp redact_value(value) when is_binary(value), do: Cantrip.Redact.scan(value)
+  defp redact_value(value) when is_list(value), do: Enum.map(value, &redact_value/1)
+
+  defp redact_value(value) when is_map(value) and not is_struct(value) do
+    Map.new(value, fn {k, v} -> {k, redact_value(v)} end)
+  end
+
+  defp redact_value(value), do: value
 
   defp run_gate(%{name: "done"}, args, _wards) do
     answer = Map.get(args, "answer", Map.get(args, :answer))
@@ -116,13 +338,19 @@ defmodule Cantrip.Gate do
     pattern = Map.get(args, "pattern", Map.get(args, :pattern))
     path = Map.get(args, "path", Map.get(args, :path, "."))
 
-    with {:ok, path} <- validate_gate_path(path, gate) do
-      try do
-        results = search_files(path, pattern)
-        %{gate: "search", result: results, is_error: false}
-      rescue
-        e -> %{gate: "search", result: Exception.message(e), is_error: true}
-      end
+    cond do
+      is_nil(pattern) or pattern == "" ->
+        %{gate: "search", result: "pattern is required", is_error: true}
+
+      true ->
+        with {:ok, path} <- validate_gate_path(path, gate) do
+          try do
+            results = search_files(path, pattern)
+            %{gate: "search", result: results, is_error: false}
+          rescue
+            e -> %{gate: "search", result: Exception.message(e), is_error: true}
+          end
+        end
     end
   end
 
@@ -165,16 +393,12 @@ defmodule Cantrip.Gate do
   defp list_dir_entries(path) do
     case File.ls(path) do
       {:ok, entries} ->
-        enriched =
-          entries
-          |> Enum.sort()
-          |> Enum.map(fn entry ->
-            full = Path.join(path, entry)
-            type = if File.dir?(full), do: "dir", else: "file"
-            "#{entry} (#{type})"
-          end)
-
-        %{gate: "list_dir", result: enriched, is_error: false}
+        # SPEC §1.7 example pins the shape: a flat list of plain names.
+        # Display annotations ("(file)" / "(dir)") used to be appended here
+        # and broke every entity's `Enum.member?` / `String.ends_with?` check.
+        # Type info, when needed, is recoverable via a follow-up call or
+        # by the medium's perception layer; it does not belong on the data.
+        %{gate: "list_dir", result: Enum.sort(entries), is_error: false}
 
       {:error, reason} ->
         %{gate: "list_dir", result: inspect(reason), is_error: true}
@@ -182,20 +406,27 @@ defmodule Cantrip.Gate do
   end
 
   defp guard_compile_module(gates, module_name) when is_binary(module_name) do
-    allow =
+    allow_exact =
       gates
-      |> Enum.flat_map(fn gate ->
-        case gate do
-          %{allow_compile_modules: names} when is_list(names) -> names
-          _ -> []
-        end
+      |> Enum.flat_map(fn
+        %{allow_compile_modules: names} when is_list(names) -> names
+        _ -> []
       end)
       |> Enum.uniq()
 
-    if allow == [] or module_name in allow do
-      :ok
-    else
-      {:error, "module not allowed: #{module_name}"}
+    allow_namespaces =
+      gates
+      |> Enum.flat_map(fn
+        %{allow_compile_namespaces: prefixes} when is_list(prefixes) -> prefixes
+        _ -> []
+      end)
+      |> Enum.uniq()
+
+    cond do
+      allow_exact == [] and allow_namespaces == [] -> :ok
+      module_name in allow_exact -> :ok
+      Enum.any?(allow_namespaces, &String.starts_with?(module_name, &1)) -> :ok
+      true -> {:error, "module not allowed: #{module_name}"}
     end
   end
 
@@ -387,8 +618,14 @@ defmodule Cantrip.Gate do
 
   defp compile_and_load(_module, _source, _path, _gate), do: {:error, "source is required"}
 
+  # CIRCLE-5 / LOOP-7: a missing path is a structured observation, not a crash.
+  # Returning an observation map directly (rather than {:error, ...}) keeps
+  # the `with {:ok, path} <- validate_gate_path(...)` callers' else-arm clean.
+  defp validate_gate_path(nil, gate), do: missing_path_observation(gate)
+  defp validate_gate_path("", gate), do: missing_path_observation(gate)
+
   defp validate_gate_path(path, gate) do
-    root = Map.get(gate, :root) || Map.get(gate, "root")
+    root = gate_root(gate)
 
     if is_nil(root) do
       {:ok, path}
@@ -405,44 +642,50 @@ defmodule Cantrip.Gate do
     end
   end
 
+  defp missing_path_observation(gate) do
+    gate_name = Map.get(gate, :name, "gate")
+    %{gate: gate_name, result: "path is required", is_error: true}
+  end
+
+  # Read root from either the modern :dependencies map (matching the
+  # SPEC §5 / CIRCLE-10 vocabulary) or the legacy top-level :root field
+  # that early gate configs used.
+  defp gate_root(gate) do
+    case Map.get(gate, :dependencies) || Map.get(gate, "dependencies") do
+      %{} = deps -> Map.get(deps, :root) || Map.get(deps, "root")
+      _ -> Map.get(gate, :root) || Map.get(gate, "root")
+    end || Map.get(gate, :root) || Map.get(gate, "root")
+  end
+
   @max_search_results 200
   @ignored_dirs ~w(.git _build deps node_modules .elixir_ls .cache __pycache__ .venv)
 
   defp search_files(path, pattern) do
     regex = Regex.compile!(pattern)
 
-    if File.dir?(path) do
-      path
-      |> list_project_files()
-      |> Enum.flat_map(fn file ->
-        case File.read(file) do
-          {:ok, content} ->
-            content
-            |> String.split("\n")
-            |> Enum.with_index(1)
-            |> Enum.filter(fn {line, _num} -> Regex.match?(regex, line) end)
-            |> Enum.map(fn {line, num} -> "#{file}:#{num}: #{line}" end)
-
-          {:error, _} ->
-            []
-        end
-      end)
-      |> Enum.take(@max_search_results)
-      |> Enum.join("\n")
-    else
-      case File.read(path) do
-        {:ok, content} ->
-          content
-          |> String.split("\n")
-          |> Enum.with_index(1)
-          |> Enum.filter(fn {line, _num} -> Regex.match?(regex, line) end)
-          |> Enum.map(fn {line, num} -> "#{path}:#{num}: #{line}" end)
-          |> Enum.take(@max_search_results)
-          |> Enum.join("\n")
-
-        {:error, reason} ->
-          raise "cannot read #{path}: #{inspect(reason)}"
+    files =
+      if File.dir?(path) do
+        list_project_files(path)
+      else
+        [path]
       end
+
+    files
+    |> Enum.flat_map(&matches_in_file(&1, regex))
+    |> Enum.take(@max_search_results)
+  end
+
+  defp matches_in_file(file, regex) do
+    case File.read(file) do
+      {:ok, content} ->
+        content
+        |> String.split("\n")
+        |> Enum.with_index(1)
+        |> Enum.filter(fn {line, _num} -> Regex.match?(regex, line) end)
+        |> Enum.map(fn {line, num} -> %{path: file, line: num, text: line} end)
+
+      {:error, _} ->
+        []
     end
   end
 

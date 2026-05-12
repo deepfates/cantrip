@@ -140,6 +140,120 @@ defmodule Cantrip.FamiliarBehaviorTest do
   end
 
   # =====================================================================
+  # Level 4 — Filesystem-child: SpawnFn wires the sandbox root into a
+  # child constructed with a bare `read_file` gate
+  # =====================================================================
+  #
+  # Real-editor failure mode (Zed traces, scratch/familiar-run-001.md):
+  # Familiar spawned a child with `gates: ["read_file"]`; the child's
+  # read_file gate had no root, and the call ended in `File.read(nil)`
+  # crashing inside the gate with a function_clause that surfaced to the
+  # parent as `{:function_clause, ...}` text instead of an observation.
+  #
+  # The fix lives in SpawnFn (entity_server.maybe_call_child): bare gate
+  # names resolve through Gate.spec/1 with the parent's :root inherited.
+  # This level pins that production-readiness contract.
+  describe "L4 — Familiar child with bare read_file inherits the sandbox" do
+    test "child reads a file inside the parent's root and returns content" do
+      tmp_dir = Path.join(System.tmp_dir!(), "familiar_l4_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
+      File.write!(Path.join(tmp_dir, "notes.md"), "first line\nsecond line\n")
+
+      try do
+        parent_code = """
+        id = cantrip.(%{
+          identity: "Read notes.md and return the first line.",
+          circle: %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}
+        })
+        result = cast.(id, "Read notes.md")
+        dispose.(id)
+        done.(result)
+        """
+
+        child_code = """
+        content = read_file.(%{path: "notes.md"})
+        done.(content |> String.split("\\n") |> List.first())
+        """
+
+        parent_llm = {FakeLLM, FakeLLM.new([%{code: parent_code}])}
+        child_llm = {FakeLLM, FakeLLM.new([%{code: child_code}])}
+
+        {:ok, cantrip} = Familiar.new(llm: parent_llm, child_llm: child_llm, root: tmp_dir)
+        {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "delegate the read")
+
+        assert result == "first line"
+      after
+        File.rm_rf!(tmp_dir)
+      end
+    end
+  end
+
+  # =====================================================================
+  # Level 5 — Parallel fanout: cast_batch with multiple file-reading
+  # children returns an in-order list of results
+  # =====================================================================
+  #
+  # The pattern-15 ("research-style fanout") shape: Familiar spawns
+  # several specialist children, each reading a different file, and
+  # combines their results. COMP-3 requires results returned in request
+  # order; SpawnFn must hand each child its own sandbox-rooted gate.
+  describe "L5 — cast_batch fanout: multiple child readers, results in request order" do
+    test "two reader children return their respective file contents in order" do
+      tmp_dir = Path.join(System.tmp_dir!(), "familiar_l5_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
+      File.write!(Path.join(tmp_dir, "a.txt"), "alpha\n")
+      File.write!(Path.join(tmp_dir, "b.txt"), "bravo\n")
+
+      try do
+        parent_code = """
+        spec = %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}
+        ra = cantrip.(%{identity: "Read a.txt; return first line.", circle: spec})
+        rb = cantrip.(%{identity: "Read b.txt; return first line.", circle: spec})
+        [first, second] = cast_batch.([
+          %{cantrip: ra, intent: "Read a.txt"},
+          %{cantrip: rb, intent: "Read b.txt"}
+        ])
+        dispose.(ra)
+        dispose.(rb)
+        done.(first <> "+" <> second)
+        """
+
+        # Both children run the same script; their context differs (the
+        # intent string), but here we're pinning the contract for ordered
+        # results, not for context-following.
+        child_a_code = """
+        content = read_file.(%{path: "a.txt"})
+        done.(content |> String.trim())
+        """
+
+        child_b_code = """
+        content = read_file.(%{path: "b.txt"})
+        done.(content |> String.trim())
+        """
+
+        parent_llm = {FakeLLM, FakeLLM.new([%{code: parent_code}])}
+
+        # cast_batch spawns concurrent children. Use a shared FakeLLM so
+        # both children pull from the same scripted queue (each child
+        # asks for one response). With concurrency the order isn't
+        # guaranteed at the LLM-script level, so we use two separate
+        # scripts and rely on Familiar's child_llm being a single state.
+        # Switch to a sequential, FIFO-safe shape: a single scripted LLM
+        # that returns both children's responses in submission order.
+        child_llm =
+          {FakeLLM, FakeLLM.new([%{code: child_a_code}, %{code: child_b_code}], shared: true)}
+
+        {:ok, cantrip} = Familiar.new(llm: parent_llm, child_llm: child_llm, root: tmp_dir)
+        {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "fan out and combine")
+
+        assert result == "alpha+bravo"
+      after
+        File.rm_rf!(tmp_dir)
+      end
+    end
+  end
+
+  # =====================================================================
   # Level 6 — Error as steering: a child failing does not kill the parent
   # =====================================================================
   #
@@ -147,27 +261,34 @@ defmodule Cantrip.FamiliarBehaviorTest do
   # recovers. We pin that failures surface as observations the parent can
   # act on (CIRCLE-5 / COMP-8 in the spec).
   describe "L6 — child cantrip failure surfaces as parent observation" do
-    test "rescued cast() error becomes a normal observation, parent continues" do
+    # CIRCLE-5 / COMP-8: when a child fails, the failure surfaces on the
+    # parent's observation channel — the parent must be able to act on
+    # it rather than crash. This test pins the SPEC behavior under the
+    # production posture (Dune sandbox): the failure shows up as an
+    # `is_error: true` observation in the parent's loom, and the parent
+    # continues to the next turn (rather than the loop dying).
+    #
+    # Note: in the unrestricted code medium, the same SPEC behavior is
+    # also expressible via user-code `try/rescue` — but that's an
+    # implementation convenience, not a SPEC requirement. Observations
+    # are the canonical channel.
+    test "child cantrip failure shows up as an error observation; parent continues" do
       parent =
         {FakeLLM,
          FakeLLM.new([
+           # Turn 1: the parent tries to cast on a broken child.
            %{
              code: """
              id = cantrip.(%{
                identity: "broken helper",
                circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 1}]}
              })
-             outcome =
-               try do
-                 cast.(id, "do impossible thing")
-                 :unexpected_success
-               rescue
-                 e -> "child failed: \#{Exception.message(e)}"
-               end
+             cast.(id, "do impossible thing")
              dispose.(id)
-             done.(outcome)
              """
-           }
+           },
+           # Turn 2: parent observed the failure on turn 1 and finishes.
+           %{code: ~s|done.("recovered from child failure")|}
          ])}
 
       # Child returns nothing useful — both content and tool_calls nil →
@@ -179,10 +300,20 @@ defmodule Cantrip.FamiliarBehaviorTest do
          ])}
 
       {:ok, cantrip} = Familiar.new(llm: parent, child_llm: child)
-      {:ok, result, _, _loom, _meta} = Cantrip.cast(cantrip, "delegate to broken child")
+      {:ok, result, _c, loom, _meta} = Cantrip.cast(cantrip, "delegate to broken child")
 
-      assert is_binary(result)
-      assert result =~ "child failed"
+      # Parent recovered and terminated cleanly.
+      assert result == "recovered from child failure"
+
+      # The cast failure landed on the loom as a visible error
+      # observation the parent could act on.
+      cast_observations =
+        loom.turns
+        |> Enum.flat_map(& &1.observation)
+        |> Enum.filter(&(&1.gate in ["call_entity", "cast", "code"]))
+
+      assert Enum.any?(cast_observations, & &1.is_error),
+             "expected a failure observation on the parent's loom (CIRCLE-5 / COMP-8)"
     end
   end
 
@@ -266,18 +397,195 @@ defmodule Cantrip.FamiliarBehaviorTest do
   end
 
   # =====================================================================
+  # Level 9 — Cross-session recall via persisted loom (Pattern 16)
+  # =====================================================================
+  #
+  # Pattern 16's defining promise: a Familiar summoned today, killed,
+  # and re-summoned tomorrow against the same loom_path resumes with
+  # its prior turns visible. The bibliography frames the loom as
+  # "the canonical record — debugging trace, training data, replay
+  # buffer." For that to hold, the JSONL must persist substance, and
+  # the next Loom.new must rehydrate from it.
+  #
+  # Previously this only worked accidentally because turns were empty
+  # (the pre-MEDIUM-3 done-throw lost bindings). Once turns carry real
+  # substance, encoding failures silently dropped them. This level
+  # pins the fix.
+  describe "L9 — cross-session loom recall" do
+    test "a Familiar re-summoned against the same loom_path sees its prior turn" do
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "familiar_l9_#{System.unique_integer([:positive])}")
+
+      loom_path = Path.join(tmp_dir, "familiar.jsonl")
+      File.mkdir_p!(tmp_dir)
+
+      try do
+        # Session 1: do work, terminate cleanly.
+        llm_1 = {FakeLLM, FakeLLM.new([%{code: ~s|done.("first-session-answer")|}])}
+        {:ok, c1} = Familiar.new(llm: llm_1, loom_path: loom_path, root: tmp_dir)
+        {:ok, result1, _c1_next, loom1, _meta1} = Cantrip.cast(c1, "first")
+
+        assert result1 == "first-session-answer"
+        # Session 1's loom captured the substantive turn (not just a
+        # continuation marker).
+        substantive_turns =
+          Enum.filter(loom1.turns, fn t ->
+            metadata = Map.get(t, :metadata) || %{}
+            not (Map.get(metadata, :continuation) == true)
+          end)
+
+        assert substantive_turns != []
+
+        # Session 2: a fresh Familiar pointed at the same loom_path
+        # rehydrates the prior turn before doing anything new.
+        llm_2 = {FakeLLM, FakeLLM.new([%{code: ~s|done.(:resumed)|}])}
+        {:ok, c2} = Familiar.new(llm: llm_2, loom_path: loom_path, root: tmp_dir)
+
+        # The cantrip starts with an empty in-memory loom; the
+        # rehydrated turns live in the storage. They become visible to
+        # the entity at runtime via the loom argument passed into the
+        # eval (`loom.turns`). For the unit-test contract, we read
+        # them directly from the JSONL via the same Loom mechanism.
+        loom_2_fresh =
+          Cantrip.Loom.new(c2.identity, storage: {:jsonl, loom_path})
+
+        prior_substance =
+          Enum.filter(loom_2_fresh.turns, fn t ->
+            metadata = Map.get(t, :metadata) || %{}
+
+            cont =
+              Map.get(metadata, :continuation) || Map.get(metadata, "continuation")
+
+            not (cont == true)
+          end)
+
+        assert prior_substance != [], "expected at least one prior substantive turn"
+        prior = hd(prior_substance)
+        # Real substance present, not just metadata.
+        assert Map.get(prior, :gate_calls) == ["done"]
+        observation = Map.get(prior, :observation)
+        assert is_list(observation) and observation != []
+        [done_obs | _] = observation
+        assert Map.get(done_obs, :gate) == "done"
+        assert Map.get(done_obs, :result) == "first-session-answer"
+      after
+        File.rm_rf!(tmp_dir)
+      end
+    end
+  end
+
+  # =====================================================================
   # Regression pins for the four Zed-trace bugs
   # =====================================================================
   #
   # These are not levels — they're named anchors so future regressions on
   # the same bugs fail with a meaningful name.
+  # =====================================================================
+  # Regression: the loom is reachable as a binding (LOOM-11)
+  # =====================================================================
+  #
+  # Real-Zed-trace failure mode (May 2026): user asked "welcome back. do
+  # you see your loom" and the Familiar (under the previous default of
+  # `sandbox: :dune`) tried to probe with `binding/0`, `try/1`, and
+  # `Code.ensure_loaded?/1` — all Dune-restricted — and never got to
+  # just reference `loom`. The fix has two parts:
+  #
+  #   1. The default Familiar uses unrestricted code medium, so
+  #      `binding/0` / `try/1` work natively.
+  #   2. The `:loom` binding is present in the eval scope in both code
+  #      mediums (LOOM-11), so the entity can reference it directly.
+  #
+  # This regression test pins (2) at the substrate layer: a script that
+  # writes `done.(loom.turns)` actually gets back the turns rather than
+  # `:undefined` or a compile error.
+  # =====================================================================
+  # Regression: Mnesia loom actually persists across summons
+  # =====================================================================
+  #
+  # Real-Zed-trace failure: a fresh session against the same `cwd`
+  # reported `turn_count: 0` and `storage_module: Cantrip.Loom.Storage.Memory`
+  # — Mnesia hadn't been listed in `extra_applications`, so the
+  # backend's availability check returned false, init returned an
+  # error, and `Loom.new` silently fell back to in-memory. The
+  # "Mnesia loom is the production default" claim was hollow.
+  #
+  # This test pins the end-to-end behavior: a Familiar with `root` set
+  # writes via Mnesia (not Memory), and a second Familiar against the
+  # SAME root sees the prior turn rehydrated.
+  describe "regression: Mnesia loom persists across summons (cross-session)" do
+    test "session 2 against the same root rehydrates session 1's turn" do
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s|done.("first session")|},
+           %{code: ~s|done.("second session - turns I see: " <> Integer.to_string(length(loom.turns)))|}
+         ])}
+
+      root = Path.join(System.tmp_dir!(), "fam_mnesia_e2e_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(root)
+
+      try do
+        # Session 1: cast and write a turn.
+        {:ok, c1} = Familiar.new(llm: llm, root: root)
+        assert match?({:mnesia, _}, c1.loom_storage)
+
+        {:ok, _r1, _next, loom1, _meta} = Cantrip.cast(c1, "session 1")
+
+        assert loom1.storage_module == Cantrip.Loom.Storage.Mnesia,
+               "session 1 must actually use Mnesia, not silently fall back to Memory"
+
+        assert length(loom1.turns) == 1
+
+        # Session 2: fresh Familiar, SAME root. Rehydration should see
+        # session 1's turn. (FakeLLM has a second scripted response.)
+        {:ok, c2} = Familiar.new(llm: llm, root: root)
+
+        {:ok, pid} = Cantrip.summon(c2)
+        state = :sys.get_state(pid)
+
+        assert state.loom.storage_module == Cantrip.Loom.Storage.Mnesia
+        assert length(state.loom.turns) >= 1,
+               "session 2 must see session 1's turn(s) rehydrated from Mnesia"
+
+        Process.exit(pid, :normal)
+      after
+        File.rm_rf!(root)
+      end
+    end
+  end
+
+  describe "regression: loom is reachable as a binding (LOOM-11)" do
+    test "default Familiar's code medium exposes `loom` and `loom.turns` to the entity" do
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s|done.(length(loom.turns))|}
+         ])}
+
+      {:ok, cantrip} = Familiar.new(llm: llm)
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "count my turns")
+
+      # The script ran, `loom` was in scope, `loom.turns` returned a
+      # list, `length/1` worked on it. Concrete count doesn't matter —
+      # what matters is the eval succeeded without "undefined variable
+      # loom" or a sandbox restriction error.
+      assert is_integer(result)
+    end
+  end
+
   describe "regression: list_dir return shape" do
-    test "list_dir returns a list, not a newline-joined string" do
+    # SPEC §1.7 example: list_dir's result is plain strings — `["a.txt", "b.txt", ...]`.
+    # The prior implementation appended " (file)" / " (dir)" annotations to each
+    # entry, which made every `Enum.member?(entries, "mix.exs")` and every
+    # `String.ends_with?(&1, ".md")` check fail. That broke composition for
+    # any entity trying to do the obvious thing.
+    test "list_dir returns plain bare names per SPEC §1.7" do
       tmp_dir =
         Path.join(System.tmp_dir!(), "familiar_reg_ld_#{System.unique_integer([:positive])}")
 
       File.mkdir_p!(tmp_dir)
-      File.write!(Path.join(tmp_dir, "x"), "")
+      File.write!(Path.join(tmp_dir, "x.txt"), "")
+      File.mkdir_p!(Path.join(tmp_dir, "subdir"))
 
       circle =
         Cantrip.Circle.new(%{
@@ -291,9 +599,14 @@ defmodule Cantrip.FamiliarBehaviorTest do
       assert is_list(obs.result),
              "list_dir.result must be a list — agents Enum over it directly"
 
-      # main's list_dir tags each entry with "(file)" or "(dir)"; just check
-      # the entry is present in some form.
-      assert Enum.any?(obs.result, &(&1 =~ "x"))
+      # Bare names. No annotation. Composable.
+      assert "x.txt" in obs.result
+      assert "subdir" in obs.result
+      assert Enum.all?(obs.result, &is_binary/1)
+
+      # And specifically: NO display annotation leaked into the data path.
+      refute Enum.any?(obs.result, &String.contains?(&1, "(file)"))
+      refute Enum.any?(obs.result, &String.contains?(&1, "(dir)"))
     end
   end
 

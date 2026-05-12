@@ -3,7 +3,7 @@ defmodule CantripM3LoomStorageTest do
 
   alias Cantrip.FakeLLM
 
-  test "loom writes generic events to jsonl storage" do
+  test "loom writes generic events to jsonl storage and rehydrates them faithfully" do
     path = tmp_jsonl_path()
     File.rm(path)
 
@@ -14,17 +14,31 @@ defmodule CantripM3LoomStorageTest do
 
     assert [%{type: :runtime_note}] = loom.events
 
+    # On-disk shape: atoms are tagged (`__a__`) so they round-trip via
+    # `String.to_existing_atom` rather than being silently coerced to
+    # strings. The outer envelope's "type" stays as a plain string
+    # because `storage_event/1` writes it as a string explicitly.
     entries = read_jsonl(path)
 
     assert [
              %{
                "type" => "event",
                "event" => %{
-                 "type" => "runtime_note",
+                 "type" => %{"__a__" => "runtime_note"},
                  "message" => "stored"
                }
              }
            ] = entries
+
+    # Production path: reloading via `Loom.new` against the same path
+    # restores the atom faithfully (since `:runtime_note` is in the
+    # atom table from the write side).
+    loom_reloaded = Cantrip.Loom.new(%{system_prompt: nil}, storage: {:jsonl, path})
+
+    assert Enum.any?(loom_reloaded.events, fn ev ->
+             inner = Map.get(ev, "event") || Map.get(ev, :event)
+             inner && Map.get(inner, "type") == :runtime_note
+           end)
   end
 
   test "loom writes turn events to jsonl storage during cast" do

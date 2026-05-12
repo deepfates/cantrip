@@ -28,15 +28,18 @@ defmodule Cantrip.ACP.Runtime.Familiar do
           max_turns: Map.get(params, "max_turns", 20)
         ]
 
+        # When Zed reports a project cwd, hand it to the Familiar as its
+        # sandbox root. `Cantrip.Familiar.new/1` weaves the cwd into its
+        # own system prompt as a single non-imperative line ("You are
+        # attached to the codebase at: …"). Earlier versions appended a
+        # `Start by listing the directory to orient yourself` line here,
+        # which the LLM treated as a per-turn imperative and reduced every
+        # response to `list_dir + dump` — the appendix poisoned the
+        # carefully-tuned paradigm prompt by being the last instruction
+        # in context. Removed.
         familiar_opts =
           if is_binary(cwd) do
-            familiar_opts
-            |> Keyword.put(:root, cwd)
-            |> Keyword.put(
-              :system_prompt,
-              Cantrip.Familiar.default_system_prompt() <>
-                "\n\n## Working directory\n\nYou are observing: #{cwd}\nAll file paths should be relative to or within this directory.\nStart by listing the directory to orient yourself.\n"
-            )
+            Keyword.put(familiar_opts, :root, cwd)
           else
             familiar_opts
           end

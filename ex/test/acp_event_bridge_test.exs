@@ -226,11 +226,19 @@ defmodule Cantrip.ACP.EventBridgeTest do
       assert "hello" = EventBridge.stringify("hello")
     end
 
-    test "maps, lists, atoms, ints — anything that wouldn't have a String.Chars impl — get inspected" do
-      assert "%{a: 1}" = EventBridge.stringify(%{a: 1})
-      assert "[1, 2, 3]" = EventBridge.stringify([1, 2, 3])
-      assert ":atom" = EventBridge.stringify(:atom)
+    test "atoms and numbers stringify; maps and lists render as readable text" do
+      # Atoms/numbers: simple to_string.
+      assert "atom" = EventBridge.stringify(:atom)
       assert "42" = EventBridge.stringify(42)
+
+      # Maps render as readable "key: value" lines (sorted), not inspect-form.
+      # The bridge feeds the user — not the entity's introspection layer — so
+      # %{a: 1, b: 2} should arrive as prose.
+      assert "a: 1\nb: 2" = EventBridge.stringify(%{a: 1, b: 2})
+
+      # All-binary lists join with newline; all-scalar lists join with commas.
+      assert "1, 2, 3" = EventBridge.stringify([1, 2, 3])
+      assert "a\nb" = EventBridge.stringify(["a", "b"])
     end
 
     test "translate/1 of :final_response with a map result does not raise" do

@@ -29,3 +29,4 @@ deps/
 *.swp
 *~
 erl_crash.dump
+scratch/

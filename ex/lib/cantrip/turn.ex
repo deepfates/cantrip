@@ -17,15 +17,21 @@ defmodule Cantrip.Turn do
 
   @spec prepare_request(map()) :: map()
   def prepare_request(state) do
-    messages = fold_messages(state.messages, state.turns, state.cantrip)
+    %{messages: messages, summary: folded_summary} =
+      fold_messages(state.messages, state.turns, state.cantrip)
+
     presentation = MediumRegistry.present(state.cantrip.circle)
 
-    %{
+    base = %{
       messages: messages,
       tools: presentation.tools,
       tool_choice: presentation.tool_choice || state.cantrip.identity.tool_choice
     }
-    |> maybe_put_event_emitter(state)
+
+    base =
+      if folded_summary, do: Map.put(base, :folded_summary, folded_summary), else: base
+
+    maybe_put_event_emitter(base, state)
   end
 
   @spec classify_response(Cantrip.Circle.t(), map()) :: map()
@@ -423,41 +429,28 @@ defmodule Cantrip.Turn do
 
   defp extract_code_from_tool_call([], _gate, _key), do: nil
 
+  # PROD-4 + §6.8: real folding lives in `Cantrip.Folding`. We trigger on
+  # approximate prompt size against the cantrip's threshold; the legacy
+  # `trigger_after_turns` config still works for tests that pin the
+  # turn-count behavior, and either trigger can fire independently.
+  # Returns `%{messages: [...], summary: text | nil}` — summary is non-nil
+  # only when folding fired this turn, so it can be threaded into the
+  # entity's sandbox as a binding (§6.8).
   defp fold_messages(messages, turns, cantrip) do
-    trigger = Map.get(cantrip.folding, :trigger_after_turns)
+    cond do
+      Cantrip.Folding.should_fold?(messages, cantrip) ->
+        Cantrip.Folding.fold(messages, turns, cantrip)
 
-    if is_integer(trigger) and trigger > 0 and turns >= trigger do
-      do_fold_messages(messages, turns)
-    else
-      messages
+      turn_count_trigger?(cantrip, turns) ->
+        Cantrip.Folding.fold(messages, turns, cantrip)
+
+      true ->
+        %{messages: messages, summary: nil}
     end
   end
 
-  defp do_fold_messages(messages, turns) do
-    {system, rest} =
-      case messages do
-        [%{role: :system} = sys | tail] -> {[sys], tail}
-        _ -> {[], messages}
-      end
-
-    base =
-      case rest do
-        [first_user | tail] -> {[first_user], tail}
-        _ -> {[], rest}
-      end
-
-    {head, tail} = base
-    keep_count = 4
-    folded_count = max(length(tail) - keep_count, 0)
-    folded_end = max(turns - keep_count, 1)
-
-    summary = %{
-      role: :system,
-      content:
-        "[Folded: turns 1-#{folded_end}] #{folded_count} turns summarized; see loom for full history"
-    }
-
-    keep_tail = Enum.take(tail, -keep_count)
-    system ++ head ++ [summary] ++ keep_tail
+  defp turn_count_trigger?(cantrip, turns) do
+    trigger = Map.get(cantrip.folding || %{}, :trigger_after_turns)
+    is_integer(trigger) and trigger > 0 and turns >= trigger
   end
 end

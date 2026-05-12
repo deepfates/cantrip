@@ -10,6 +10,36 @@ defmodule Cantrip.Loom do
   Later evolution work can project richer views from this event log, but this
   module intentionally stays generic: append events, append turns, graft child
   subtrees, and extract threads.
+
+  ## Persistence and rehydration
+
+  When a storage backend implements the optional `load/1` callback, `new/2`
+  rehydrates the in-memory `events` and `turns` lists from durable state.
+  That is what makes pattern 16 ("Persistent Loom + Filesystem Children")
+  work: a Familiar summoned a second time against the same `loom_path`
+  resumes with its prior turns accessible via `loom.turns`.
+
+  The on-disk projection round-trips Elixir-native terms faithfully:
+  tuples and atoms are tagged on write (`%{"__t__" => [...]}`,
+  `%{"__a__" => "name"}`) and restored on load. Atom restoration is
+  bounded to atoms that already exist in the runtime VM — unknown atom
+  names stay as strings rather than risk atom-table pollution.
+
+  The only unrestorable values are functions, PIDs, refs, and ports —
+  these survive as opaque `%{"__inspect__" => "<...>"}` placeholders so
+  they remain visible in the on-disk record without pretending to
+  reconstitute live process state.
+
+  One narrow shape doesn't round-trip cross-session: atom-keyed maps
+  *inside user values* (e.g., a `done.(%{token: "mango"})` answer where
+  the map keys are atoms rather than strings). Those keys come back as
+  strings on a fresh session — an entity reading them via `loom.turns`
+  uses `m["token"]` instead of `m.token`. Atom keys at *structural*
+  positions (turn fields, observation fields, keyword-list binding
+  entries) do round-trip; the limit is specifically for arbitrary
+  user-provided maps. The trade-off was deliberate: full atom-key
+  tagging would invasively change the on-disk format for every map,
+  and the workaround is bounded.
   """
 
   alias Cantrip.Loom.Storage.Memory
@@ -17,19 +47,25 @@ defmodule Cantrip.Loom do
   defstruct identity: nil, events: [], turns: [], storage_module: Memory, storage_state: %{}
 
   def new(identity, opts \\ []) do
-    {storage_module, storage_opts} = normalize_storage(Keyword.get(opts, :storage))
+    requested_storage = Keyword.get(opts, :storage)
+    {storage_module, storage_opts} = normalize_storage(requested_storage)
 
     case storage_module.init(storage_opts) do
       {:ok, storage_state} ->
+        {events, turns} = rehydrate(storage_module, storage_state)
+
         %__MODULE__{
           identity: identity,
-          events: [],
-          turns: [],
+          events: events,
+          turns: turns,
           storage_module: storage_module,
           storage_state: storage_state
         }
 
-      {:error, _reason} ->
+      {:error, _reason} when is_nil(requested_storage) ->
+        # No backend was requested — fall back to in-memory quietly.
+        # This is the development / test path where the caller is
+        # implicitly OK with ephemeral state.
         %__MODULE__{
           identity: identity,
           events: [],
@@ -37,6 +73,48 @@ defmodule Cantrip.Loom do
           storage_module: Memory,
           storage_state: %{}
         }
+
+      {:error, reason} ->
+        # A backend WAS explicitly requested and its init failed.
+        # Silently downgrading to Memory hides the failure (and that's
+        # how the "Mnesia is the default backend" claim went hollow
+        # the first time — the production loom was silently in-memory).
+        # Loud failure surfaces the real problem.
+        raise """
+        Loom storage backend init failed.
+
+          requested:  #{inspect(requested_storage)}
+          backend:    #{inspect(storage_module)}
+          reason:     #{inspect(reason)}
+
+        Common causes:
+          * `:mnesia` not listed in `extra_applications` in mix.exs
+          * The storage backend's prerequisites aren't met (e.g.
+            disk path is unwritable, Mnesia schema not created on
+            this node)
+
+        If you want to allow falling back to in-memory loom, do not
+        pass `:loom_storage` (or pass `nil`) when constructing the
+        cantrip. An explicit backend request that fails should not
+        silently degrade.
+        """
+    end
+  end
+
+  # If the storage backend implements `load/1` (optional callback), use
+  # it to rehydrate prior events and turns from durable state. This is
+  # what makes pattern 16's "summon, work, kill, resume" promise hold:
+  # without it, the JSONL is write-only and a second summon starts blind.
+  defp rehydrate(module, state) do
+    cond do
+      function_exported?(module, :load, 1) ->
+        case module.load(state) do
+          {:ok, %{events: events, turns: turns}} -> {events, turns}
+          _ -> {[], []}
+        end
+
+      true ->
+        {[], []}
     end
   end
 

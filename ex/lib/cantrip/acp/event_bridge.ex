@@ -149,7 +149,35 @@ defmodule Cantrip.ACP.EventBridge do
   (no agent_message_chunk, flush timeout, hung prompt response).
   """
   def stringify(value) when is_binary(value), do: value
+  def stringify(value) when is_atom(value), do: to_string(value)
+  def stringify(value) when is_number(value), do: to_string(value)
+  def stringify(value) when is_list(value), do: stringify_list(value)
+  def stringify(value) when is_map(value) and not is_struct(value), do: stringify_map(value)
   def stringify(value), do: inspect(value)
+
+  # Render maps and lists as readable text rather than raw Elixir term
+  # syntax. The bridge feeds the user — not the entity's introspection
+  # layer — so `%{a: 1, b: 2}` and `[1, 2, 3]` should arrive as prose,
+  # not as inspect-form glyphs the user has to mentally parse.
+  defp stringify_map(map) do
+    map
+    |> Enum.sort_by(fn {k, _v} -> stringify(k) end)
+    |> Enum.map(fn {k, v} -> "#{stringify(k)}: #{stringify(v)}" end)
+    |> Enum.join("\n")
+  end
+
+  defp stringify_list(list) do
+    cond do
+      Enum.all?(list, &is_binary/1) ->
+        Enum.join(list, "\n")
+
+      Enum.all?(list, fn item -> is_binary(item) or is_atom(item) or is_number(item) end) ->
+        list |> Enum.map(&stringify/1) |> Enum.join(", ")
+
+      true ->
+        list |> Enum.map(&stringify/1) |> Enum.join("\n")
+    end
+  end
 
   defp loop(notify_fn, session_id, answered?, monitor_ref) do
     receive do

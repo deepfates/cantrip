@@ -21,7 +21,13 @@ defmodule Cantrip.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger],
+      # `:mnesia` is the default loom backend for workspace-scoped
+      # Familiars (Cantrip.Familiar.new/1 with `:root`). Without
+      # listing it here, the application doesn't load `:mnesia`, the
+      # Mnesia backend's availability check returns false, and the
+      # loom silently downgrades to in-memory — which means the
+      # "production-grade persistent loom" claim becomes hollow.
+      extra_applications: [:logger, :mnesia],
       mod: {Cantrip.Application, []}
     ]
   end
@@ -40,6 +46,7 @@ defmodule Cantrip.MixProject do
       {:owl, "~> 0.13"},
       {:yaml_elixir, "~> 2.11", only: :test},
       {:mox, "~> 1.2", only: :test},
+      {:stream_data, "~> 1.1", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end

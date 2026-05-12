@@ -165,54 +165,15 @@ defmodule Cantrip.Medium.Code do
 
   defp emit_eval_stop(_runtime, _started_at), do: :ok
 
-  defp format_gate_description(name, %{description: desc}) when is_binary(desc),
-    do: "- #{name}.(#{gate_args_hint(name)}) - #{desc}"
-
-  defp format_gate_description(name, %{"description" => desc}) when is_binary(desc),
-    do: "- #{name}.(#{gate_args_hint(name)}) - #{desc}"
-
-  defp format_gate_description("done", _gate),
-    do: "- done.(answer) - complete the task and return the answer"
-
-  defp format_gate_description("echo", _gate),
-    do: "- echo.(opts) - echo text back"
-
-  defp format_gate_description("call_entity", _gate),
-    do: "- call_entity.(opts) - delegate to a child entity; opts must include :intent"
-
-  defp format_gate_description("call_entity_batch", _gate),
-    do: "- call_entity_batch.(list) - delegate to multiple child entities in parallel"
-
-  defp format_gate_description("compile_and_load", _gate),
-    do: "- compile_and_load.(opts) - compile and load an Elixir module"
-
-  defp format_gate_description("read", _gate),
-    do: "- read.(path) - read a file; path is relative to the working directory"
-
-  defp format_gate_description("read_file", _gate),
-    do: "- read_file.(path) - read a file; path is relative to the working directory"
-
-  defp format_gate_description("list_dir", _gate),
-    do: "- list_dir.(path) - list directory contents; path is relative to the working directory"
-
-  defp format_gate_description("search", _gate),
-    do: "- search.(opts) - search file contents; opts must include :pattern and :path"
-
-  defp format_gate_description("cantrip", _gate),
-    do: "- cantrip.(config) - construct a child cantrip; config includes :identity, :circle"
-
-  defp format_gate_description("cast", _gate),
-    do: "- cast.(cantrip_id, intent) - send an intent to a constructed child cantrip"
-
-  defp format_gate_description("cast_batch", _gate),
-    do:
-      "- cast_batch.(items) - execute multiple child cantrips in parallel; items are [%{cantrip: id, intent: text}]"
-
-  defp format_gate_description("dispose", _gate),
-    do: "- dispose.(cantrip_id) - clean up a child cantrip's resources"
-
-  defp format_gate_description(name, _gate),
-    do: "- #{name}.(opts) - invoke the #{name} gate"
+  # Capability lines come from `Cantrip.Gate.spec/1` (the single source of
+  # truth for built-in metadata). A user-supplied `:description` on the gate
+  # overrides the canonical text — the args hint stays per-name to keep the
+  # signature readable in the prompt.
+  defp format_gate_description(name, gate) do
+    custom = Map.get(gate, :description) || Map.get(gate, "description")
+    desc = custom || Cantrip.Gate.spec(name).description
+    "- #{name}.(#{gate_args_hint(name)}) - #{desc}"
+  end
 
   defp gate_args_hint("done"), do: "answer"
   defp gate_args_hint("cast"), do: "cantrip_id, intent"

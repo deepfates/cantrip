@@ -57,6 +57,47 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     end
   end
 
+  # Same shape as the DETS backend's load: Mnesia preserves native
+  # Erlang terms so no tagging or atomize is needed.
+  @impl true
+  def load(%{table: table}) do
+    case read_events(table) do
+      {:ok, events} ->
+        {evts, trns} = classify_native(events)
+        {:ok, %{events: evts, turns: trns}}
+
+      {:error, _reason} = err ->
+        err
+    end
+  end
+
+  defp classify_native(events) do
+    {evts, trns} =
+      Enum.reduce(events, {[], []}, fn event, {evts_acc, trns_acc} ->
+        type = Map.get(event, :type) || Map.get(event, "type")
+
+        cond do
+          type in [:turn, "turn"] ->
+            turn = Map.get(event, :turn) || Map.get(event, "turn")
+            {[%{type: :turn, turn: turn} | evts_acc], [turn | trns_acc]}
+
+          type in [:reward, "reward"] ->
+            reward_event = %{
+              type: :reward,
+              index: Map.get(event, :index) || Map.get(event, "index"),
+              reward: Map.get(event, :reward) || Map.get(event, "reward")
+            }
+
+            {[reward_event | evts_acc], trns_acc}
+
+          true ->
+            {[event | evts_acc], trns_acc}
+        end
+      end)
+
+    {Enum.reverse(evts), Enum.reverse(trns)}
+  end
+
   def read_events(table) when is_atom(table) do
     case call(:transaction, [fn -> call(:match_object, [{table, :_, :_}]) end]) do
       {:atomic, rows} ->
@@ -102,10 +143,25 @@ defmodule Cantrip.Loom.Storage.Mnesia do
   end
 
   defp ensure_table(table) do
-    case call(:create_table, [
-           table,
-           [attributes: [:key, :value], type: :ordered_set, disc_copies: [node()]]
-         ]) do
+    # Disc copies require a named node. On `:nonode@nohost` (unnamed
+    # BEAM, e.g. tests, REPL without distributed Erlang) Mnesia
+    # rejects `disc_copies` with `:bad_type`. Fall back to in-memory
+    # `ram_copies` there; production deployments that need persistence
+    # are expected to run on a named node (--sname/--name), in which
+    # case `disc_copies` fires and the table is on disk.
+    copies_key =
+      case node() do
+        :nonode@nohost -> :ram_copies
+        _ -> :disc_copies
+      end
+
+    create_opts = [
+      {:attributes, [:key, :value]},
+      {:type, :ordered_set},
+      {copies_key, [node()]}
+    ]
+
+    case call(:create_table, [table, create_opts]) do
       {:atomic, :ok} ->
         wait_for_table(table)
 
