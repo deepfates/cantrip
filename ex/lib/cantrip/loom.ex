@@ -44,7 +44,21 @@ defmodule Cantrip.Loom do
 
   alias Cantrip.Loom.Storage.Memory
 
-  defstruct identity: nil, events: [], turns: [], storage_module: Memory, storage_state: %{}
+  defstruct identity: nil,
+            events: [],
+            intents: [],
+            turns: [],
+            storage_module: Memory,
+            storage_state: %{}
+
+  @type t :: %__MODULE__{
+          identity: term(),
+          events: [map()],
+          intents: [map()],
+          turns: [map()],
+          storage_module: module(),
+          storage_state: term()
+        }
 
   def new(identity, opts \\ []) do
     requested_storage = Keyword.get(opts, :storage)
@@ -52,11 +66,12 @@ defmodule Cantrip.Loom do
 
     case storage_module.init(storage_opts) do
       {:ok, storage_state} ->
-        {events, turns} = rehydrate(storage_module, storage_state)
+        {events, turns, intents} = rehydrate(storage_module, storage_state)
 
         %__MODULE__{
           identity: identity,
           events: events,
+          intents: intents,
           turns: turns,
           storage_module: storage_module,
           storage_state: storage_state
@@ -69,6 +84,7 @@ defmodule Cantrip.Loom do
         %__MODULE__{
           identity: identity,
           events: [],
+          intents: [],
           turns: [],
           storage_module: Memory,
           storage_state: %{}
@@ -105,18 +121,37 @@ defmodule Cantrip.Loom do
   # it to rehydrate prior events and turns from durable state. This is
   # what makes pattern 16's "summon, work, kill, resume" promise hold:
   # without it, the JSONL is write-only and a second summon starts blind.
+  #
+  # `intents` is projected from `events` (its source of truth) so the
+  # storage `load/1` contract stays unchanged — adapters only need to
+  # know about events and turns. New event kinds (intents, future
+  # additions) get derived field-projections here without touching the
+  # adapter layer.
   defp rehydrate(module, state) do
     cond do
       function_exported?(module, :load, 1) ->
         case module.load(state) do
-          {:ok, %{events: events, turns: turns}} -> {events, turns}
-          _ -> {[], []}
+          {:ok, %{events: events, turns: turns}} ->
+            {events, turns, project_intents(events)}
+
+          _ ->
+            {[], [], []}
         end
 
       true ->
-        {[], []}
+        {[], [], []}
     end
   end
+
+  defp project_intents(events) when is_list(events) do
+    Enum.flat_map(events, fn
+      %{type: :intent, intent: i} -> [i]
+      %{type: "intent", intent: i} -> [i]
+      _ -> []
+    end)
+  end
+
+  defp project_intents(_), do: []
 
   def append_event(%__MODULE__{events: events, storage_module: module} = loom, attrs) do
     event =
@@ -166,6 +201,79 @@ defmodule Cantrip.Loom do
     loom
     |> Map.put(:turns, turns ++ [turn])
     |> append_event(%{type: :turn, turn: turn})
+  end
+
+  @doc """
+  Append a user/parent intent — the human's contribution to the
+  conversation, the input that drives a cast/send episode.
+
+  Recorded as an event with `type: :intent` (durable, round-trips
+  through storage with the rest of the event log) and cached as a
+  projection in `loom.intents` for ergonomic access.
+
+  The shape mirrors the relevant subset of a turn — `:role`,
+  `:utterance`, `:sequence`, `:metadata` — so callers iterating a
+  `transcript/1` can pattern-match on `:role` without minding which
+  field the record came from. Doesn't touch `loom.turns`, so LOOP-1
+  (entity-side alternation) is unaffected.
+
+  ## Options
+
+    * `:cantrip_id`, `:entity_id` — caller threads through what it
+      knows about which entity received the intent.
+  """
+  @spec append_intent(t(), String.t(), keyword()) :: t()
+  def append_intent(%__MODULE__{intents: intents} = loom, text, opts \\ [])
+      when is_binary(text) and is_list(opts) do
+    intent = %{
+      role: "intent",
+      utterance: %{content: text},
+      sequence: length(intents) + 1,
+      cantrip_id: Keyword.get(opts, :cantrip_id),
+      entity_id: Keyword.get(opts, :entity_id),
+      metadata: %{timestamp: DateTime.utc_now()}
+    }
+
+    loom
+    |> Map.put(:intents, intents ++ [intent])
+    |> append_event(%{type: :intent, intent: intent})
+  end
+
+  @doc """
+  Interleaved view of the conversation: intents and entity turns
+  ordered chronologically by the event log they share.
+
+  Returns the records as-is (intents have `role: "intent"`, entity
+  turns have `role: "turn"`). Callers pattern-match on `:role` to
+  render or process each kind. The shared `:role` discriminator makes
+  this a uniform `Enum`able shape:
+
+      loom
+      |> Cantrip.Loom.transcript()
+      |> Enum.map(fn
+        %{role: "intent", utterance: %{content: text}} -> "you: " <> text
+        %{role: "turn", utterance: %{content: c}} -> "me: " <> (c || "")
+      end)
+
+  Computed on demand — not cached — because it's a merge view rather
+  than a primary record (cf. `extract_thread/2`, same pattern).
+  """
+  @spec transcript(t()) :: [map()]
+  def transcript(%__MODULE__{events: events}) do
+    # `loom.events` is the source of truth for chronological order: it's
+    # appended in order in-memory, and the storage adapters preserve
+    # insertion order on rehydration. We deliberately do NOT sort by
+    # `event.sequence` here, because the typed-payload shape that
+    # adapters persist (`%{type: "turn", turn: ...}` etc.) doesn't
+    # round-trip the wrapper's `:sequence` field — a sort would collapse
+    # all rehydrated events to sequence 0 and only happen to be correct
+    # by stable-sort accident. Iterating directly is both cheaper and
+    # robust to future storage backends that don't preserve sequence.
+    Enum.flat_map(events, fn
+      %{type: t, intent: i} when t in [:intent, "intent"] -> [i]
+      %{type: t, turn: turn} when t in [:turn, "turn"] -> [Map.put_new(turn, :role, "turn")]
+      _ -> []
+    end)
   end
 
   def append_executed_turn(%__MODULE__{} = loom, turn_attrs, observations, opts \\ []) do

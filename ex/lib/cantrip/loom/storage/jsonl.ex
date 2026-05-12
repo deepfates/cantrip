@@ -80,6 +80,16 @@ defmodule Cantrip.Loom.Storage.Jsonl do
     {[%{type: :turn, turn: turn} | events], [turn | turns]}
   end
 
+  defp classify_loaded(%{"type" => "intent", "intent" => raw_intent}, events, turns) do
+    # Intents share the same atomization shape as turns at the well-known
+    # field positions (:role, :utterance, :metadata, :sequence). Reuse
+    # atomize_turn so a rehydrated intent reads identically to a freshly
+    # appended one.
+    restored = from_jsonable(raw_intent)
+    intent = atomize_turn(restored)
+    {[%{type: :intent, intent: intent} | events], turns}
+  end
+
   defp classify_loaded(%{"type" => "reward"} = e, events, turns) do
     event = %{
       type: :reward,
@@ -235,6 +245,12 @@ defmodule Cantrip.Loom.Storage.Jsonl do
 
       "reward" ->
         %{type: "reward", index: Map.fetch!(event, :index), reward: Map.fetch!(event, :reward)}
+
+      :intent ->
+        %{type: "intent", intent: Map.fetch!(event, :intent)}
+
+      "intent" ->
+        %{type: "intent", intent: Map.fetch!(event, :intent)}
 
       _ ->
         %{type: "event", event: event}

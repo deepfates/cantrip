@@ -21,13 +21,17 @@ defmodule Cantrip.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      # `:mnesia` is the default loom backend for workspace-scoped
-      # Familiars (Cantrip.Familiar.new/1 with `:root`). Without
-      # listing it here, the application doesn't load `:mnesia`, the
-      # Mnesia backend's availability check returns false, and the
-      # loom silently downgrades to in-memory — which means the
-      # "production-grade persistent loom" claim becomes hollow.
-      extra_applications: [:logger, :mnesia],
+      # `:mnesia` is in `included_applications`, not `extra_applications`,
+      # so it's loaded (its modules and .app are on the code path,
+      # `Code.ensure_loaded?(:mnesia)` works) but NOT auto-started.
+      # The Mnesia loom adapter starts it from `init/1` after the
+      # caller has had a chance to configure `:dir` for the workspace
+      # — auto-starting at app boot would lock the dir to whatever
+      # cwd was at boot, before any caller could override it, and
+      # would create a schema under `:nonode@nohost` that can only
+      # ever be `ram_copies` (no cross-restart persistence).
+      extra_applications: [:logger],
+      included_applications: [:mnesia],
       mod: {Cantrip.Application, []}
     ]
   end

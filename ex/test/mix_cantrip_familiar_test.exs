@@ -8,10 +8,18 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
   runtime — a regression here would silently re-introduce the
   asymmetry where the editor surface had observability the developer
   REPL didn't.
+
+  This file also pins the launcher's *storage policy* — the layer
+  where the mix task either honors or contradicts the documented
+  "Mnesia-by-default for workspace-scoped Familiars" claim. Earlier
+  versions of the launcher hard-defaulted a JSONL `loom_path`, which
+  silently bypassed the Mnesia branch in `Cantrip.Familiar.new/1`.
+  These tests pin the corrected policy.
   """
 
   use ExUnit.Case, async: true
 
+  alias Cantrip.FakeLLM
   alias Mix.Tasks.Cantrip.Familiar, as: Task
 
   describe "parse_args/1 routing decisions" do
@@ -72,6 +80,106 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
     test "--max-turns is captured in opts" do
       assert {:repl, ctx} = Task.parse_args(["--max-turns", "15"])
       assert ctx.opts[:max_turns] == 15
+    end
+  end
+
+  # =====================================================================
+  # build_familiar/1 — the launcher's storage policy, pinned
+  # =====================================================================
+  #
+  # The recent substrate arc (commits aeeba2c..63a234d) made Mnesia the
+  # documented production default for workspace-scoped Familiars when
+  # constructed via `Cantrip.Familiar.new/1` with `:root`. The launcher
+  # previously contradicted that by hard-defaulting `loom_path` to
+  # `.cantrip/familiar.jsonl`, which short-circuits the Mnesia branch
+  # in the cond at `lib/cantrip/familiar.ex:360-366`. The fix: the
+  # launcher passes `loom_path` only when the user explicitly opts in
+  # via `--loom-path`, and otherwise lets `Familiar.new/1`'s Mnesia-
+  # by-root default fire.
+  describe "build_familiar/1: launcher storage policy" do
+    test "no --loom-path: workspace-scoped Mnesia (the documented default)" do
+      llm = {FakeLLM, FakeLLM.new([%{code: ~s|done.("ok")|}])}
+      tmp = Path.join(System.tmp_dir!(), "fam_launcher_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp)
+
+      try do
+        assert {:ok, cantrip} = Task.build_familiar(llm: llm, root: tmp)
+
+        assert match?({:mnesia, _}, cantrip.loom_storage),
+               "the launcher must default to Mnesia for workspace-scoped Familiars; got #{inspect(cantrip.loom_storage)}"
+      after
+        File.rm_rf!(tmp)
+      end
+    end
+
+    test "--loom-path explicit: JSONL escape hatch is honored verbatim" do
+      llm = {FakeLLM, FakeLLM.new([%{code: ~s|done.("ok")|}])}
+
+      tmp =
+        Path.join(System.tmp_dir!(), "fam_launcher_jsonl_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp)
+      path = Path.join(tmp, "x.jsonl")
+
+      try do
+        assert {:ok, cantrip} = Task.build_familiar(llm: llm, root: tmp, loom_path: path)
+
+        assert cantrip.loom_storage == {:jsonl, path},
+               "explicit --loom-path must honor JSONL exactly; got #{inspect(cantrip.loom_storage)}"
+      after
+        File.rm_rf!(tmp)
+      end
+    end
+
+    test "--max-turns is threaded into the circle wards" do
+      llm = {FakeLLM, FakeLLM.new([%{code: ~s|done.("ok")|}])}
+      tmp = Path.join(System.tmp_dir!(), "fam_launcher_mt_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp)
+
+      try do
+        assert {:ok, cantrip} = Task.build_familiar(llm: llm, root: tmp, max_turns: 7)
+        assert Cantrip.WardPolicy.get(cantrip.circle.wards, :max_turns) == 7
+      after
+        File.rm_rf!(tmp)
+      end
+    end
+
+    test "root defaults to File.cwd!() when omitted" do
+      llm = {FakeLLM, FakeLLM.new([%{code: ~s|done.("ok")|}])}
+
+      assert {:ok, cantrip} = Task.build_familiar(llm: llm)
+      # cwd is set at test time, so we just assert the storage is
+      # workspace-scoped Mnesia (cwd-derived). The exact table name
+      # comes from the workspace path.
+      assert match?({:mnesia, _}, cantrip.loom_storage)
+    end
+  end
+
+  # =====================================================================
+  # Workspace-stable identity for the BEAM node
+  # =====================================================================
+  #
+  # Mnesia's `disc_copies` are tied to the BEAM's node name. For
+  # `mix cantrip.familiar` to give workspace-scoped Familiars actual
+  # cross-restart durability, the launcher must promote the BEAM to a
+  # named node — and the name must be *stable per workspace* so a
+  # second launch finds the same Mnesia schema. A per-pid or per-launch
+  # random name would create a fresh schema each time.
+  describe "node_name_for_workspace/1: stable per-workspace identity" do
+    test "the same workspace produces the same node name across calls" do
+      root = "/tmp/some-workspace"
+      assert Task.node_name_for_workspace(root) == Task.node_name_for_workspace(root)
+    end
+
+    test "distinct workspaces produce distinct node names" do
+      a = Task.node_name_for_workspace("/tmp/workspace-a")
+      b = Task.node_name_for_workspace("/tmp/workspace-b")
+      assert a != b
+    end
+
+    test "the name is a valid distributed-Erlang longname (contains @)" do
+      name = Task.node_name_for_workspace("/tmp/whatever")
+      assert name |> Atom.to_string() |> String.contains?("@")
     end
   end
 end

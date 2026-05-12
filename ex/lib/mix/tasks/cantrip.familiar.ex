@@ -10,11 +10,24 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   ## Options
 
     * `--acp` — start as an ACP stdio server instead of REPL
-    * `--diagnostics` — with `--acp`, open an opt-in distributed Erlang remsh node
+    * `--diagnostics` — print the cookie + remsh attach command on
+      stderr (the BEAM is named regardless; this flag just makes the
+      attach affordance visible)
     * `--json` — output events as JSONL stream (for piping/scripting)
-    * `--loom-path PATH` — path for persistent JSONL loom (default: .cantrip/familiar.jsonl)
+    * `--loom-path PATH` — store the loom as JSONL at this path. When
+      omitted, the loom is workspace-keyed Mnesia (BEAM-native).
     * `--max-turns N` — maximum turns per episode (default: 20)
     * `--help` — show this help
+
+  ## Loom backend
+
+  REPL and single-shot promote the BEAM to a workspace-stable named
+  node and use Mnesia (`disc_copies`) keyed to the workspace as the
+  loom backend. The same workspace re-summons the same loom across
+  restarts, with prior turns visible as `loom.turns`.
+
+  Pass `--loom-path PATH` to use JSONL instead, when you want a
+  portable, exportable, human-readable trace.
   """
 
   use Mix.Task
@@ -33,7 +46,17 @@ defmodule Mix.Tasks.Cantrip.Familiar do
         run_acp(ctx.opts)
 
       {:repl, ctx} ->
-        if ctx.diagnostics, do: start_diagnostic_node()
+        # The named-node setup exists to give Mnesia a stable node identity
+        # for `disc_copies` (the default loom backend). If the caller has
+        # explicitly opted out of Mnesia by passing `--loom-path`, we don't
+        # need a named node — and forcing one here would defeat the
+        # documented JSONL escape hatch in environments where distributed
+        # Erlang can't start (missing epmd, port restrictions, etc.).
+        if is_nil(Keyword.get(ctx.opts, :loom_path)) do
+          ensure_named_node!(File.cwd!())
+          if ctx.diagnostics, do: announce_named_node()
+        end
+
         run_familiar(ctx.intent, ctx.opts)
     end
   end
@@ -85,44 +108,162 @@ defmodule Mix.Tasks.Cantrip.Familiar do
     Cantrip.ACP.Server.run(runtime: Cantrip.ACP.Runtime.Familiar)
   end
 
-  # Register a node name + cookie so `iex --sname … --remsh …` can attach to
-  # the running BEAM for live inspection. ACP runs on stdio with no other
-  # interactive surface, so without this you cannot dump session state,
-  # walk a hung GenServer, or see in-flight bridges from outside.
+  # ACP keeps the per-pid name (multiple ACP servers can coexist on one
+  # host); the workspace-stable name belongs to REPL/single-shot, where
+  # the workspace IS the identity.
   #
-  # The node name embeds the OS pid so multiple instances don't collide. The
-  # cookie is generated per run and printed with the exact remsh command.
+  # `--diagnostics` is an *optional* affordance — if epmd or net_kernel
+  # can't start (no epmd on PATH, port 4369 blocked, etc.), warn but
+  # don't crash the host runtime. ACP's stdio server should keep coming
+  # up even when remsh attach is unavailable.
   defp start_diagnostic_node do
     cookie = random_cookie()
     name = :"familiar-#{System.pid()}@127.0.0.1"
 
-    # net_kernel.start auto-spawns epmd, but under some launchers (Zed,
-    # systemd, anything that scrubs PATH or restricts subprocess
-    # creation) that auto-spawn silently fails and registration goes
-    # nowhere. Try to start epmd ourselves first; ignore the result —
-    # if it's already up, the call no-ops; if it fails, net_kernel
-    # will surface a clear error below.
-    System.cmd("epmd", ["-daemon"], stderr_to_stdout: true)
+    ensure_epmd_running()
 
     case :net_kernel.start([name, :longnames]) do
       {:ok, _} ->
         :erlang.set_cookie(node(), cookie)
-        announce_diagnostic_node(name, cookie)
+        announce_node(name, cookie)
 
       {:error, {:already_started, _}} ->
         :ok
 
       {:error, reason} ->
         IO.puts(:stderr, "warning: could not register diagnostic node: #{inspect(reason)}")
-
-        IO.puts(
-          :stderr,
-          "  (live introspection unavailable; check that epmd is running and reachable)"
-        )
     end
   rescue
     e ->
       IO.puts(:stderr, "warning: diagnostic node setup raised: #{Exception.message(e)}")
+  end
+
+  # Promote the BEAM to a workspace-stable named node. Mnesia ties
+  # `disc_copies` to node identity, so a stable name per workspace is
+  # what makes "summon, kill, re-summon, see prior turns" hold across
+  # restarts. `:nonode@nohost` would force `ram_copies` (per the
+  # mnesia adapter's node-aware copy selection).
+  #
+  # Fail loud: a launcher whose stated job is BEAM-native persistence
+  # should not pretend it succeeded when net_kernel can't start.
+  # Same principle as `Cantrip.Loom.new/2`'s explicit-backend fail-loud
+  # invariant — silent downgrades are how the prior "production
+  # default" claim went hollow.
+  defp ensure_named_node!(workspace_root) do
+    case node() do
+      :nonode@nohost ->
+        ensure_epmd_running()
+        name = node_name_for_workspace(workspace_root)
+        cookie = cookie_for_workspace(workspace_root)
+
+        case :net_kernel.start([name, :longnames]) do
+          {:ok, _} ->
+            :erlang.set_cookie(node(), cookie)
+            configure_mnesia_dir!(workspace_root)
+
+          {:error, {:already_started, _}} ->
+            :ok
+
+          {:error, reason} ->
+            raise """
+            Could not promote the BEAM to a named node: #{inspect(reason)}
+
+            The Familiar's workspace-keyed Mnesia loom requires a named
+            node so prior turns survive restarts. Common causes:
+
+              * `epmd` is not on PATH or not allowed to run
+              * port 4369 (epmd) is blocked
+
+            If you cannot run a named BEAM in this environment, opt out
+            of Mnesia by passing an explicit JSONL loom path:
+
+              mix cantrip.familiar --loom-path .cantrip/familiar.jsonl
+            """
+        end
+
+      _named ->
+        # Already named (someone launched with --sname/--name). Trust
+        # their setup; just relocate Mnesia under .cantrip/.
+        configure_mnesia_dir!(workspace_root)
+    end
+  end
+
+  # Point Mnesia at `.cantrip/mnesia/` for this workspace. Mnesia is
+  # in `included_applications` (not `extra_applications`), so it's
+  # loaded but not yet started. Setting `:dir` before the adapter's
+  # lazy `:mnesia.start/0` is enough — no stop/restart cycle, no
+  # orphaned `Mnesia.<node>/` dir at cwd from a premature auto-start.
+  #
+  # Verified empirically: after `mix run`, `Application.started_applications/0`
+  # does not include `:mnesia`, and `:mnesia.system_info(:tables)`
+  # errors with `node_not_running`. The launcher test suite does not
+  # create any `Mnesia.*/` dir on disk. The "included apps may be
+  # started with the parent" concern doesn't apply here because
+  # `Cantrip.Application.start/2` never calls `Application.ensure_*`
+  # on Mnesia.
+  defp configure_mnesia_dir!(workspace_root) do
+    desired = Path.join([workspace_root, ".cantrip", "mnesia"]) |> String.to_charlist()
+    File.mkdir_p!(to_string(desired))
+    Application.put_env(:mnesia, :dir, desired)
+    :ok
+  end
+
+  # `System.cmd("epmd", ["-daemon"], ...)` raises `ErlangError` when
+  # epmd is not on PATH. Catching here keeps the actionable
+  # `--loom-path` error message in `ensure_named_node!` reachable
+  # rather than dying inside the cmd call. If epmd really is missing,
+  # the subsequent `:net_kernel.start` will surface the right error.
+  defp ensure_epmd_running do
+    System.cmd("epmd", ["-daemon"], stderr_to_stdout: true)
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  @doc """
+  Workspace-stable node name. Two distinct workspaces produce two
+  distinct names (so they don't share a Mnesia schema); the same
+  workspace produces the same name across launches (so Mnesia's
+  per-node `disc_copies` find the prior data).
+  """
+  @spec node_name_for_workspace(String.t()) :: atom()
+  def node_name_for_workspace(root) when is_binary(root) do
+    suffix = :erlang.phash2(root) |> Integer.to_string()
+    base = root |> Path.basename() |> String.replace(~r/[^A-Za-z0-9_-]/, "_")
+    String.to_atom("cantrip-familiar-" <> base <> "-" <> suffix <> "@127.0.0.1")
+  end
+
+  # Per-workspace cookie, persisted in `.cantrip/cookie` with mode 0600.
+  #
+  # Earlier I derived this deterministically from the workspace path,
+  # but that means anyone with read access to the source (the salt is
+  # public) and knowledge or guesses of the workspace path can compute
+  # the cookie and connect via distributed Erlang. On a shared
+  # machine, that's a real privilege-escalation surface. A random
+  # cookie persisted with restrictive permissions:
+  #
+  #   * stays stable across launches (so `--diagnostics` `--remsh`
+  #     commands work idempotently between sessions)
+  #   * is per-workspace (no cross-workspace bleed)
+  #   * is unguessable from public information
+  #   * is gitignored as part of `.cantrip/`
+  defp cookie_for_workspace(root) do
+    cookie_path = Path.join([root, ".cantrip", "cookie"])
+
+    case File.read(cookie_path) do
+      {:ok, existing} when byte_size(existing) > 0 ->
+        existing |> String.trim() |> String.to_atom()
+
+      _ ->
+        cookie =
+          "cantrip_" <>
+            (:crypto.strong_rand_bytes(24) |> Base.encode16(case: :lower))
+
+        File.mkdir_p!(Path.dirname(cookie_path))
+        File.write!(cookie_path, cookie)
+        File.chmod(cookie_path, 0o600)
+        String.to_atom(cookie)
+    end
   end
 
   defp random_cookie do
@@ -130,9 +271,12 @@ defmodule Mix.Tasks.Cantrip.Familiar do
     String.to_atom("cantrip_" <> suffix)
   end
 
-  defp announce_diagnostic_node(name, cookie) do
-    cookie_text = Atom.to_string(cookie)
+  defp announce_named_node do
+    announce_node(node(), :erlang.get_cookie())
+  end
 
+  defp announce_node(name, cookie) do
+    cookie_text = Atom.to_string(cookie)
     IO.puts(:stderr, "Diagnostic node: #{name}  (cookie: #{cookie_text})")
 
     IO.puts(
@@ -140,32 +284,59 @@ defmodule Mix.Tasks.Cantrip.Familiar do
       "Attach with: iex --name inspector@127.0.0.1 --cookie #{cookie_text} --remsh #{name}"
     )
 
-    IO.puts(
-      :stderr,
-      "Then try: Cantrip.ACP.Diagnostics.dump()"
-    )
+    IO.puts(:stderr, "Then try: Cantrip.ACP.Diagnostics.dump()")
+  end
+
+  @doc """
+  Build the Familiar from launcher opts. Pure construction — no
+  process is started, no LLM call is made.
+
+  Storage policy:
+
+    * `:loom_path` set → JSONL at that path (caller's explicit
+      portable-trace choice)
+    * otherwise → workspace-keyed Mnesia, via `Cantrip.Familiar.new/1`'s
+      Mnesia-by-`:root` default (which the launcher always sets)
+
+  No defaulted JSONL — the launcher's job is to enable the BEAM-native
+  posture the substrate documents, not to ship past it.
+
+  Raises `KeyError` if `:llm` is missing from `opts`. The launcher
+  always passes `:llm`; a missing one is a programmer error, not a
+  runtime condition.
+  """
+  @spec build_familiar(keyword()) :: {:ok, Cantrip.t()} | {:error, String.t()} | no_return()
+  def build_familiar(opts) when is_list(opts) do
+    llm = Keyword.fetch!(opts, :llm)
+    root = Keyword.get(opts, :root, File.cwd!())
+    max_turns = Keyword.get(opts, :max_turns, 20)
+
+    base = [llm: llm, max_turns: max_turns, root: root]
+
+    base =
+      case Keyword.get(opts, :loom_path) do
+        nil -> base
+        path -> Keyword.put(base, :loom_path, path)
+      end
+
+    Cantrip.Familiar.new(base)
   end
 
   defp run_familiar(intent, opts) do
-    loom_path = Keyword.get(opts, :loom_path, Path.join([".cantrip", "familiar.jsonl"]))
-    max_turns = Keyword.get(opts, :max_turns, 20)
-
     case Cantrip.llm_from_env() do
       {:ok, llm} ->
-        {:ok, cantrip} =
-          Cantrip.Familiar.new(
-            llm: llm,
-            loom_path: loom_path,
-            max_turns: max_turns,
-            root: File.cwd!()
-          )
+        case build_familiar(Keyword.put(opts, :llm, llm)) do
+          {:ok, cantrip} ->
+            renderer = if opts[:json], do: Cantrip.CLI.JsonRenderer.new(), else: Renderer.new()
 
-        renderer = if opts[:json], do: Cantrip.CLI.JsonRenderer.new(), else: Renderer.new()
+            if intent do
+              run_single_shot(cantrip, intent, renderer, opts)
+            else
+              run_repl(cantrip, renderer)
+            end
 
-        if intent do
-          run_single_shot(cantrip, intent, renderer, opts)
-        else
-          run_repl(cantrip, renderer)
+          {:error, reason} ->
+            Mix.shell().error("Cannot build Familiar: #{reason}")
         end
 
       {:error, reason} ->
@@ -306,11 +477,16 @@ defmodule Mix.Tasks.Cantrip.Familiar do
     """
     usage: mix cantrip.familiar [intent] [--acp] [--diagnostics] [--loom-path PATH] [--max-turns N] [--help]
 
-    Run the Familiar — a persistent computatational entity with filesystem observation.
+    Run the Familiar — a persistent computational entity with filesystem observation.
 
     Without an intent argument, starts in interactive REPL mode.
     With an intent, runs single-shot and exits.
-    With --acp, starts an ACP stdio server. Add --diagnostics to open an opt-in remsh node.
+    With --acp, starts an ACP stdio server.
+
+    REPL and single-shot promote the BEAM to a workspace-named node and
+    persist the loom in workspace-keyed Mnesia under .cantrip/mnesia/.
+    Pass --loom-path PATH to use JSONL instead.
+    Add --diagnostics to print the cookie + remsh attach command.
     """
   end
 end

@@ -24,3 +24,9 @@ cantrip_ex-*.tar
 
 .env
 /cantrip
+
+# Mnesia's default dir lives in cwd and is named after the node
+# (e.g. `Mnesia.nonode@nohost/` for unnamed test runs). The Familiar
+# launcher relocates to `.cantrip/mnesia/`, but default-dir copies
+# can still be created by tests or library usage.
+Mnesia.*/

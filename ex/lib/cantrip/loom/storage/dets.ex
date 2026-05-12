@@ -128,6 +128,12 @@ defmodule Cantrip.Loom.Storage.Dets do
       "reward" ->
         %{type: "reward", index: Map.fetch!(event, :index), reward: Map.fetch!(event, :reward)}
 
+      :intent ->
+        %{type: "intent", intent: Map.fetch!(event, :intent)}
+
+      "intent" ->
+        %{type: "intent", intent: Map.fetch!(event, :intent)}
+
       _ ->
         %{type: "event", event: event}
     end

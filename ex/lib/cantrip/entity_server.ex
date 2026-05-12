@@ -67,6 +67,17 @@ defmodule Cantrip.EntityServer do
     messages = Keyword.get(opts, :messages, build_initial_messages(cantrip, intent, lazy))
 
     loom = Keyword.get(opts, :loom, Loom.new(cantrip.identity, storage: cantrip.loom_storage))
+
+    # First-cast intent (Cantrip.cast/2 or Cantrip.summon/3 with an intent
+    # at construction) is recorded in the loom too, so it survives in the
+    # durable record alongside intents that arrive later via send_intent.
+    loom =
+      if is_binary(intent) do
+        Loom.append_intent(loom, intent, cantrip_id: cantrip.id, entity_id: entity_id)
+      else
+        loom
+      end
+
     turns = Keyword.get(opts, :turns, 0)
     depth = Keyword.get(opts, :depth, 0)
     code_state = Keyword.get(opts, :code_state, %{})
@@ -141,6 +152,16 @@ defmodule Cantrip.EntityServer do
         state.messages ++ [%{role: :user, content: intent}]
       end
 
+    # Record the intent in the durable loom before the LLM episode runs.
+    # The loom must contain both halves of the conversation so a re-summoned
+    # entity can see what was said to it across sessions, not just its
+    # own past code (LOOM-11 reads + cross-session continuity).
+    next_loom =
+      Loom.append_intent(state.loom, intent,
+        cantrip_id: state.cantrip.id,
+        entity_id: state.entity_id
+      )
+
     # Per-call stream_to override; save original to restore after loop
     original_stream_to = state.stream_to
     original_stream_barrier? = state.stream_barrier?
@@ -150,6 +171,7 @@ defmodule Cantrip.EntityServer do
     next_state = %{
       state
       | messages: next_messages,
+        loom: next_loom,
         lazy: false,
         stream_to: call_stream_to,
         stream_barrier?: call_stream_barrier?

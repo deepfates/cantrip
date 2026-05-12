@@ -186,6 +186,9 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     :"cantrip_loom_mnesia_#{System.unique_integer([:positive])}"
   end
 
+  # Mnesia is listed in cantrip_ex's `included_applications` so it's
+  # loaded (modules on the code path) but not auto-started. We start
+  # it lazily from `init/1` so the caller can configure `:dir` first.
   defp available? do
     Code.ensure_loaded?(:mnesia)
   end
@@ -207,6 +210,12 @@ defmodule Cantrip.Loom.Storage.Mnesia do
 
       "reward" ->
         %{type: "reward", index: Map.fetch!(event, :index), reward: Map.fetch!(event, :reward)}
+
+      :intent ->
+        %{type: "intent", intent: Map.fetch!(event, :intent)}
+
+      "intent" ->
+        %{type: "intent", intent: Map.fetch!(event, :intent)}
 
       _ ->
         %{type: "event", event: event}
