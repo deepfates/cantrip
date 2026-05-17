@@ -518,7 +518,10 @@ defmodule Cantrip.FamiliarBehaviorTest do
         {FakeLLM,
          FakeLLM.new([
            %{code: ~s|done.("first session")|},
-           %{code: ~s|done.("second session - turns I see: " <> Integer.to_string(length(loom.turns)))|}
+           %{
+             code:
+               ~s|done.("second session - turns I see: " <> Integer.to_string(length(loom.turns)))|
+           }
          ])}
 
       root = Path.join(System.tmp_dir!(), "fam_mnesia_e2e_#{System.unique_integer([:positive])}")
@@ -544,6 +547,7 @@ defmodule Cantrip.FamiliarBehaviorTest do
         state = :sys.get_state(pid)
 
         assert state.loom.storage_module == Cantrip.Loom.Storage.Mnesia
+
         assert length(state.loom.turns) >= 1,
                "session 2 must see session 1's turn(s) rehydrated from Mnesia"
 

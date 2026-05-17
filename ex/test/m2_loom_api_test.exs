@@ -126,4 +126,47 @@ defmodule CantripM2LoomApiTest do
     assert length(thread) == 3
     assert Enum.map(thread, & &1.utterance) == ["a", "b", "c"]
   end
+
+  test "append_executed_turn grafts child turns without embedding duplicate subtrees" do
+    loom = Cantrip.Loom.new(%{system_prompt: nil})
+
+    child_turn = %{
+      id: "child_1",
+      parent_id: nil,
+      utterance: %{content: "child code"},
+      observation: [],
+      terminated: true
+    }
+
+    observations = [
+      %{
+        gate: "call_entity",
+        result: "child answer",
+        is_error: false,
+        child_turns: [child_turn]
+      }
+    ]
+
+    loom =
+      Cantrip.Loom.append_executed_turn(
+        loom,
+        %{
+          cantrip_id: "cantrip_parent",
+          entity_id: "ent_parent",
+          utterance: %{content: "parent code"},
+          observation: observations,
+          terminated: false
+        },
+        observations
+      )
+
+    [parent, grafted_child] = loom.turns
+    [parent_event, child_event] = loom.events
+
+    refute Map.has_key?(hd(parent.observation), :child_turns)
+    assert grafted_child.utterance == child_turn.utterance
+    assert grafted_child.parent_id == parent.id
+    refute Map.has_key?(hd(parent_event.turn.observation), :child_turns)
+    assert child_event.turn.utterance == child_turn.utterance
+  end
 end

@@ -53,6 +53,32 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
     end
   end
 
+  describe "runtime bindings" do
+    test "loom aliases are readable but not persisted into code_state" do
+      loom =
+        %{system_prompt: nil}
+        |> Cantrip.Loom.new()
+        |> Cantrip.Loom.append_turn(%{utterance: %{content: "old"}, observation: []})
+
+      runtime = make_runtime() |> Map.put(:loom, loom)
+
+      {state, _obs, result, terminated} =
+        CodeMedium.eval(
+          ~s|loom_value = loom
+             count = length(loom_value.turns)
+             done.(count)|,
+          %{},
+          runtime
+        )
+
+      assert terminated
+      assert result == 1
+      refute Keyword.has_key?(state.binding, :loom)
+      refute Keyword.has_key?(state.binding, :loom_value)
+      assert state.binding[:count] == 1
+    end
+  end
+
   describe "gate call ergonomics - done" do
     test "done.(x) works (dot-call, backwards compatible)" do
       runtime = make_runtime()

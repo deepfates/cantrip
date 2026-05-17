@@ -346,8 +346,12 @@ defmodule Cantrip.CodeMedium do
   defp persist_binding(binding) do
     binding
     |> Keyword.drop(@reserved_bindings)
-    |> Enum.reject(fn {_k, v} -> is_function(v) end)
+    |> Enum.reject(fn {_k, v} -> transient_value?(v) end)
   end
+
+  defp transient_value?(%Cantrip.Loom{}), do: true
+  defp transient_value?(v) when is_function(v), do: true
+  defp transient_value?(_), do: false
 
   # §6.8: when folding fired this turn, the substrate threads the
   # summary text through the medium runtime so the entity can read it

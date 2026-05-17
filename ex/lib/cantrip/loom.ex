@@ -279,6 +279,7 @@ defmodule Cantrip.Loom do
   def append_executed_turn(%__MODULE__{} = loom, turn_attrs, observations, opts \\ []) do
     initial_turn_count = length(loom.turns)
 
+    turn_attrs = prune_embedded_child_turns(turn_attrs)
     loom = append_turn(loom, turn_attrs)
     parent_turn = List.last(loom.turns)
 
@@ -327,6 +328,21 @@ defmodule Cantrip.Loom do
 
     loom
   end
+
+  defp prune_embedded_child_turns(%{observation: observations} = turn_attrs)
+       when is_list(observations) do
+    %{turn_attrs | observation: Enum.map(observations, &drop_child_turns/1)}
+  end
+
+  defp prune_embedded_child_turns(turn_attrs), do: turn_attrs
+
+  defp drop_child_turns(%{} = observation) do
+    observation
+    |> Map.delete(:child_turns)
+    |> Map.delete("child_turns")
+  end
+
+  defp drop_child_turns(observation), do: observation
 
   def append_parent_continuation(
         %__MODULE__{} = loom,

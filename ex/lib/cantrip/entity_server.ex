@@ -478,7 +478,8 @@ defmodule Cantrip.EntityServer do
         state.cantrip
         | llm_module: child_module,
           llm_state: child_state,
-          circle: child_circle
+          circle: child_circle,
+          loom_storage: nil
       }
 
       # Use request's system_prompt if provided; otherwise give children

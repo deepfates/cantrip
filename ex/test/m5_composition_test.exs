@@ -76,4 +76,57 @@ defmodule CantripM5CompositionTest do
 
     assert {:ok, 42, _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "blocking")
   end
+
+  test "call_entity child loom is local and parent grafts only the child episode" do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "cantrip_child_local_loom_#{System.unique_integer([:positive])}.jsonl"
+      )
+
+    old_loom =
+      %{system_prompt: nil}
+      |> Cantrip.Loom.new(storage: {:jsonl, path})
+      |> Cantrip.Loom.append_turn(%{
+        cantrip_id: "old_cantrip",
+        entity_id: "old_entity",
+        role: "turn",
+        utterance: %{content: "old durable turn"},
+        observation: [],
+        gate_calls: [],
+        terminated: true,
+        truncated: false
+      })
+
+    old_id = old_loom.turns |> List.last() |> Map.fetch!(:id)
+
+    parent =
+      {FakeLLM,
+       FakeLLM.new([
+         %{code: ~s[result = call_entity.(%{intent: "child task"})\ndone.(result)]}
+       ])}
+
+    child = {FakeLLM, FakeLLM.new([%{code: ~s[done.("child answer")]}])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        llm: parent,
+        child_llm: child,
+        loom_storage: {:jsonl, path},
+        circle: %{
+          type: :code,
+          gates: [:done, :call_entity],
+          wards: [%{max_turns: 10}, %{max_depth: 1}]
+        }
+      )
+
+    {:ok, "child answer", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "delegate")
+
+    old_turns = Enum.filter(loom.turns, &(&1.id == old_id))
+    child_turns = Enum.filter(loom.turns, &(&1.utterance[:code] == ~s[done.("child answer")]))
+
+    assert length(old_turns) == 1
+    assert length(child_turns) == 1
+    assert hd(child_turns).parent_id != old_id
+  end
 end
