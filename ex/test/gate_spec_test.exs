@@ -60,15 +60,6 @@ defmodule Cantrip.GateSpecTest do
       assert spec.args_summary_key == :pattern
     end
 
-    test "cantrip / cast / cast_batch / dispose are orchestration gates with no filesystem deps" do
-      for name <- ~w(cantrip cast cast_batch dispose) do
-        spec = Gate.spec(name)
-        assert is_binary(spec.description), "missing description for #{name}"
-        assert spec.depends_required == []
-        assert spec.kind == :execute
-      end
-    end
-
     test "echo and unknown gates return a generic spec" do
       assert %{description: _, parameters: %{type: "object"}, depends_required: []} =
                Gate.spec("echo")

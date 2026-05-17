@@ -35,12 +35,11 @@ defmodule Cantrip.SpawnFnTest do
        FakeLLM.new([
          %{
            code: """
-           id = cantrip.(%{
-             identity: "Read notes.md and return the first line.",
-             circle: %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}
+           {:ok, child} = Cantrip.new(%{
+            identity: %{system_prompt: "Read notes.md and return the first line."},
+            circle: %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}
            })
-           result = cast.(id, "Read notes.md")
-           dispose.(id)
+           {:ok, result, _child, _child_loom, _meta} = Cantrip.cast(child, "Read notes.md")
            done.(result)
            """
          }
@@ -68,12 +67,11 @@ defmodule Cantrip.SpawnFnTest do
        FakeLLM.new([
          %{
            code: """
-           id = cantrip.(%{
-             identity: "Read the right file.",
-             circle: %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 1}]}
+           {:ok, child} = Cantrip.new(%{
+            identity: %{system_prompt: "Read the right file."},
+            circle: %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 1}]}
            })
-           result = cast.(id, "Read it")
-           dispose.(id)
+           {:ok, result, _child, _child_loom, _meta} = Cantrip.cast(child, "Read it")
            done.(result)
            """
          }
@@ -102,12 +100,11 @@ defmodule Cantrip.SpawnFnTest do
        FakeLLM.new([
          %{
            code: """
-           id = cantrip.(%{
-             identity: "Read the right file.",
-             circle: %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 1}]}
+           {:ok, child} = Cantrip.new(%{
+            identity: %{system_prompt: "Read the right file."},
+            circle: %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 1}]}
            })
-           _ = cast.(id, "Read it")
-           dispose.(id)
+           _ = Cantrip.cast(child, "Read it")
            done.("ok")
            """
          }

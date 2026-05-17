@@ -313,14 +313,15 @@ defmodule CantripExamplesTest do
       assert meta.terminated
     end
 
-    test "uses Cantrip.Familiar.new (not a parallel coordinator code path)" do
+    test "uses Cantrip.Familiar.new and public child Cantrip API" do
       # Regression: ensure run_15 exercises the same module a real user
       # would call, not a hand-rolled Cantrip.new coordinator.
       source = File.read!("lib/cantrip/examples.ex")
       [_, run_15_body | _] = String.split(source, "defp run_15(opts) do", parts: 3)
       [run_15_body | _] = String.split(run_15_body, "defp run_16", parts: 2)
       assert run_15_body =~ "Cantrip.Familiar.new"
-      refute run_15_body =~ "Cantrip.new("
+      assert run_15_body =~ "Cantrip.new("
+      assert run_15_body =~ "Cantrip.cast_batch("
     end
   end
 
@@ -342,12 +343,13 @@ defmodule CantripExamplesTest do
       assert meta.terminated
     end
 
-    test "uses Cantrip.Familiar.new (not a parallel coordinator code path)" do
+    test "uses Cantrip.Familiar.new and public child Cantrip API" do
       source = File.read!("lib/cantrip/examples.ex")
       [_, run_16_body] = String.split(source, "defp run_16(opts) do", parts: 2)
       [run_16_body | _] = String.split(run_16_body, "defp count_grafted_child_turns", parts: 2)
       assert run_16_body =~ "Cantrip.Familiar.new"
-      refute run_16_body =~ "Cantrip.new("
+      assert run_16_body =~ "Cantrip.new("
+      assert run_16_body =~ "Cantrip.cast("
     end
   end
 

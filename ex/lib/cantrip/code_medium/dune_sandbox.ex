@@ -243,15 +243,11 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
           Keyword.put(bindings, :call_entity_batch, call_entity_batch_fun)
       end
 
-    # Familiar-shape closures (cantrip / cast / cast_batch / dispose)
-    # are intentionally NOT mirrored here. They live in `Cantrip.CodeMedium`
-    # and are the subject of issue #3 — when that refactor lands, both
-    # the unrestricted and Dune sandbox paths will get isomorphic
-    # wrappers around `Cantrip.new` / `Cantrip.cast` / `Cantrip.stop`
-    # in a single place, instead of two parallel bespoke implementations.
-    # Opt-in `:dune` users today get the lower-level `call_entity` /
-    # `call_entity_batch` surface and the loom binding; the higher-level
-    # Familiar vocabulary works in unrestricted code medium.
+    # Public package calls such as `Cantrip.new/1` are intentionally not
+    # mirrored here: Dune restricts remote module calls by design. Opt-in
+    # `:dune` users get the lower-level `call_entity` / `call_entity_batch`
+    # surface and the loom binding unless a deployment adds a narrower host
+    # adapter for package orchestration.
     #
     # compile_and_load is also intentionally not exposed here: Dune
     # blocks module definitions in user code.
@@ -324,7 +320,7 @@ defmodule Cantrip.CodeMedium.DuneSandbox do
 
     # Heap and reductions need to be generous: the Familiar's circle
     # carries cantrip/cast/cast_batch/dispose closures plus the
-    # accumulated user bindings (lines, spec, child cantrip IDs)
+    # accumulated user bindings (lines, spec, child cantrip handles)
     # across turns, all of which the eval must page in. The earlier
     # 100K/300K defaults were tight enough that a second send into
     # the same Dune session failed with `:memory` on a trivial

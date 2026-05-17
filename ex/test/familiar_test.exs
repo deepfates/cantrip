@@ -23,15 +23,15 @@ defmodule Cantrip.FamiliarTest do
       refute "read_file" in gate_names
     end
 
-    test "includes orchestration gates: cantrip, cast, cast_batch, dispose" do
+    test "does not expose a second orchestration gate ontology" do
       llm = {FakeLLM, FakeLLM.new([])}
       {:ok, cantrip} = Familiar.new(llm: llm)
 
       gate_names = Map.keys(cantrip.circle.gates)
-      assert "cantrip" in gate_names
-      assert "cast" in gate_names
-      assert "cast_batch" in gate_names
-      assert "dispose" in gate_names
+      refute "cantrip" in gate_names
+      refute "cast" in gate_names
+      refute "cast_batch" in gate_names
+      refute "dispose" in gate_names
     end
 
     test "system prompt teaches the helper-summoning paradigm" do
@@ -48,6 +48,7 @@ defmodule Cantrip.FamiliarTest do
       assert prompt =~ ~r/gates?/
       assert prompt =~ ~r/wards?/
       assert prompt =~ "loom"
+      assert prompt =~ "Elixir branch bindings are lexical"
     end
 
     test "respects custom max_turns" do
@@ -153,19 +154,19 @@ defmodule Cantrip.FamiliarTest do
     end
   end
 
-  describe "cantrip() + cast() orchestration pattern" do
-    test "cantrip() constructs a child config and cast() executes it" do
+  describe "isomorphic Cantrip.new + Cantrip.cast orchestration pattern" do
+    test "Cantrip.new constructs a child and Cantrip.cast executes it" do
       # Parent: construct a child cantrip, cast an intent to it, return the result
       parent =
         {FakeLLM,
          FakeLLM.new([
            %{
              code: """
-             id = cantrip.(%{
-               identity: "You are a helper. Call done with the answer.",
-               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+             {:ok, child} = Cantrip.new(%{
+               identity: %{system_prompt: "You are a helper. Call done with the answer."},
+               circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
              })
-             result = cast.(id, "What is 6 * 7?")
+             {:ok, result, _child, _child_loom, _meta} = Cantrip.cast(child, "What is 6 * 7?")
              done.(result)
              """
            }
@@ -183,104 +184,62 @@ defmodule Cantrip.FamiliarTest do
       assert result == "42"
     end
 
-    test "cast_batch() executes multiple children in parallel" do
+    test "Cantrip.cast_batch executes multiple children in parallel" do
       parent =
         {FakeLLM,
          FakeLLM.new([
            %{
              code: """
-             id1 = cantrip.(%{
-               identity: "Analyzer 1",
-               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+             trend_llm = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([
+               %{tool_calls: [%{gate: "done", args: %{answer: "trend-result"}}]}
+             ])}
+             risk_llm = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([
+               %{tool_calls: [%{gate: "done", args: %{answer: "risk-result"}}]}
+             ])}
+             {:ok, analyzer_1} = Cantrip.new(%{
+               llm: trend_llm,
+               identity: %{system_prompt: "Analyzer 1"},
+               circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
              })
-             id2 = cantrip.(%{
-               identity: "Analyzer 2",
-               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+             {:ok, analyzer_2} = Cantrip.new(%{
+               llm: risk_llm,
+               identity: %{system_prompt: "Analyzer 2"},
+               circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
              })
-             results = cast_batch.([
-               %{cantrip: id1, intent: "analyze trends"},
-               %{cantrip: id2, intent: "analyze risks"}
+             {:ok, results, _children, _looms, _meta} = Cantrip.cast_batch([
+               %{cantrip: analyzer_1, intent: "analyze trends"},
+               %{cantrip: analyzer_2, intent: "analyze risks"}
              ])
              done.(Enum.join(results, " | "))
              """
            }
          ])}
 
-      child =
-        {FakeLLM,
-         FakeLLM.new(
-           [
-             %{tool_calls: [%{gate: "done", args: %{answer: "trend-result"}}]},
-             %{tool_calls: [%{gate: "done", args: %{answer: "risk-result"}}]}
-           ],
-           shared: true
-         )}
-
-      {:ok, cantrip} = Familiar.new(llm: parent, child_llm: child)
+      {:ok, cantrip} = Familiar.new(llm: parent)
       {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "parallel analysis")
       assert result =~ "trend-result"
       assert result =~ "risk-result"
     end
 
-    test "dispose() cleans up a constructed cantrip" do
+    test "cast-mode children are plain values and need no dispose step" do
       parent =
         {FakeLLM,
          FakeLLM.new([
            %{
              code: """
-             id = cantrip.(%{
-               identity: "temp helper",
-               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+             {:ok, child} = Cantrip.new(%{
+               identity: %{system_prompt: "temp helper"},
+               circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
              })
-             dispose.(id)
-             done.("disposed")
+             %Cantrip{} = child
+             done.(true)
              """
            }
          ])}
 
       {:ok, cantrip} = Familiar.new(llm: parent)
-      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "dispose test")
-      assert result == "disposed"
-    end
-
-    test "cast() with a disposed cantrip surfaces an error observation" do
-      # Under the production posture (Dune sandbox), a closure raise
-      # does not propagate as a user-code-catchable exception — it
-      # lands on the loom as an `is_error: true` observation. The SPEC
-      # behavior is "cast on a disposed ID fails visibly"; the
-      # observation channel is the canonical way to make it visible.
-      parent =
-        {FakeLLM,
-         FakeLLM.new([
-           # Turn 1: construct, dispose, try to cast — fails as observation.
-           %{
-             code: """
-             id = cantrip.(%{
-               identity: "temp helper",
-               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
-             })
-             dispose.(id)
-             cast.(id, "should fail")
-             """
-           },
-           # Turn 2: parent saw the failure observation and recovers.
-           %{code: ~s|done.("observed disposed-cast failure")|}
-         ])}
-
-      {:ok, cantrip} = Familiar.new(llm: parent)
-
-      {:ok, result, _c, loom, _meta} =
-        Cantrip.cast(cantrip, "cast after dispose")
-
-      assert result == "observed disposed-cast failure"
-
-      observations = Enum.flat_map(loom.turns, & &1.observation)
-
-      assert Enum.any?(observations, fn obs ->
-               obs.is_error and is_binary(obs.result) and
-                 String.contains?(obs.result, "unknown cantrip")
-             end),
-             "expected an `unknown cantrip ID` error observation on the parent's loom"
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "child value test")
+      assert result == true
     end
   end
 
@@ -411,13 +370,13 @@ defmodule Cantrip.FamiliarTest do
   end
 
   # ===========================================================================
-  # A.12: Child cantrip registry must persist across turns
+  # A.12: Child cantrip values must persist across turns
   # ===========================================================================
 
   describe "child cantrip persistence across turns" do
     test "child constructed on turn 1 can be cast on turn 2" do
-      # Turn 1: construct a child cantrip, store the ID in a variable
-      # Turn 2: cast the child using the stored ID
+      # Turn 1: construct a child cantrip, store the value in a variable
+      # Turn 2: cast the child using the stored value
       # Turn 3: done with the result
       parent =
         {FakeLLM,
@@ -425,16 +384,16 @@ defmodule Cantrip.FamiliarTest do
            # Turn 1: construct child
            %{
              code: """
-             child_id = cantrip.(%{
-               identity: "You are a helper. Call done with the answer.",
-               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+             {:ok, child} = Cantrip.new(%{
+               identity: %{system_prompt: "You are a helper. Call done with the answer."},
+               circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
              })
              """
            },
-           # Turn 2: cast the child using the ID from turn 1
+           # Turn 2: cast the child using the value from turn 1
            %{
              code: """
-             result = cast.(child_id, "What is 6 * 7?")
+             {:ok, result, _child, _child_loom, _meta} = Cantrip.cast(child, "What is 6 * 7?")
              done.(result)
              """
            }

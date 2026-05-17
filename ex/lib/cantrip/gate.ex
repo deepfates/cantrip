@@ -139,48 +139,6 @@ defmodule Cantrip.Gate do
     }
   end
 
-  def spec("cantrip") do
-    %{
-      description:
-        "cantrip.(config) - construct a child cantrip; config includes :identity, :circle",
-      parameters: %{type: "object", properties: %{}, required: []},
-      depends_required: [],
-      kind: :execute,
-      args_summary_key: nil
-    }
-  end
-
-  def spec("cast") do
-    %{
-      description: "cast.(cantrip_id, intent) - send an intent to a constructed child cantrip",
-      parameters: %{type: "object", properties: %{}, required: []},
-      depends_required: [],
-      kind: :execute,
-      args_summary_key: :intent
-    }
-  end
-
-  def spec("cast_batch") do
-    %{
-      description:
-        "cast_batch.(items) - execute multiple child cantrips in parallel; items are [%{cantrip: id, intent: text}]",
-      parameters: %{type: "object", properties: %{}, required: []},
-      depends_required: [],
-      kind: :execute,
-      args_summary_key: nil
-    }
-  end
-
-  def spec("dispose") do
-    %{
-      description: "dispose.(cantrip_id) - clean up a child cantrip's resources",
-      parameters: %{type: "object", properties: %{}, required: []},
-      depends_required: [],
-      kind: :execute,
-      args_summary_key: nil
-    }
-  end
-
   def spec("call_entity") do
     %{
       description: "call_entity.(opts) - delegate to a child entity; opts must include :intent",

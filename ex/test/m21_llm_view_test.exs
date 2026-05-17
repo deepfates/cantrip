@@ -28,6 +28,18 @@ defmodule CantripM21LlmViewTest do
       assert capability_text =~ "call_entity.(opts)"
       assert capability_text =~ "Available host functions"
       assert capability_text =~ "persistent sandbox"
+      assert capability_text =~ "Cantrip.new(config)"
+      assert capability_text =~ "Cantrip.cast(child, intent)"
+    end
+
+    test "Dune capability text does not teach unrestricted package calls" do
+      circle = Circle.new(type: :code, gates: [:done], wards: [%{sandbox: :dune}])
+
+      capability_text = MediumRegistry.present(circle).capability_text
+
+      assert capability_text =~ "running under Dune"
+      assert capability_text =~ "Cantrip.new/1 are restricted"
+      refute capability_text =~ "Cantrip.new(config)"
     end
 
     test "capability presentation includes configured delegation gates" do

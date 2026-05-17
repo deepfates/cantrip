@@ -153,7 +153,7 @@ data = echo.(%{text: "Q3 revenue up 14%"})
 done.("Analysis: #{data}")
 ```
 
-Available host functions: `done(answer)`, `call_entity(opts)`, `call_entity_batch(list)`, `call_gate(name, args)`, `compile_and_load(opts)`, plus any custom gates. The `loom` binding gives read access to the entity's conversation history.
+Available host functions: `done(answer)`, `call_entity(opts)`, `call_entity_batch(list)`, `call_gate(name, args)`, `compile_and_load(opts)`, plus any custom gates. Code-medium entities can also call the public package API directly: `Cantrip.new/1`, `Cantrip.cast/2`, and `Cantrip.cast_batch/1`. The `loom` binding gives read access to the entity's conversation history.
 
 Both `done(x)` and `done.(x)` work — a source-level transform automatically handles the Elixir dot-call requirement for anonymous functions.
 
@@ -165,16 +165,26 @@ Reserved bindings (`done`, `call_entity`, `loom`, etc.) cannot be overridden by 
 
 ## Composition
 
-In code medium, the entity delegates via `call_entity`:
+In code medium, the entity composes child cantrips with the same package API used by host Elixir:
 
 ```elixir
 # Parent writes this in the Elixir sandbox:
-trends = call_entity.(%{intent: "Identify top 3 trends in Q3 data..."})
-risks = call_entity.(%{intent: "What are the biggest risks..."})
+{:ok, analyst} =
+  Cantrip.new(%{
+    identity: %{system_prompt: "Analyze SaaS metrics. Call done with findings."},
+    circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+  })
+
+{:ok, trends, analyst, _loom, _meta} =
+  Cantrip.cast(analyst, "Identify top 3 trends in Q3 data...")
+
+{:ok, risks, analyst, _loom, _meta} =
+  Cantrip.cast(analyst, "What are the biggest risks...")
+
 done.("Trends: #{trends}\nRisks: #{risks}")
 ```
 
-Note the dot-call syntax — gates are anonymous functions in Elixir's sandbox (`call_entity.(args)`, not `call_entity(args)`).
+Gate closures still use dot-call syntax (`done.(answer)`). In the unrestricted BEAM code medium, module calls like `Cantrip.new/1` and `Cantrip.cast/2` are ordinary Elixir. The opt-in Dune sandbox intentionally restricts remote module calls, so sandboxed deployments should use `call_entity*` until they provide a narrower host adapter.
 
 Children get a generic system prompt, no delegation gates, and capped max_turns.
 
@@ -240,7 +250,7 @@ mix cantrip.familiar --acp
 In the code medium, the familiar has these bindings:
 
 - **Observe:** `read_file.(path)`, `list_dir.(path)`, `search.(pattern, path)`
-- **Orchestrate:** `cantrip.(config)`, `cast.(id, intent)`, `cast_batch.(items)`, `dispose.(id)`
+- **Orchestrate:** `Cantrip.new(config)`, `Cantrip.cast(cantrip, intent)`, `Cantrip.cast_batch(items)`
 - **Remember:** `loom` — the full conversation history as an Elixir struct, directly in scope
 - **Finish:** `done.(answer)`
 
@@ -251,19 +261,20 @@ Example of what the familiar writes:
 files = list_dir.(%{path: "/project/lib"})
 
 # Construct a child for each file
-ids = Enum.map(files, fn f ->
-  cantrip.(%{
-    identity: "Summarize this Elixir module. Call done with a one-line summary.",
-    circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+children = Enum.map(files, fn _f ->
+  {:ok, child} = Cantrip.new(%{
+    identity: %{system_prompt: "Summarize this Elixir module. Call done with a one-line summary."},
+    circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
   })
+  child
 end)
 
 # Fan out in parallel
-items = Enum.zip(ids, files) |> Enum.map(fn {id, f} ->
+items = Enum.zip(children, files) |> Enum.map(fn {child, f} ->
   content = read_file.(%{path: "/project/lib/" <> f})
-  %{cantrip: id, intent: content}
+  %{cantrip: child, intent: content}
 end)
-results = cast_batch.(items)
+{:ok, results, _children, _looms, _meta} = Cantrip.cast_batch(items)
 
 # Recall prior work
 prior = length(loom.turns)

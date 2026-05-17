@@ -9,7 +9,7 @@ defmodule Cantrip.Familiar do
 
   Gates:
   - Navigation: list_dir, search (read-only filesystem; delegate reading to children)
-  - Orchestration: cantrip (construct), cast (execute), cast_batch (parallel), dispose (cleanup)
+  - Orchestration: the public Cantrip package API (`Cantrip.new`, `Cantrip.cast`, `Cantrip.cast_batch`)
   - Control: done (terminate with answer)
 
   The loom is persisted to JSONL. Combined with folding, this gives the
@@ -55,6 +55,13 @@ defmodule Cantrip.Familiar do
   comes back with `is_error: true` and a message. Errors are
   observations, not crashes. You read them and adapt.
 
+  Child orchestration is not a special closure vocabulary. Use the
+  public package API exactly as host Elixir does:
+
+      Cantrip.new(config)
+      Cantrip.cast(child, intent)
+      Cantrip.cast_batch(items)
+
   ## Spawning other entities
 
   When a piece of work calls for a different shape of mind than yours
@@ -92,12 +99,12 @@ defmodule Cantrip.Familiar do
 
   Two children, two different shapes:
 
-      reader = cantrip.(%{
-        identity: \"\"\"
-        You read files and return their contents. Given a path in
-        your intent, call read_file on it and pass the content to
-        done. No interpretation; just return what was there.
-        \"\"\",
+      {:ok, reader} = Cantrip.new(%{
+        identity: %{system_prompt: \"\"\"
+        You read files and return their contents. Given a path in your intent,
+        call read_file on it and pass the content to done. No interpretation;
+        just return what was there.
+        \"\"\"},
         circle: %{
           type: :code,
           gates: ["read_file", "done"],
@@ -105,12 +112,12 @@ defmodule Cantrip.Familiar do
         }
       })
 
-      interpreter = cantrip.(%{
-        identity: \"\"\"
+      {:ok, interpreter} = Cantrip.new(%{
+        identity: %{system_prompt: \"\"\"
         You read what is given to you in your intent and say, in
         your own voice, what it's actually arguing — not its
         surface, not its sections. A paragraph of your real read.
-        \"\"\",
+        \"\"\"},
         circle: %{
           type: :conversation,
           gates: ["done"],
@@ -131,19 +138,17 @@ defmodule Cantrip.Familiar do
 
   You speak intent into the circle and bind what comes back to a
   name that says *what it is*. Names are how you compose later;
-  reusing one name for everything collapses your handles:
+  reusing one name for everything collapses your handles. These calls
+  return tagged tuples; pattern match them and keep the returned next
+  cantrip when you will use that child again:
 
-      bytes = cast.(reader, "Read SPEC.md")
-      reading = cast.(interpreter, "Here is SPEC.md:\\n\\n" <> bytes)
-
-  When you're done with them, let them disperse:
-
-      dispose.(reader)
-      dispose.(interpreter)
+      {:ok, bytes, reader, _reader_loom, _meta} = Cantrip.cast(reader, "Read SPEC.md")
+      {:ok, reading, interpreter, _interp_loom, _meta} =
+        Cantrip.cast(interpreter, "Here is SPEC.md:\\n\\n" <> bytes)
 
   For work that fans out, cast many at once — they run in parallel:
 
-      chapter_readings = cast_batch.([
+      {:ok, chapter_readings, _children, _looms, _meta} = Cantrip.cast_batch([
         %{cantrip: interpreter, intent: "Read this chapter: " <> ch1},
         %{cantrip: interpreter, intent: "Read this chapter: " <> ch2}
       ])
@@ -163,24 +168,24 @@ defmodule Cantrip.Familiar do
   Deterministic Elixir and semantic operations belong to the same
   fabric. You can interleave them inline:
 
-      reader = cantrip.(%{identity: "...", circle: %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}})
-      interpreter = cantrip.(%{identity: "...", circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}})
+      {:ok, reader} = Cantrip.new(%{identity: %{system_prompt: "..."}, circle: %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}})
+      {:ok, interpreter} = Cantrip.new(%{identity: %{system_prompt: "..."}, circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}})
 
       readings =
         list_dir.(path: "docs")
         |> Enum.filter(&String.ends_with?(&1, ".md"))
         |> Enum.map(fn path ->
-          bytes = cast.(reader, "Read docs/" <> path)
-          cast.(interpreter, "Read this and say what it claims:\\n\\n" <> bytes)
+          {:ok, bytes, reader, _loom, _meta} = Cantrip.cast(reader, "Read docs/" <> path)
+          {:ok, reading, interpreter, _loom, _meta} =
+            Cantrip.cast(interpreter, "Read this and say what it claims:\\n\\n" <> bytes)
+          reading
         end)
 
-      dispose.(reader)
-      dispose.(interpreter)
       done.(readings)
 
   `list_dir` is a native operation. `Enum.filter` is computation.
-  `cast.(reader, ...)` is mechanical retrieval — a code-medium child
-  does the read. `cast.(interpreter, ...)` is judgment — a
+  `Cantrip.cast(reader, ...)` is mechanical retrieval — a code-medium child
+  does the read. `Cantrip.cast(interpreter, ...)` is judgment — a
   conversation-medium child does the speaking. `readings` threads
   their outputs together. None of these are separate phases — they
   are one statement in one medium, and the children inside it have
@@ -203,11 +208,26 @@ defmodule Cantrip.Familiar do
           # adapt: pick a different path, ask the user, fall back
       end
 
-  Same with `cast`'s payloads, with file reads through children, with
-  any gate result. Reach for `case` and `with` before `if`. When you
-  want defensive error handling around a closure that might raise,
+  Same with `Cantrip.cast` payloads, with file reads through children,
+  with any gate result. Reach for `case` and `with` before `if`. When
+  you want defensive error handling around a closure that might raise,
   `try/rescue` is available too — but pattern-matching tagged returns
   is the more native shape.
+
+  Elixir branch bindings are lexical. A variable assigned only inside
+  an `if`, `case`, or `with` branch is not created in the outer scope.
+  Assign the whole expression instead:
+
+      reader_status =
+        case binding()[:reader] do
+          nil -> Cantrip.new(reader_config)
+          reader -> {:ok, reader}
+        end
+
+      case reader_status do
+        {:ok, reader} -> ...
+        {:error, reason} -> ...
+      end
 
   ## When you lose track
 
@@ -273,8 +293,8 @@ defmodule Cantrip.Familiar do
     - `list_dir` returns a list of strings; `search` returns a list of
       maps. Use `Enum.*` on them directly.
     - Pipe into `then(fn v -> ... end)`, not into `(fn v -> ... end).()`.
-    - Each `cast` is an LLM round-trip. For more than a couple, use
-      `cast_batch` so they run in parallel. Your turn has roughly
+    - Each `Cantrip.cast` is an LLM round-trip. For more than a couple, use
+      `Cantrip.cast_batch` so they run in parallel. Your turn has roughly
       #{div(@default_eval_timeout_ms, 1000)} seconds.
 
   ## Ending
@@ -380,13 +400,6 @@ defmodule Cantrip.Familiar do
       })
     ]
 
-    orchestration_gates = [
-      %{name: "cantrip"},
-      %{name: "cast"},
-      %{name: "cast_batch"},
-      %{name: "dispose"}
-    ]
-
     # Self-modification capacity: the Familiar can write new Elixir
     # modules at runtime and hot-load them. Scoped to the `Cantrip.Hot.`
     # namespace via a ward so the entity cannot redefine framework
@@ -402,8 +415,7 @@ defmodule Cantrip.Familiar do
       %{name: "done"}
     ]
 
-    gates =
-      control_gates ++ observation_gates ++ orchestration_gates ++ evolution_gates
+    gates = control_gates ++ observation_gates ++ evolution_gates
 
     attrs = %{
       llm: llm,

@@ -82,4 +82,33 @@ defmodule CantripM23StreamingTest do
     step_completes = Enum.filter(events, &(event_type(&1) == :step_complete))
     assert [{_env, {:step_complete, %{terminated: true}}}] = step_completes
   end
+
+  test "cast_stream emits a final response when max_turns truncates before done" do
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{code: "missing_binding"},
+         %{code: "still_missing"}
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :code, gates: [:done], wards: [%{max_turns: 2}]}
+      )
+
+    {stream, _task} = Cantrip.cast_stream(cantrip, "trigger repeated eval errors")
+
+    events = Enum.to_list(stream)
+
+    finals = Enum.filter(events, &(event_type(&1) == :final_response))
+    assert [{_env, {:final_response, %{result: result}}}] = finals
+    assert result =~ "max_turns limit (2)"
+    assert result =~ "Last eval error"
+
+    last = List.last(events)
+    assert {:done, {:ok, nil, _cantrip, _loom, meta}} = last
+    assert meta.truncated
+    assert meta.truncation_reason == "max_turns"
+  end
 end

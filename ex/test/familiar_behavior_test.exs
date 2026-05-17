@@ -161,12 +161,11 @@ defmodule Cantrip.FamiliarBehaviorTest do
 
       try do
         parent_code = """
-        id = cantrip.(%{
-          identity: "Read notes.md and return the first line.",
+        {:ok, child} = Cantrip.new(%{
+          identity: %{system_prompt: "Read notes.md and return the first line."},
           circle: %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}
         })
-        result = cast.(id, "Read notes.md")
-        dispose.(id)
+        {:ok, result, _child, _child_loom, _meta} = Cantrip.cast(child, "Read notes.md")
         done.(result)
         """
 
@@ -205,22 +204,6 @@ defmodule Cantrip.FamiliarBehaviorTest do
       File.write!(Path.join(tmp_dir, "b.txt"), "bravo\n")
 
       try do
-        parent_code = """
-        spec = %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}
-        ra = cantrip.(%{identity: "Read a.txt; return first line.", circle: spec})
-        rb = cantrip.(%{identity: "Read b.txt; return first line.", circle: spec})
-        [first, second] = cast_batch.([
-          %{cantrip: ra, intent: "Read a.txt"},
-          %{cantrip: rb, intent: "Read b.txt"}
-        ])
-        dispose.(ra)
-        dispose.(rb)
-        done.(first <> "+" <> second)
-        """
-
-        # Both children run the same script; their context differs (the
-        # intent string), but here we're pinning the contract for ordered
-        # results, not for context-following.
         child_a_code = """
         content = read_file.(%{path: "a.txt"})
         done.(content |> String.trim())
@@ -231,17 +214,21 @@ defmodule Cantrip.FamiliarBehaviorTest do
         done.(content |> String.trim())
         """
 
-        parent_llm = {FakeLLM, FakeLLM.new([%{code: parent_code}])}
+        parent_code = """
+        lla = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: #{inspect(child_a_code)}}])}
+        llb = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: #{inspect(child_b_code)}}])}
+        spec = %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}
+        {:ok, ra} = Cantrip.new(%{llm: lla, identity: %{system_prompt: "Read a.txt; return first line."}, circle: spec})
+        {:ok, rb} = Cantrip.new(%{llm: llb, identity: %{system_prompt: "Read b.txt; return first line."}, circle: spec})
+        {:ok, [first, second], _children, _looms, _meta} = Cantrip.cast_batch([
+          %{cantrip: ra, intent: "Read a.txt"},
+          %{cantrip: rb, intent: "Read b.txt"}
+        ])
+        done.(first <> "+" <> second)
+        """
 
-        # cast_batch spawns concurrent children. Use a shared FakeLLM so
-        # both children pull from the same scripted queue (each child
-        # asks for one response). With concurrency the order isn't
-        # guaranteed at the LLM-script level, so we use two separate
-        # scripts and rely on Familiar's child_llm being a single state.
-        # Switch to a sequential, FIFO-safe shape: a single scripted LLM
-        # that returns both children's responses in submission order.
-        child_llm =
-          {FakeLLM, FakeLLM.new([%{code: child_a_code}, %{code: child_b_code}], shared: true)}
+        parent_llm = {FakeLLM, FakeLLM.new([%{code: parent_code}])}
+        child_llm = {FakeLLM, FakeLLM.new([])}
 
         {:ok, cantrip} = Familiar.new(llm: parent_llm, child_llm: child_llm, root: tmp_dir)
         {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "fan out and combine")
@@ -279,12 +266,11 @@ defmodule Cantrip.FamiliarBehaviorTest do
            # Turn 1: the parent tries to cast on a broken child.
            %{
              code: """
-             id = cantrip.(%{
-               identity: "broken helper",
-               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 1}]}
+             {:ok, child} = Cantrip.new(%{
+               identity: %{system_prompt: "broken helper"},
+               circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 1}]}
              })
-             cast.(id, "do impossible thing")
-             dispose.(id)
+             Cantrip.cast(child, "do impossible thing")
              """
            },
            # Turn 2: parent observed the failure on turn 1 and finishes.

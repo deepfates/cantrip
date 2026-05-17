@@ -77,6 +77,90 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       refute Keyword.has_key?(state.binding, :loom_value)
       assert state.binding[:count] == 1
     end
+
+    test "Cantrip.new constructs package handles that can persist in code_state" do
+      child_llm =
+        {Cantrip.FakeLLM,
+         Cantrip.FakeLLM.new([
+           %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
+         ])}
+
+      {:ok, parent} =
+        Cantrip.new(
+          llm: {Cantrip.FakeLLM, Cantrip.FakeLLM.new([])},
+          circle: %{type: :code, gates: [:done], wards: [%{max_turns: 3}]}
+        )
+
+      runtime =
+        make_runtime([:done])
+        |> Map.put(:parent_context, Cantrip.parent_context(parent, child_llm: child_llm))
+
+      {state, _obs, result, terminated} =
+        CodeMedium.eval(
+          ~s|{:ok, helper} = Cantrip.new(%{
+               identity: %{system_prompt: "helper"},
+               circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 1}]}
+             })
+             {:ok, answer, _next_helper, _child_loom, _meta} = Cantrip.cast(helper, "go")
+             done.(%{id: helper.id, result: answer})|,
+          %{},
+          runtime
+        )
+
+      assert terminated
+      assert result.result == "ok"
+      assert %Cantrip{id: id} = state.binding[:helper]
+      assert id == result.id
+    end
+
+    test "child gate dependency inheritance does not create atoms from string keys" do
+      root =
+        Path.join(
+          System.tmp_dir!(),
+          "cantrip_deps_" <> Integer.to_string(System.unique_integer([:positive]))
+        )
+
+      atom_name = "cantrip_unknown_dep_" <> Integer.to_string(System.unique_integer([:positive]))
+      assert_raise ArgumentError, fn -> :erlang.binary_to_existing_atom(atom_name) end
+
+      {:ok, parent} =
+        Cantrip.new(
+          llm: {Cantrip.FakeLLM, Cantrip.FakeLLM.new([])},
+          circle: %{
+            type: :code,
+            gates: [
+              %{name: :done},
+              %{name: :read, dependencies: %{"root" => root, atom_name => "ignored"}}
+            ],
+            wards: [%{max_turns: 3}]
+          }
+        )
+
+      {:ok, child} =
+        Cantrip.new(%{
+          parent_context: Cantrip.parent_context(parent),
+          circle: %{type: :code, gates: ["list_dir"]}
+        })
+
+      assert child.circle.gates["list_dir"].dependencies == %{root: root}
+      assert_raise ArgumentError, fn -> :erlang.binary_to_existing_atom(atom_name) end
+    end
+
+    test "call_entity is not injected unless the circle includes the gate" do
+      runtime = make_runtime([:done])
+
+      {_state, _obs, result, terminated} =
+        CodeMedium.eval(
+          ~S"""
+          done.(binding() |> Keyword.has_key?(:call_entity))
+          """,
+          %{},
+          runtime
+        )
+
+      assert terminated
+      refute result
+    end
   end
 
   describe "gate call ergonomics - done" do
@@ -286,37 +370,58 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
   # ===========================================================================
 
   describe "cast_batch error consistency (COMP-8)" do
+    test "cast_batch validates item shape before spawning child tasks" do
+      {:ok, child} =
+        Cantrip.new(
+          llm: {Cantrip.FakeLLM, Cantrip.FakeLLM.new([])},
+          circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 1}]}
+        )
+
+      assert {:error, {:invalid_cast_batch_item, 0, :missing_cantrip}} =
+               Cantrip.cast_batch([%{intent: "go"}])
+
+      assert {:error, {:invalid_cast_batch_item, 0, :missing_intent}} =
+               Cantrip.cast_batch([%{cantrip: child}])
+
+      assert {:error, {:invalid_cast_batch_item, 0, :invalid_cantrip}} =
+               Cantrip.cast_batch([%{cantrip: :not_a_cantrip, intent: "go"}])
+
+      assert {:error, {:invalid_cast_batch_item, 0, :expected_map_or_keyword}} =
+               Cantrip.cast_batch([:not_an_item])
+    end
+
     test "cast_batch sequential fallback surfaces child failure as error observation" do
-      # Runtime with call_entity that returns an error, no call_entity_batch
-      circle = Circle.new(gates: [:done, :cantrip, :cast, :cast_batch], type: :code)
+      child_llm = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{error: "child crashed"}])}
 
-      failing_call_entity = fn _opts ->
-        %{
-          observation: %{gate: "call_entity", result: "child crashed", is_error: true},
-          value: nil
-        }
-      end
+      {:ok, parent} =
+        Cantrip.new(
+          llm: {Cantrip.FakeLLM, Cantrip.FakeLLM.new([])},
+          circle: %{type: :code, gates: [:done], wards: [%{max_turns: 3}]}
+        )
 
-      runtime = %{circle: circle, call_entity: failing_call_entity}
+      runtime =
+        make_runtime([:done])
+        |> Map.put(:parent_context, Cantrip.parent_context(parent, child_llm: child_llm))
+
       state = %{}
 
-      # cast_batch should raise internally (caught by code medium as error obs)
+      # Matching on the success shape should fail when Cantrip.cast_batch returns
+      # an error, so the code medium records the failure and does not reach done.
       code = """
-      id = cantrip.(%{
-        identity: "helper",
-        circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+      {:ok, child} = Cantrip.new(%{
+        identity: %{system_prompt: "helper"},
+        circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
       })
-      cast_batch.([%{cantrip: id, intent: "fail please"}])
+      {:ok, _values, _children, _looms, _meta} =
+        Cantrip.cast_batch([%{cantrip: child, intent: "fail please"}])
       done.("should not reach here")
       """
 
       {_state, obs, _result, terminated} = CodeMedium.eval(code, state, runtime)
 
-      # The raise should prevent done from being reached
-      # Prior to fix: cast_batch swallowed the error, done was reached
-      refute terminated, "cast_batch should have raised before done was called"
-      error_obs = Enum.find(obs, fn o -> o[:is_error] end)
-      assert error_obs, "expected an error observation from cast_batch failure"
+      refute terminated, "Cantrip.cast_batch should have errored before done was called"
+      assert Enum.any?(obs, &(&1[:is_error] and &1.gate == "cast_batch"))
+      assert Enum.any?(obs, &(&1[:is_error] and &1.gate == "code"))
     end
   end
 

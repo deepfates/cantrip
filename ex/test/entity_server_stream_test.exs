@@ -84,11 +84,11 @@ defmodule Cantrip.EntityServerStreamTest do
          FakeLLM.new([
            %{
              code: """
-             id = cantrip.(%{
-               identity: "helper",
-               circle: %{medium: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+             {:ok, child} = Cantrip.new(%{
+               identity: %{system_prompt: "helper"},
+               circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
              })
-             result = cast.(id, "do something")
+             {:ok, result, _child, _child_loom, _meta} = Cantrip.cast(child, "do something")
              done.(result)
              """
            }
@@ -108,6 +108,41 @@ defmodule Cantrip.EntityServerStreamTest do
       # Should have received child delegation events
       assert_received {:cantrip_event, {_, {:child_start, %{depth: _}}}}
       assert_received {:cantrip_event, {_, {:child_end, %{depth: _, result: "child done"}}}}
+    end
+
+    test "parent code event arrives before child code events" do
+      parent_code = """
+      {:ok, child} = Cantrip.new(%{
+        identity: %{system_prompt: "helper"},
+        circle: %{type: :code, gates: ["done"], wards: [%{max_turns: 3}]}
+      })
+      {:ok, result, _child, _child_loom, _meta} = Cantrip.cast(child, "do something")
+      done.(result)
+      """
+
+      parent_llm = {FakeLLM, FakeLLM.new([%{code: parent_code}])}
+      child_llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("child done")]}])}
+
+      {:ok, cantrip} = Cantrip.Familiar.new(llm: parent_llm, child_llm: child_llm)
+      {:ok, "child done", _, _, _} = Cantrip.cast(cantrip, "test ordering", stream_to: self())
+
+      events = collect_cantrip_events()
+
+      parent_code_index =
+        Enum.find_index(events, fn
+          {%{depth: 0}, {:code, code}} -> String.contains?(code, "Cantrip.cast(child")
+          _ -> false
+        end)
+
+      child_code_index =
+        Enum.find_index(events, fn
+          {%{depth: 1}, {:code, code}} -> String.contains?(code, "child done")
+          _ -> false
+        end)
+
+      assert is_integer(parent_code_index)
+      assert is_integer(child_code_index)
+      assert parent_code_index < child_code_index
     end
   end
 
@@ -148,6 +183,14 @@ defmodule Cantrip.EntityServerStreamTest do
       _ -> flush_mailbox()
     after
       0 -> :ok
+    end
+  end
+
+  defp collect_cantrip_events(acc \\ []) do
+    receive do
+      {:cantrip_event, event} -> collect_cantrip_events([event | acc])
+    after
+      0 -> Enum.reverse(acc)
     end
   end
 end

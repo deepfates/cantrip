@@ -13,7 +13,7 @@ defmodule Cantrip.EntityServer do
   GenServer mailbox.
   """
 
-  alias Cantrip.{Circle, Gate, Loom, ProviderCall, WardPolicy}
+  alias Cantrip.{Gate, Loom, ProviderCall, WardPolicy}
   alias Cantrip.Medium.Registry, as: MediumRegistry
   alias Cantrip.LLMs.Helpers
 
@@ -218,6 +218,8 @@ defmodule Cantrip.EntityServer do
     reason = truncation_reason(state)
 
     if reason do
+      stream_result = truncation_stream_result(reason, state)
+
       loom =
         Loom.append_turn(state.loom, %{
           entity_id: state.entity_id,
@@ -233,8 +235,11 @@ defmodule Cantrip.EntityServer do
         turns: state.turns,
         truncated: true,
         truncation_reason: reason,
+        terminated: false,
         cumulative_usage: state.usage
       }
+
+      if stream_result, do: emit_event(state, {:final_response, %{result: stream_result}})
 
       {nil, %{state | loom: loom}, meta}
     else
@@ -303,6 +308,7 @@ defmodule Cantrip.EntityServer do
     usage = Cantrip.Turn.accumulate_usage(state.usage, usage)
 
     runtime = turn_runtime(state, classified)
+    emit_turn_events(state, classified.events)
 
     {:ok, executed} =
       Cantrip.Turn.execute_classified_response(classified, state.code_state, runtime)
@@ -318,7 +324,7 @@ defmodule Cantrip.EntityServer do
       )
 
     turn_number = state.turns + 1
-    emit_turn_events(state, Cantrip.Event.turn_runtime_events(executed, terminated, turn_number))
+    emit_turn_events(state, Cantrip.Event.turn_result_events(executed, terminated, turn_number))
 
     turn_attrs =
       Cantrip.Turn.turn_attrs(
@@ -395,218 +401,80 @@ defmodule Cantrip.EntityServer do
 
   defp execute_call_entity(state, opts) do
     opts = Helpers.atomize_known_keys(opts)
-    requested = opts[:gates] || Gate.names(state.cantrip.circle)
-    requested = Enum.map(requested, &to_string/1)
-    maybe_call_child(state, opts, requested)
-  end
+    raw_intent = opts[:intent] || ""
+    context = opts[:context]
 
-  defp maybe_call_child(state, opts, requested_gates) do
-    max_depth = WardPolicy.max_depth(state.cantrip.circle.wards)
-
-    if is_integer(max_depth) and state.depth >= max_depth do
-      %{
-        value: "max_depth exceeded",
-        observation: %{gate: "call_entity", result: "max_depth exceeded", is_error: true}
-      }
-    else
-      raw_intent = opts[:intent] || ""
-      # If context is provided, prepend it to the intent so the child sees it.
-      context = opts[:context]
-
-      child_intent =
-        if context do
-          ctx_str = if is_binary(context), do: context, else: Jason.encode!(context)
-          "Context: #{ctx_str}\n\nTask: #{raw_intent}"
-        else
-          raw_intent
-        end
-
-      # If system_prompt is provided, override child identity.
-      child_system_prompt = opts[:system_prompt]
-      child_wards = normalize_child_wards(opts)
-      composed_wards = WardPolicy.compose(state.cantrip.circle.wards, child_wards)
-      requested_gates = Enum.uniq(requested_gates ++ ["done"])
-      parent_gate_map = state.cantrip.circle.gates
-
-      delegation_gates = MapSet.new(["call_entity", "call_entity_batch"])
-      child_depth = state.depth + 1
-      strip_delegation = is_integer(max_depth) and child_depth >= max_depth
-
-      parent_dependencies = collect_parent_dependencies(parent_gate_map)
-
-      child_gates =
-        requested_gates
-        |> Enum.reject(fn name -> strip_delegation and MapSet.member?(delegation_gates, name) end)
-        |> Enum.map(fn name ->
-          {name, resolve_child_gate(name, parent_gate_map, parent_dependencies)}
-        end)
-        |> Map.new()
-
-      child_circle = %{state.cantrip.circle | gates: child_gates}
-      child_circle = %{child_circle | wards: composed_wards}
-
-      # Allow child to use a different medium type (e.g. :bash, :code, :conversation)
-      child_circle =
-        case opts[:circle_type] do
-          nil ->
-            child_circle
-
-          type ->
-            # Reconstruct circle with the requested type via Circle.new
-            # so normalize_type is applied correctly
-            normalized =
-              Circle.new(%{
-                type: type,
-                gates: Map.values(child_gates),
-                wards: composed_wards,
-                medium_opts: child_circle.medium_opts
-              })
-
-            %{child_circle | type: normalized.type}
-        end
-
-      # Allow child to have its own medium_opts (e.g. cwd for bash)
-      child_circle =
-        case opts[:medium_opts] do
-          nil -> child_circle
-          medium_opts -> %{child_circle | medium_opts: Map.new(medium_opts)}
-        end
-
-      {child_module, child_state} = choose_child_llm(state, opts)
-
-      child_cantrip = %{
-        state.cantrip
-        | llm_module: child_module,
-          llm_state: child_state,
-          circle: child_circle,
-          loom_storage: nil
-      }
-
-      # Use request's system_prompt if provided; otherwise give children
-      # a generic prompt so they don't inherit parent's delegation instructions.
-      effective_child_prompt =
-        child_system_prompt ||
-          """
-          You are a child entity working on a specific task for a parent orchestrator.
-          Work in variables — read, process, and analyze data in code.
-          Call done.(result) with a concise answer when finished.
-          The parent only sees your done() result, so make it informative but brief.
-          """
-
-      child_cantrip =
-        %{
-          child_cantrip
-          | identity: %{child_cantrip.identity | system_prompt: effective_child_prompt}
-        }
-
-      cancel_on_parent = [self() | state.cancel_on_parent] |> Enum.uniq()
-      child_depth = state.depth + 1
-
-      emit_event(state, {:child_start, %{depth: child_depth, intent: child_intent}})
-
-      case Cantrip.cast(child_cantrip, child_intent,
-             depth: child_depth,
-             cancel_on_parent: cancel_on_parent,
-             stream_to: state.stream_to,
-             stream_barrier?: state.stream_barrier?
-           ) do
-        {:ok, value, next_cantrip, child_loom, _meta} ->
-          remember_child_llm(next_cantrip)
-          emit_event(state, {:child_end, %{depth: child_depth, result: value}})
-
-          %{
-            value: value,
-            observation: %{
-              gate: "call_entity",
-              result: value,
-              is_error: false,
-              child_turns: child_loom.turns
-            }
-          }
-
-        {:error, reason, next_cantrip} ->
-          remember_child_llm(next_cantrip)
-          emit_event(state, {:child_end, %{depth: child_depth, error: inspect(reason)}})
-
-          %{
-            value: inspect(reason),
-            observation: %{gate: "call_entity", result: inspect(reason), is_error: true}
-          }
+    child_intent =
+      if context do
+        ctx_str = if is_binary(context), do: context, else: Jason.encode!(context)
+        "Context: #{ctx_str}\n\nTask: #{raw_intent}"
+      else
+        raw_intent
       end
-    end
-  end
 
-  # SpawnFn dependency wiring (SPEC §5.1, CIRCLE-10).
-  #
-  # When a parent proposes `gates: ["read_file"]` (a bare name), the runtime
-  # must expand it into a fully-configured child gate — description,
-  # parameter schema, and any filesystem/auth dependencies — so the child's
-  # medium can present it correctly and the gate can execute. Without this,
-  # a bare-named child read_file gate has no root, no schema, and crashes
-  # the moment its LLM forgets to supply `path`.
-  #
-  # Resolution rules, in order:
-  #   1. If the parent has the gate, the child inherits it verbatim. The
-  #      parent has already construction-time-configured its own deps;
-  #      reuse that configuration.
-  #   2. Otherwise, build the gate from `Gate.spec/1` (description, schema,
-  #      kind) and merge in the parent's `:dependencies` for any dep keys
-  #      the spec declares as required.
-  defp resolve_child_gate(name, parent_gate_map, parent_dependencies) do
-    case Map.get(parent_gate_map, name) do
-      nil -> build_canonical_gate(name, parent_dependencies)
-      gate -> gate
-    end
-  end
+    parent_context = parent_context(state)
 
-  defp build_canonical_gate(name, parent_dependencies) do
-    spec = Cantrip.Gate.spec(name)
+    case Cantrip.new(Map.put(call_entity_child_attrs(opts), :parent_context, parent_context)) do
+      {:ok, child_cantrip} ->
+        case Cantrip.cast(child_cantrip, child_intent,
+               parent_context: parent_context,
+               parent_gate: "call_entity",
+               record_parent_observation?: false
+             ) do
+          {:ok, value, _next_cantrip, child_loom, _meta} ->
+            %{
+              value: value,
+              observation: %{
+                gate: "call_entity",
+                result: value,
+                is_error: false,
+                child_turns: child_loom.turns
+              }
+            }
 
-    inherited =
-      spec.depends_required
-      |> Enum.reduce(%{}, fn key, acc ->
-        case Map.get(parent_dependencies, key) do
-          nil -> acc
-          value -> Map.put(acc, key, value)
+          {:error, reason, _next_cantrip} ->
+            %{
+              value: inspect(reason),
+              observation: %{gate: "call_entity", result: inspect(reason), is_error: true}
+            }
         end
-      end)
 
-    base = %{name: name, description: spec.description, parameters: spec.parameters}
-    if map_size(inherited) > 0, do: Map.put(base, :dependencies, inherited), else: base
-  end
-
-  # Parents may carry filesystem roots either under :dependencies (per
-  # CIRCLE-10 vocabulary) or at the top-level of a gate map (the legacy
-  # convention Familiar.new still uses). Collect both into one dependency
-  # map keyed by atom so SpawnFn can hand them to bare children.
-  defp collect_parent_dependencies(parent_gate_map) do
-    parent_gate_map
-    |> Map.values()
-    |> Enum.reduce(%{}, fn gate, acc ->
-      acc
-      |> merge_explicit_deps(gate)
-      |> maybe_take_top_level(gate, :root)
-    end)
-  end
-
-  defp merge_explicit_deps(acc, gate) do
-    case Map.get(gate, :dependencies) || Map.get(gate, "dependencies") do
-      %{} = deps ->
-        Enum.reduce(deps, acc, fn {k, v}, acc ->
-          key = if is_atom(k), do: k, else: String.to_atom(to_string(k))
-          if Map.has_key?(acc, key), do: acc, else: Map.put(acc, key, v)
-        end)
-
-      _ ->
-        acc
+      {:error, reason} ->
+        %{value: reason, observation: %{gate: "call_entity", result: reason, is_error: true}}
     end
   end
 
-  defp maybe_take_top_level(acc, gate, key) do
-    case Map.get(gate, key) || Map.get(gate, Atom.to_string(key)) do
-      nil -> acc
-      value -> if Map.has_key?(acc, key), do: acc, else: Map.put(acc, key, value)
-    end
+  defp call_entity_child_attrs(opts) do
+    opts
+    |> Map.take([
+      :llm,
+      :identity,
+      :system_prompt,
+      :circle,
+      :circle_type,
+      :medium,
+      :gates,
+      :wards,
+      :medium_opts
+    ])
+    |> normalize_call_entity_llm()
+  end
+
+  defp normalize_call_entity_llm(%{llm: {module, _state}} = attrs) when is_atom(module),
+    do: attrs
+
+  defp normalize_call_entity_llm(%{llm: _legacy_ref} = attrs), do: Map.delete(attrs, :llm)
+  defp normalize_call_entity_llm(attrs), do: attrs
+
+  defp parent_context(state) do
+    Cantrip.parent_context(state.cantrip,
+      depth: state.depth,
+      child_llm: current_child_llm(state),
+      cancel_on_parent: state.cancel_on_parent,
+      stream_to: state.stream_to,
+      stream_barrier?: state.stream_barrier?,
+      entity_state: state
+    )
   end
 
   defp default_child_llm(state),
@@ -616,17 +484,6 @@ defmodule Cantrip.EntityServer do
     Process.get(:cantrip_child_llm) ||
       state.cantrip.child_llm ||
       default_child_llm(state)
-  end
-
-  defp choose_child_llm(state, opts) do
-    case opts[:llm] do
-      {module, child_state} when is_atom(module) -> {module, child_state}
-      _ -> current_child_llm(state)
-    end
-  end
-
-  defp remember_child_llm(next_cantrip) do
-    Process.put(:cantrip_child_llm, {next_cantrip.llm_module, next_cantrip.llm_state})
   end
 
   defp execute_compile_and_load(state, opts) do
@@ -700,6 +557,7 @@ defmodule Cantrip.EntityServer do
       end,
       call_entity: fn opts -> execute_call_entity(state, opts) end,
       call_entity_batch: fn opts -> execute_call_entity_batch(state, opts) end,
+      parent_context: parent_context(state),
       compile_and_load: fn opts -> execute_compile_and_load(state, opts) end
     }
 
@@ -742,6 +600,46 @@ defmodule Cantrip.EntityServer do
     end
   end
 
+  defp truncation_stream_result("max_turns", state) do
+    max_turns = WardPolicy.max_turns(state.cantrip.circle.wards)
+
+    base =
+      "I hit the max_turns limit (#{max_turns}) before producing a final answer with done.(...)."
+
+    case last_error_observation(state.loom) do
+      nil -> base
+      error -> base <> " Last eval error: " <> summarize_truncation_error(error)
+    end
+  end
+
+  defp truncation_stream_result(_reason, _state), do: nil
+
+  defp last_error_observation(%{turns: turns}) when is_list(turns) do
+    turns
+    |> Enum.reverse()
+    |> Enum.find_value(fn turn ->
+      turn
+      |> Map.get(:observation, [])
+      |> Enum.reverse()
+      |> Enum.find(fn obs -> Map.get(obs, :is_error) == true end)
+    end)
+  end
+
+  defp last_error_observation(_loom), do: nil
+
+  defp summarize_truncation_error(%{result: result}), do: summarize_truncation_error(result)
+
+  defp summarize_truncation_error(result) do
+    result =
+      if is_binary(result),
+        do: result,
+        else: inspect(result, pretty: false, limit: 20)
+
+    result
+    |> String.replace(~r/\s+/, " ")
+    |> String.slice(0, 500)
+  end
+
   defp normalize_cancel_parents(nil), do: []
 
   defp normalize_cancel_parents(parents) when is_list(parents) do
@@ -755,13 +653,6 @@ defmodule Cantrip.EntityServer do
 
   defp restore_stream_opts(state, stream_to, stream_barrier?) do
     %{state | stream_to: stream_to, stream_barrier?: stream_barrier?}
-  end
-
-  defp normalize_child_wards(opts) do
-    case opts[:wards] do
-      wards when is_list(wards) -> wards
-      _ -> []
-    end
   end
 
   defp emit_entity_stop(state, reason) do

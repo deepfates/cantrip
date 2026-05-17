@@ -19,6 +19,7 @@ Decision:
 1. Canonical config key: `require_done_tool`.
 2. Canonical delegation gates: `call_entity`, `call_entity_batch`.
 3. `call_entity` and `call_entity_batch` are accepted aliases only at parsing boundaries, normalized internally to `call_entity*`.
+4. Familiar code running in the unrestricted BEAM medium composes children through the public package API (`Cantrip.new`, `Cantrip.cast`, `Cantrip.cast_batch`). There is no separate Familiar-specific `cantrip` / `cast` / `cast_batch` / `dispose` closure API.
 
 Rationale: Matches current tests and avoids split semantics.
 

@@ -1060,7 +1060,8 @@ defmodule Cantrip.Examples do
         )
       )
 
-    # Build the code for send 1 — uses call_entity.() which handles LLM wiring
+    # Build the code for send 1 — uses the Familiar package-shaped
+    # cantrip/cast surface while the runtime handles inherited wiring.
     {send1_code, _scripted_parent} = build_familiar_send1(opts)
 
     scripted = [
@@ -1073,16 +1074,16 @@ defmodule Cantrip.Examples do
 
     llm = choose_llm(opts, scripted)
 
-    # Children spawned via call_entity use child_llm — in scripted mode, give them FakeLLM responses.
-    # Children inherit the code medium, so responses must use code format (done.(answer)).
+    # Children spawned via cantrip/cast use child_llm — in scripted mode,
+    # give the conversation child tool calls and the code child code.
     child_llm =
       if scripted_mode?(opts) do
         child_responses = [
-          %{code: "done.(\"child-conversation\")"},
+          %{tool_calls: [%{gate: "done", args: %{answer: "child-conversation"}}]},
           %{code: "done.(\"child-code\")"}
         ]
 
-        {FakeLLM, FakeLLM.new(child_responses)}
+        {FakeLLM, FakeLLM.new(child_responses, shared: true)}
       else
         nil
       end
@@ -1093,7 +1094,7 @@ defmodule Cantrip.Examples do
         child_llm: child_llm,
         identity: %{
           system_prompt:
-            "You write Elixir code to coordinate SaaS analysis. Write all code at the top level — do NOT use defmodule.\n\nAvailable host functions:\n- call_entity.(%{intent: \"task description\"}) — delegate to a child entity, returns the child's answer as a string\n- call_entity_batch.([%{intent: \"task1\"}, %{intent: \"task2\"}]) — delegate multiple tasks in parallel, returns list of answers\n- done.(answer) — finish and return your final answer\n\nOptional keys for call_entity: :context (data map), :system_prompt, :gates, :wards\n\nVariables persist across turns and sends. Use Process.put/get for cross-send memory.\n\nYour job: break the request into subtasks, delegate via call_entity, combine results, call done.",
+            "You write Elixir code to coordinate SaaS analysis. Write all code at the top level — do NOT use defmodule.\n\nUse the package API directly:\n- Cantrip.new(%{identity: %{system_prompt: \"...\"}, circle: %{type: :code, gates: [\"done\"], wards: [%{max_turns: 2}]}}) constructs a child Cantrip\n- Cantrip.cast(child, \"task description\") sends an intent to a child Cantrip\n- Cantrip.cast_batch([%{cantrip: child, intent: \"task\"}]) casts multiple children and returns answers in order\n- done.(answer) finishes and returns your final answer\n\nVariables persist across turns and sends. Use Process.put/get for cross-send memory.\n\nYour job: break the request into subtasks, delegate via Cantrip.new/Cantrip.cast, combine results, call done.",
           tool_choice: "required"
         },
         circle: %{
@@ -1193,17 +1194,17 @@ defmodule Cantrip.Examples do
       |> Enum.sort()
 
     spec = %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}
-    ids = Enum.map(files, fn _ ->
-      cantrip.(%{
-        identity: "Read the file named in your task and return its first non-empty line via done().",
+    children = Enum.map(files, fn _ ->
+      {:ok, child} = Cantrip.new(%{
+        identity: %{system_prompt: "Read the file named in your task and return its first non-empty line via done()."},
         circle: spec
       })
+      child
     end)
     items =
-      Enum.zip(ids, files)
-      |> Enum.map(fn {id, f} -> %{cantrip: id, intent: "Read " <> f} end)
-    lines = cast_batch.(items)
-    Enum.each(ids, &dispose.(&1))
+      Enum.zip(children, files)
+      |> Enum.map(fn {child, f} -> %{cantrip: child, intent: "Read " <> f} end)
+    {:ok, lines, _children, _looms, _meta} = Cantrip.cast_batch(items)
     done.(Enum.join(lines, " | "))
     """
 
@@ -1286,9 +1287,8 @@ defmodule Cantrip.Examples do
     # next send — so the natural "compute then done" pattern works.
     send1_code = """
     spec = %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}
-    reader = cantrip.(%{identity: "Read todo.md; return its lines as a list.", circle: spec})
-    lines = cast.(reader, "Read todo.md")
-    dispose.(reader)
+    {:ok, reader} = Cantrip.new(%{identity: %{system_prompt: "Read todo.md; return its lines as a list."}, circle: spec})
+    {:ok, lines, _reader, _loom, _meta} = Cantrip.cast(reader, "Read todo.md")
     done.(lines)
     """
 
@@ -1399,16 +1399,21 @@ defmodule Cantrip.Examples do
     code = """
     Process.put(:example_memory, ["familiar-start"])
 
-    # Delegate to children via call_entity — the framework handles LLM wiring
-    convo_result = call_entity.(%{
-      intent: "Analyze customer retention risk by segment. Focus on enterprise vs SMB churn rates.",
-      system_prompt: "You are a retention analyst. Call done with a one-sentence finding."
+    # Delegate to children via the public package API.
+    {:ok, retention} = Cantrip.new(%{
+      identity: %{system_prompt: "You are a retention analyst. Call done with a one-sentence finding."},
+      circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 2}]}
     })
 
-    code_result = call_entity.(%{
-      intent: "Compute an anomaly score for the Q3 churn spike of 4.0%.",
-      system_prompt: "You are a risk scoring agent. Call done with the anomaly score."
+    {:ok, scorer} = Cantrip.new(%{
+      identity: %{system_prompt: "You are a risk scoring agent. Call done with the anomaly score."},
+      circle: %{type: :code, gates: ["done"], wards: [%{max_turns: 2}]}
     })
+
+    {:ok, convo_result, _retention, _loom, _meta} =
+      Cantrip.cast(retention, "Analyze customer retention risk by segment. Focus on enterprise vs SMB churn rates.")
+    {:ok, code_result, _scorer, _loom, _meta} =
+      Cantrip.cast(scorer, "Compute an anomaly score for the Q3 churn spike of 4.0%.")
 
     memory = (Process.get(:example_memory) || []) ++ [convo_result, code_result]
     Process.put(:example_memory, memory)

@@ -94,24 +94,20 @@ binding in the Dune-sandboxed code medium (LOOM-11), matching the
 unrestricted code medium. The prompt teaches `loom.turns`; both
 mediums honor it.
 
-#### Familiar vocabulary in the Dune sandbox: deliberately NOT mirrored
+#### Familiar composition in the Dune sandbox
 
-An earlier revision of this branch added parallel `cantrip` / `cast` /
-`cast_batch` / `dispose` closures to the Dune sandbox path so the
-Familiar's full vocabulary worked under `sandbox: :dune` opt-in.
-After reviewing pre-existing issue #3 — which calls out the
-unrestricted-medium closures as bespoke sugar that should be replaced
-by isomorphic wrappers around `Cantrip.new` / `Cantrip.cast` /
-`Cantrip.stop` — those additions were reverted. Maintaining a second
-parallel implementation of the same bespoke pattern would have
-extended the debt #3 is meant to retire.
+Issue #3's core refactor landed in the unrestricted code medium:
+prompted Familiar code now uses the public package API directly
+(`Cantrip.new`, `Cantrip.cast`, `Cantrip.cast_batch`) instead of a
+second `cantrip` / `cast` / `cast_batch` / `dispose` ontology. The
+old closures are removed rather than preserved as aliases.
 
-What that leaves: `:dune` opt-in users get `done`, `call_entity`,
-`call_entity_batch`, the circle's named gates, the `:loom` binding,
-and the `:folded_summary` binding when folding fires. They do NOT
-get `cantrip` / `cast` / `cast_batch` / `dispose` until #3 lands and
-both code mediums gain the isomorphic Familiar surface in one place
-together.
+The Dune sandbox is deliberately different at the capability boundary:
+Dune restricts remote module calls, including `Cantrip.new/1`. Opt-in
+`:dune` users therefore get `done`, `call_entity`, `call_entity_batch`,
+the circle's named gates, the `:loom` binding, and `folded_summary`
+when folding fires. They do not get the package-module surface unless
+a deployment adds an explicit, narrow host adapter for it.
 
 ### Folding: §6.8 substance in the sandbox
 
@@ -162,7 +158,7 @@ The Familiar's system prompt now teaches:
 | `folding_test` (11 tests) | Size-trigger, summary, sandbox binding |
 | `code_medium_ergonomics_test` (folded_summary) | `folded_summary` binding visible to entity |
 | `m7_hot_reload_test` (new: namespace allow + reject) | Namespace ward enforces module prefix |
-| `dune_sandbox_test` (new: cantrip/cast/cast_batch/dispose) | Familiar vocabulary works under `:dune` |
+| `dune_sandbox_test` | Dune exposes sandbox-safe bindings and documents the module-call boundary |
 | `familiar_behavior_test` (new: regression — loom reachability) | `loom.turns` resolvable from default Familiar's eval scope (Zed-trace fix) |
 
 499 tests + 2 properties, 0 failures.
@@ -197,14 +193,11 @@ Filed as GitHub issues, not "follow-up handwave":
   Tracked for whenever someone deploys with `sandbox: :dune` and
   needs full prompt-taught fidelity.
 
-- **Issue #3** (pre-existing) — the Familiar's `cantrip` / `cast` /
-  `cast_batch` / `dispose` closures are bespoke sugar, not
-  isomorphic with `Cantrip.new` / `Cantrip.cast` / `Cantrip.stop`.
-  The Familiar's loom entries should be valid host Elixir; right
-  now they aren't. This PR's revert of the parallel Dune
-  implementation means #3 only has to refactor in one place, then
-  add the isomorphic wrappers to both code mediums together. See
-  the comment on #3 for the path.
+- **Issue #3** (pre-existing) — addressed for the unrestricted
+  Familiar path by making in-medium child orchestration use
+  `Cantrip.new` / `Cantrip.cast` / `Cantrip.cast_batch` directly.
+  The old closures were removed. Dune remains tracked separately
+  because its sandbox forbids those module calls by design.
 
 ## Files of interest
 
@@ -217,7 +210,7 @@ Filed as GitHub issues, not "follow-up handwave":
   exposes via runtime to mediums
 - `lib/cantrip/code_medium.ex` — binds `folded_summary` when present
 - `lib/cantrip/code_medium/dune_sandbox.ex` — binds `:loom`,
-  `folded_summary`, and full Familiar closures (cantrip/cast/etc.)
+  `folded_summary`, and the lower-level sandbox-safe gate closures
 - `lib/cantrip/gate.ex` — `allow_compile_namespaces` ward,
   list_dir bare names, PROD-8 redaction
 - `lib/cantrip/redact.ex` — credential-shape patterns

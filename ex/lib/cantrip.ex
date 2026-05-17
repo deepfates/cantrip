@@ -9,7 +9,7 @@ defmodule Cantrip do
 
   import Kernel, except: [send: 2]
 
-  alias Cantrip.{Identity, Circle, LLM, EntityServer, Loom, WardPolicy}
+  alias Cantrip.{Identity, Circle, LLM, EntityServer, Loom, WardPolicy, Gate}
   alias Cantrip.Medium.Registry, as: MediumRegistry
 
   defstruct id: nil,
@@ -44,6 +44,15 @@ defmodule Cantrip do
   @spec new(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
   def new(attrs) do
     attrs = Map.new(attrs)
+
+    case Map.get(attrs, :parent_context) || Map.get(attrs, "parent_context") ||
+           Process.get(:cantrip_parent_context) do
+      nil -> new_root(attrs)
+      parent_context -> new_child(attrs, parent_context)
+    end
+  end
+
+  defp new_root(attrs) do
     llm = Map.get(attrs, :llm)
     identity = Identity.new(Map.get(attrs, :identity, %{}))
     circle = Circle.new(Map.get(attrs, :circle, %{}))
@@ -67,6 +76,206 @@ defmodule Cantrip do
        }}
     end
   end
+
+  @doc """
+  Build the explicit parent context used when a cantrip constructs children.
+
+  This is the core-package representation of the inheritance rules that used
+  to live only behind `call_entity`: child LLM selection, ward composition,
+  depth limits, inherited gate dependencies, cancellation, streaming, and loom
+  grafting context.
+  """
+  @spec parent_context(t(), keyword() | map()) :: map()
+  def parent_context(%__MODULE__{} = parent, opts \\ %{}) do
+    opts = Map.new(opts)
+
+    %{
+      parent_cantrip: parent,
+      depth: Map.get(opts, :depth, 0),
+      child_llm:
+        Map.get(opts, :child_llm) || parent.child_llm || {parent.llm_module, parent.llm_state},
+      cancel_on_parent: Map.get(opts, :cancel_on_parent, []),
+      stream_to: Map.get(opts, :stream_to),
+      stream_barrier?: Map.get(opts, :stream_barrier?, false),
+      entity_state: Map.get(opts, :entity_state)
+    }
+  end
+
+  defp new_child(attrs, parent_context) do
+    parent_context = normalize_parent_context(parent_context)
+    parent = Map.fetch!(parent_context, :parent_cantrip)
+    depth = Map.get(parent_context, :depth, 0)
+    max_depth = WardPolicy.max_depth(parent.circle.wards)
+
+    if is_integer(max_depth) and depth >= max_depth do
+      {:error, "max_depth exceeded"}
+    else
+      child_llm =
+        Map.get(attrs, :llm) || Map.get(attrs, "llm") || Map.get(parent_context, :child_llm) ||
+          parent.child_llm || {parent.llm_module, parent.llm_state}
+
+      circle_attrs =
+        attrs
+        |> child_circle_attrs()
+        |> Map.put_new(:type, parent.circle.type)
+
+      requested_gates = requested_child_gates(circle_attrs, parent)
+      child_wards = fetch(circle_attrs, :wards, [])
+      composed_wards = WardPolicy.compose(parent.circle.wards, child_wards)
+      child_gates = resolve_child_gates(parent, requested_gates, depth + 1, max_depth)
+
+      child_circle_attrs =
+        circle_attrs
+        |> Map.put(:gates, Map.values(child_gates))
+        |> Map.put(:wards, composed_wards)
+
+      child_identity = child_identity_attrs(attrs)
+
+      child_attrs = %{
+        llm: child_llm,
+        child_llm: Map.get(attrs, :child_llm) || Map.get(attrs, "child_llm") || child_llm,
+        identity: child_identity,
+        circle: child_circle_attrs,
+        loom_storage: Map.get(attrs, :loom_storage) || Map.get(attrs, "loom_storage"),
+        retry: Map.get(attrs, :retry, parent.retry),
+        folding: Map.get(attrs, :folding, parent.folding)
+      }
+
+      new_root(child_attrs)
+    end
+  end
+
+  defp child_identity_attrs(attrs) do
+    case Map.get(attrs, :identity) || Map.get(attrs, "identity") do
+      nil ->
+        case Map.get(attrs, :system_prompt) || Map.get(attrs, "system_prompt") do
+          nil ->
+            %{
+              system_prompt: """
+              You are a child entity working on a specific task for a parent orchestrator.
+              Work in variables when your medium is code.
+              Call done.(result) with a concise answer when finished.
+              The parent only sees your done() result, so make it informative but brief.
+              """
+            }
+
+          prompt ->
+            %{system_prompt: prompt}
+        end
+
+      prompt when is_binary(prompt) ->
+        %{system_prompt: prompt}
+
+      identity ->
+        identity
+    end
+  end
+
+  defp child_circle_attrs(attrs) do
+    attrs
+    |> fetch(:circle, %{})
+    |> Map.new()
+    |> maybe_put(:type, fetch(attrs, :circle_type, nil))
+    |> maybe_put(:type, fetch(attrs, :medium, nil))
+    |> maybe_put(:gates, fetch(attrs, :gates, nil))
+    |> maybe_put(:wards, fetch(attrs, :wards, nil))
+    |> maybe_put(:medium_opts, fetch(attrs, :medium_opts, nil))
+  end
+
+  defp requested_child_gates(circle_attrs, parent) do
+    circle_attrs
+    |> fetch(:gates, Gate.names(parent.circle))
+    |> Enum.map(&to_string/1)
+    |> Enum.uniq()
+    |> then(&(&1 ++ ["done"]))
+    |> Enum.uniq()
+  end
+
+  defp resolve_child_gates(parent, requested_gates, child_depth, max_depth) do
+    parent_gate_map = parent.circle.gates
+    parent_dependencies = collect_parent_dependencies(parent_gate_map)
+    delegation_gates = MapSet.new(["call_entity", "call_entity_batch"])
+    strip_delegation = is_integer(max_depth) and child_depth >= max_depth
+
+    requested_gates
+    |> Enum.reject(fn name -> strip_delegation and MapSet.member?(delegation_gates, name) end)
+    |> Enum.map(fn name ->
+      {name, resolve_child_gate(name, parent_gate_map, parent_dependencies)}
+    end)
+    |> Map.new()
+  end
+
+  defp resolve_child_gate(name, parent_gate_map, parent_dependencies) do
+    case Map.get(parent_gate_map, name) do
+      nil -> build_canonical_gate(name, parent_dependencies)
+      gate -> gate
+    end
+  end
+
+  defp build_canonical_gate(name, parent_dependencies) do
+    spec = Gate.spec(name)
+
+    inherited =
+      spec.depends_required
+      |> Enum.reduce(%{}, fn key, acc ->
+        case Map.get(parent_dependencies, key) do
+          nil -> acc
+          value -> Map.put(acc, key, value)
+        end
+      end)
+
+    base = %{name: name, description: spec.description, parameters: spec.parameters}
+    if map_size(inherited) > 0, do: Map.put(base, :dependencies, inherited), else: base
+  end
+
+  defp collect_parent_dependencies(parent_gate_map) do
+    parent_gate_map
+    |> Map.values()
+    |> Enum.reduce(%{}, fn gate, acc ->
+      acc
+      |> merge_explicit_deps(gate)
+      |> maybe_take_top_level(gate, :root)
+    end)
+  end
+
+  defp merge_explicit_deps(acc, gate) do
+    case Map.get(gate, :dependencies) || Map.get(gate, "dependencies") do
+      %{} = deps ->
+        Enum.reduce(deps, acc, fn {k, v}, acc ->
+          case dependency_key(k) do
+            nil -> acc
+            key -> if Map.has_key?(acc, key), do: acc, else: Map.put(acc, key, v)
+          end
+        end)
+
+      _ ->
+        acc
+    end
+  end
+
+  defp dependency_key(key) when is_atom(key), do: key
+
+  defp dependency_key(key) when is_binary(key) do
+    String.to_existing_atom(key)
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp dependency_key(_key), do: nil
+
+  defp maybe_take_top_level(acc, gate, key) do
+    case Map.get(gate, key) || Map.get(gate, Atom.to_string(key)) do
+      nil -> acc
+      value -> if Map.has_key?(acc, key), do: acc, else: Map.put(acc, key, value)
+    end
+  end
+
+  defp fetch(map, key, default) do
+    Map.get(map, key) || Map.get(map, Atom.to_string(key), default)
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @doc """
   Build a cantrip from environment-based llm configuration.
@@ -326,11 +535,129 @@ defmodule Cantrip do
   def cast(cantrip, nil, _opts), do: {:error, "intent is required", cantrip}
 
   def cast(%__MODULE__{} = cantrip, intent, opts) when is_binary(intent) and is_list(opts) do
-    run_cast(cantrip, intent, opts)
+    run_cast_with_parent_context(cantrip, intent, opts)
   end
 
   def cast(%__MODULE__{} = cantrip, intent, opts) when is_list(opts) do
-    run_cast(cantrip, coerce_intent(intent), opts)
+    run_cast_with_parent_context(cantrip, coerce_intent(intent), opts)
+  end
+
+  @doc """
+  Cast multiple cantrips and return their results in request order.
+
+  When called from inside a parent code-medium turn, this uses the same explicit
+  parent context as `cast/2`, records one `cast_batch` observation on the
+  parent loom, and grafts all child turns under that parent turn.
+  """
+  @spec cast_batch([map()], keyword()) ::
+          {:ok, [term()], [t()], [Cantrip.Loom.t()], map()} | {:error, term()}
+  def cast_batch(items, opts \\ []) when is_list(items) and is_list(opts) do
+    parent_context = Keyword.get(opts, :parent_context) || Process.get(:cantrip_parent_context)
+    max_concurrency = cast_batch_max_concurrency(parent_context)
+    timeout = Keyword.get(opts, :timeout, :infinity)
+
+    case normalize_cast_batch_items(items) do
+      {:ok, normalized_items} ->
+        payloads =
+          normalized_items
+          |> Task.async_stream(
+            fn %{cantrip: cantrip, intent: intent} ->
+              cast(cantrip, intent,
+                parent_context: parent_context,
+                record_parent_observation?: false
+              )
+            end,
+            ordered: true,
+            max_concurrency: max_concurrency,
+            timeout: timeout
+          )
+          |> Enum.map(fn
+            {:ok, payload} -> payload
+            {:exit, reason} -> {:error, reason, nil}
+          end)
+
+        if Enum.any?(payloads, &match?({:error, _, _}, &1)) do
+          reason =
+            payloads
+            |> Enum.find(&match?({:error, _, _}, &1))
+            |> elem(1)
+
+          push_parent_cast_observation("cast_batch", inspect(reason), true, [])
+          {:error, reason}
+        else
+          values = Enum.map(payloads, fn {:ok, value, _next, _loom, _meta} -> value end)
+          next_cantrips = Enum.map(payloads, fn {:ok, _value, next, _loom, _meta} -> next end)
+          looms = Enum.map(payloads, fn {:ok, _value, _next, loom, _meta} -> loom end)
+          child_turns = Enum.flat_map(looms, & &1.turns)
+          push_parent_cast_observation("cast_batch", values, false, child_turns)
+          {:ok, values, next_cantrips, looms, %{count: length(values)}}
+        end
+
+      {:error, reason} ->
+        push_parent_cast_observation("cast_batch", inspect(reason), true, [])
+        {:error, reason}
+    end
+  end
+
+  defp normalize_cast_batch_items(items) do
+    items
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {item, index}, {:ok, acc} ->
+      case normalize_cast_batch_item(item, index) do
+        {:ok, normalized} -> {:cont, {:ok, [normalized | acc]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, normalized} -> {:ok, Enum.reverse(normalized)}
+      error -> error
+    end
+  end
+
+  defp normalize_cast_batch_item(item, index) when is_map(item) or is_list(item) do
+    item = Map.new(item)
+
+    with {:ok, cantrip} <- fetch_cast_batch_cantrip(item, index),
+         {:ok, intent} <- fetch_cast_batch_intent(item, index) do
+      {:ok, %{cantrip: cantrip, intent: intent}}
+    end
+  rescue
+    ArgumentError -> {:error, {:invalid_cast_batch_item, index, :expected_map_or_keyword}}
+  end
+
+  defp normalize_cast_batch_item(_item, index),
+    do: {:error, {:invalid_cast_batch_item, index, :expected_map_or_keyword}}
+
+  defp fetch_cast_batch_cantrip(item, index) do
+    case fetch_required(item, :cantrip) do
+      %__MODULE__{} = cantrip -> {:ok, cantrip}
+      nil -> {:error, {:invalid_cast_batch_item, index, :missing_cantrip}}
+      _other -> {:error, {:invalid_cast_batch_item, index, :invalid_cantrip}}
+    end
+  end
+
+  defp fetch_cast_batch_intent(item, index) do
+    case fetch_required(item, :intent) do
+      nil -> {:error, {:invalid_cast_batch_item, index, :missing_intent}}
+      intent -> {:ok, coerce_intent(intent)}
+    end
+  end
+
+  defp fetch_required(map, key) do
+    Map.get(map, key) || Map.get(map, Atom.to_string(key))
+  end
+
+  defp cast_batch_max_concurrency(nil), do: System.schedulers_online()
+
+  defp cast_batch_max_concurrency(parent_context) do
+    parent_context = normalize_parent_context(parent_context)
+    parent = Map.get(parent_context, :parent_cantrip)
+
+    if parent do
+      WardPolicy.max_concurrent_children(parent.circle.wards)
+    else
+      System.schedulers_online()
+    end
   end
 
   @doc """
@@ -443,6 +770,57 @@ defmodule Cantrip do
   defp coerce_intent(intent) when is_binary(intent), do: intent
   defp coerce_intent(intent), do: inspect(intent, pretty: true, limit: :infinity)
 
+  defp run_cast_with_parent_context(%__MODULE__{} = cantrip, intent, opts) do
+    case Keyword.get(opts, :parent_context) || Process.get(:cantrip_parent_context) do
+      nil ->
+        run_cast(cantrip, intent, opts)
+
+      parent_context ->
+        opts = Keyword.delete(opts, :parent_context)
+        run_child_cast(cantrip, intent, opts, parent_context)
+    end
+  end
+
+  defp run_child_cast(%__MODULE__{} = cantrip, intent, opts, parent_context) do
+    parent_context = normalize_parent_context(parent_context)
+    entity_state = Map.get(parent_context, :entity_state)
+    depth = Map.get(parent_context, :depth, 0) + 1
+    record_observation? = Keyword.get(opts, :record_parent_observation?, true)
+    parent_gate = Keyword.get(opts, :parent_gate, "cast")
+    opts = Keyword.drop(opts, [:record_parent_observation?, :parent_gate])
+
+    cantrip = refresh_default_child_llm(cantrip, parent_context)
+
+    cast_opts =
+      opts
+      |> Keyword.put_new(:depth, depth)
+      |> Keyword.put_new(:cancel_on_parent, child_cancel_on_parent(parent_context))
+      |> maybe_put_new(:stream_to, Map.get(parent_context, :stream_to))
+      |> maybe_put_new(:stream_barrier?, Map.get(parent_context, :stream_barrier?))
+
+    emit_parent_event(entity_state, {:child_start, %{depth: depth, intent: intent}})
+
+    case run_cast(cantrip, intent, cast_opts) do
+      {:ok, value, next_cantrip, child_loom, _meta} = ok ->
+        remember_parent_child_llm(parent_context, next_cantrip)
+        emit_parent_event(entity_state, {:child_end, %{depth: depth, result: value}})
+
+        if record_observation?,
+          do: push_parent_cast_observation(parent_gate, value, false, child_loom.turns)
+
+        ok
+
+      {:error, reason, next_cantrip} = error ->
+        remember_parent_child_llm(parent_context, next_cantrip)
+        emit_parent_event(entity_state, {:child_end, %{depth: depth, error: inspect(reason)}})
+
+        if record_observation?,
+          do: push_parent_cast_observation(parent_gate, inspect(reason), true, [])
+
+        error
+    end
+  end
+
   defp run_cast(%__MODULE__{} = cantrip, intent, extra_opts) do
     spec = {EntityServer, cantrip: cantrip, intent: intent}
     spec = put_elem(spec, 1, Keyword.merge(elem(spec, 1), extra_opts))
@@ -470,6 +848,62 @@ defmodule Cantrip do
       EntityServer.run(pid)
     catch
       :exit, reason -> {:error, reason}
+    end
+  end
+
+  defp maybe_put_new(opts, _key, nil), do: opts
+  defp maybe_put_new(opts, key, value), do: Keyword.put_new(opts, key, value)
+
+  defp normalize_parent_context(%{} = context) do
+    Map.new(context, fn {k, v} ->
+      key = if is_atom(k), do: k, else: String.to_atom(to_string(k))
+      {key, v}
+    end)
+  end
+
+  defp child_cancel_on_parent(parent_context) do
+    self_pid = self()
+
+    [self_pid | List.wrap(Map.get(parent_context, :cancel_on_parent, []))]
+    |> Enum.filter(&is_pid/1)
+    |> Enum.uniq()
+  end
+
+  defp emit_parent_event(nil, _event), do: :ok
+  defp emit_parent_event(%{stream_to: nil}, _event), do: :ok
+
+  defp emit_parent_event(%{stream_to: pid} = state, event) when is_pid(pid) do
+    Cantrip.Event.send(pid, state, event)
+  end
+
+  defp remember_parent_child_llm(parent_context, next_cantrip) do
+    if Map.get(parent_context, :remember_child_llm?, true) do
+      Process.put(:cantrip_child_llm, {next_cantrip.llm_module, next_cantrip.llm_state})
+    end
+  end
+
+  defp refresh_default_child_llm(child_cantrip, parent_context) do
+    parent = Map.fetch!(parent_context, :parent_cantrip)
+    default = {parent.llm_module, parent.llm_state}
+
+    if {child_cantrip.llm_module, child_cantrip.llm_state} == default do
+      {child_module, child_state} =
+        Map.get(parent_context, :child_llm) || parent.child_llm || default
+
+      %{child_cantrip | llm_module: child_module, llm_state: child_state}
+    else
+      child_cantrip
+    end
+  end
+
+  defp push_parent_cast_observation(gate, result, is_error, child_turns) do
+    case Process.get(:cantrip_code_observations) do
+      observations when is_list(observations) ->
+        observation = %{gate: gate, result: result, is_error: is_error, child_turns: child_turns}
+        Process.put(:cantrip_code_observations, observations ++ [observation])
+
+      _ ->
+        :ok
     end
   end
 

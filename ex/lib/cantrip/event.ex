@@ -69,10 +69,23 @@ defmodule Cantrip.Event do
     end)
   end
 
+  @doc """
+  Build all per-turn runtime events when the caller has not already emitted the
+  model utterance events.
+
+  `EntityServer` emits `classified.events` before code eval so parent scripts
+  render before child scripts; that path should use `turn_result_events/3`
+  after execution.
+  """
   @spec turn_runtime_events(map(), boolean(), pos_integer()) :: list(event())
   def turn_runtime_events(executed, terminated?, turn_number) do
     executed.events ++
       tool_events(executed.observation) ++ empty_turn_events(executed, terminated?, turn_number)
+  end
+
+  @spec turn_result_events(map(), boolean(), pos_integer()) :: list(event())
+  def turn_result_events(executed, terminated?, turn_number) do
+    tool_events(executed.observation) ++ empty_turn_events(executed, terminated?, turn_number)
   end
 
   @spec send(pid() | nil, map(), event()) :: :ok

@@ -42,6 +42,8 @@ defmodule Cantrip.Medium.Code do
     Available host functions (closure bindings, top-level only):
     #{gate_lines}
 
+    #{package_api_text(circle)}
+
     Variables persist across turns. Store intermediate data in variables.
     Call done.(result) with your final answer when finished.
     Your done() result is what the caller sees - make it concise and informative.\
@@ -96,7 +98,6 @@ defmodule Cantrip.Medium.Code do
   defp eval_unrestricted(code, state, runtime) do
     timeout = Cantrip.WardPolicy.code_eval_timeout_ms(runtime.circle.wards)
     saved_child_llm = Map.get(state, :child_llm)
-    saved_familiar_store = Map.get(state, :familiar_store)
 
     eval_start = System.monotonic_time()
 
@@ -106,29 +107,22 @@ defmodule Cantrip.Medium.Code do
         Process.group_leader(self(), capture_pid)
 
         if saved_child_llm, do: Process.put(:cantrip_child_llm, saved_child_llm)
-        if saved_familiar_store, do: Process.put(:cantrip_familiar_store, saved_familiar_store)
 
         result = Cantrip.CodeMedium.eval(code, state, runtime)
         child_llm = Process.get(:cantrip_child_llm)
-        familiar_store = Process.get(:cantrip_familiar_store)
         {_, captured_output} = StringIO.contents(capture_pid)
         StringIO.close(capture_pid)
 
-        {result, child_llm, familiar_store, captured_output}
+        {result, child_llm, captured_output}
       end)
 
     case Task.yield(task, timeout) do
-      {:ok, {{next_state, obs, result, terminated}, child_llm, familiar_store, captured_output}} ->
+      {:ok, {{next_state, obs, result, terminated}, child_llm, captured_output}} ->
         emit_eval_stop(runtime, eval_start)
 
         next_state =
           if child_llm,
             do: Map.put(next_state, :child_llm, child_llm),
-            else: next_state
-
-        next_state =
-          if familiar_store && map_size(familiar_store) > 0,
-            do: Map.put(next_state, :familiar_store, familiar_store),
             else: next_state
 
         {next_state, append_stdio(obs, captured_output), result, terminated}
@@ -176,8 +170,24 @@ defmodule Cantrip.Medium.Code do
   end
 
   defp gate_args_hint("done"), do: "answer"
-  defp gate_args_hint("cast"), do: "cantrip_id, intent"
-  defp gate_args_hint("cast_batch"), do: "items"
-  defp gate_args_hint("dispose"), do: "cantrip_id"
   defp gate_args_hint(_), do: "opts"
+
+  defp package_api_text(circle) do
+    case Cantrip.WardPolicy.sandbox(circle.wards) do
+      :dune ->
+        """
+        Sandbox note: this circle is running under Dune. Remote module calls
+        such as Cantrip.new/1 are restricted here; use the injected host
+        closures above.
+        """
+
+      _ ->
+        """
+        Public package API (ordinary module calls, not closure bindings):
+        - Cantrip.new(config) constructs a child cantrip and returns {:ok, child} or {:error, reason}
+        - Cantrip.cast(child, intent) casts one child and returns {:ok, value, next_child, child_loom, meta} or {:error, reason, next_child}
+        - Cantrip.cast_batch(items) casts children concurrently and returns {:ok, values, next_children, child_looms, meta} or {:error, reason}
+        """
+    end
+  end
 end
