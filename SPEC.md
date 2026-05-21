@@ -983,7 +983,9 @@ An implementation is conformant if it satisfies three conditions:
 
 Implementations MAY extend the spec with additional features as long as the core behavioral rules are preserved. The vocabulary is fixed. What you build on top of it is yours.
 
-The reference implementation is TypeScript/Bun. It is one valid manifestation. The spec is the source of truth.
+The canonical implementation is Elixir/OTP. Earlier TypeScript, Python,
+and Clojure realizations were useful learning and reference artifacts;
+the spec remains the source of truth.
 
 ## Appendix A: Grimoire
 

@@ -1,86 +1,277 @@
-# 📜 Cantrip
+# Cantrip
 
-> "The cantrips have been spoken. The patterns of force are aligned. Now it is up to your machine."
-> >
-> — Gargoyles: Reawakening (1995)
+Cantrip is an Elixir/OTP runtime for recursive language-model programs.
 
-A language model is a function: text in, text out. One call, no memory, no consequences. Put it in a REPL — now it writes code, sees what happened, writes more code. Variables persist. Errors come back as observations. The environment pushes back with truth, and the model adjusts. That's a cantrip: a self-modifying loop of language.
+A cantrip binds an LLM, an identity, and a circle into a reusable
+program. The circle defines the medium the entity thinks in, the gates it
+can cross, and the wards that bound its action space:
 
-```
-spell = cantrip(
-  llm:      create_llm("claude-sonnet-4-5"),
-  identity: "You are a data analyst. Explore the `context` variable with code.
-             Use submit_answer() when you have findings.",
-  circle: Circle(
-    medium: code("javascript", state: { context: SALES_DATA }),
-    wards:  [max_turns(15)],
-    gates:  [done()],
-  ),
-)
-
-answer = spell.cast("Which product has the highest revenue? Any regional patterns?")
+```text
+A = M union G - W
 ```
 
-Three components make a cantrip: the **LLM** (the model), the **identity** (what it is and how to work), and the **circle** (the environment it acts in). The circle has a **medium** — the substrate the entity works *in*, like a code sandbox or a bash shell — plus **gates** (functions that cross the boundary, like reading files or delegating to child entities) and **wards** (hard constraints like turn limits). The action space follows a formula: **A = (M + G) − W**. Everything the medium and gates allow, minus whatever the wards restrict.
+Cantrip includes supervised entities, conversation/code/bash mediums,
+recursive child calls, batch fanout, streaming events, ACP integration,
+Mnesia/DETS/JSONL loom storage, redaction, telemetry, diagnostics, and a
+production-oriented Familiar that reasons in Elixir and delegates to
+child entities.
 
-When you `cast`, the entity loops. It writes code, the sandbox runs it, and the results come back — not as raw data in the prompt, but as a summary. To use the data, the entity stores it in a variable and operates on it with more code. It catches errors and adjusts. Turn by turn, it builds up an analysis the way you would in a Jupyter notebook — except the notebook writes itself. Because code is compositional, the entity composes actions nobody enumerated in advance. That's the core insight: a model in a REPL can do things a model with pre-built tools cannot.
+For the vocabulary and behavioral contract, see [SPEC.md](./SPEC.md) and
+[tests.yaml](./tests.yaml).
 
-Gates let the entity reach outside the circle — read a file, spawn a child entity, fetch a URL. In a code medium, gates are just functions the entity calls in its code, freely composed in loops and conditionals. Wards are structural, not advisory: if the turn limit is 30, turn 31 doesn't happen. Every turn is recorded in the **loom** — an append-only tree. Threads that end with `done` are *terminated*; threads cut short by wards are *truncated*. The distinction matters for training data.
+Earlier TypeScript, Python, and Clojure implementations were learning
+and reference artifacts. Their useful lessons are preserved in
+[docs/legacy-implementation-harvest.md](https://github.com/deepfates/grimoire/blob/main/docs/legacy-implementation-harvest.md)
+and open contract gaps are tracked in
+[docs/legacy-contract-backlog.md](https://github.com/deepfates/grimoire/blob/main/docs/legacy-contract-backlog.md).
+The old code remains available through git history.
 
-The pattern is defined by a [spec](./SPEC.md) and a [behavioral test suite](./tests.yaml). This repository contains four implementations you can run, learn from, or use as a starting point for your own.
-
-## Launch the Familiar
-
-The fastest way to experience cantrip is the Familiar — a persistent entity that observes a codebase, reasons in a code sandbox, and delegates to child entities with different capabilities (shell, browser, analysis). It constructs new cantrips at runtime from code.
+## Quick Start
 
 ```bash
-cd ts && bun install
-cp .env.example .env    # add your API key
-bun run examples/16_familiar.ts
+mix deps.get
+cp .env.example .env
+mix verify
 ```
 
-Ask it to explore the repo, run tests, analyze files — it figures out how to decompose the task and coordinate the work.
-
-To start simpler, run example 04 — that's where the core vocabulary (LLM + identity + circle = cantrip) clicks:
+Run a deterministic example with no API key:
 
 ```bash
-bun run examples/04_cantrip.ts
+mix cantrip.example 04 --fake
 ```
 
-## What's in the spellbook
+Run the Familiar:
 
-**[SPEC.md](./SPEC.md)** — The formal specification. This is the durable artifact — everything else regenerates from it.
+```bash
+mix cantrip.familiar
+```
 
-**[tests.yaml](./tests.yaml)** — Behavioral tests for every rule in the spec.
+Run the Familiar as an ACP server:
 
-**Four implementations**, each teaching something different:
+```bash
+mix cantrip.familiar --acp
+```
 
-- **[ts/](./ts)** — The reference implementation. The most mediums, the most examples, the fullest coverage. Start here to see everything cantrip can do.
-- **[py/](./py)** — The most readable. Clean API, Python sandbox. Start here to understand the pattern by reading code.
-- **[clj/](./clj)** — Clojure with a sandboxed interpreter. Idiomatic immutable data, good for studying the domain model.
-- **[ex/](./ex)** — Elixir on OTP. Each entity is a supervised process. The most production-oriented architecture.
+## Minimal Example
 
-Each has its own README with setup, API docs, examples, and an honest assessment of what it does well and where it falls short.
+```elixir
+{:ok, cantrip} =
+  Cantrip.new(%{
+    llm:
+      {Cantrip.FakeLLM,
+       %{
+         responses: [
+           %{tool_calls: [%{gate: "done", args: %{answer: "Revenue improved."}}]}
+         ]
+       }},
+    identity: %{system_prompt: "You are a financial analyst. Call done with your summary."},
+    circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+  })
 
-## The example progression
+{:ok, result, _cantrip, _loom, _meta} =
+  Cantrip.cast(cantrip, "Revenue up 14% QoQ, churn down 2 points. Summarize.")
+```
 
-Every implementation follows the same twelve-step arc from the spec's grimoire (Appendix A). Each example adds one concept to the previous:
+With a real provider from environment variables:
 
-**Query** → **Gate** → **Circle** → **Cantrip** → **Wards** → **Medium** → **Codex** → **Folding** → **Composition** → **Loom** → **Persistence** → **Familiar**
+```elixir
+{:ok, cantrip} =
+  Cantrip.new_from_env(
+    identity: %{system_prompt: "Call done with the answer."},
+    circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 10}]}
+  )
+```
 
-The TypeScript implementation extends this with nine additional examples covering extra mediums (VM, bash, browser) and advanced patterns. The other three implementations cover the core twelve.
+Typical provider environment:
 
-Start at 04 (cantrip). Work forward. The familiar is where everything converges.
+```bash
+CANTRIP_LLM_PROVIDER=openai_compatible
+CANTRIP_MODEL=gpt-4.1-mini
+CANTRIP_API_KEY=sk-...
+CANTRIP_BASE_URL=https://api.openai.com/v1
+```
 
-## How to use this
+Supported provider modules include OpenAI-compatible, Anthropic, Gemini,
+and ReqLLM adapters.
 
-This is a reference point, not a library you install. The ideal path:
+## Core API
 
-1. Run example 04 in any implementation to see the pattern in action.
-2. Read the [spec](./SPEC.md) when you want the full vocabulary and rules.
-3. Walk the example progression to the familiar.
-4. Copy the spec and tests into your own repo and build your own version.
+### `Cantrip.new/1`
 
-The implementations are here so you can see the pattern in different languages, learn from them, feed them to an agent, or scrap them for parts.
+Builds a reusable cantrip value from:
 
-Copy the spellbook. Cast your own.
+- `:llm` - `{module, state}`
+- `:identity` - system prompt and behavior options
+- `:circle` - medium, gates, and wards
+
+Every circle must include a `done` gate and at least one truncation ward.
+
+### `Cantrip.cast/2`
+
+Runs a one-shot entity and stops it when the cast completes:
+
+```elixir
+{:ok, result, cantrip, loom, meta} = Cantrip.cast(cantrip, "Analyze this data")
+```
+
+### `Cantrip.summon/1` and `Cantrip.send/2`
+
+Runs a persistent entity across multiple intents:
+
+```elixir
+{:ok, pid} = Cantrip.summon(cantrip)
+{:ok, first, _, _, _} = Cantrip.send(pid, "Set up the analysis.")
+{:ok, second, _, _, _} = Cantrip.send(pid, "Continue from there.")
+```
+
+### `Cantrip.cast_batch/1`
+
+Runs child cantrips in parallel and returns results in request order:
+
+```elixir
+{:ok, results, children, looms, meta} =
+  Cantrip.cast_batch([
+    %{cantrip: analyst, intent: "Read chapter one."},
+    %{cantrip: analyst, intent: "Read chapter two."}
+  ])
+```
+
+### `Cantrip.cast_stream/2`
+
+Returns `{stream, task}`. The stream yields `{:cantrip_event, event}`
+tuples while the task runs.
+
+## Circle
+
+The circle is the action envelope:
+
+```text
+A = M union G - W
+```
+
+The medium is how the entity thinks. Gates are host functions exposed
+across the boundary. Wards are enforced limits.
+
+```elixir
+%{
+  type: :code,
+  gates: ["done", "read_file", "list_dir", "search"],
+  wards: [%{max_turns: 10}, %{max_depth: 2}]
+}
+```
+
+Common built-in gates:
+
+- `done`
+- `echo`
+- `read_file`
+- `list_dir`
+- `search`
+- `call_entity`
+- `call_entity_batch`
+- `compile_and_load`
+
+## Mediums
+
+### Conversation
+
+The LLM receives gates as tool definitions and responds with tool calls.
+Use this for interpretation, judgment, synthesis, naming, and direct
+answers.
+
+### Code
+
+The entity writes Elixir. Bindings persist across turns and sends.
+Gates are injected as functions, and `loom` is available as data.
+
+```elixir
+data = read_file.(path: "metrics.txt")
+done.("Read #{byte_size(data.result)} bytes")
+```
+
+Code-medium entities can also use the public package API:
+
+```elixir
+{:ok, child} =
+  Cantrip.new(%{
+    identity: %{system_prompt: "Read the provided material and summarize it."},
+    circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}
+  })
+
+{:ok, summary, child, _loom, _meta} = Cantrip.cast(child, content)
+done.(summary)
+```
+
+The default code medium evaluates unrestricted Elixir in the same BEAM.
+Use deployment isolation for production, or opt into the Dune sandbox
+when stronger in-VM restriction is more important than full Elixir
+ergonomics.
+
+### Bash
+
+The entity writes shell commands. Each command runs in a fresh subprocess
+from the configured cwd. Shell state does not persist, but filesystem
+changes do. A command returns the final answer by printing `SUBMIT:`.
+
+## The Familiar
+
+The Familiar is the production RLM-facing entity. It observes a codebase,
+reasons in Elixir, creates child cantrips with the public API, fans out
+work with `Cantrip.cast_batch/1`, and reads prior work through its loom.
+
+```bash
+mix cantrip.familiar
+mix cantrip.cast "summarize the runtime boundaries"
+mix cantrip.familiar --acp
+```
+
+Workspace-scoped Familiars default to durable Mnesia-backed loom storage
+where available. JSONL, DETS, memory, and auto storage can be selected
+explicitly.
+
+## Storage
+
+```elixir
+Cantrip.new(%{..., loom_storage: :memory})
+Cantrip.new(%{..., loom_storage: {:jsonl, "loom.jsonl"}})
+Cantrip.new(%{..., loom_storage: {:dets, "loom.dets"}})
+Cantrip.new(%{..., loom_storage: {:mnesia, %{table: :cantrip_turns}}})
+Cantrip.new(%{..., loom_storage: {:auto, %{dets_path: "loom.dets"}}})
+```
+
+Mnesia persistence across BEAM restarts requires a named node and a
+writable Mnesia directory. See [DEPLOYMENT.md](./DEPLOYMENT.md).
+
+## Safety
+
+Safety is layered:
+
+- gate root validation for filesystem gates
+- credential redaction before observations reach the entity
+- diagnostic redaction before protocol/debug output
+- deployment isolation around unrestricted BEAM execution
+- optional Dune sandbox
+- hot-load wards for module/path/hash/signer/namespace policy
+
+Root validation applies to gates. It does not constrain arbitrary
+`File.*` calls made by unrestricted Elixir code. Production deployments
+must account for that explicitly.
+
+## Verification
+
+```bash
+mix verify
+```
+
+The release gate checks formatting, compiles with warnings as errors,
+runs the full test suite, and runs Credo warnings/errors. Refactoring-only
+Credo suggestions are cleanup debt rather than release blockers.
+
+The suite includes a conformance runner for the shared `tests.yaml`
+cases plus runtime, storage, ACP, streaming, Familiar, provider,
+redaction, and code-medium tests.
+
+## Package Status
+
+ACP support depends on `agent_client_protocol ~> 0.1.0` from Hex. The
+package surface is checked with `mix docs` and `mix hex.build`.
