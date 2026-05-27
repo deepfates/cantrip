@@ -1,10 +1,10 @@
 defmodule Cantrip.LoomIntentPersistenceTest do
   @moduledoc """
   User intents — the prompts a human (or parent) sends an entity — must
-  be part of the loom. SPEC §6.1 defines turns narrowly (entity
-  utterance ↔ circle observation, LOOP-1); intents are a different
-  shape and live on the loom's event log with `type: :intent`, with a
-  cached `loom.intents` projection for ergonomic access. The
+  be part of the loom. Turns are narrowly entity utterance ↔ circle
+  observation; intents are a different shape and live on the loom's event
+  log with `type: :intent`, with a cached `loom.intents` projection for
+  ergonomic access. The
   `Loom.transcript/1` helper composes them with entity turns into the
   interleaved conversation view a long-lived persistent entity needs.
 

@@ -104,11 +104,11 @@ defmodule Cantrip.RedactTest do
       circle =
         Cantrip.Circle.new(%{
           type: :code,
-          gates: [%{name: "read_file"}, %{name: "done"}],
+          gates: [%{name: "read_file", dependencies: %{root: tmp_dir}}, %{name: "done"}],
           wards: [%{max_turns: 1}]
         })
 
-      obs = Cantrip.Gate.execute(circle, "read_file", %{path: env_path})
+      obs = Cantrip.Gate.execute(circle, "read_file", %{path: ".env"})
 
       assert obs.is_error == false
       assert is_binary(obs.result)

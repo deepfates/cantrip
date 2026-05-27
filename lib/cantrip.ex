@@ -1,15 +1,31 @@
 defmodule Cantrip do
   @moduledoc """
-  M1 surface: cantrip configuration and llm contract wiring.
+  Public API for building and running Cantrip programs.
 
-  The runtime loop is intentionally deferred to M2+. In M1 we only validate:
-  - cantrip construction invariants
-  - llm response contract invariants
+  A cantrip combines an LLM, an identity, a circle, optional loom storage,
+  retry configuration, and folding options into a reusable runtime program.
+  `Cantrip.new/1` validates that configuration, and `Cantrip.cast/3` runs one
+  entity episode against an intent.
+
+  The usual entry points are:
+
+  - `new/1` to construct a reusable cantrip.
+  - `cast/3` to run one episode and return `{result, next_cantrip, loom, meta}`.
+  - `cast_batch/2` to fan out work to child cantrips while preserving request
+    order.
+  - `summon/2` and `send/3` to keep an entity process alive across multiple
+    intents.
+  - `Cantrip.Loom.fork/4` to replay a loom prefix and branch from an earlier
+    turn.
+
+  Composition deliberately uses this same public API. Code-medium entities
+  create children with `Cantrip.new/1`, run them with `Cantrip.cast/3` or
+  `Cantrip.cast_batch/2`, and return compact summaries upward.
   """
 
   import Kernel, except: [send: 2]
 
-  alias Cantrip.{Identity, Circle, LLM, EntityServer, Loom, WardPolicy, Gate}
+  alias Cantrip.{Identity, Circle, EntityServer, Loom, WardPolicy, Gate}
   alias Cantrip.Medium.Registry, as: MediumRegistry
 
   defstruct id: nil,
@@ -41,12 +57,26 @@ defmodule Cantrip do
     backoff_max_ms: [type: :pos_integer, default: 30_000]
   ]
 
+  @doc """
+  Builds a reusable cantrip from keyword or map attributes.
+
+  Required attributes are:
+
+  - `:llm` as `{module, state}` implementing `Cantrip.LLM`.
+  - `:circle` with exactly one medium declaration, gates, and wards.
+
+  Optional attributes include `:identity`, `:child_llm`, `:loom_storage`,
+  `:retry`, and `:folding`.
+  """
   @spec new(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
   def new(attrs) do
     attrs = Map.new(attrs)
 
-    case Map.get(attrs, :parent_context) || Map.get(attrs, "parent_context") ||
-           Process.get(:cantrip_parent_context) do
+    parent_context =
+      Map.get(attrs, :parent_context) || Map.get(attrs, "parent_context") ||
+        Process.get(:cantrip_parent_context)
+
+    case parent_context do
       nil -> new_root(attrs)
       parent_context -> new_child(attrs, parent_context)
     end
@@ -55,7 +85,12 @@ defmodule Cantrip do
   defp new_root(attrs) do
     llm = Map.get(attrs, :llm)
     identity = Identity.new(Map.get(attrs, :identity, %{}))
-    circle = Circle.new(Map.get(attrs, :circle, %{}))
+
+    circle =
+      attrs
+      |> Map.get(:circle, %{})
+      |> Circle.new()
+      |> materialize_default_code_sandbox()
 
     with :ok <- validate_llm(llm),
          :ok <- validate_circle(circle, identity),
@@ -77,14 +112,20 @@ defmodule Cantrip do
     end
   end
 
-  @doc """
-  Build the explicit parent context used when a cantrip constructs children.
+  defp materialize_default_code_sandbox(%Circle{type: :code, wards: wards} = circle) do
+    if Enum.any?(wards, &(Map.has_key?(&1, :sandbox) or Map.has_key?(&1, "sandbox"))) do
+      circle
+    else
+      %{circle | wards: wards ++ [%{sandbox: :port}]}
+    end
+  end
 
-  This is the core-package representation of the inheritance rules that used
-  to live only behind `call_entity`: child LLM selection, ward composition,
-  depth limits, inherited gate dependencies, cancellation, streaming, and loom
-  grafting context.
-  """
+  defp materialize_default_code_sandbox(circle), do: circle
+
+  @doc false
+  # Internal representation of child inheritance: LLM selection, ward
+  # composition, depth limits, inherited gate dependencies, cancellation,
+  # streaming, and loom grafting context.
   @spec parent_context(t(), keyword() | map()) :: map()
   def parent_context(%__MODULE__{} = parent, opts \\ %{}) do
     opts = Map.new(opts)
@@ -185,30 +226,111 @@ defmodule Cantrip do
   defp requested_child_gates(circle_attrs, parent) do
     circle_attrs
     |> fetch(:gates, Gate.names(parent.circle))
-    |> Enum.map(&to_string/1)
-    |> Enum.uniq()
-    |> then(&(&1 ++ ["done"]))
-    |> Enum.uniq()
+    |> Enum.map(&normalize_requested_child_gate/1)
+    |> append_done_gate()
+    |> uniq_requested_child_gates()
   end
 
-  defp resolve_child_gates(parent, requested_gates, child_depth, max_depth) do
+  defp normalize_requested_child_gate(name) when is_atom(name),
+    do: {:bare, Atom.to_string(name)}
+
+  defp normalize_requested_child_gate(name) when is_binary(name), do: {:bare, name}
+
+  defp normalize_requested_child_gate(%{} = gate) do
+    name = fetch(gate, :name, nil)
+    gate = gate |> Map.delete("name") |> Map.put(:name, to_string(name))
+    {:explicit, gate}
+  end
+
+  defp append_done_gate(requested_gates) do
+    if Enum.any?(requested_gates, &(requested_child_gate_name(&1) == "done")) do
+      requested_gates
+    else
+      requested_gates ++ [{:bare, "done"}]
+    end
+  end
+
+  defp uniq_requested_child_gates(requested_gates) do
+    requested_gates
+    |> Enum.reduce({[], []}, fn requested, {names, acc} ->
+      name = requested_child_gate_name(requested)
+
+      if name in names do
+        {names, acc}
+      else
+        {[name | names], [requested | acc]}
+      end
+    end)
+    |> elem(1)
+    |> Enum.reverse()
+  end
+
+  defp requested_child_gate_name({:bare, name}), do: name
+  defp requested_child_gate_name({:explicit, gate}), do: fetch(gate, :name, nil)
+
+  defp requested_child_gate_name(gate) do
+    gate |> normalize_requested_child_gate() |> requested_child_gate_name()
+  end
+
+  defp resolve_child_gates(parent, requested_gates, _child_depth, _max_depth) do
     parent_gate_map = parent.circle.gates
     parent_dependencies = collect_parent_dependencies(parent_gate_map)
-    delegation_gates = MapSet.new(["call_entity", "call_entity_batch"])
-    strip_delegation = is_integer(max_depth) and child_depth >= max_depth
 
     requested_gates
-    |> Enum.reject(fn name -> strip_delegation and MapSet.member?(delegation_gates, name) end)
-    |> Enum.map(fn name ->
-      {name, resolve_child_gate(name, parent_gate_map, parent_dependencies)}
+    |> Enum.map(fn requested ->
+      name = requested_child_gate_name(requested)
+      {name, resolve_child_gate(requested, parent_gate_map, parent_dependencies)}
     end)
     |> Map.new()
   end
 
-  defp resolve_child_gate(name, parent_gate_map, parent_dependencies) do
+  defp resolve_child_gate({:bare, name}, parent_gate_map, parent_dependencies) do
     case Map.get(parent_gate_map, name) do
       nil -> build_canonical_gate(name, parent_dependencies)
       gate -> gate
+    end
+  end
+
+  defp resolve_child_gate(
+         {:explicit, %{name: name} = requested},
+         parent_gate_map,
+         parent_dependencies
+       ) do
+    base = Map.get(parent_gate_map, name) || build_canonical_gate(name, parent_dependencies)
+    merge_child_gate(base, requested)
+  end
+
+  defp resolve_child_gate(requested, parent_gate_map, parent_dependencies) do
+    requested
+    |> normalize_requested_child_gate()
+    |> resolve_child_gate(parent_gate_map, parent_dependencies)
+  end
+
+  defp merge_child_gate(base, requested) do
+    base_deps = gate_dependencies(base)
+    requested_deps = gate_dependencies(requested)
+
+    requested =
+      requested
+      |> Map.delete("dependencies")
+      |> Map.put(:dependencies, Map.merge(base_deps, requested_deps))
+
+    Map.merge(base, requested)
+  end
+
+  defp gate_dependencies(gate) do
+    case Map.get(gate, :dependencies) || Map.get(gate, "dependencies") do
+      %{} = deps ->
+        deps
+        |> Enum.reduce(%{}, fn {key, value}, acc ->
+          case dependency_key(key) do
+            nil -> acc
+            key -> Map.put(acc, key, value)
+          end
+        end)
+
+      _ ->
+        %{}
     end
   end
 
@@ -278,194 +400,11 @@ defmodule Cantrip do
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @doc """
-  Build a cantrip from environment-based llm configuration.
+  Creates a persistent entity without running an intent.
 
-  Required env:
-  - `CANTRIP_MODEL` (or provider-specific: `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL`)
-  Optional env:
-  - `CANTRIP_LLM_PROVIDER` (default: `openai_compatible`)
-  - `CANTRIP_API_KEY` (or provider-specific: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`)
-  - `CANTRIP_BASE_URL` (or provider-specific variants)
-  - `CANTRIP_TIMEOUT_MS` (default: `30000`)
-
-  Provider-specific env vars take precedence over `CANTRIP_*` generics,
-  so you can have all three API keys set simultaneously and switch via
-  `CANTRIP_LLM_PROVIDER`.
-  """
-  @spec new_from_env(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
-  def new_from_env(attrs \\ %{}) do
-    attrs = Map.new(attrs)
-
-    with {:ok, llm} <- llm_from_env() do
-      new(Map.put(attrs, :llm, llm))
-    end
-  end
-
-  @req_llm_prefixes %{
-    "openai_compatible" => "openai",
-    "anthropic" => "anthropic",
-    "gemini" => "google"
-  }
-
-  @spec llm_from_env() :: {:ok, {module(), map()}} | {:error, String.t()}
-  def llm_from_env do
-    provider = System.get_env("CANTRIP_LLM_PROVIDER", "openai_compatible")
-
-    # Prefer ReqLLM when available for all providers
-    if Code.ensure_loaded?(Cantrip.LLMs.ReqLLM) and Map.has_key?(@req_llm_prefixes, provider) do
-      llm_from_env_req_llm(provider)
-    else
-      llm_from_env_legacy(provider)
-    end
-  end
-
-  defp llm_from_env_req_llm(provider) do
-    prefix = Map.fetch!(@req_llm_prefixes, provider)
-    model = model_for_provider(provider)
-
-    if model in [nil, ""] do
-      {:error, missing_model_error(provider)}
-    else
-      base_url = base_url_for_provider(provider)
-      api_key = api_key_for_provider(provider)
-
-      state = %{
-        model: "#{prefix}:#{model}",
-        stream: System.get_env("CANTRIP_STREAM") == "true",
-        timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 60_000),
-        temperature: parse_float(System.get_env("CANTRIP_TEMPERATURE")),
-        max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), nil)
-      }
-
-      state = if base_url, do: Map.put(state, :base_url, base_url), else: state
-      state = if api_key, do: Map.put(state, :api_key, api_key), else: state
-
-      {:ok, {Cantrip.LLMs.ReqLLM, state}}
-    end
-  end
-
-  defp base_url_for_provider("openai_compatible"),
-    do: env_first(["OPENAI_BASE_URL", "CANTRIP_BASE_URL"])
-
-  defp base_url_for_provider(_), do: nil
-
-  defp api_key_for_provider("openai_compatible"),
-    do: env_first(["OPENAI_API_KEY", "CANTRIP_API_KEY"])
-
-  defp api_key_for_provider("anthropic"),
-    do: env_first(["ANTHROPIC_API_KEY", "CANTRIP_API_KEY"])
-
-  defp api_key_for_provider("gemini"),
-    do: env_first(["GEMINI_API_KEY", "CANTRIP_API_KEY"])
-
-  defp api_key_for_provider(_), do: nil
-
-  defp model_for_provider("openai_compatible"), do: env_first(["OPENAI_MODEL", "CANTRIP_MODEL"])
-  defp model_for_provider("anthropic"), do: env_first(["ANTHROPIC_MODEL", "CANTRIP_MODEL"])
-  defp model_for_provider("gemini"), do: env_first(["GEMINI_MODEL", "CANTRIP_MODEL"])
-  defp model_for_provider(_), do: env_first(["CANTRIP_MODEL"])
-
-  defp missing_model_error("openai_compatible"), do: "missing CANTRIP_MODEL or OPENAI_MODEL"
-  defp missing_model_error("anthropic"), do: "missing CANTRIP_MODEL or ANTHROPIC_MODEL"
-  defp missing_model_error("gemini"), do: "missing CANTRIP_MODEL or GEMINI_MODEL"
-  defp missing_model_error(_), do: "missing CANTRIP_MODEL"
-
-  defp llm_from_env_legacy(provider) do
-    case provider do
-      "openai_compatible" ->
-        model = env_first(["OPENAI_MODEL", "CANTRIP_MODEL"])
-
-        if model in [nil, ""] do
-          {:error, "missing CANTRIP_MODEL or OPENAI_MODEL"}
-        else
-          {:ok,
-           {Cantrip.LLMs.OpenAICompatible,
-            %{
-              model: model,
-              api_key: env_first(["OPENAI_API_KEY", "CANTRIP_API_KEY"]),
-              base_url:
-                env_first(["OPENAI_BASE_URL", "CANTRIP_BASE_URL"]) || "https://api.openai.com/v1",
-              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 120_000)
-            }}}
-        end
-
-      "anthropic" ->
-        model = env_first(["ANTHROPIC_MODEL", "CANTRIP_MODEL"])
-
-        if model in [nil, ""] do
-          {:error, "missing CANTRIP_MODEL or ANTHROPIC_MODEL"}
-        else
-          {:ok,
-           {Cantrip.LLMs.Anthropic,
-            %{
-              model: model,
-              api_key: env_first(["ANTHROPIC_API_KEY", "CANTRIP_API_KEY"]),
-              base_url: System.get_env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com",
-              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 120_000),
-              max_tokens: parse_int(System.get_env("CANTRIP_MAX_TOKENS"), 4096)
-            }}}
-        end
-
-      "gemini" ->
-        model = env_first(["GEMINI_MODEL", "CANTRIP_MODEL"])
-
-        if model in [nil, ""] do
-          {:error, "missing CANTRIP_MODEL or GEMINI_MODEL"}
-        else
-          {:ok,
-           {Cantrip.LLMs.Gemini,
-            %{
-              model: model,
-              api_key: env_first(["GEMINI_API_KEY", "CANTRIP_API_KEY"]),
-              base_url:
-                System.get_env("GEMINI_BASE_URL") || "https://generativelanguage.googleapis.com",
-              timeout_ms: parse_int(System.get_env("CANTRIP_TIMEOUT_MS"), 120_000)
-            }}}
-        end
-
-      _ ->
-        {:error, "unsupported llm provider: #{provider}"}
-    end
-  end
-
-  defp env_first(keys) do
-    Enum.find_value(keys, fn key ->
-      case System.get_env(key) do
-        nil -> nil
-        "" -> nil
-        val -> val
-      end
-    end)
-  end
-
-  @doc """
-  Invoke the configured llm once and validate/normalize the response contract.
-  Returns updated cantrip with advanced llm state.
-  """
-  @spec llm_query(t(), map()) ::
-          {:ok, map(), t()} | {:error, term(), t()}
-  def llm_query(%__MODULE__{} = cantrip, request) do
-    case LLM.request(cantrip.llm_module, cantrip.llm_state, request) do
-      {:ok, response, next_state} ->
-        {:ok, response, %{cantrip | llm_state: next_state}}
-
-      {:error, reason, next_state} ->
-        {:error, reason, %{cantrip | llm_state: next_state}}
-    end
-  end
-
-  def annotate_reward(%__MODULE__{} = cantrip, loom, turn_index, reward) do
-    case Loom.annotate_reward(loom, turn_index, reward) do
-      {:ok, loom} -> {:ok, loom, cantrip}
-      {:error, reason} -> {:error, reason, cantrip}
-    end
-  end
-
-  def extract_thread(%__MODULE__{}, loom), do: Loom.extract_thread(loom)
-
-  @doc """
-  ENTITY-5: Create a persistent entity without running any intent.
-  Returns `{:ok, pid}`. Use `send/2` to run intents.
+  Returns `{:ok, pid}`. Use `send/2` or `send/3` to run intents against the
+  same process. Medium state, message history, and the loom accumulate across
+  those episodes.
   """
   @spec summon(t()) :: {:ok, pid()} | {:error, term()}
   def summon(%__MODULE__{} = cantrip) do
@@ -473,16 +412,11 @@ defmodule Cantrip do
     DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec)
   end
 
-  @doc "Summon with additional EntityServer opts (e.g. stream_to: pid)."
-  def summon_with(%__MODULE__{} = cantrip, opts) when is_list(opts) do
-    spec = {EntityServer, [cantrip: cantrip, lazy: true] ++ opts}
-    DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec)
-  end
-
   @doc """
-  ENTITY-5: Create a persistent entity and immediately run the first intent.
-  Convenience wrapper: equivalent to `summon/1` followed by `send/2`.
-  Accepts optional keyword opts (e.g. `stream_to: pid`) passed to EntityServer.
+  Creates a persistent entity and immediately runs the first intent.
+
+  This is equivalent to `summon/1` followed by `send/2`. Options such as
+  `:stream_to` are passed to the entity process.
   """
   @spec summon(t(), String.t(), keyword()) ::
           {:ok, pid(), term(), t(), Loom.t(), map()} | {:error, term(), t()}
@@ -501,8 +435,10 @@ defmodule Cantrip do
   end
 
   @doc """
-  ENTITY-5: Send a new intent to a persistent entity, running another loop episode.
-  State (loom, code_state, messages) accumulates across all casts.
+  Sends a new intent to a persistent entity.
+
+  State owned by the entity process, including loom, code-medium bindings, and
+  message history, accumulates across all sends.
   """
   @spec send(pid(), String.t()) ::
           {:ok, term(), t(), Loom.t(), map()} | {:error, term()}
@@ -510,13 +446,17 @@ defmodule Cantrip do
     EntityServer.send_intent(pid, intent)
   end
 
-  @doc "Send with opts (e.g. stream_to: pid for per-call event delivery)."
+  @doc "Sends a new intent with per-call options, for example `stream_to: pid`."
   def send(pid, intent, opts) when is_pid(pid) and is_binary(intent) and is_list(opts) do
     EntityServer.send_intent(pid, intent, opts)
   end
 
   @doc """
-  M2 cast entrypoint: executes one loop episode in an entity process.
+  Runs one entity episode for `intent`.
+
+  The returned cantrip carries updated reusable runtime configuration. The loom
+  contains the durable turn record for the episode, and `meta` includes
+  termination information such as truncation.
   """
   @spec cast(t(), String.t() | nil) ::
           {:ok, term(), t(), Cantrip.Loom.t(), map()} | {:error, String.t(), t()}
@@ -582,19 +522,19 @@ defmodule Cantrip do
             |> Enum.find(&match?({:error, _, _}, &1))
             |> elem(1)
 
-          push_parent_cast_observation("cast_batch", inspect(reason), true, [])
+          push_parent_cast_observation(parent_context, "cast_batch", inspect(reason), true, [])
           {:error, reason}
         else
           values = Enum.map(payloads, fn {:ok, value, _next, _loom, _meta} -> value end)
           next_cantrips = Enum.map(payloads, fn {:ok, _value, next, _loom, _meta} -> next end)
           looms = Enum.map(payloads, fn {:ok, _value, _next, loom, _meta} -> loom end)
           child_turns = Enum.flat_map(looms, & &1.turns)
-          push_parent_cast_observation("cast_batch", values, false, child_turns)
+          push_parent_cast_observation(parent_context, "cast_batch", values, false, child_turns)
           {:ok, values, next_cantrips, looms, %{count: length(values)}}
         end
 
       {:error, reason} ->
-        push_parent_cast_observation("cast_batch", inspect(reason), true, [])
+        push_parent_cast_observation(parent_context, "cast_batch", inspect(reason), true, [])
         {:error, reason}
     end
   end
@@ -661,11 +601,14 @@ defmodule Cantrip do
   end
 
   @doc """
-  Cast with streaming events. Returns `{stream, task}` where:
+  Runs one entity episode while exposing streaming events.
+
+  Returns `{stream, task}` where:
+
   - `stream` is an `Enumerable` of `{:cantrip_event, event}` tuples
   - `task` is a `Task` that resolves to the final `{:ok, result, cantrip, loom, meta}` or error
 
-  Events follow the spec §7.5 hierarchy: `:step_start`, `:message_start`,
+  Events follow the runtime hierarchy: `:step_start`, `:message_start`,
   `:text`, `:tool_call`, `:tool_result`, `:usage`, `:message_complete`,
   `:step_complete`, `:final_response`.
   """
@@ -714,9 +657,20 @@ defmodule Cantrip do
     end
   end
 
+  @doc """
+  Deprecated compatibility wrapper for `Cantrip.Loom.fork/4`.
+  """
+  @deprecated "Use Cantrip.Loom.fork/4"
   @spec fork(t(), Loom.t(), non_neg_integer(), map()) ::
           {:ok, term(), t(), Loom.t(), map()} | {:error, term(), t()}
   def fork(%__MODULE__{} = cantrip, %Loom{} = loom, from_turn, opts) do
+    Loom.fork(cantrip, loom, from_turn, opts)
+  end
+
+  @doc false
+  @spec __fork__(t(), Loom.t(), non_neg_integer(), map()) ::
+          {:ok, term(), t(), Loom.t(), map()} | {:error, term(), t()}
+  def __fork__(%__MODULE__{} = cantrip, %Loom{} = loom, from_turn, opts) do
     opts = Map.new(opts)
     intent = Map.fetch!(opts, :intent)
     llm = Map.get(opts, :llm, {cantrip.llm_module, cantrip.llm_state})
@@ -806,7 +760,14 @@ defmodule Cantrip do
         emit_parent_event(entity_state, {:child_end, %{depth: depth, result: value}})
 
         if record_observation?,
-          do: push_parent_cast_observation(parent_gate, value, false, child_loom.turns)
+          do:
+            push_parent_cast_observation(
+              parent_context,
+              parent_gate,
+              value,
+              false,
+              child_loom.turns
+            )
 
         ok
 
@@ -815,7 +776,7 @@ defmodule Cantrip do
         emit_parent_event(entity_state, {:child_end, %{depth: depth, error: inspect(reason)}})
 
         if record_observation?,
-          do: push_parent_cast_observation(parent_gate, inspect(reason), true, [])
+          do: push_parent_cast_observation(parent_context, parent_gate, inspect(reason), true, [])
 
         error
     end
@@ -877,8 +838,10 @@ defmodule Cantrip do
   end
 
   defp remember_parent_child_llm(parent_context, next_cantrip) do
-    if Map.get(parent_context, :remember_child_llm?, true) do
-      Process.put(:cantrip_child_llm, {next_cantrip.llm_module, next_cantrip.llm_state})
+    child_llm_ref = Map.get(parent_context, :child_llm_ref)
+
+    if Map.get(parent_context, :remember_child_llm?, true) and is_pid(child_llm_ref) do
+      Agent.update(child_llm_ref, fn _ -> {next_cantrip.llm_module, next_cantrip.llm_state} end)
     end
   end
 
@@ -896,11 +859,11 @@ defmodule Cantrip do
     end
   end
 
-  defp push_parent_cast_observation(gate, result, is_error, child_turns) do
-    case Process.get(:cantrip_code_observations) do
-      observations when is_list(observations) ->
+  defp push_parent_cast_observation(parent_context, gate, result, is_error, child_turns) do
+    case parent_context && Map.get(parent_context, :observation_collector) do
+      collector when is_pid(collector) ->
         observation = %{gate: gate, result: result, is_error: is_error, child_turns: child_turns}
-        Process.put(:cantrip_code_observations, observations ++ [observation])
+        Agent.update(collector, &(&1 ++ [observation]))
 
       _ ->
         :ok
@@ -999,22 +962,4 @@ defmodule Cantrip do
     do: {module, state}
 
   defp normalize_child_llm(_, llm), do: llm
-
-  defp parse_int(nil, default), do: default
-
-  defp parse_int(value, default) when is_binary(value) do
-    case Integer.parse(value) do
-      {n, _} -> n
-      :error -> default
-    end
-  end
-
-  defp parse_float(nil), do: nil
-
-  defp parse_float(value) when is_binary(value) do
-    case Float.parse(value) do
-      {f, _} -> f
-      :error -> nil
-    end
-  end
 end

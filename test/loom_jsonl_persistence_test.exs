@@ -268,14 +268,14 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
       utterance: %{code: ~s|cast.(reader, "go")|, content: nil},
       observation: [
         %{
-          gate: "call_entity",
+          gate: "cast",
           result: "alpha",
           is_error: false,
           tool_call_id: "tc_call",
           child_turns: [child_turn]
         }
       ],
-      gate_calls: ["call_entity"],
+      gate_calls: ["cast"],
       terminated: true,
       metadata: %{timestamp: DateTime.utc_now()}
     }
@@ -287,7 +287,7 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
     assert length(events) >= 2
 
     gate_calls = events |> Enum.flat_map(&(&1["turn"]["gate_calls"] || []))
-    assert "call_entity" in gate_calls
+    assert "cast" in gate_calls
     assert "read_file" in gate_calls
   end
 end

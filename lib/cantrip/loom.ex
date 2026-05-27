@@ -2,10 +2,9 @@ defmodule Cantrip.Loom do
   @moduledoc """
   Append-only durable reality for an entity.
 
-  The loom keeps the turn-shaped compatibility surface used by the existing
-  runtime while also storing generic events. In Solid V1, compaction and prompt
-  folding are projections over this record; they do not delete the underlying
-  turns or events.
+  The loom keeps the turn-shaped surface used by the runtime while also storing
+  generic events. Compaction and prompt folding are projections over this
+  record; they do not delete the underlying turns or events.
 
   Later evolution work can project richer views from this event log, but this
   module intentionally stays generic: append events, append turns, graft child
@@ -382,6 +381,17 @@ defmodule Cantrip.Loom do
     end
   end
 
+  @doc """
+  Branches `cantrip` from a prefix of `loom`.
+
+  `from_turn` is the number of turns to keep from the source loom. Options must
+  include `:intent`; they may include `:llm` to override the forked branch's
+  provider state.
+  """
+  def fork(%Cantrip{} = cantrip, %__MODULE__{} = loom, from_turn, opts) do
+    Cantrip.__fork__(cantrip, loom, from_turn, opts)
+  end
+
   def extract_thread(%__MODULE__{turns: turns}, leaf_id \\ nil) do
     path = if leaf_id, do: trace_path(turns, leaf_id), else: turns
 
@@ -419,14 +429,8 @@ defmodule Cantrip.Loom do
   defp normalize_storage({:jsonl, path}) when is_binary(path),
     do: {Cantrip.Loom.Storage.Jsonl, path}
 
-  defp normalize_storage({:dets, path}) when is_binary(path),
-    do: {Cantrip.Loom.Storage.Dets, path}
-
   defp normalize_storage({:mnesia, opts}),
     do: {Cantrip.Loom.Storage.Mnesia, opts}
-
-  defp normalize_storage({:auto, opts}),
-    do: {Cantrip.Loom.Storage.Auto, opts}
 
   defp normalize_storage({module, opts}) when is_atom(module), do: {module, opts}
 

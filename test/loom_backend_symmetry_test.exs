@@ -1,11 +1,11 @@
 defmodule Cantrip.LoomBackendSymmetryTest do
   @moduledoc """
-  All storage backends — JSONL, DETS, Mnesia — must support the same
+  All durable storage backends — JSONL and Mnesia — must support the same
   `load/1` contract so pattern 16's "persistent loom" promise holds
   regardless of which backend the user chose. Without this, the
   productionization claim is conditional ("works on JSONL only").
 
-  Native term backends (DETS, Mnesia) preserve atom keys and tuples
+  Native term backends (Mnesia) preserve atom keys and tuples
   through `term_to_binary` — no tagging needed. JSONL has its own
   tag-based path (covered by `loom_jsonl_persistence_test` and
   `loom_jsonl_property_test`). This test verifies the symmetric
@@ -39,32 +39,6 @@ defmodule Cantrip.LoomBackendSymmetryTest do
     }
   end
 
-  test "DETS backend round-trips a turn through write → close → reopen" do
-    path =
-      Path.join(System.tmp_dir!(), "loom_dets_sym_#{System.unique_integer([:positive])}.dets")
-
-    File.rm(path)
-
-    try do
-      loom_1 = Loom.new(%{identity: "test"}, storage: {:dets, path})
-      _ = Loom.append_turn(loom_1, sample_turn())
-
-      # Fresh Loom against the same path rehydrates substance.
-      loom_2 = Loom.new(%{identity: "test"}, storage: {:dets, path})
-
-      assert length(loom_2.turns) == 1
-      [restored] = loom_2.turns
-
-      assert restored.gate_calls == ["done"]
-      assert restored.code_state.binding == [{:x, 42}, {:token, "mango"}]
-      [obs] = restored.observation
-      assert obs.gate == "done"
-      assert obs.result == %{token: "mango", number: 73}
-    after
-      File.rm(path)
-    end
-  end
-
   test "Mnesia backend round-trips a turn through write → close → reopen" do
     table = :"loom_mnesia_sym_#{System.unique_integer([:positive])}"
 
@@ -95,14 +69,12 @@ defmodule Cantrip.LoomBackendSymmetryTest do
     end
   end
 
-  test "JSONL, DETS, and Mnesia all support load/1 (behaviour-level symmetry)" do
-    # The Storage behaviour declares `load/1` as optional. The three
-    # production backends all implement it now; the asymmetry the
-    # Solid V1 spike warned about (loom backends with different
-    # ability surfaces) is closed.
+  test "JSONL and Mnesia support load/1 (behaviour-level symmetry)" do
+    # The Storage behaviour declares `load/1` as optional. The durable
+    # production backends implement it; memory remains an ephemeral test
+    # and transient runtime backend.
     for module <- [
           Cantrip.Loom.Storage.Jsonl,
-          Cantrip.Loom.Storage.Dets,
           Cantrip.Loom.Storage.Mnesia
         ] do
       {:module, ^module} = Code.ensure_loaded(module)

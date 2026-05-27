@@ -65,7 +65,7 @@ defmodule Cantrip.FamiliarRealLLMMultiSeedTest do
     else
       results =
         run_n_times(@runs, fn ->
-          {:ok, llm} = Cantrip.llm_from_env()
+          {:ok, llm} = Cantrip.LLM.from_env()
           {:ok, cantrip} = Cantrip.Familiar.new(llm: llm, root: dir)
 
           {:ok, _result, _next, loom, meta} =
@@ -94,7 +94,7 @@ defmodule Cantrip.FamiliarRealLLMMultiSeedTest do
     else
       results =
         run_n_times(@runs, fn ->
-          {:ok, llm} = Cantrip.llm_from_env()
+          {:ok, llm} = Cantrip.LLM.from_env()
           {:ok, cantrip} = Cantrip.Familiar.new(llm: llm, root: dir)
 
           {:ok, _result, _next, loom, meta} =
@@ -136,7 +136,7 @@ defmodule Cantrip.FamiliarRealLLMMultiSeedTest do
     else
       results =
         run_n_times(@runs, fn ->
-          {:ok, llm} = Cantrip.llm_from_env()
+          {:ok, llm} = Cantrip.LLM.from_env()
           {:ok, cantrip} = Cantrip.Familiar.new(llm: llm, root: File.cwd!())
 
           {:ok, result, _next, _loom, meta} =

@@ -62,7 +62,7 @@ defmodule Mix.Tasks.Cantrip.Cast do
   defp build_bare(opts) do
     max_turns = Keyword.get(opts, :max_turns, 10)
 
-    case Cantrip.llm_from_env() do
+    case Cantrip.LLM.from_env() do
       {:ok, llm} ->
         Cantrip.new(
           llm: llm,
@@ -81,7 +81,7 @@ defmodule Mix.Tasks.Cantrip.Cast do
     loom_path = Keyword.get(opts, :loom_path, Path.join([".cantrip", "familiar.jsonl"]))
     max_turns = Keyword.get(opts, :max_turns, 20)
 
-    case Cantrip.llm_from_env() do
+    case Cantrip.LLM.from_env() do
       {:ok, llm} ->
         Cantrip.Familiar.new(
           llm: llm,

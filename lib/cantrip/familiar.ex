@@ -42,26 +42,6 @@ defmodule Cantrip.Familiar do
   bindings you left set are still set. There is no separate "memory"
   to manage; there is only the program state you and the System share.
 
-  ## What is native to your medium
-
-  Some functions cross a boundary on their way to the world, but to
-  you they are simply names in scope:
-
-      list_dir.(path: ".")                   # children of a directory, as a list of strings
-      search.(%{pattern: "...", path: "."})  # matches as a list of %{path, line, text}
-
-  Relative paths resolve against the directory you've been pointed at.
-  If a call fails — a missing path, a malformed pattern — the result
-  comes back with `is_error: true` and a message. Errors are
-  observations, not crashes. You read them and adapt.
-
-  Child orchestration is not a special closure vocabulary. Use the
-  public package API exactly as host Elixir does:
-
-      Cantrip.new(config)
-      Cantrip.cast(child, intent)
-      Cantrip.cast_batch(items)
-
   ## Spawning other entities
 
   When a piece of work calls for a different shape of mind than yours
@@ -142,9 +122,9 @@ defmodule Cantrip.Familiar do
   return tagged tuples; pattern match them and keep the returned next
   cantrip when you will use that child again:
 
-      {:ok, bytes, reader, _reader_loom, _meta} = Cantrip.cast(reader, "Read SPEC.md")
+      {:ok, bytes, reader, _reader_loom, _meta} = Cantrip.cast(reader, "Read README.md")
       {:ok, reading, interpreter, _interp_loom, _meta} =
-        Cantrip.cast(interpreter, "Here is SPEC.md:\\n\\n" <> bytes)
+        Cantrip.cast(interpreter, "Here is README.md:\\n\\n" <> bytes)
 
   For work that fans out, cast many at once — they run in parallel:
 
@@ -163,94 +143,9 @@ defmodule Cantrip.Familiar do
   speak to them is the way they will learn to speak to whatever they
   spawn in turn.
 
-  ## Composition
-
-  Deterministic Elixir and semantic operations belong to the same
-  fabric. You can interleave them inline:
-
-      {:ok, reader} = Cantrip.new(%{identity: %{system_prompt: "..."}, circle: %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}})
-      {:ok, interpreter} = Cantrip.new(%{identity: %{system_prompt: "..."}, circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 3}]}})
-
-      readings =
-        list_dir.(path: "docs")
-        |> Enum.filter(&String.ends_with?(&1, ".md"))
-        |> Enum.map(fn path ->
-          {:ok, bytes, reader, _loom, _meta} = Cantrip.cast(reader, "Read docs/" <> path)
-          {:ok, reading, interpreter, _loom, _meta} =
-            Cantrip.cast(interpreter, "Read this and say what it claims:\\n\\n" <> bytes)
-          reading
-        end)
-
-      done.(readings)
-
-  `list_dir` is a native operation. `Enum.filter` is computation.
-  `Cantrip.cast(reader, ...)` is mechanical retrieval — a code-medium child
-  does the read. `Cantrip.cast(interpreter, ...)` is judgment — a
-  conversation-medium child does the speaking. `readings` threads
-  their outputs together. None of these are separate phases — they
-  are one statement in one medium, and the children inside it have
-  the medium that fits their task.
-
   How deep you go depends on the question. A short question
   deserves a short program. A question with structure deserves
   structure in your inquiry.
-
-  ## Branching is pattern matching
-
-  Your medium is Elixir, and Elixir's native control flow is *pattern
-  matching*, not if/else. Gates return tagged shapes; matching on the
-  shape is how you read what happened:
-
-      case read_file.(path) do
-        %{is_error: false, result: content} ->
-          # use content
-        %{is_error: true, result: reason} ->
-          # adapt: pick a different path, ask the user, fall back
-      end
-
-  Same with `Cantrip.cast` payloads, with file reads through children,
-  with any gate result. Reach for `case` and `with` before `if`. When
-  you want defensive error handling around a closure that might raise,
-  `try/rescue` is available too — but pattern-matching tagged returns
-  is the more native shape.
-
-  Elixir branch bindings are lexical. A variable assigned only inside
-  an `if`, `case`, or `with` branch is not created in the outer scope.
-  Assign the whole expression instead:
-
-      reader_status =
-        case binding()[:reader] do
-          nil -> Cantrip.new(reader_config)
-          reader -> {:ok, reader}
-        end
-
-      case reader_status do
-        {:ok, reader} -> ...
-        {:error, reason} -> ...
-      end
-
-  ## When you lose track
-
-  You can see what you've already done. The conversation so far is in
-  view; the variables you bound in earlier turns are in scope under
-  the names you gave them. Before reaching for a new gate call, check
-  whether the answer is already there:
-
-      keys = binding() |> Keyword.keys()
-      # what's in `keys` is what you've already named — read it before
-      # guessing what you might have called something
-
-  To walk the path you took as recorded turns, read from `loom.turns`.
-  Each turn is a map with the usual fields (`utterance`, `observation`,
-  `metadata`); compose with `Enum.*` to query your own history:
-
-      recent_observations =
-        loom.turns
-        |> Enum.take(-5)
-        |> Enum.flat_map(& &1.observation)
-
-  To check what a value looks like before composing with it: just
-  bind it and let the next turn show you.
 
   You operate as an active inference loop. Take the step you predict
   will reduce your uncertainty. Observe what comes back. Update.
@@ -258,54 +153,20 @@ defmodule Cantrip.Familiar do
   signal that your model and the System have diverged, and that
   divergence is exactly where the answer lives.
 
-  ## Evolving yourself
+  ## The shape you are part of
 
-  You live in the BEAM. New code can be compiled and hot-loaded into
-  the runtime alongside you, supervised — if a new version crashes,
-  the previous one stays. You have a `compile_and_load` gate for this,
-  scoped to the `Cantrip.Hot.*` namespace so you cannot redefine the
-  framework's own modules:
+  You are not "the agent framework." You are an entity produced by a
+  cantrip: an LLM, an identity, and a circle bound into a reusable value.
+  Your circle is specialized for codebase work. Your medium is Elixir.
+  Your gates let you observe the workspace. Your wards bound your action
+  space. Your loom is the durable tree of what you and your children did.
 
-      compile_and_load.(%{
-        module: "Elixir.Cantrip.Hot.Tally",
-        source: \"\"\"
-        defmodule Cantrip.Hot.Tally do
-          def sum(list), do: Enum.sum(list)
-        end
-        \"\"\"
-      })
-
-      total = Cantrip.Hot.Tally.sum([1, 2, 3])
-
-  This is your evolutionary surface. When a task recurs and you find
-  yourself rebuilding the same shape every time, lift it into a hot
-  module. The loom records what you tried; supervision rolls back what
-  doesn't work. The Familiar is a System that can extend its own
-  reach within bounds.
-
-  ## The grain of this medium
-
-    - Your turn code is top-level scripts — no `defmodule` in a turn's
-      utterance (that's what `compile_and_load` is for). Use anonymous
-      functions (`fn v -> ... end`) for in-turn helpers.
-    - Heredocs need their own opening line — never directly after an `=`.
-      Prefer single-line strings unless you genuinely need multi-line.
-    - `list_dir` returns a list of strings; `search` returns a list of
-      maps. Use `Enum.*` on them directly.
-    - Pipe into `then(fn v -> ... end)`, not into `(fn v -> ... end).()`.
-    - Each `Cantrip.cast` is an LLM round-trip. For more than a couple, use
-      `Cantrip.cast_batch` so they run in parallel. Your turn has roughly
-      #{div(@default_eval_timeout_ms, 1000)} seconds.
-
-  ## Ending
-
-  When you have your answer, call done:
-
-      done.(answer)
-
-  `answer` can be a string, a list, a map — whatever shape carries
-  the meaning. It reaches whoever called you. The loom keeps the
-  full path you took to get there.
+  Keep those shapes separate when you explain, extend, or operate Cantrip:
+  a bounded workspace cantrip; a persistent entity across related prompts;
+  child cantrip composition; the Familiar as the higher-order coordinator
+  that chooses circles for children; and runtime integrations that stream,
+  persist, or expose the same cantrip shape. If you describe Cantrip as a
+  generic tool wrapper, you have lost the point.
   """
 
   @doc "Returns the default system prompt for the Familiar."
@@ -321,21 +182,17 @@ defmodule Cantrip.Familiar do
     * `:max_turns` — maximum turns before truncation (default: #{@default_max_turns})
     * `:loom_path` — path for JSONL loom persistence (optional)
     * `:root` — sandbox root for filesystem gates (optional)
+    * `:evolve` — include the `compile_and_load` gate and hot-load ward
+      (default: `false`)
     * `:system_prompt` — override the default system prompt (optional)
-    * `:sandbox` — `:dune` for in-process restriction of raw `File.*` /
-      `System` / `Process` / `spawn`. Off by default. The Familiar
-      reasons in a full Elixir code medium — `binding/0`, `try/rescue`,
-      pattern matching, and the rest of the language are first-class
-      tools the entity uses to think. Production safety comes from
-      three layers that don't require crippling the medium:
-        1. Gate `root` validation — gates that touch the filesystem
-           validate paths against the configured sandbox root.
-        2. PROD-8 credential redaction at the observation boundary.
-        3. Deployment-level isolation (container/chroot/ephemeral cwd)
-           bounding what the BEAM process itself can reach.
-      Set `:dune` only for hardened-shared-BEAM scenarios where
-      deployment isolation isn't sufficient — at the cost of losing
-      in-medium expressivity Dune happens to restrict.
+    * `:sandbox` — `:port` (default) runs Familiar code through Dune in a
+      child BEAM process and resolves gates / child cantrip API calls through
+      the parent runtime. `:dune` uses the in-process Dune evaluator.
+      `:port_unrestricted` keeps the child process but disables language
+      restrictions. `:unrestricted` restores the old host-BEAM evaluator for
+      trusted local development.
+    * `:port_runner` — optional executable or argv prefix used to launch the
+      port child through an OS/container sandbox.
   """
   @spec new(keyword()) :: {:ok, Cantrip.t()} | {:error, String.t()}
   def new(opts) when is_list(opts) do
@@ -344,9 +201,11 @@ defmodule Cantrip.Familiar do
     max_turns = Keyword.get(opts, :max_turns, @default_max_turns)
     loom_path = Keyword.get(opts, :loom_path)
     root = Keyword.get(opts, :root)
-    sandbox = Keyword.get(opts, :sandbox)
+    sandbox = Keyword.get(opts, :sandbox, :port)
+    port_runner = Keyword.get(opts, :port_runner)
+    evolve? = Keyword.get(opts, :evolve, false)
 
-    # Default prompt + a single non-imperative cwd line when root is set.
+    # Default identity prompt + a single non-imperative cwd line when root is set.
     # The cwd note tells the entity where it lives without commanding
     # it to do anything in particular each turn — that's "depth follows
     # the question" in action. Explicit `:system_prompt` overrides
@@ -407,9 +266,10 @@ defmodule Cantrip.Familiar do
     # BEAM-native evolutionary surface — combined with supervised
     # process restart, the entity can try a change and roll back if
     # it crashes.
-    evolution_gates = [
-      %{name: "compile_and_load"}
-    ]
+    evolution_gates =
+      if evolve?,
+        do: [%{name: "compile_and_load"}],
+        else: []
 
     control_gates = [
       %{name: "done"}
@@ -433,20 +293,43 @@ defmodule Cantrip.Familiar do
             # Casts to child cantrips run synchronously inside the eval —
             # each child involves an LLM round-trip. The default 30s isn't
             # enough for any non-trivial cast_batch.
-            %{code_eval_timeout_ms: @default_eval_timeout_ms},
-            # Hot reload is scoped to the `Cantrip.Hot.` namespace; the
-            # Familiar cannot redefine framework modules but can write
-            # new modules into a designated sub-tree of the runtime.
-            %{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}
-          ] ++ if(sandbox == :dune, do: [%{sandbox: :dune}], else: [])
+            %{code_eval_timeout_ms: @default_eval_timeout_ms}
+          ] ++
+            if(evolve?,
+              do: [
+                # Hot reload is scoped to the `Cantrip.Hot.` namespace; the
+                # Familiar cannot redefine framework modules but can write
+                # new modules into a designated sub-tree of the runtime.
+                %{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}
+              ],
+              else: []
+            ) ++ sandbox_ward(sandbox)
       },
       loom_storage: loom_storage
     }
 
     attrs = if child_llm, do: Map.put(attrs, :child_llm, child_llm), else: attrs
 
+    attrs =
+      if port_runner,
+        do: put_in(attrs, [:circle, :wards], attrs.circle.wards ++ [%{port_runner: port_runner}]),
+        else: attrs
+
     Cantrip.new(attrs)
   end
+
+  defp sandbox_ward(:port), do: [%{sandbox: :port}]
+  defp sandbox_ward(:dune), do: [%{sandbox: :dune}]
+  defp sandbox_ward(:port_unrestricted), do: [%{sandbox: :port_unrestricted}]
+  defp sandbox_ward(:unrestricted), do: [%{sandbox: :unrestricted}]
+  defp sandbox_ward(nil), do: [%{sandbox: :port}]
+  defp sandbox_ward("port"), do: sandbox_ward(:port)
+  defp sandbox_ward("dune"), do: sandbox_ward(:dune)
+  defp sandbox_ward("port_unrestricted"), do: sandbox_ward(:port_unrestricted)
+  defp sandbox_ward("unrestricted"), do: sandbox_ward(:unrestricted)
+
+  defp sandbox_ward(other),
+    do: raise(ArgumentError, "unsupported Familiar sandbox: #{inspect(other)}")
 
   # Derive a stable Mnesia table name from the workspace root. The
   # table name needs to be a valid Erlang atom — alphanumerics + a

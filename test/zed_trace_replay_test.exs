@@ -71,7 +71,7 @@ defmodule Cantrip.ZedTraceReplayTest do
   end
 
   defp replay(prompts, loom_path) do
-    {:ok, llm} = Cantrip.llm_from_env()
+    {:ok, llm} = Cantrip.LLM.from_env()
 
     {:ok, cantrip} =
       Cantrip.Familiar.new(llm: llm, loom_path: loom_path, root: File.cwd!())
@@ -135,7 +135,7 @@ defmodule Cantrip.ZedTraceReplayTest do
       pre_load_lines = File.read!(path) |> String.split("\n", trim: true) |> length()
       assert pre_load_lines >= 2
 
-      {:ok, llm} = Cantrip.llm_from_env()
+      {:ok, llm} = Cantrip.LLM.from_env()
 
       {:ok, cantrip} =
         Cantrip.Familiar.new(llm: llm, loom_path: path, root: File.cwd!())

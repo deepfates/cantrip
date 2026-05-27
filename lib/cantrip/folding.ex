@@ -67,10 +67,11 @@ defmodule Cantrip.Folding do
   # whole body lives in `tail` — fold still inserts the marker so the
   # entity (and any test pinning the marker) sees that folding fired.
   defp partition(messages) do
+    {leading_systems, rest} = Enum.split_while(messages, &match?(%{role: :system}, &1))
+
     {head, body} =
-      case messages do
-        [%{role: :system} = sys | [%{role: :user} = intent | rest]] -> {[sys, intent], rest}
-        [%{role: :user} = intent | rest] -> {[intent], rest}
+      case rest do
+        [%{role: :user} = intent | body] -> {leading_systems ++ [intent], body}
         _ -> {[], messages}
       end
 

@@ -8,7 +8,7 @@ defmodule DuneSandboxTest do
   3. System.cmd is blocked
   4. Bindings persist across turns
   5. Gate closures (done., echo.) work
-  6. The sandbox is opt-in via %{sandbox: :dune} ward
+  6. The old host-BEAM evaluator is an explicit %{sandbox: :unrestricted} escape hatch
   """
   use ExUnit.Case, async: false
 
@@ -29,7 +29,7 @@ defmodule DuneSandboxTest do
 
   defp unsandboxed_cantrip(llm, opts \\ []) do
     gates = Keyword.get(opts, :gates, [:done, :echo])
-    wards = [%{max_turns: 10}]
+    wards = [%{max_turns: 10}, %{sandbox: :unrestricted}]
 
     Cantrip.new(
       llm: llm,
@@ -266,10 +266,10 @@ defmodule DuneSandboxTest do
     end
   end
 
-  # -- 6. Opt-in behavior --
+  # -- 6. Explicit escape hatch behavior --
 
-  describe "sandbox is opt-in" do
-    test "without sandbox ward, File.read is NOT blocked (unrestricted path)" do
+  describe "unrestricted sandbox is explicit" do
+    test "with sandbox: :unrestricted, File.read is NOT blocked" do
       code = ~S"""
       case File.read("/etc/hosts") do
         {:ok, content} -> done.("file_read_ok:" <> String.slice(content, 0, 10))
@@ -282,7 +282,7 @@ defmodule DuneSandboxTest do
 
       assert {:ok, result, _cantrip, _loom, _meta} = Cantrip.cast(cantrip, "file read")
 
-      # Without the sandbox ward, File.read succeeds (unrestricted)
+      # The explicit unrestricted escape hatch allows File.read.
       assert String.starts_with?(result, "file_read_ok:") or
                String.starts_with?(result, "file_read_error:")
     end

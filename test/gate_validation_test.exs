@@ -46,6 +46,15 @@ defmodule Cantrip.GateValidationTest do
     end
   end
 
+  describe "filesystem gates with missing root" do
+    test "read_file fails closed when no root dependency is configured" do
+      obs = Cantrip.Gate.execute(circle("read_file"), "read_file", %{"path" => "README.md"})
+
+      assert obs.is_error == true
+      assert obs.result =~ "root dependency"
+    end
+  end
+
   describe "list_dir with missing path" do
     test "empty args produces an error observation" do
       obs = Cantrip.Gate.execute(circle("list_dir"), "list_dir", %{})

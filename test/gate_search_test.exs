@@ -19,16 +19,16 @@ defmodule Cantrip.GateSearchTest do
     {:ok, dir: dir}
   end
 
-  defp search_circle do
+  defp search_circle(dir) do
     Circle.new(%{
       type: :code,
-      gates: [%{name: "search"}, %{name: "done"}],
+      gates: [%{name: "search", dependencies: %{root: dir}}, %{name: "done"}],
       wards: [%{max_turns: 1}]
     })
   end
 
   test "returns a list of match maps with :path / :line / :text", %{dir: dir} do
-    obs = Cantrip.Gate.execute(search_circle(), "search", %{pattern: "needle", path: dir})
+    obs = Cantrip.Gate.execute(search_circle(dir), "search", %{pattern: "needle", path: "."})
 
     assert obs.is_error == false
     assert is_list(obs.result)
@@ -42,7 +42,7 @@ defmodule Cantrip.GateSearchTest do
   end
 
   test "result is Enum-friendly: distinct paths are derivable in one pipe", %{dir: dir} do
-    obs = Cantrip.Gate.execute(search_circle(), "search", %{pattern: "needle", path: dir})
+    obs = Cantrip.Gate.execute(search_circle(dir), "search", %{pattern: "needle", path: "."})
 
     distinct_paths = obs.result |> Enum.map(& &1.path) |> Enum.uniq()
 

@@ -14,7 +14,7 @@ defmodule Cantrip.ACP.Runtime.Familiar do
 
     llm_result =
       case Map.get(params, "llm") do
-        nil -> Cantrip.llm_from_env()
+        nil -> Cantrip.LLM.from_env()
         llm -> {:ok, llm}
       end
 

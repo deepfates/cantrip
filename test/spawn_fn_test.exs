@@ -58,6 +58,41 @@ defmodule Cantrip.SpawnFnTest do
     assert result == "alpha"
   end
 
+  test "code-medium child accepts explicit gate maps and inherits missing dependencies", %{
+    dir: dir
+  } do
+    parent =
+      {FakeLLM,
+       FakeLLM.new([
+         %{
+           code: """
+           {:ok, child} = Cantrip.new(%{
+            identity: %{system_prompt: "Read notes.md and return the first line."},
+            circle: %{
+              type: :code,
+              gates: [%{name: "read_file", teaching: "custom child teaching"}, %{name: "done"}],
+              wards: [%{max_turns: 2}]
+            }
+           })
+           {:ok, result, _child, _child_loom, _meta} = Cantrip.cast(child, "Read notes.md")
+           done.(result)
+           """
+         }
+       ])}
+
+    child_code = """
+    content = read_file.(path: "notes.md")
+    done.(content |> String.split("\\n") |> List.first())
+    """
+
+    child = {FakeLLM, FakeLLM.new([%{code: child_code}])}
+
+    {:ok, cantrip} = Familiar.new(llm: parent, child_llm: child, root: dir)
+    {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "delegate the mapped read")
+
+    assert result == "alpha"
+  end
+
   test "child read_file with missing path is a structured observation, not a crash", %{dir: dir} do
     # The child's LLM forgets the `path` arg. The runtime must surface
     # that as a structured observation the child code can branch on,

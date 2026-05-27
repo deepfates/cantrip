@@ -4,6 +4,11 @@ defmodule ReqLLMAdapterTest do
   alias Cantrip.LLMs.ReqLLM, as: Adapter
 
   describe "module availability" do
+    setup do
+      Code.ensure_loaded?(Adapter)
+      :ok
+    end
+
     test "Cantrip.LLMs.ReqLLM is defined when req_llm is loaded" do
       assert Code.ensure_loaded?(Cantrip.LLMs.ReqLLM)
     end
@@ -137,6 +142,61 @@ defmodule ReqLLMAdapterTest do
       assert {:error, error, returned_state} = Adapter.query(state, request)
       assert returned_state.stream == true
       assert is_map(error)
+    end
+
+    test "stream_query stays wired to process_stream for reconstructed tool calls" do
+      source = File.read!("lib/cantrip/llms/req_llm.ex")
+
+      assert source =~ "ReqLLM.StreamResponse.process_stream(sr, on_result: on_result)"
+      refute source =~ "ReqLLM.StreamResponse.tokens(sr)"
+      refute source =~ "ReqLLM.StreamResponse.tool_calls(sr)"
+    end
+
+    test "process_stream reconstructs streamed Anthropic tool calls while emitting text deltas" do
+      test_pid = self()
+
+      chunks = [
+        ReqLLM.StreamChunk.text("I'll "),
+        ReqLLM.StreamChunk.text("check."),
+        ReqLLM.StreamChunk.tool_call("list_dir", %{}, %{id: "toolu_01", index: 0}),
+        ReqLLM.StreamChunk.meta(%{
+          tool_call_args: %{index: 0, fragment: ~s({"path":"."})}
+        }),
+        ReqLLM.StreamChunk.meta(%{finish_reason: :tool_calls})
+      ]
+
+      {:ok, metadata_handle} =
+        ReqLLM.StreamResponse.MetadataHandle.start_link(fn ->
+          %{usage: %{input_tokens: 11, output_tokens: 7}, finish_reason: :tool_calls}
+        end)
+
+      stream_response = %ReqLLM.StreamResponse{
+        stream: chunks,
+        metadata_handle: metadata_handle,
+        cancel: fn -> :ok end,
+        model: LLMDB.Model.new!(%{provider: :anthropic, id: "claude-test"}),
+        context: ReqLLM.Context.new([ReqLLM.Context.user("list one file")])
+      }
+
+      assert {:ok, response} =
+               ReqLLM.StreamResponse.process_stream(stream_response,
+                 on_result: fn delta -> send(test_pid, {:text_delta, delta}) end
+               )
+
+      assert_receive {:text_delta, "I'll "}
+      assert_receive {:text_delta, "check."}
+
+      assert ReqLLM.Response.text(response) == "I'll check."
+      assert response.finish_reason == :tool_calls
+      assert response.usage.input_tokens == 11
+      assert response.usage.output_tokens == 7
+
+      assert [
+               %ReqLLM.ToolCall{
+                 id: "toolu_01",
+                 function: %{name: "list_dir", arguments: ~s({"path":"."})}
+               }
+             ] = ReqLLM.Response.tool_calls(response)
     end
   end
 

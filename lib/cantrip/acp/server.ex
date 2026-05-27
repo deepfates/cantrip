@@ -4,7 +4,7 @@ defmodule Cantrip.ACP.Server do
   """
 
   def run(opts \\ []) do
-    runtime = Keyword.get(opts, :runtime, Cantrip.ACP.Runtime.Cantrip)
+    runtime = Keyword.get(opts, :runtime, Cantrip.ACP.Runtime.Familiar)
     table = Cantrip.ACP.AgentHandler.new(runtime: runtime)
 
     # Use group_leader pid for IO (not :stdio atom) to work around

@@ -4,8 +4,8 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
   the mode-agnosticism of `--diagnostics`: any mode (REPL, single-shot,
   ACP) may request the remsh-attach affordance.
 
-  The Solid V1 spike treats ACP / REPL / CLI as projections of one
-  runtime — a regression here would silently re-introduce the
+  ACP, interactive REPL, and single-shot CLI are projections of one
+  runtime; a regression here would silently re-introduce the
   asymmetry where the editor surface had observability the developer
   REPL didn't.
 
@@ -87,8 +87,7 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
   # build_familiar/1 — the launcher's storage policy, pinned
   # =====================================================================
   #
-  # The recent substrate arc (commits aeeba2c..63a234d) made Mnesia the
-  # documented production default for workspace-scoped Familiars when
+  # Mnesia is the documented production default for workspace-scoped Familiars when
   # constructed via `Cantrip.Familiar.new/1` with `:root`. The launcher
   # previously contradicted that by hard-defaulting `loom_path` to
   # `.cantrip/familiar.jsonl`, which short-circuits the Mnesia branch

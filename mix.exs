@@ -4,7 +4,7 @@ defmodule Cantrip.MixProject do
   def project do
     [
       app: :cantrip,
-      version: "0.1.0",
+      version: "1.0.0",
       elixir: "~> 1.19",
       name: "Cantrip",
       description: description(),
@@ -18,7 +18,18 @@ defmodule Cantrip.MixProject do
       homepage_url: "https://github.com/deepfates/grimoire",
       docs: [
         main: "Cantrip",
-        extras: ["README.md", "SPEC.md", "DEPLOYMENT.md", "docs/patterns.md", "LICENSE"]
+        extras: [
+          "README.md",
+          "DEPLOYMENT.md",
+          "CONTRIBUTING.md",
+          "CHANGELOG.md",
+          "docs/architecture.md",
+          "docs/public-api.md",
+          "docs/migration-v1.md",
+          "docs/port-isolated-runtime.md",
+          "docs/signer-key-runbook.md",
+          "LICENSE"
+        ]
       ]
     ]
   end
@@ -48,16 +59,14 @@ defmodule Cantrip.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:req, "~> 0.5"},
       {:jason, "~> 1.4"},
       {:telemetry, "~> 1.0"},
       {:dune, "~> 0.3"},
-      {:req_llm, "~> 1.9"},
+      {:req_llm, "~> 1.12"},
       {:dotenvy, "~> 1.1"},
       {:nimble_options, "~> 1.1"},
       {:agent_client_protocol, "~> 0.1.0"},
       {:owl, "~> 0.13"},
-      {:yaml_elixir, "~> 2.11", only: :test},
       {:mox, "~> 1.2", only: :test},
       {:stream_data, "~> 1.1", only: :test},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false},
@@ -66,7 +75,7 @@ defmodule Cantrip.MixProject do
   end
 
   defp description do
-    "An Elixir/OTP runtime for recursive language-model programs."
+    "An Elixir/OTP runtime for cantrips: language-model entities acting through mediums, gates, wards, and looms."
   end
 
   defp package do
@@ -84,9 +93,12 @@ defmodule Cantrip.MixProject do
         "README.md",
         "DEPLOYMENT.md",
         "CONTRIBUTING.md",
-        "docs/patterns.md",
-        "SPEC.md",
-        "tests.yaml",
+        "CHANGELOG.md",
+        "docs/architecture.md",
+        "docs/public-api.md",
+        "docs/migration-v1.md",
+        "docs/port-isolated-runtime.md",
+        "docs/signer-key-runbook.md",
         "LICENSE"
       ]
     ]

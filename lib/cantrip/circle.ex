@@ -1,6 +1,10 @@
 defmodule Cantrip.Circle do
   @moduledoc """
-  Circle configuration only (M1): gates + wards + medium type.
+  Runtime boundary for a cantrip entity.
+
+  A circle declares the medium the entity thinks in, the gates it can call, and
+  the wards that constrain the loop. `Cantrip.new/1` validates that callers
+  declare exactly one medium using `:type`, `:medium`, or `:circle_type`.
   """
 
   defstruct gates: %{}, wards: [], type: :conversation, medium_sources: [], medium_opts: %{}
@@ -44,7 +48,7 @@ defmodule Cantrip.Circle do
   Validate medium declaration. Returns :ok or {:error, reason}.
   Called during Cantrip construction.
 
-  Per tests.yaml MEDIUM-1: omitting a medium declaration is an error.
+  Omitting a medium declaration is an error.
   Conflicting medium declarations are also an error.
   """
   @spec validate_medium(t()) :: :ok | {:error, String.t()}
@@ -101,7 +105,5 @@ defmodule Cantrip.Circle do
   defp normalize_type("bash"), do: :bash
   defp normalize_type(_), do: :conversation
 
-  defp canonical_gate_name("call_entity"), do: "call_entity"
-  defp canonical_gate_name("call_entity_batch"), do: "call_entity_batch"
   defp canonical_gate_name(name), do: name
 end

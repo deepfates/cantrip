@@ -296,7 +296,7 @@ defmodule Cantrip.FamiliarBehaviorTest do
       cast_observations =
         loom.turns
         |> Enum.flat_map(& &1.observation)
-        |> Enum.filter(&(&1.gate in ["call_entity", "cast", "code"]))
+        |> Enum.filter(&(&1.gate in ["cast", "cast_batch", "code"]))
 
       assert Enum.any?(cast_observations, & &1.is_error),
              "expected a failure observation on the parent's loom (CIRCLE-5 / COMP-8)"
@@ -564,12 +564,13 @@ defmodule Cantrip.FamiliarBehaviorTest do
   end
 
   describe "regression: list_dir return shape" do
-    # SPEC §1.7 example: list_dir's result is plain strings — `["a.txt", "b.txt", ...]`.
+    # Public API contract: list_dir's result is plain strings —
+    # `["a.txt", "b.txt", ...]`.
     # The prior implementation appended " (file)" / " (dir)" annotations to each
     # entry, which made every `Enum.member?(entries, "mix.exs")` and every
     # `String.ends_with?(&1, ".md")` check fail. That broke composition for
     # any entity trying to do the obvious thing.
-    test "list_dir returns plain bare names per SPEC §1.7" do
+    test "list_dir returns plain bare names" do
       tmp_dir =
         Path.join(System.tmp_dir!(), "familiar_reg_ld_#{System.unique_integer([:positive])}")
 
@@ -580,11 +581,11 @@ defmodule Cantrip.FamiliarBehaviorTest do
       circle =
         Cantrip.Circle.new(%{
           type: :code,
-          gates: [%{name: "list_dir"}, %{name: "done"}],
+          gates: [%{name: "list_dir", dependencies: %{root: tmp_dir}}, %{name: "done"}],
           wards: [%{max_turns: 1}]
         })
 
-      obs = Cantrip.Gate.execute(circle, "list_dir", %{path: tmp_dir})
+      obs = Cantrip.Gate.execute(circle, "list_dir", %{path: "."})
 
       assert is_list(obs.result),
              "list_dir.result must be a list — agents Enum over it directly"

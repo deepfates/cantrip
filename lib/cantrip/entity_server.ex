@@ -8,14 +8,12 @@ defmodule Cantrip.EntityServer do
   invocation to `Cantrip.ProviderCall`, gate execution to medium/gate modules,
   and event shaping to `Cantrip.Event`.
 
-  That split is the Solid V1 spine: this process is the living resident, while
-  the other runtime modules own the pieces that should be testable without a
-  GenServer mailbox.
+  This process owns lifecycle and state. The other runtime modules own the
+  pieces that are easier to test without a GenServer mailbox.
   """
 
   alias Cantrip.{Gate, Loom, ProviderCall, WardPolicy}
   alias Cantrip.Medium.Registry, as: MediumRegistry
-  alias Cantrip.LLMs.Helpers
 
   use GenServer, restart: :temporary
 
@@ -34,7 +32,7 @@ defmodule Cantrip.EntityServer do
             # The summary text from this turn's fold (if folding fired
             # in `prepare_request`). Threaded into the medium's runtime
             # so the entity can read it as a `folded_summary` binding
-            # per SPEC §6.8 ("summaries in the sandbox").
+            # so code-medium entities can inspect the summary in later turns.
             folded_summary: nil
 
   def start_link(opts) do
@@ -356,6 +354,18 @@ defmodule Cantrip.EntityServer do
 
     emit_turn_stop(state.entity_id, turn_number, turn_start_time)
 
+    # The terminating turn's assistant message must be folded into
+    # `state.messages` too, otherwise persistent entities lose every
+    # assistant turn across `Cantrip.send/2` calls — the next send
+    # appends a new user message to a history that still ends with the
+    # *prior* user message, and the model sees a stack of user prompts
+    # with no record of its own answers. FakeLLM-backed tests miss this
+    # because their responses don't use context.
+    next_messages =
+      Cantrip.Turn.next_messages(state.messages, state.cantrip.circle.type, executed)
+
+    next_state = %{next_state | messages: next_messages}
+
     if terminated do
       case Cantrip.Turn.final_response(
              classified,
@@ -371,10 +381,6 @@ defmodule Cantrip.EntityServer do
           {value, next_state, meta}
       end
     else
-      next_messages =
-        Cantrip.Turn.next_messages(state.messages, state.cantrip.circle.type, executed)
-
-      next_state = %{next_state | messages: next_messages}
       run_loop(next_state)
     end
   end
@@ -399,77 +405,10 @@ defmodule Cantrip.EntityServer do
     end
   end
 
-  defp execute_call_entity(state, opts) do
-    opts = Helpers.atomize_known_keys(opts)
-    raw_intent = opts[:intent] || ""
-    context = opts[:context]
-
-    child_intent =
-      if context do
-        ctx_str = if is_binary(context), do: context, else: Jason.encode!(context)
-        "Context: #{ctx_str}\n\nTask: #{raw_intent}"
-      else
-        raw_intent
-      end
-
-    parent_context = parent_context(state)
-
-    case Cantrip.new(Map.put(call_entity_child_attrs(opts), :parent_context, parent_context)) do
-      {:ok, child_cantrip} ->
-        case Cantrip.cast(child_cantrip, child_intent,
-               parent_context: parent_context,
-               parent_gate: "call_entity",
-               record_parent_observation?: false
-             ) do
-          {:ok, value, _next_cantrip, child_loom, _meta} ->
-            %{
-              value: value,
-              observation: %{
-                gate: "call_entity",
-                result: value,
-                is_error: false,
-                child_turns: child_loom.turns
-              }
-            }
-
-          {:error, reason, _next_cantrip} ->
-            %{
-              value: inspect(reason),
-              observation: %{gate: "call_entity", result: inspect(reason), is_error: true}
-            }
-        end
-
-      {:error, reason} ->
-        %{value: reason, observation: %{gate: "call_entity", result: reason, is_error: true}}
-    end
-  end
-
-  defp call_entity_child_attrs(opts) do
-    opts
-    |> Map.take([
-      :llm,
-      :identity,
-      :system_prompt,
-      :circle,
-      :circle_type,
-      :medium,
-      :gates,
-      :wards,
-      :medium_opts
-    ])
-    |> normalize_call_entity_llm()
-  end
-
-  defp normalize_call_entity_llm(%{llm: {module, _state}} = attrs) when is_atom(module),
-    do: attrs
-
-  defp normalize_call_entity_llm(%{llm: _legacy_ref} = attrs), do: Map.delete(attrs, :llm)
-  defp normalize_call_entity_llm(attrs), do: attrs
-
   defp parent_context(state) do
     Cantrip.parent_context(state.cantrip,
       depth: state.depth,
-      child_llm: current_child_llm(state),
+      child_llm: state.cantrip.child_llm || default_child_llm(state),
       cancel_on_parent: state.cancel_on_parent,
       stream_to: state.stream_to,
       stream_barrier?: state.stream_barrier?,
@@ -480,83 +419,19 @@ defmodule Cantrip.EntityServer do
   defp default_child_llm(state),
     do: {state.cantrip.llm_module, state.cantrip.llm_state}
 
-  defp current_child_llm(state) do
-    Process.get(:cantrip_child_llm) ||
-      state.cantrip.child_llm ||
-      default_child_llm(state)
-  end
-
   defp execute_compile_and_load(state, opts) do
     observation = Gate.execute(state.cantrip.circle, "compile_and_load", opts)
     %{value: observation.result, observation: observation}
   end
 
-  defp execute_call_entity_batch(state, opts_list) when is_list(opts_list) do
-    max_batch = WardPolicy.max_batch_size(state.cantrip.circle.wards)
-    max_concurrency = WardPolicy.max_concurrent_children(state.cantrip.circle.wards)
-
-    if length(opts_list) > max_batch do
-      msg = "batch too large: #{length(opts_list)} > #{max_batch}"
-      %{value: msg, observation: %{gate: "call_entity_batch", result: msg, is_error: true}}
-    else
-      # Normalize all opts in the batch so downstream code sees atom keys.
-      opts_list = Enum.map(opts_list, &Helpers.atomize_known_keys/1)
-
-      payloads =
-        if Enum.all?(opts_list, &Map.has_key?(&1, :llm)) do
-          opts_list
-          |> Task.async_stream(
-            fn opts -> execute_call_entity(state, opts) end,
-            ordered: true,
-            max_concurrency: max_concurrency,
-            timeout: 120_000
-          )
-          |> Enum.map(fn
-            {:ok, payload} ->
-              payload
-
-            {:exit, reason} ->
-              message = "child error: #{inspect(reason)}"
-
-              %{
-                value: message,
-                observation: %{gate: "call_entity", result: message, is_error: true}
-              }
-          end)
-        else
-          Enum.map(opts_list, &execute_call_entity(state, &1))
-        end
-
-      values = Enum.map(payloads, & &1.value)
-      has_error = Enum.any?(payloads, & &1.observation.is_error)
-      child_turns = Enum.flat_map(payloads, &Map.get(&1.observation, :child_turns, []))
-
-      %{
-        value: values,
-        observation: %{
-          gate: "call_entity_batch",
-          result: values,
-          is_error: has_error,
-          child_turns: child_turns
-        }
-      }
-    end
-  end
-
-  defp execute_call_entity_batch(_state, _opts_list) do
-    %{value: [], observation: %{gate: "call_entity_batch", result: [], is_error: true}}
-  end
-
   defp turn_runtime(state, %{mode: :code_eval}) do
-    base = %{
+    base = %Cantrip.Runtime{
       circle: state.cantrip.circle,
       loom: state.loom,
       entity_id: state.entity_id,
       execute_gate: fn gate, args ->
         Gate.execute(state.cantrip.circle, gate, args)
       end,
-      call_entity: fn opts -> execute_call_entity(state, opts) end,
-      call_entity_batch: fn opts -> execute_call_entity_batch(state, opts) end,
       parent_context: parent_context(state),
       compile_and_load: fn opts -> execute_compile_and_load(state, opts) end
     }
@@ -567,18 +442,18 @@ defmodule Cantrip.EntityServer do
   end
 
   defp turn_runtime(state, %{mode: :code_contract_error}) do
-    %{circle: state.cantrip.circle}
+    %Cantrip.Runtime{circle: state.cantrip.circle}
   end
 
   defp turn_runtime(state, %{mode: :bash_command}) do
-    %{
+    %Cantrip.Runtime{
       circle: state.cantrip.circle,
       entity_id: state.entity_id
     }
   end
 
   defp turn_runtime(state, _classified) do
-    %{
+    %Cantrip.Runtime{
       circle: state.cantrip.circle,
       entity_id: state.entity_id,
       execute_gate: fn gate, args ->

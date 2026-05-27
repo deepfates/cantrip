@@ -10,6 +10,21 @@ defmodule Cantrip.FamiliarTest do
       {:ok, cantrip} = Familiar.new(llm: llm)
       assert %Cantrip{} = cantrip
       assert cantrip.circle.type == :code
+      assert Cantrip.WardPolicy.sandbox(cantrip.circle.wards) == :port
+    end
+
+    test "unrestricted sandbox option is an explicit escape hatch" do
+      llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
+
+      {:ok, cantrip} = Familiar.new(llm: llm, sandbox: :unrestricted)
+      assert Cantrip.WardPolicy.sandbox(cantrip.circle.wards) == :unrestricted
+    end
+
+    test "port runner option is carried as a ward for the code medium" do
+      llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
+
+      {:ok, cantrip} = Familiar.new(llm: llm, port_runner: ["/usr/bin/env"])
+      assert Cantrip.WardPolicy.get(cantrip.circle.wards, :port_runner) == ["/usr/bin/env"]
     end
 
     test "includes navigation gates: list_dir, search (not read_file)" do
@@ -21,6 +36,36 @@ defmodule Cantrip.FamiliarTest do
       assert "list_dir" in gate_names
       assert "search" in gate_names
       refute "read_file" in gate_names
+      refute "compile_and_load" in gate_names
+    end
+
+    test "compile_and_load is opt-in through evolve: true" do
+      llm = {FakeLLM, FakeLLM.new([])}
+      {:ok, cantrip} = Familiar.new(llm: llm, evolve: true)
+
+      gate_names = Map.keys(cantrip.circle.gates)
+      assert "compile_and_load" in gate_names
+
+      assert Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_compile_namespaces) == [
+               "Elixir.Cantrip.Hot."
+             ]
+
+      refute cantrip.identity.system_prompt =~ "compile_and_load"
+
+      capability_text = Cantrip.Medium.Registry.present(cantrip.circle).capability_text
+      assert capability_text =~ "compile_and_load"
+      assert capability_text =~ "Cantrip.Hot.Tally"
+    end
+
+    test "default circle does not teach hot-load evolution" do
+      llm = {FakeLLM, FakeLLM.new([])}
+      {:ok, cantrip} = Familiar.new(llm: llm)
+
+      refute cantrip.identity.system_prompt =~ "compile_and_load"
+      refute Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_compile_namespaces)
+
+      capability_text = Cantrip.Medium.Registry.present(cantrip.circle).capability_text
+      refute capability_text =~ "compile_and_load"
     end
 
     test "does not expose a second orchestration gate ontology" do
@@ -40,15 +85,15 @@ defmodule Cantrip.FamiliarTest do
 
       prompt = cantrip.identity.system_prompt
       assert is_binary(prompt)
-      # Operative naming: the Familiar is a long-lived companion that
-      # summons helpers via cantrips, into circles bounded by gates/wards.
+      # Operative naming: the Familiar is a long-lived entity that can
+      # summon other entities via cantrips, into circles bounded by gates/wards.
       assert prompt =~ "Familiar"
       assert prompt =~ "cantrip"
-      assert prompt =~ "helper"
+      assert prompt =~ "fellow entity"
       assert prompt =~ ~r/gates?/
       assert prompt =~ ~r/wards?/
       assert prompt =~ "loom"
-      assert prompt =~ "Elixir branch bindings are lexical"
+      assert prompt =~ "active inference loop"
     end
 
     test "respects custom max_turns" do
@@ -86,12 +131,12 @@ defmodule Cantrip.FamiliarTest do
       llm =
         {FakeLLM,
          FakeLLM.new([
-           %{code: ~s[entries = list_dir.(%{path: "#{tmp_dir}"})\ndone.(entries)]}
+           %{code: ~s[entries = list_dir.(%{path: "."})\ndone.(entries)]}
          ])}
 
-      {:ok, cantrip} = Familiar.new(llm: llm)
+      {:ok, cantrip} = Familiar.new(llm: llm, root: tmp_dir)
       {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "list dir")
-      # SPEC §1.7: list_dir returns plain bare names. done() preserves the
+      # Public API contract: list_dir returns plain bare names. done() preserves the
       # value the script passed, so the cast result is the list itself.
       assert is_list(result)
       assert "a.txt" in result
@@ -117,11 +162,11 @@ defmodule Cantrip.FamiliarTest do
          FakeLLM.new([
            %{
              code:
-               ~s[matches = search.(%{pattern: "defmodule", path: "#{tmp_dir}"})\nfirst = List.first(matches)\ndone.(first.text)]
+               ~s[matches = search.(%{pattern: "defmodule", path: "."})\nfirst = List.first(matches)\ndone.(first.text)]
            }
          ])}
 
-      {:ok, cantrip} = Familiar.new(llm: llm)
+      {:ok, cantrip} = Familiar.new(llm: llm, root: tmp_dir)
       {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "search for defmodule")
       assert result =~ "defmodule"
     after
@@ -151,6 +196,57 @@ defmodule Cantrip.FamiliarTest do
       assert result =~ "outside sandbox root"
     after
       File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_sandbox_ld_*"))
+    end
+
+    test "read_file rejects symlink escapes outside root" do
+      tmp_dir =
+        Path.join(
+          System.tmp_dir!(),
+          "familiar_sandbox_symlink_#{System.unique_integer([:positive])}"
+        )
+
+      outside_path =
+        Path.join(
+          System.tmp_dir!(),
+          "familiar_sandbox_outside_#{System.unique_integer([:positive])}"
+        )
+
+      Process.put(:familiar_sandbox_symlink_tmp, tmp_dir)
+      Process.put(:familiar_sandbox_symlink_outside, outside_path)
+      File.mkdir_p!(tmp_dir)
+      File.write!(outside_path, "outside secret")
+
+      link_path = Path.join(tmp_dir, "inside_link")
+
+      case File.ln_s(outside_path, link_path) do
+        :ok ->
+          llm =
+            {FakeLLM,
+             FakeLLM.new([
+               %{code: ~s[result = read_file.(%{path: "inside_link"})\ndone.(result)]}
+             ])}
+
+          {:ok, cantrip} =
+            Cantrip.new(
+              llm: llm,
+              circle: %{
+                type: :code,
+                gates: [%{name: "done"}, %{name: "read_file", dependencies: %{root: tmp_dir}}],
+                wards: [%{max_turns: 3}]
+              }
+            )
+
+          {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "try symlink")
+
+          assert result =~ "outside sandbox root"
+          refute result =~ "outside secret"
+
+        {:error, :enotsup} ->
+          :ok
+      end
+    after
+      if tmp_dir = Process.get(:familiar_sandbox_symlink_tmp), do: File.rm_rf!(tmp_dir)
+      if outside_path = Process.get(:familiar_sandbox_symlink_outside), do: File.rm(outside_path)
     end
   end
 

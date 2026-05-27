@@ -2,7 +2,8 @@ name: verify
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
+    tags: ['v*']
   pull_request:
 
 jobs:
@@ -17,7 +18,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           elixir-version: '1.19.5'
-          otp-version: '28.0'
+          otp-version: '28.1'
 
       - name: Install dependencies
         run: mix deps.get
@@ -27,3 +28,45 @@ jobs:
 
       - name: Signer policy checks
         run: ./scripts/check_signer_policy.sh
+
+      - name: Build docs
+        run: mix docs
+
+      - name: Build Hex package
+        run: mix hex.build
+
+  # Live integration tests against a real provider. Several real bugs in v1
+  # prep (streaming tool calls dropped, multi-send losing assistant history)
+  # shipped past unit tests because the mocks didn't match real provider
+  # behavior. This costs API tokens, so PRs run unit verification only; main,
+  # release branch, and tag pushes must have the Anthropic secret configured.
+  live:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Elixir + Erlang
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.19.5'
+          otp-version: '28.1'
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Live integration (Anthropic)
+        env:
+          RUN_REAL_LLM_TESTS: '1'
+          CANTRIP_LLM_PROVIDER: anthropic
+          CANTRIP_MODEL: claude-haiku-4-5
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CANTRIP_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY secret is required for live integration on main/release/tag pushes."
+            exit 1
+          fi
+          mix test test/live_anthropic_test.exs test/real_llm_integration_test.exs

@@ -73,7 +73,7 @@ defmodule DivergenceFixesTest do
       assert {:error, "circle must declare a medium"} = Circle.validate_medium(circle)
     end
 
-    test "Cantrip.new rejects circle with no explicit medium (tests.yaml MEDIUM-1)" do
+    test "Cantrip.new rejects circle with no explicit medium" do
       llm = {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
 
       result =
@@ -210,67 +210,6 @@ defmodule DivergenceFixesTest do
 
       assert {:error, msg} = result
       assert msg =~ "max_retries"
-    end
-  end
-
-  # ===========================================================================
-  # LOOM-8: child turns stored in parent loom
-  # ===========================================================================
-
-  describe "LOOM-8: child turns in parent loom" do
-    test "parent loom includes child turns as subtree with correct count" do
-      # Parent: calls child, then dones with result
-      parent_code = """
-      result = call_entity.(%{intent: "sub"})
-      done.(result)
-      """
-
-      parent_llm =
-        {FakeLLM,
-         FakeLLM.new([
-           %{tool_calls: [%{gate: "elixir", args: %{code: parent_code}}]}
-         ])}
-
-      # Child: just dones immediately
-      child_llm =
-        {FakeLLM,
-         FakeLLM.new([
-           %{tool_calls: [%{gate: "elixir", args: %{code: "done.(42)"}}]}
-         ])}
-
-      {:ok, cantrip} =
-        Cantrip.new(
-          llm: parent_llm,
-          child_llm: child_llm,
-          circle: %{
-            type: :code,
-            gates: [:done, :call_entity],
-            wards: [%{max_turns: 10}, %{max_depth: 1}]
-          }
-        )
-
-      {:ok, result, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "test child in loom")
-
-      assert result == 42
-
-      # Spec expects 3 turns: parent turn 1, child turn 1, parent continuation
-      assert length(loom.turns) == 3,
-             "expected 3 loom turns (parent + child + parent continuation), got #{length(loom.turns)}"
-
-      [parent_t1, child_t, parent_t2] = loom.turns
-
-      # Parent turn 1 has no parent (root)
-      assert parent_t1.parent_id == nil
-
-      # Child turn references parent turn 1
-      assert child_t.parent_id == parent_t1.id
-
-      # Parent turn 2 references parent turn 1 (not the child turn)
-      assert parent_t2.parent_id == parent_t1.id
-
-      # Entity IDs: parent turns share one ID, child has different
-      assert parent_t1.entity_id == parent_t2.entity_id
-      assert child_t.entity_id != parent_t1.entity_id
     end
   end
 

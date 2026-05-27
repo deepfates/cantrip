@@ -72,9 +72,9 @@ defmodule Mix.Tasks.Cantrip.Familiar do
       run interactive REPL (when intent is nil) or single-shot
 
   `diagnostics` is mode-agnostic: any mode (REPL, single-shot, ACP) may
-  request the remsh-attach affordance via `--diagnostics`. The Solid V1
-  spike calls for ACP/REPL/CLI to be projections of one runtime; the
-  diagnostic node is part of that runtime, not an ACP-specific concern.
+  request the remsh-attach affordance via `--diagnostics`. ACP, REPL, and CLI
+  are projections of the same runtime; the diagnostic node is part of that
+  runtime, not an ACP-specific concern.
   """
   @spec parse_args([String.t()]) ::
           {:help, %{opts: keyword()}}
@@ -323,7 +323,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   end
 
   defp run_familiar(intent, opts) do
-    case Cantrip.llm_from_env() do
+    case Cantrip.LLM.from_env() do
       {:ok, llm} ->
         case build_familiar(Keyword.put(opts, :llm, llm)) do
           {:ok, cantrip} ->

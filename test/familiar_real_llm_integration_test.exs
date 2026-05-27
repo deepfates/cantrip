@@ -30,7 +30,7 @@ defmodule Cantrip.FamiliarRealLLMIntegrationTest do
     if not RealLLMEnv.enabled?() do
       :ok
     else
-      {:ok, llm} = Cantrip.llm_from_env()
+      {:ok, llm} = Cantrip.LLM.from_env()
       {:ok, cantrip} = Cantrip.Familiar.new(llm: llm, root: dir)
 
       {:ok, result, _next_cantrip, loom, meta} =
@@ -62,7 +62,7 @@ defmodule Cantrip.FamiliarRealLLMIntegrationTest do
     if not RealLLMEnv.enabled?() do
       :ok
     else
-      {:ok, llm} = Cantrip.llm_from_env()
+      {:ok, llm} = Cantrip.LLM.from_env()
       {:ok, cantrip} = Cantrip.Familiar.new(llm: llm, root: dir)
 
       {:ok, _result, _next, loom, meta} =
@@ -117,7 +117,7 @@ defmodule Cantrip.FamiliarRealLLMIntegrationTest do
       # answer — never crash with File.read(nil) or surface a stack
       # trace as a tool result.
       root = File.cwd!()
-      {:ok, llm} = Cantrip.llm_from_env()
+      {:ok, llm} = Cantrip.LLM.from_env()
       {:ok, cantrip} = Cantrip.Familiar.new(llm: llm, root: root)
 
       {:ok, result, _next, loom, meta} =
@@ -166,7 +166,7 @@ defmodule Cantrip.FamiliarRealLLMIntegrationTest do
       File.write!(Path.join(tmp, "data.txt"), "the secret is 42\n")
 
       try do
-        {:ok, llm} = Cantrip.llm_from_env()
+        {:ok, llm} = Cantrip.LLM.from_env()
         {:ok, cantrip} = Cantrip.Familiar.new(llm: llm, root: tmp)
 
         # Note the intent deliberately doesn't name the file, just hints

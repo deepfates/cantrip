@@ -20,7 +20,7 @@ defmodule Cantrip.ACP.AgentHandler do
   connections can run in the same BEAM with no shared state.
   """
   def new(opts \\ []) do
-    runtime = Keyword.get(opts, :runtime, Cantrip.ACP.Runtime.Cantrip)
+    runtime = Keyword.get(opts, :runtime, Cantrip.ACP.Runtime.Familiar)
     bridge_flush_timeout_ms = Keyword.get(opts, :bridge_flush_timeout_ms, 5_000)
     table = :ets.new(:acp_handler, [:set, :public])
     :ets.insert(table, {:runtime, runtime})

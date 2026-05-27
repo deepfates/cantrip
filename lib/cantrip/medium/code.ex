@@ -1,13 +1,30 @@
 defmodule Cantrip.Medium.Code do
   @moduledoc """
-  Code medium boundary.
+  Code medium boundary and evaluator.
 
-  This adapter delegates to the existing code evaluators while giving the
-  runtime a behaviour-shaped target. It is a thin layer by design: the spike is
-  about making the boundary visible before moving orchestration code.
+  The runtime injects a tiny host API into each evaluation:
+  - `done/1` terminates the turn and reports the final answer through the circle.
+  - child orchestration helpers construct and cast child Cantrip handles.
   """
 
   @behaviour Cantrip.Medium
+
+  alias Cantrip.{Circle, Gate}
+
+  @reserved_bindings [
+    :done,
+    :compile_and_load,
+    :loom,
+    :folded_summary
+  ]
+
+  @type runtime :: %{
+          required(:circle) => Circle.t(),
+          optional(:execute_gate) => (String.t(), map() -> map()),
+          optional(:parent_context) => map(),
+          optional(:compile_and_load) => (map() -> map())
+        }
+  @type state :: %{optional(:binding) => keyword()}
 
   @impl true
   def present(circle, _state) do
@@ -19,34 +36,21 @@ defmodule Cantrip.Medium.Code do
   end
 
   @spec capability_text(Cantrip.Circle.t()) :: String.t()
-  def capability_text(%Cantrip.Circle{gates: gates} = circle) do
-    gate_lines =
-      circle
-      |> Cantrip.Gate.names()
-      |> Enum.map(fn name -> format_gate_description(name, Map.get(gates, name, %{})) end)
-      |> Enum.join("\n")
-
+  def capability_text(%Cantrip.Circle{} = circle) do
     """
-    You write Elixir code that executes in a persistent sandbox. \
-    Respond ONLY with the elixir tool containing valid Elixir code. \
-    Do not write prose or markdown.
+    #{medium_intro_text()}
 
-    CRITICAL: NEVER use defmodule. Module definitions create a new scope \
-    where host function bindings are invisible, causing "undefined variable" errors. \
-    Write ALL code at the top level as a script. Use anonymous functions if you need helpers:
+    #{branching_text()}
 
-      summarize = fn text -> String.split(text, "\\n") |> length() end
-      result = summarize.(data)
-      done.(result)
+    #{host_functions_text(circle)}
 
-    Available host functions (closure bindings, top-level only):
-    #{gate_lines}
+    #{history_text()}
 
     #{package_api_text(circle)}
 
-    Variables persist across turns. Store intermediate data in variables.
-    Call done.(result) with your final answer when finished.
-    Your done() result is what the caller sees - make it concise and informative.\
+    #{grain_text()}
+
+    #{ending_text()}
     """
   end
 
@@ -54,7 +58,11 @@ defmodule Cantrip.Medium.Code do
   def execute(code, state, %{circle: circle} = runtime) when is_binary(code) do
     {next_state, observations, result, terminated?} =
       case Cantrip.WardPolicy.sandbox(circle.wards) do
+        nil -> eval_port(code, state, runtime)
         :dune -> eval_dune(code, state, runtime)
+        :port -> eval_port(code, state, runtime)
+        :port_unrestricted -> eval_port(code, state, runtime)
+        :unrestricted -> eval_unrestricted(code, state, runtime)
         _ -> eval_unrestricted(code, state, runtime)
       end
 
@@ -66,11 +74,54 @@ defmodule Cantrip.Medium.Code do
   end
 
   @impl true
+  def snapshot(%{port_session: _} = state), do: Cantrip.Medium.Code.Port.snapshot(state)
+  def snapshot(%{child_handles: _} = state), do: Cantrip.Medium.Code.Port.snapshot(state)
   def snapshot(state), do: state
 
   @impl true
+  def restore(%{port_session: _} = snapshot), do: Cantrip.Medium.Code.Port.restore(snapshot)
   def restore(snapshot) when is_map(snapshot), do: snapshot
   def restore(_), do: %{}
+
+  @spec eval(String.t(), state(), runtime()) :: {state(), list(map()), term() | nil, boolean()}
+  def eval(code, state, runtime) when is_binary(code) do
+    {:ok, collector} = Agent.start_link(fn -> [] end)
+    {:ok, child_llm_ref} = Agent.start_link(fn -> Map.get(state, :child_llm) end)
+
+    runtime = Map.put(runtime, :observation_collector, collector)
+    runtime = Map.put(runtime, :child_llm_ref, child_llm_ref)
+    initial_binding = build_binding(Map.get(state, :binding, []), runtime)
+
+    # Compatibility bridge for arbitrary evaluated Elixir code. Child runtime
+    # state is carried explicitly in runtime/agents; this process value only
+    # lets code call Cantrip.new/cast/cast_batch without hidden options.
+    previous_parent_context = Process.get(:cantrip_parent_context)
+
+    parent_context =
+      if Map.get(runtime, :parent_context) do
+        Map.put(runtime.parent_context, :observation_collector, collector)
+        |> Map.put(:child_llm_ref, child_llm_ref)
+      end
+
+    if parent_context, do: Process.put(:cantrip_parent_context, parent_context)
+
+    try do
+      {binding, result, terminated} = eval_block(code, initial_binding, collector)
+      observations = Agent.get(collector, & &1)
+
+      child_llm = Agent.get(child_llm_ref, & &1)
+
+      next_state =
+        %{binding: persist_binding(binding)}
+        |> maybe_put_child_llm(child_llm)
+
+      {next_state, observations, result, terminated}
+    after
+      Agent.stop(collector)
+      Agent.stop(child_llm_ref)
+      restore_process_value(:cantrip_parent_context, previous_parent_context)
+    end
+  end
 
   defp elixir_tools do
     [
@@ -89,15 +140,20 @@ defmodule Cantrip.Medium.Code do
 
   defp eval_dune(code, state, runtime) do
     eval_start = System.monotonic_time()
+    result = Cantrip.Medium.Code.Dune.eval(code, state, runtime)
+    emit_eval_stop(runtime, eval_start)
+    result
+  end
 
-    result = Cantrip.CodeMedium.DuneSandbox.eval(code, state, runtime)
+  defp eval_port(code, state, runtime) do
+    eval_start = System.monotonic_time()
+    result = Cantrip.Medium.Code.Port.eval(code, state, runtime)
     emit_eval_stop(runtime, eval_start)
     result
   end
 
   defp eval_unrestricted(code, state, runtime) do
     timeout = Cantrip.WardPolicy.code_eval_timeout_ms(runtime.circle.wards)
-    saved_child_llm = Map.get(state, :child_llm)
 
     eval_start = System.monotonic_time()
 
@@ -106,25 +162,16 @@ defmodule Cantrip.Medium.Code do
         {:ok, capture_pid} = StringIO.open("")
         Process.group_leader(self(), capture_pid)
 
-        if saved_child_llm, do: Process.put(:cantrip_child_llm, saved_child_llm)
-
-        result = Cantrip.CodeMedium.eval(code, state, runtime)
-        child_llm = Process.get(:cantrip_child_llm)
+        result = eval(code, state, runtime)
         {_, captured_output} = StringIO.contents(capture_pid)
         StringIO.close(capture_pid)
 
-        {result, child_llm, captured_output}
+        {result, captured_output}
       end)
 
     case Task.yield(task, timeout) do
-      {:ok, {{next_state, obs, result, terminated}, child_llm, captured_output}} ->
+      {:ok, {{next_state, obs, result, terminated}, captured_output}} ->
         emit_eval_stop(runtime, eval_start)
-
-        next_state =
-          if child_llm,
-            do: Map.put(next_state, :child_llm, child_llm),
-            else: next_state
-
         {next_state, append_stdio(obs, captured_output), result, terminated}
 
       nil ->
@@ -159,14 +206,382 @@ defmodule Cantrip.Medium.Code do
 
   defp emit_eval_stop(_runtime, _started_at), do: :ok
 
-  # Capability lines come from `Cantrip.Gate.spec/1` (the single source of
-  # truth for built-in metadata). A user-supplied `:description` on the gate
-  # overrides the canonical text — the args hint stays per-name to keep the
-  # signature readable in the prompt.
-  defp format_gate_description(name, gate) do
-    custom = Map.get(gate, :description) || Map.get(gate, "description")
-    desc = custom || Cantrip.Gate.spec(name).description
-    "- #{name}.(#{gate_args_hint(name)}) - #{desc}"
+  defp maybe_put_child_llm(state, nil), do: state
+  defp maybe_put_child_llm(state, child_llm), do: Map.put(state, :child_llm, child_llm)
+
+  defp restore_process_value(key, nil), do: Process.delete(key)
+  defp restore_process_value(key, value), do: Process.put(key, value)
+
+  defp eval_block(code, binding, collector) do
+    if String.trim(code) == "" do
+      {binding, nil, false}
+    else
+      gate_names = extract_gate_names(binding)
+      code = add_dot_calls(code, gate_names)
+
+      case Code.string_to_quoted(code) do
+        {:ok, quoted} ->
+          # Evaluate top-level statements one at a time so that any
+          # bindings assigned before a `done.(...)` (or any other
+          # control-flow throw) are preserved across the call boundary.
+          # Without this, `done` short-circuits Code.eval_quoted and the
+          # accumulated binding is lost, which breaks the natural
+          # "compute then done" pattern across multi-send entities
+          # (MEDIUM-3 / ENTITY-5).
+          eval_statements(extract_statements(quoted), binding, collector)
+
+        {:error, {line, error, token}} ->
+          msg = "parse error at #{inspect(line)}: #{inspect(error)} #{inspect(token)}"
+          push_observation(collector, %{gate: "code", result: msg, is_error: true})
+          {binding, nil, false}
+      end
+    end
+  end
+
+  # A top-level Elixir script parses to either a __block__ wrapping the
+  # statements, or — for a single expression — a bare AST node.
+  defp extract_statements({:__block__, _, stmts}), do: stmts
+  defp extract_statements(single), do: [single]
+
+  defp eval_statements([], binding, _collector), do: {binding, nil, false}
+
+  defp eval_statements([stmt | rest], binding, collector) do
+    try do
+      {value, next_binding} = Code.eval_quoted(stmt, binding)
+
+      if rest == [] do
+        {next_binding, value, false}
+      else
+        eval_statements(rest, next_binding, collector)
+      end
+    rescue
+      e ->
+        push_observation(collector, %{gate: "code", result: Exception.message(e), is_error: true})
+        {binding, nil, false}
+    catch
+      {:cantrip_done, answer} ->
+        {binding, answer, true}
+
+      {:cantrip_error, msg} ->
+        push_observation(collector, %{gate: "code", result: msg, is_error: true})
+        {binding, {:cantrip_error, msg}, true}
+    end
+  end
+
+  defp build_binding(binding, runtime) do
+    user_binding =
+      binding
+      |> Keyword.new()
+      |> Keyword.drop(@reserved_bindings)
+
+    done_fun = fn answer ->
+      observation = Gate.execute(runtime.circle, "done", %{"answer" => answer})
+      push_observation(runtime.observation_collector, observation)
+      throw({:cantrip_done, answer})
+    end
+
+    binding =
+      user_binding
+      |> Keyword.put(:done, done_fun)
+      |> Keyword.put(:loom, Map.get(runtime, :loom))
+      |> maybe_put_folded_summary(runtime)
+      |> put_circle_gate_bindings(runtime)
+
+    binding =
+      case Map.get(runtime, :compile_and_load) do
+        nil ->
+          binding
+
+        gate_fun ->
+          compile_and_load_fun = fn opts ->
+            args =
+              cond do
+                is_map(opts) -> opts
+                is_list(opts) -> Map.new(opts)
+                true -> opts
+              end
+
+            payload = gate_fun.(args)
+            push_observation(runtime.observation_collector, payload.observation)
+            payload.value
+          end
+
+          Keyword.put(binding, :compile_and_load, compile_and_load_fun)
+      end
+
+    binding
+  end
+
+  defp persist_binding(binding) do
+    binding
+    |> Keyword.drop(@reserved_bindings)
+    |> Enum.reject(fn {_k, v} -> transient_value?(v) end)
+  end
+
+  defp transient_value?(%Cantrip.Loom{}), do: true
+  defp transient_value?(v) when is_function(v), do: true
+  defp transient_value?(_), do: false
+
+  # §6.8: when folding fired this turn, the substrate threads the
+  # summary text through the medium runtime so the entity can read it
+  # as a binding (`folded_summary`) alongside its other variables. The
+  # binding is only present when folding occurred — its absence is
+  # meaningful ("no fold this turn"), so we don't bind `nil` to it.
+  defp maybe_put_folded_summary(binding, runtime) do
+    case Map.get(runtime, :folded_summary) do
+      summary when is_binary(summary) and summary != "" ->
+        Keyword.put(binding, :folded_summary, summary)
+
+      _ ->
+        binding
+    end
+  end
+
+  defp push_observation(collector, observation) do
+    # Ensure every observation carries a stable tool_call_id from the moment
+    # it's recorded. Downstream consumers (EventBridge, ACP, telemetry) can
+    # rely on it being present without inventing fallbacks.
+    observation =
+      Map.put_new_lazy(observation, :tool_call_id, fn ->
+        "call_" <> Integer.to_string(System.unique_integer([:positive]))
+      end)
+
+    Agent.update(collector, &(&1 ++ [observation]))
+  end
+
+  defp put_circle_gate_bindings(binding, runtime) do
+    case Map.get(runtime, :execute_gate) do
+      nil ->
+        binding
+
+      execute_gate ->
+        runtime.circle
+        |> Gate.names()
+        |> Enum.reduce(binding, fn gate_name, acc ->
+          binding_name = String.to_atom(gate_name)
+
+          if binding_name in @reserved_bindings do
+            acc
+          else
+            gate_fun = fn opts ->
+              # In code medium, models may pass bare values (strings, numbers)
+              # rather than maps. Normalize maps/lists but pass bare values through
+              # so gate handlers can interpret them directly.
+              args =
+                cond do
+                  is_map(opts) -> opts
+                  is_list(opts) -> Map.new(opts)
+                  true -> opts
+                end
+
+              observation = execute_gate.(gate_name, args) |> Map.put(:args, args)
+              push_observation(runtime.observation_collector, observation)
+              observation.result
+            end
+
+            Keyword.put(acc, binding_name, gate_fun)
+          end
+        end)
+    end
+  end
+
+  # Extract gate function names from bindings (all function-valued bindings)
+  defp extract_gate_names(binding) do
+    binding
+    |> Enum.filter(fn {_k, v} -> is_function(v) end)
+    |> Enum.map(fn {k, _v} -> Atom.to_string(k) end)
+  end
+
+  @doc false
+  # Transform bare gate calls like `done(x)` into `done.(x)` so LLMs
+  # don't need to remember Elixir's dot-call syntax for closures.
+  #
+  # Rules:
+  # - Don't transform inside strings (single or double quoted, heredocs)
+  # - Don't transform module-qualified calls: `Mod.done(`
+  # - Don't transform already-dotted calls: `done.(`
+  def add_dot_calls(code, gate_names) when gate_names == [], do: code
+
+  def add_dot_calls(code, gate_names) do
+    names_pattern = gate_names |> Enum.sort_by(&(-String.length(&1))) |> Enum.join("|")
+    regex = Regex.compile!("(?<![.\\w])(#{names_pattern})\\(")
+
+    code
+    |> split_string_segments()
+    |> Enum.map(fn
+      {:code, segment} -> Regex.replace(regex, segment, "\\1.(")
+      {:string, segment} -> segment
+    end)
+    |> Enum.join()
+  end
+
+  # Split code into alternating code/string segments
+  defp split_string_segments(code) do
+    split_segments(code, [], "", false, nil)
+  end
+
+  defp split_segments("", acc, current, in_string, _delim) do
+    type = if in_string, do: :string, else: :code
+    Enum.reverse([{type, current} | acc])
+  end
+
+  # Heredoc double-quote open
+  defp split_segments(~s(""") <> rest, acc, current, false, nil) do
+    split_segments(rest, [{:code, current} | acc], ~s("""), true, :heredoc_double)
+  end
+
+  defp split_segments(~s(""") <> rest, acc, current, true, :heredoc_double) do
+    split_segments(rest, [{:string, current <> ~s(""")} | acc], "", false, nil)
+  end
+
+  # Heredoc single-quote open
+  defp split_segments("'''" <> rest, acc, current, false, nil) do
+    split_segments(rest, [{:code, current} | acc], "'''", true, :heredoc_single)
+  end
+
+  defp split_segments("'''" <> rest, acc, current, true, :heredoc_single) do
+    split_segments(rest, [{:string, current <> "'''"} | acc], "", false, nil)
+  end
+
+  # Escaped chars inside strings
+  defp split_segments("\\" <> <<c::utf8>> <> rest, acc, current, true, delim) do
+    split_segments(rest, acc, current <> "\\" <> <<c::utf8>>, true, delim)
+  end
+
+  # Double-quote boundaries
+  defp split_segments("\"" <> rest, acc, current, false, nil) do
+    split_segments(rest, [{:code, current} | acc], "\"", true, :double)
+  end
+
+  defp split_segments("\"" <> rest, acc, current, true, :double) do
+    split_segments(rest, [{:string, current <> "\""} | acc], "", false, nil)
+  end
+
+  # Single-quote boundaries
+  defp split_segments("'" <> rest, acc, current, false, nil) do
+    split_segments(rest, [{:code, current} | acc], "'", true, :single)
+  end
+
+  defp split_segments("'" <> rest, acc, current, true, :single) do
+    split_segments(rest, [{:string, current <> "'"} | acc], "", false, nil)
+  end
+
+  # Any other character
+  defp split_segments(<<c::utf8>> <> rest, acc, current, in_string, delim) do
+    split_segments(rest, acc, current <> <<c::utf8>>, in_string, delim)
+  end
+
+  defp medium_intro_text do
+    """
+    You write Elixir code that executes in a persistent sandbox.
+    Respond ONLY with the elixir tool containing valid Elixir code.
+    Do not write prose or markdown.
+
+    CRITICAL: NEVER use defmodule. Module definitions create a new scope
+    where host function bindings are invisible, causing "undefined variable"
+    errors. Write all code at the top level as a script. Use anonymous
+    functions if you need helpers:
+
+        summarize = fn text -> String.split(text, "\\n") |> length() end
+        result = summarize.(data)
+        done.(result)
+
+    Variables persist across turns. Store intermediate data in variables.
+    """
+  end
+
+  defp branching_text do
+    """
+    Branching is pattern matching.
+
+    Gate functions return their `result` value directly. Full gate
+    observations, including `is_error`, are recorded in `loom.turns`; inspect
+    the result value in your script when you need to recover:
+
+        content = read_file.(path: path)
+
+        case content do
+          text when is_binary(text) -> text
+          other -> inspect(other)
+        end
+
+    Reach for `case` and `with` before `if`. Elixir branch bindings are
+    lexical: a variable assigned only inside an `if`, `case`, or `with` branch
+    is not created in the outer scope. Assign the whole expression instead.
+    """
+  end
+
+  defp host_functions_text(%Cantrip.Circle{gates: gates, wards: wards}) do
+    sections =
+      gates
+      |> Enum.reject(fn {name, _gate} -> hidden_host_function?(name, wards) end)
+      |> Enum.map(fn {name, gate} -> gate_teaching_section(name, gate) end)
+      |> Enum.reject(&(&1 in [nil, ""]))
+      |> Enum.join("\n\n")
+
+    """
+    Available host functions (closure bindings, top-level only):
+    #{sections}
+    """
+  end
+
+  defp hidden_host_function?("done", _wards), do: true
+
+  defp hidden_host_function?("compile_and_load", wards),
+    do: Cantrip.WardPolicy.sandbox(wards) == :dune
+
+  defp hidden_host_function?(_name, _wards), do: false
+
+  defp gate_teaching_section(name, gate) do
+    teaching =
+      Map.get(gate, :teaching) ||
+        Map.get(gate, "teaching") ||
+        Cantrip.Gate.Spec.teaching(name) ||
+        Map.get(gate, :description) ||
+        Map.get(gate, "description") ||
+        Cantrip.Gate.spec(name).description
+
+    """
+    ### #{name}.(#{gate_args_hint(name)})
+
+    #{teaching}
+    """
+  end
+
+  defp history_text do
+    """
+    Your history is in scope.
+
+    The variables you bound in earlier turns are available by name. If you lose
+    track, inspect `binding()`:
+
+        keys = binding() |> Keyword.keys()
+
+    The durable path you took is in `loom.turns`. Each turn is a map with
+    utterance, observation, and metadata; compose with `Enum.*` to query it.
+    """
+  end
+
+  defp grain_text do
+    """
+    The grain of this medium:
+
+    - Your turn code is top-level scripts. Use anonymous functions for in-turn
+      helpers.
+    - Heredocs need their own opening line. Prefer single-line strings unless
+      you genuinely need multi-line.
+    - Pipe into `then(fn v -> ... end)`, not into `(fn v -> ... end).()`.
+    - Each `Cantrip.cast` is an LLM round-trip. For more than a couple, use
+      `Cantrip.cast_batch` so children run in parallel.
+    """
+  end
+
+  defp ending_text do
+    """
+    Ending:
+
+    #{Cantrip.Gate.Spec.teaching("done")}
+    """
   end
 
   defp gate_args_hint("done"), do: "answer"
@@ -179,6 +594,28 @@ defmodule Cantrip.Medium.Code do
         Sandbox note: this circle is running under Dune. Remote module calls
         such as Cantrip.new/1 are restricted here; use the injected host
         closures above.
+        """
+
+      :port ->
+        """
+        Port sandbox note: this circle runs Dune-restricted Elixir in a
+        separate child BEAM. Ambient File/System/Process/spawn-style authority
+        is denied. Gate closures call back to the parent runtime. Public
+        package calls such as Cantrip.new/1, Cantrip.cast/2, and
+        Cantrip.cast_batch/1 are proxied to the parent, so child cantrip
+        composition remains available while LLM-written Elixir stays outside
+        the host BEAM.
+        """
+
+      nil ->
+        """
+        Port sandbox note: this circle runs Dune-restricted Elixir in a
+        separate child BEAM by default. Ambient File/System/Process/spawn-style
+        authority is denied. Gate closures call back to the parent runtime.
+        Public package calls such as Cantrip.new/1, Cantrip.cast/2, and
+        Cantrip.cast_batch/1 are proxied to the parent, so child cantrip
+        composition remains available while LLM-written Elixir stays outside
+        the host BEAM.
         """
 
       _ ->

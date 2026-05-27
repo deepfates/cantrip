@@ -1,6 +1,11 @@
 # Cantrip Runtime Demo
 
-## Section
+This notebook is the runnable example grimoire for the package. It follows the
+same arc as the README: start with a cantrip value, cast an entity into a
+bounded circle, inspect the loom, then compose larger workflows through code,
+child cantrips, and the Familiar.
+
+## Install
 
 ```elixir
 Mix.install([
@@ -61,21 +66,31 @@ the environment is already configured.
 
 ```elixir
 # Verify the LLM is configured
-{:ok, llm} = Cantrip.llm_from_env()
+{:ok, llm} = Cantrip.LLM.from_env()
 provider = System.get_env("CANTRIP_LLM_PROVIDER", "openai_compatible")
 model = System.get_env("CANTRIP_MODEL") || System.get_env("OPENAI_MODEL") || System.get_env("ANTHROPIC_MODEL") || System.get_env("GEMINI_MODEL")
 IO.puts("Using #{provider} / #{model}")
+
+new_cantrip = fn opts ->
+  opts
+  |> Keyword.put_new(:llm, llm)
+  |> Cantrip.new()
+end
+
+:ok
 ```
 
 ## What is Cantrip?
 
-Three things make a cantrip: an **LLM**, an **identity** (who it is), and a
-**circle** (what it can do). The circle has a **medium** — the substrate the
-entity works *in* — plus **gates** (tools that cross the boundary) and **wards**
-(hard constraints). The action space: **A = (M + G) − W**.
+A cantrip is a reusable value: an **LLM**, an **identity** (who it is), and a
+**circle** (where it acts). When you cast or summon that value, an **entity**
+appears in the loop. The circle has a **medium** — the substrate the entity
+works *in* — plus **gates** (boundary crossings) and **wards** (hard
+constraints). The action space: **A = (M + G) − W**.
 
 Every turn is recorded in the **loom**. Threads that end with `done` are
-*terminated*; threads cut short by wards are *truncated*.
+*terminated*; threads cut short by wards are *truncated*. The entity is
+transient; the loom is durable.
 
 ## 1. Conversation Medium — The Baseline
 
@@ -85,7 +100,7 @@ calls, the host executes them, results feed back in.
 
 ```elixir
 {:ok, cantrip} =
-  Cantrip.new_from_env(
+  new_cantrip.(
     identity: %{system_prompt: "You are a helpful assistant. Call done(answer) with your response."},
     circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 5}]}
   )
@@ -109,7 +124,7 @@ enumerated in advance. That's the point.
 
 ```elixir
 {:ok, cantrip} =
-  Cantrip.new_from_env(
+  new_cantrip.(
     identity: %{
       system_prompt: """
       You are a data analyst working in an Elixir sandbox.
@@ -149,7 +164,7 @@ were cut short.
 ```elixir
 # Terminated: enough turns to finish
 {:ok, t_cantrip} =
-  Cantrip.new_from_env(
+  new_cantrip.(
     identity: %{system_prompt: "Answer the question. Call done(answer) with your response."},
     circle: %{type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 5}]}
   )
@@ -158,7 +173,7 @@ were cut short.
 
 # Truncated: only 1 turn allowed, and we give it a hard problem
 {:ok, tr_cantrip} =
-  Cantrip.new_from_env(
+  new_cantrip.(
     identity: %{
       system_prompt: """
       You must call echo() to think through each step before answering.
@@ -216,7 +231,7 @@ working_gate = %{
 }
 
 {:ok, cantrip} =
-  Cantrip.new_from_env(
+  new_cantrip.(
     identity: %{
       system_prompt: """
       You are a weather reporter. You have two data sources:
@@ -242,19 +257,19 @@ LoomViz.table(loom, name: "4. Error Recovery")
 
 ## 5. Composition — Parent and Child
 
-In code medium, the entity delegates via `call_entity.()`. The child runs
-its own loop, returns a result, and the parent continues. `max_depth` prevents
-infinite recursion — at depth 0, the child can't delegate further.
+In code medium, the entity composes with the public Cantrip API. It can create
+child cantrips with `Cantrip.new/1`, run them with `Cantrip.cast/3` or
+`Cantrip.cast_batch/2`, and synthesize the returned summaries. `max_depth`
+prevents infinite recursion.
 
 ```elixir
 {:ok, cantrip} =
-  Cantrip.new_from_env(
+  new_cantrip.(
     identity: %{
       system_prompt: """
       You are a manager agent in an Elixir code sandbox.
-      You can delegate work to a child entity using:
-        call_entity.(%{intent: "task description"})
-      This spawns a child that runs its own loop and returns a result.
+      Delegate work by constructing child cantrips with Cantrip.new/1 and
+      running them with Cantrip.cast/3.
 
       Use done.(answer) to return your final answer.
       Delegate the actual computation to a child, then synthesize.
@@ -262,7 +277,7 @@ infinite recursion — at depth 0, the child can't delegate further.
     },
     circle: %{
       type: :code,
-      gates: [:done, :call_entity],
+      gates: [:done],
       wards: [%{max_turns: 8}, %{max_depth: 1}]
     }
   )
@@ -281,7 +296,7 @@ LoomViz.table(loom, name: "5. Composition")
 
 ## 6. Fork — Rewind and Replay
 
-`Cantrip.fork/4` restarts from a prior turn. The code medium snapshots
+`Cantrip.Loom.fork/4` restarts from a prior turn. The code medium snapshots
 bindings at each turn, so forking restores sandbox state without replay.
 
 We run a code cantrip that defines data and computes the mean, then fork
@@ -290,7 +305,7 @@ a different analytical path.
 
 ```elixir
 {:ok, cantrip} =
-  Cantrip.new_from_env(
+  new_cantrip.(
     identity: %{
       system_prompt: """
       You are a data analyst in an Elixir sandbox.
@@ -308,7 +323,7 @@ IO.puts("Original: #{inspect(original_result)}")
 
 # Fork from turn 1 — the `data` variable should still be bound
 fork_result =
-  Cantrip.fork(next_cantrip, original_loom, 1, %{
+  Cantrip.Loom.fork(next_cantrip, original_loom, 1, %{
     intent: "Now compute the standard deviation of the `data` list that's already defined."
   })
 
@@ -336,7 +351,7 @@ directly onto the entity lifecycle.
 
 ```elixir
 {:ok, cantrip} =
-  Cantrip.new_from_env(
+  new_cantrip.(
     identity: %{
       system_prompt: """
       You are a persistent analyst in an Elixir sandbox. State carries across episodes.
@@ -364,7 +379,38 @@ Kino.Layout.grid([
 ], columns: 1)
 ```
 
-## 8. Telemetry
+## 8. Familiar — Codebase Coordinator
+
+The Familiar is the same abstraction with the codebase-facing circle already
+assembled. It is still a cantrip value: LLM, identity, medium, gates, wards,
+and loom storage. The difference is that its identity knows how to coordinate
+workspace inquiry, delegate to child cantrips, and preserve a durable trace.
+
+Use it when the thing you want is not "one answer from an LLM," but an entity
+that can keep working in a codebase-shaped environment.
+
+```elixir
+{:ok, familiar} =
+  Cantrip.Familiar.new(
+    llm: llm,
+    root: Path.expand(Path.join(__DIR__, "..")),
+    loom_path: "tmp/cantrip-demo-familiar.jsonl",
+    max_turns: 6
+  )
+
+{:ok, result, _cantrip, loom, meta} =
+  Cantrip.cast(familiar, """
+  Inspect this package at a high level. Report the main public surfaces and
+  say when someone should use the Familiar instead of assembling a cantrip
+  by hand. Keep the answer brief.
+  """)
+
+IO.puts("Result: #{inspect(result)}")
+IO.puts("Reason: #{inspect(meta[:termination_reason])}")
+LoomViz.table(loom, name: "8. Familiar")
+```
+
+## 9. Telemetry
 
 The runtime emits `:telemetry` events at entity start/stop, turn start/stop,
 gate start/stop, and code evaluation — all with durations. Attach handlers
@@ -417,7 +463,7 @@ Kino.Text.new("Telemetry attached — run the next cell.")
 
 ```elixir
 {:ok, cantrip} =
-  Cantrip.new_from_env(
+  new_cantrip.(
     identity: %{
       system_prompt: """
       You are an analyst in an Elixir code sandbox.
@@ -435,13 +481,14 @@ IO.puts("Result: #{inspect(result)}")
 
 ## Reference
 
-| Section | Concept                          | Spec Rules                 |
-| ------- | -------------------------------- | -------------------------- |
-| 1       | Conversation medium, basic cast  | LLM-1, CANTRIP-1, CIRCLE-1 |
-| 2       | Code medium, persistent bindings | MEDIUM-1, LOOP-1           |
-| 3       | Terminated vs. truncated         | WARD-1, LOOP-4             |
-| 4       | Custom gates, error as steering  | GATE-1, LOOP-3             |
-| 5       | Parent/child composition         | COMP-2, COMP-3             |
-| 6       | Fork from prior turn             | LOOM-4                     |
-| 7       | Persistent entity lifecycle      | ENTITY-5                   |
-| 8       | Telemetry events                 | §7.5                      |
+| Section | Concept                          | Package Surface                         |
+| ------- | -------------------------------- | --------------------------------------- |
+| 1       | Conversation medium, basic cast  | `Cantrip.new/1`, `Cantrip.cast/3`       |
+| 2       | Code medium, persistent bindings | `circle: %{type: :code}`                |
+| 3       | Terminated vs. truncated         | `max_turns`, termination metadata       |
+| 4       | Custom gates, error as steering  | gate maps and observations              |
+| 5       | Parent/child composition         | `Cantrip.new/1`, `cast/3`, `cast_batch/2` |
+| 6       | Fork from prior turn             | `Cantrip.Loom.fork/4`                        |
+| 7       | Persistent entity lifecycle      | `Cantrip.summon/1`, `Cantrip.send/3`    |
+| 8       | Familiar coordinator             | `Cantrip.Familiar.new/1`                |
+| 9       | Telemetry events                 | `:telemetry` events                     |

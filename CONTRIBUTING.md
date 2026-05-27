@@ -1,49 +1,73 @@
 # Contributing
 
-This project follows strict spec-driven development. These rules are mandatory.
+Cantrip is now an Elixir package first. The implementation and ExUnit suite
+are the authoritative contract.
 
-## Workflow Requirements
+## Workflow
 
-### 1) Strict Red-Green TDD
+1. Write focused ExUnit coverage before changing behavior.
+2. Keep changes scoped to the runtime surface being changed.
+3. Prefer BEAM-native ownership: supervised processes, behaviours at real
+   boundaries, explicit state where possible.
+4. Treat expected operational failures as observations. Let unexpected bugs
+   crash under supervision.
+5. Keep durable docs current when public API, deployment posture, or package
+   shape changes.
 
-1. Do not implement a feature before creating a failing, rule-mapped test.
-2. Follow: red (fail) -> green (minimal fix) -> refactor.
-3. Include relevant `tests.yaml` rule IDs in test names or comments.
+## Runtime Principles
 
-### 2) Literate Engineering
-
-1. Core modules must include `@moduledoc` describing purpose and boundaries.
-2. Non-obvious logic must include concise intent comments.
-3. Keep architecture decisions versioned in `docs/spec-decisions.md`.
-
-### 3) Elixir/OTP Idiom First
-
-1. Runtime logic should be process-oriented (`GenServer`, `DynamicSupervisor`) with explicit ownership.
-2. Use behaviours for boundary abstractions (e.g. llm, medium, storage adapters).
-3. Avoid ad-hoc evaluator shortcuts in core runtime paths.
-4. Code-circle snippets are Elixir executed on the BEAM (`done.(...)`, `call_entity.(...)`), not JS.
-5. Error policy is explicit: expected operational failures become observations; unexpected bugs should crash and be supervised.
-
-### 4) Slice Discipline
-
-1. Implement by slices/milestones defined in `docs/canonicalization-plan.md` and the issue tracker.
-2. Treat the active thread goal and repository verification gates as the current definition of completion.
-3. Keep commits atomic and scoped to one slice increment.
-4. If a rule is violated, pause and correct before adding new behavior.
-
-### 5) Runtime Safety Requirements
-
-1. Child casts linked via delegation must support parent-linked truncation with reason `parent_terminated` (`COMP-9`).
-2. Loom persistence must remain append-only; storage adapters can extend durability but not mutate turn history.
-3. Hot-reload (`compile_and_load`) must be warded in production:
-   - module allowlist (`allow_compile_modules`)
-   - path allowlist (`allow_compile_paths`) when writing files
-   - optional source integrity allowlist (`allow_compile_sha256`)
-   - optional signer allowlist (`allow_compile_signers`)
+- The circle is the safety boundary.
+- The medium determines the shape of thought.
+- Errors are observations.
+- Folding is a view over prompt context. It must never delete the underlying
+  loom record, and it must preserve all leading `:system` messages and the
+  original user intent in the prompt context the model sees — otherwise the
+  entity loses its identity or medium physics partway through a session.
+- The loom is append-only; reward annotation is the exception.
+- Code medium evaluates LLM-emitted Elixir inside a child BEAM via Dune by
+  default (`sandbox: :port`); `:unrestricted` and `:port_unrestricted` are
+  explicit escape hatches.
+- Safety is layered: gate root validation, redaction, the port/Dune boundary,
+  and deployment isolation.
 
 ## Quality Gates
 
-1. `mix verify`
-2. Real llm integration is opt-in and should be exercised whenever provider env is configured.
-3. Conformance behavior must remain aligned with `tests.yaml`.
-4. Run `./scripts/check_signer_policy.sh` before merge when `compile_and_load` policy or signer config changes.
+Run before opening or updating a PR:
+
+```bash
+mix format --check-formatted
+mix compile --warnings-as-errors
+mix test
+mix credo --ignore refactor
+```
+
+`mix verify` runs the same gate. Run `./scripts/check_signer_policy.sh` when
+changing `compile_and_load` policy, signer configuration, or hot-load wards
+— see [docs/signer-key-runbook.md](./docs/signer-key-runbook.md) for what
+that policy is for and how to rotate keys.
+
+### Live integration tests
+
+`mix verify` is unit-test scope. Live tests against real providers exist
+under `test/real_llm_*`, `test/familiar_real_llm_*`, `test/live_anthropic_test.exs`,
+and `test/zed_trace_replay_test.exs`. They are gated by `Cantrip.Test.RealLLMEnv`
+(set `RUN_REAL_LLM_TESTS=1` plus `CANTRIP_LLM_PROVIDER` / `CANTRIP_MODEL` /
+provider-specific API key) and skip cleanly otherwise.
+
+Run before tagging a release, and any time a change touches the LLM adapter,
+medium dispatch, loom, folding, multi-send behavior, or anything else with a
+contract between the runtime and a real provider:
+
+```bash
+RUN_REAL_LLM_TESTS=1 CANTRIP_LLM_PROVIDER=anthropic CANTRIP_MODEL=claude-haiku-4-5 \
+  mix test test/live_anthropic_test.exs test/real_llm_integration_test.exs
+```
+
+The class of bugs these catch is "code paths that look fine because the unit
+mocks return what the production code expects, not what real providers
+actually return." Several were found this way during v1 prep; see
+`docs/v1-audit.md`.
+
+CI runs the Anthropic live subset on pushes to `main`, `release/**`, and
+`v*` tags. Those refs require the `ANTHROPIC_API_KEY` repository secret; PRs
+run `mix verify` only so routine review does not spend provider tokens.

@@ -102,10 +102,7 @@ defmodule CantripRuntimeBoundarySpikeTest do
       runtime = %{
         circle: circle,
         loom: nil,
-        execute_gate: fn gate, args -> Cantrip.Gate.execute(circle, gate, args) end,
-        call_entity: fn _opts ->
-          %{value: nil, observation: %{gate: "call_entity", result: "not used", is_error: true}}
-        end
+        execute_gate: fn gate, args -> Cantrip.Gate.execute(circle, gate, args) end
       }
 
       assert {:ok, _state, observations, "pong", true} =
@@ -519,7 +516,7 @@ defmodule CantripRuntimeBoundarySpikeTest do
       loom =
         Cantrip.Loom.append_child_subtrees(loom, [
           %{
-            gate: "call_entity",
+            gate: "cast",
             child_turns: [
               %{id: "child_old", cantrip_id: "child", entity_id: "child_entity"},
               %{id: "child_old_2", parent_id: "child_old", cantrip_id: "child"}
@@ -577,13 +574,13 @@ defmodule CantripRuntimeBoundarySpikeTest do
             role: "turn",
             utterance: nil,
             observation: [],
-            gate_calls: ["call_entity", "done"],
+            gate_calls: ["cast", "done"],
             terminated: true,
             truncated: false
           },
           [
             %{
-              gate: "call_entity",
+              gate: "cast",
               child_turns: [
                 %{id: "child_old", cantrip_id: "child", entity_id: "child_entity"}
               ]

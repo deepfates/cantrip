@@ -57,8 +57,7 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     end
   end
 
-  # Same shape as the DETS backend's load: Mnesia preserves native
-  # Erlang terms so no tagging or atomize is needed.
+  # Mnesia preserves native Erlang terms so no tagging or atomize is needed.
   @impl true
   def load(%{table: table}) do
     case read_events(table) do

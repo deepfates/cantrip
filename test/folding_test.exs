@@ -33,6 +33,9 @@ defmodule Cantrip.FoldingTest do
   defp identity_msg(text \\ "You are a familiar."),
     do: %{role: :system, content: text}
 
+  defp capability_msg(text \\ "You can execute Elixir code."),
+    do: %{role: :system, content: text}
+
   defp intent_msg(text \\ "explore the place"),
     do: %{role: :user, content: text}
 
@@ -96,6 +99,15 @@ defmodule Cantrip.FoldingTest do
       cantrip = cantrip_with_threshold(100)
       folded = Folding.fold(big_messages(10), 10, cantrip)
       assert Enum.at(folded.messages, 1) == intent_msg()
+    end
+
+    test "preserves all leading system messages before the first user intent" do
+      cantrip = cantrip_with_threshold(100)
+      messages = [identity_msg(), capability_msg(), intent_msg() | Enum.drop(big_messages(10), 2)]
+
+      folded = Folding.fold(messages, 10, cantrip)
+
+      assert Enum.take(folded.messages, 3) == [identity_msg(), capability_msg(), intent_msg()]
     end
 
     test "inserts a summary system message with the LLM's text" do

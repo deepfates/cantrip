@@ -1,16 +1,16 @@
-defmodule Cantrip.BashMediumTest do
+defmodule Cantrip.Medium.BashTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.BashMedium
+  alias Cantrip.Medium.Bash
   alias Cantrip.FakeLLM
 
-  describe "BashMedium.eval/3" do
+  describe "Bash.eval/3" do
     defp runtime(opts \\ %{}) do
       %{circle: %{medium_opts: opts}}
     end
 
     test "executes a simple command and returns output" do
-      {state, [obs], _result, terminated} = BashMedium.eval("echo hello", %{}, runtime())
+      {state, [obs], _result, terminated} = Bash.eval("echo hello", %{}, runtime())
 
       assert obs.gate == "bash"
       assert String.contains?(obs.result, "hello")
@@ -20,14 +20,14 @@ defmodule Cantrip.BashMediumTest do
     end
 
     test "non-zero exit code sets is_error" do
-      {_state, [obs], _result, terminated} = BashMedium.eval("exit 1", %{}, runtime())
+      {_state, [obs], _result, terminated} = Bash.eval("exit 1", %{}, runtime())
 
       assert obs.is_error
       refute terminated
     end
 
     test "SUBMIT: in output terminates and returns value" do
-      {_state, [obs], result, terminated} = BashMedium.eval(~s[echo "SUBMIT: 42"], %{}, runtime())
+      {_state, [obs], result, terminated} = Bash.eval(~s[echo "SUBMIT: 42"], %{}, runtime())
 
       assert terminated
       assert result == "42"
@@ -37,7 +37,7 @@ defmodule Cantrip.BashMediumTest do
 
     test "SUBMIT: works with shell expansion" do
       {_state, _obs, result, terminated} =
-        BashMedium.eval(~s[echo "SUBMIT: $(expr 6 \\* 7)"], %{}, runtime())
+        Bash.eval(~s[echo "SUBMIT: $(expr 6 \\* 7)"], %{}, runtime())
 
       assert terminated
       assert result == "42"
@@ -45,7 +45,7 @@ defmodule Cantrip.BashMediumTest do
 
     test "SUBMIT: is case insensitive" do
       {_state, _obs, result, terminated} =
-        BashMedium.eval(~s[echo "submit: done"], %{}, runtime())
+        Bash.eval(~s[echo "submit: done"], %{}, runtime())
 
       assert terminated
       assert result == "done"
@@ -53,7 +53,7 @@ defmodule Cantrip.BashMediumTest do
 
     test "command too long returns error" do
       long_command = String.duplicate("a", 6000)
-      {_state, [obs], _result, terminated} = BashMedium.eval(long_command, %{}, runtime())
+      {_state, [obs], _result, terminated} = Bash.eval(long_command, %{}, runtime())
 
       assert obs.is_error
       assert String.contains?(obs.result, "too long")
@@ -61,26 +61,26 @@ defmodule Cantrip.BashMediumTest do
     end
 
     test "empty output becomes (no output)" do
-      {_state, [obs], _result, _terminated} = BashMedium.eval("true", %{}, runtime())
+      {_state, [obs], _result, _terminated} = Bash.eval("true", %{}, runtime())
 
       assert obs.result == "(no output)"
     end
 
     test "respects cwd option" do
-      {_state, [obs], _result, _terminated} = BashMedium.eval("pwd", %{}, runtime(%{cwd: "/tmp"}))
+      {_state, [obs], _result, _terminated} = Bash.eval("pwd", %{}, runtime(%{cwd: "/tmp"}))
 
       # /tmp may resolve to /private/tmp on macOS
       assert String.contains?(obs.result, "tmp")
     end
 
     test "captures stderr in output" do
-      {_state, [obs], _result, _terminated} = BashMedium.eval("echo err >&2", %{}, runtime())
+      {_state, [obs], _result, _terminated} = Bash.eval("echo err >&2", %{}, runtime())
 
       assert String.contains?(obs.result, "err")
     end
 
     test "truncates very long output" do
-      {_state, [obs], _result, _terminated} = BashMedium.eval("seq 1 100000", %{}, runtime())
+      {_state, [obs], _result, _terminated} = Bash.eval("seq 1 100000", %{}, runtime())
 
       assert String.length(obs.result) <= 8200
       assert String.contains?(obs.result, "truncated")

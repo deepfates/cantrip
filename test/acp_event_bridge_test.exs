@@ -23,7 +23,7 @@ defmodule Cantrip.ACP.EventBridgeTest do
 
     test ":tool_call without tool_call_id is ignored (id is minted upstream)" do
       # The tool_call_id is supposed to be minted at the gate-execution
-      # boundary (EntityServer.execute_gate_calls or CodeMedium.push_observation),
+      # boundary (EntityServer.execute_gate_calls or Medium.Code.push_observation),
       # so by the time it reaches translate/1 it must be present. If it's
       # nil, we'd rather drop the event than invent an id that won't match
       # the corresponding tool_result.

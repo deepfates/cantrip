@@ -257,7 +257,12 @@ defmodule Cantrip.Turn do
     }
 
     if context.medium_type in [:code, :bash] do
-      Map.put(attrs, :code_state, executed.next_medium_state)
+      code_state =
+        context.medium_type
+        |> MediumRegistry.fetch!()
+        |> apply(:snapshot, [executed.next_medium_state])
+
+      Map.put(attrs, :code_state, code_state)
     else
       attrs
     end
@@ -429,13 +434,13 @@ defmodule Cantrip.Turn do
 
   defp extract_code_from_tool_call([], _gate, _key), do: nil
 
-  # PROD-4 + §6.8: real folding lives in `Cantrip.Folding`. We trigger on
-  # approximate prompt size against the cantrip's threshold; the legacy
-  # `trigger_after_turns` config still works for tests that pin the
-  # turn-count behavior, and either trigger can fire independently.
+  # Folding lives in `Cantrip.Folding`. We trigger on approximate prompt size
+  # against the cantrip's threshold; `trigger_after_turns` also remains
+  # supported for deterministic turn-count behavior. Either trigger can fire
+  # independently.
   # Returns `%{messages: [...], summary: text | nil}` — summary is non-nil
   # only when folding fired this turn, so it can be threaded into the
-  # entity's sandbox as a binding (§6.8).
+  # entity's sandbox as a binding.
   defp fold_messages(messages, turns, cantrip) do
     cond do
       Cantrip.Folding.should_fold?(messages, cantrip) ->

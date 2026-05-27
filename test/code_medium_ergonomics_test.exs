@@ -1,22 +1,14 @@
-defmodule Cantrip.CodeMediumErgonomicsTest do
+defmodule Cantrip.Medium.CodeErgonomicsTest do
   use ExUnit.Case, async: true
 
-  alias Cantrip.CodeMedium
+  alias Cantrip.Medium.Code
   alias Cantrip.Circle
   alias Cantrip.Gate
 
   defp make_runtime(gates \\ [:done]) do
     circle = Circle.new(gates: gates, type: :code)
 
-    %{
-      circle: circle,
-      call_entity: fn _opts ->
-        %{
-          observation: %{gate: "call_entity", result: "child_result", is_error: false},
-          value: "child_result"
-        }
-      end
-    }
+    %{circle: circle}
   end
 
   describe "folded_summary binding (§6.8 — summaries in the sandbox)" do
@@ -25,7 +17,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       state = %{}
 
       {_state, _obs, result, terminated} =
-        CodeMedium.eval(~s[done.(folded_summary)], state, runtime)
+        Code.eval(~s[done.(folded_summary)], state, runtime)
 
       assert terminated
       assert result == "Earlier turns surveyed the root."
@@ -39,7 +31,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       state = %{}
 
       {_state, _obs, _result, _terminated} =
-        CodeMedium.eval(
+        Code.eval(
           ~s[done.(:erlang.binding_to_term(:erlang.nil_to_atom()))],
           state,
           runtime
@@ -48,7 +40,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       # The above is gibberish that won't compile — but the meaningful
       # assertion is that referencing `folded_summary` would compile-fail
       # when not provided. We verify presence in the binding instead:
-      {state2, _obs, _, _} = CodeMedium.eval(~s[done.("ok")], state, runtime)
+      {state2, _obs, _, _} = Code.eval(~s[done.("ok")], state, runtime)
       refute Keyword.has_key?(state2.binding || [], :folded_summary)
     end
   end
@@ -63,7 +55,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       runtime = make_runtime() |> Map.put(:loom, loom)
 
       {state, _obs, result, terminated} =
-        CodeMedium.eval(
+        Code.eval(
           ~s|loom_value = loom
              count = length(loom_value.turns)
              done.(count)|,
@@ -96,7 +88,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
         |> Map.put(:parent_context, Cantrip.parent_context(parent, child_llm: child_llm))
 
       {state, _obs, result, terminated} =
-        CodeMedium.eval(
+        Code.eval(
           ~s|{:ok, helper} = Cantrip.new(%{
                identity: %{system_prompt: "helper"},
                circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 1}]}
@@ -130,7 +122,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
             type: :code,
             gates: [
               %{name: :done},
-              %{name: :read, dependencies: %{"root" => root, atom_name => "ignored"}}
+              %{name: :read_file, dependencies: %{"root" => root, atom_name => "ignored"}}
             ],
             wards: [%{max_turns: 3}]
           }
@@ -146,17 +138,13 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       assert_raise ArgumentError, fn -> :erlang.binary_to_existing_atom(atom_name) end
     end
 
-    test "call_entity is not injected unless the circle includes the gate" do
+    test "deleted delegation gates are not injected" do
       runtime = make_runtime([:done])
 
+      deleted_gate = String.to_atom("call_" <> "entity")
+
       {_state, _obs, result, terminated} =
-        CodeMedium.eval(
-          ~S"""
-          done.(binding() |> Keyword.has_key?(:call_entity))
-          """,
-          %{},
-          runtime
-        )
+        Code.eval("done.(binding() |> Keyword.has_key?(#{inspect(deleted_gate)}))", %{}, runtime)
 
       assert terminated
       refute result
@@ -169,7 +157,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       state = %{}
 
       {_state, observations, result, terminated} =
-        CodeMedium.eval(~s[done.("answer")], state, runtime)
+        Code.eval(~s[done.("answer")], state, runtime)
 
       assert terminated
       assert result == "answer"
@@ -181,33 +169,11 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       state = %{}
 
       {_state, observations, result, terminated} =
-        CodeMedium.eval(~s[done("answer")], state, runtime)
+        Code.eval(~s[done("answer")], state, runtime)
 
       assert terminated
       assert result == "answer"
       assert Enum.any?(observations, &(&1.gate == "done"))
-    end
-  end
-
-  describe "gate call ergonomics - call_entity" do
-    test "call_entity.(%{intent: \"hi\"}) works (dot-call)" do
-      runtime = make_runtime([:done, :call_entity])
-      state = %{}
-      code = ~s[result = call_entity.(%{intent: "hi"})\ndone.(result)]
-      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
-
-      assert terminated
-      assert result == "child_result"
-    end
-
-    test "call_entity(%{intent: \"hi\"}) works (no dot-call)" do
-      runtime = make_runtime([:done, :call_entity])
-      state = %{}
-      code = ~s[result = call_entity(%{intent: "hi"})\ndone.(result)]
-      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
-
-      assert terminated
-      assert result == "child_result"
     end
   end
 
@@ -217,7 +183,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       state = %{}
       # This code assigns a string containing "done(" — it should NOT be transformed
       code = ~s[x = "call done(x) to finish"\ndone.(x)]
-      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+      {_state, _obs, result, terminated} = Code.eval(code, state, runtime)
 
       assert terminated
       assert result == "call done(x) to finish"
@@ -229,7 +195,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       # SomeModule.done(x) should NOT become SomeModule.done.(x)
       # This will fail at runtime (no such module), but the transform should not mangle it
       code = ~s[try do\n  String.done("x")\nrescue\n  _ -> done.("rescued")\nend]
-      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+      {_state, _obs, result, terminated} = Code.eval(code, state, runtime)
 
       assert terminated
       assert result == "rescued"
@@ -239,7 +205,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       runtime = make_runtime()
       state = %{}
       code = ~s[done.("already_dotted")]
-      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+      {_state, _obs, result, terminated} = Code.eval(code, state, runtime)
 
       assert terminated
       assert result == "already_dotted"
@@ -250,9 +216,6 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
 
       runtime = %{
         circle: circle,
-        call_entity: fn _opts ->
-          %{observation: %{gate: "call_entity", result: "ok", is_error: false}, value: "ok"}
-        end,
         execute_gate: fn gate_name, args ->
           Gate.execute(circle, gate_name, args)
         end
@@ -261,7 +224,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       state = %{}
       # echo(opts) without dot should work
       code = ~s[result = echo(%{text: "hello"})\ndone.(result)]
-      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+      {_state, _obs, result, terminated} = Code.eval(code, state, runtime)
 
       assert terminated
       assert result == "hello"
@@ -274,9 +237,6 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
 
       runtime = %{
         circle: circle,
-        call_entity: fn _opts ->
-          %{observation: %{gate: "call_entity", result: "ok", is_error: false}, value: "ok"}
-        end,
         compile_and_load: fn opts ->
           # The opts should be whatever was passed, not coerced to %{}
           %{
@@ -288,34 +248,10 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
 
       state = %{}
       code = ~s[result = compile_and_load.("my_module_code")\ndone.(result)]
-      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+      {_state, _obs, result, terminated} = Code.eval(code, state, runtime)
 
       assert terminated
       assert result == "my_module_code"
-    end
-  end
-
-  describe "call_entity bare-value args" do
-    test "call_entity.(string) passes string as %{intent: string}" do
-      received = :ets.new(:test_received, [:set, :public])
-
-      circle = Circle.new(gates: [:done, :call_entity], type: :code)
-
-      runtime = %{
-        circle: circle,
-        call_entity: fn opts ->
-          :ets.insert(received, {:opts, opts})
-          %{observation: %{gate: "call_entity", result: "ok", is_error: false}, value: "ok"}
-        end
-      }
-
-      state = %{}
-      code = ~s[result = call_entity.("just a question")\ndone.(result)]
-      {_state, _obs, _result, _terminated} = CodeMedium.eval(code, state, runtime)
-
-      [{:opts, captured}] = :ets.lookup(received, :opts)
-      assert captured == %{intent: "just a question"}
-      :ets.delete(received)
     end
   end
 
@@ -325,9 +261,6 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
 
       %{
         circle: circle,
-        call_entity: fn _opts ->
-          %{observation: %{gate: "call_entity", result: "ok", is_error: false}, value: "ok"}
-        end,
         execute_gate: fn gate_name, args ->
           Gate.execute(circle, gate_name, args)
         end
@@ -338,7 +271,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       runtime = make_runtime_with_gates([:done, :echo])
       state = %{}
       code = ~s[result = echo.("hello world")\ndone.(result)]
-      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+      {_state, _obs, result, terminated} = Code.eval(code, state, runtime)
 
       assert terminated
       assert result == "hello world"
@@ -348,7 +281,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       runtime = make_runtime_with_gates([:done, :echo])
       state = %{}
       code = ~s[result = echo("bare value")\ndone.(result)]
-      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+      {_state, _obs, result, terminated} = Code.eval(code, state, runtime)
 
       assert terminated
       assert result == "bare value"
@@ -358,7 +291,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       runtime = make_runtime_with_gates([:done, :echo])
       state = %{}
       code = ~s[result = echo.(%{text: "map form"})\ndone.(result)]
-      {_state, _obs, result, terminated} = CodeMedium.eval(code, state, runtime)
+      {_state, _obs, result, terminated} = Code.eval(code, state, runtime)
 
       assert terminated
       assert result == "map form"
@@ -417,7 +350,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       done.("should not reach here")
       """
 
-      {_state, obs, _result, terminated} = CodeMedium.eval(code, state, runtime)
+      {_state, obs, _result, terminated} = Code.eval(code, state, runtime)
 
       refute terminated, "Cantrip.cast_batch should have errored before done was called"
       assert Enum.any?(obs, &(&1[:is_error] and &1.gate == "cast_batch"))
@@ -441,7 +374,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
 
       # Turn 1: assign x and call done in the same code block.
       {state1, _obs1, _result1, terminated1} =
-        CodeMedium.eval(
+        Code.eval(
           ~s|x = :hello\ndone.(:first_send)|,
           state,
           runtime
@@ -452,7 +385,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
 
       # Turn 2 (simulating a subsequent send): x must still be visible.
       {_state2, _obs2, result2, terminated2} =
-        CodeMedium.eval(~s|done.({:saw_x, x})|, state1, runtime)
+        Code.eval(~s|done.({:saw_x, x})|, state1, runtime)
 
       assert terminated2
       assert result2 == {:saw_x, :hello}
@@ -469,7 +402,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       done.(:ok)
       """
 
-      {state1, _obs, _result, _term} = CodeMedium.eval(code, state, runtime)
+      {state1, _obs, _result, _term} = Code.eval(code, state, runtime)
 
       assert Keyword.fetch!(state1.binding, :a) == 1
       assert Keyword.fetch!(state1.binding, :b) == 2
@@ -480,7 +413,7 @@ defmodule Cantrip.CodeMediumErgonomicsTest do
       runtime = make_runtime()
 
       {_state, _obs, result, terminated} =
-        CodeMedium.eval(~s|done.("only thing")|, %{}, runtime)
+        Code.eval(~s|done.("only thing")|, %{}, runtime)
 
       assert terminated
       assert result == "only thing"

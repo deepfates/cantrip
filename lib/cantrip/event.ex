@@ -149,7 +149,6 @@ defmodule Cantrip.Event do
   end
 
   defp gate_kind("read_file"), do: :read
-  defp gate_kind("read"), do: :read
   defp gate_kind("list_dir"), do: :read
   defp gate_kind("search"), do: :search
   defp gate_kind("compile_and_load"), do: :edit
