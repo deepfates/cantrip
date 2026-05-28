@@ -35,6 +35,7 @@ defmodule Cantrip do
             llm_module: nil,
             llm_state: nil,
             child_llm: nil,
+            node: nil,
             identity: nil,
             circle: nil,
             loom_storage: nil,
@@ -47,6 +48,7 @@ defmodule Cantrip do
           llm_module: module(),
           llm_state: term(),
           child_llm: {module(), term()} | nil,
+          node: node() | nil,
           identity: Identity.t(),
           circle: Circle.t(),
           loom_storage: term(),
@@ -66,6 +68,7 @@ defmodule Cantrip do
     identity: [type: :any, default: %{}],
     circle: [type: :any, default: %{}],
     child_llm: [type: :any],
+    node: [type: :atom],
     loom_storage: [type: {:custom, __MODULE__, :validate_loom_storage_option, []}],
     retry: [type: :any, default: %{}],
     folding: [type: :any, default: %{}],
@@ -92,15 +95,34 @@ defmodule Cantrip do
   @spec new(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
   def new(attrs) do
     attrs = normalize_input_map(attrs)
+    attrs = normalize_node_attr(attrs)
+    remote_node = remote_node(attrs)
 
     parent_context =
       Map.get(attrs, :parent_context) || Map.get(attrs, "parent_context") ||
         Process.get(:cantrip_parent_context)
 
-    case parent_context do
-      nil -> new_root(attrs)
-      parent_context -> new_child(attrs, parent_context)
+    case {remote_node, parent_context} do
+      {{:remote, node}, nil} -> remote_new(node, attrs)
+      {_local, nil} -> new_root(attrs)
+      {_node, parent_context} -> new_child(attrs, parent_context)
     end
+  end
+
+  @doc false
+  def __remote_new__(attrs) do
+    attrs
+    |> normalize_input_map()
+    |> normalize_node_attr()
+    |> drop_node_attr()
+    |> new_root()
+  end
+
+  @doc false
+  def __remote_cast__(%__MODULE__{} = cantrip, intent, opts) do
+    cantrip
+    |> Map.put(:node, nil)
+    |> run_cast(coerce_intent(intent), remote_safe_cast_opts(opts))
   end
 
   defp new_root(attrs) do
@@ -127,6 +149,7 @@ defmodule Cantrip do
            llm_module: module,
            llm_state: state,
            child_llm: normalize_child_llm(Map.get(attrs, :child_llm), llm),
+           node: Map.get(attrs, :node),
            identity: identity,
            circle: circle,
            loom_storage: Map.get(attrs, :loom_storage),
@@ -201,6 +224,7 @@ defmodule Cantrip do
       child_attrs = %{
         llm: child_llm,
         child_llm: Map.get(attrs, :child_llm) || Map.get(attrs, "child_llm") || child_llm,
+        node: Map.get(attrs, :node) || Map.get(attrs, "node"),
         identity: child_identity,
         circle: child_circle_attrs,
         loom_storage: Map.get(attrs, :loom_storage) || Map.get(attrs, "loom_storage"),
@@ -208,7 +232,10 @@ defmodule Cantrip do
         folding: Map.get(attrs, :folding, parent.folding)
       }
 
-      new_root(child_attrs)
+      case remote_node(child_attrs) do
+        {:remote, node} -> remote_new(node, child_attrs)
+        _local -> new_root(child_attrs)
+      end
     end
   end
 
@@ -770,13 +797,78 @@ defmodule Cantrip do
     do: Cantrip.SafeFormat.inspect(intent, pretty: true, limit: :infinity)
 
   defp run_cast_with_parent_context(%__MODULE__{} = cantrip, intent, opts) do
-    case Keyword.get(opts, :parent_context) || Process.get(:cantrip_parent_context) do
-      nil ->
+    parent_context = Keyword.get(opts, :parent_context) || Process.get(:cantrip_parent_context)
+
+    case {remote_node(cantrip), parent_context} do
+      {{:remote, node}, nil} ->
+        remote_cast(node, cantrip, intent, opts)
+
+      {{:remote, node}, parent_context} ->
+        opts = Keyword.delete(opts, :parent_context)
+        run_remote_child_cast(node, cantrip, intent, opts, parent_context)
+
+      {_local, nil} ->
         run_cast(cantrip, intent, opts)
 
-      parent_context ->
+      {_local, parent_context} ->
         opts = Keyword.delete(opts, :parent_context)
         run_child_cast(cantrip, intent, opts, parent_context)
+    end
+  end
+
+  defp run_remote_child_cast(node, %__MODULE__{} = cantrip, intent, opts, parent_context) do
+    parent_context = normalize_parent_context(parent_context)
+    entity_state = Map.get(parent_context, :entity_state)
+    depth = Map.get(parent_context, :depth, 0) + 1
+    record_observation? = Keyword.get(opts, :record_parent_observation?, true)
+    parent_gate = Keyword.get(opts, :parent_gate, "cast")
+    opts = Keyword.drop(opts, [:record_parent_observation?, :parent_gate])
+
+    cast_opts =
+      opts
+      |> Keyword.put_new(:depth, depth)
+      |> Keyword.put_new(:trace_id, Map.get(parent_context, :trace_id))
+      |> remote_safe_cast_opts()
+
+    emit_parent_event(entity_state, {:child_start, %{depth: depth, intent: intent, node: node}})
+    emit_child_start_telemetry(parent_context, depth)
+
+    case remote_cast(node, cantrip, intent, cast_opts) do
+      {:ok, value, _next_cantrip, child_loom, _meta} = ok ->
+        emit_parent_event(entity_state, {:child_end, %{depth: depth, result: value, node: node}})
+        emit_child_stop_telemetry(parent_context, depth, :ok)
+
+        if record_observation?,
+          do:
+            push_parent_cast_observation(
+              parent_context,
+              parent_gate,
+              value,
+              false,
+              child_loom.turns
+            )
+
+        ok
+
+      {:error, reason, next_cantrip} ->
+        emit_parent_event(
+          entity_state,
+          {:child_end, %{depth: depth, error: Cantrip.SafeFormat.inspect(reason), node: node}}
+        )
+
+        emit_child_stop_telemetry(parent_context, depth, :error)
+
+        if record_observation?,
+          do:
+            push_parent_cast_observation(
+              parent_context,
+              parent_gate,
+              Cantrip.SafeFormat.inspect(reason),
+              true,
+              []
+            )
+
+        {:error, reason, %{next_cantrip | node: node}}
     end
   end
 
@@ -871,6 +963,115 @@ defmodule Cantrip do
     catch
       :exit, reason -> {:error, reason}
     end
+  end
+
+  defp remote_new(node, attrs) do
+    attrs = drop_node_attr(attrs)
+
+    case rpc_call(node, __MODULE__, :__remote_new__, [attrs]) do
+      {:ok, %__MODULE__{} = cantrip} ->
+        {:ok, %{cantrip | node: node}}
+
+      {:error, reason} ->
+        {:error, reason}
+
+      {:badrpc, reason} ->
+        {:error, "remote node #{node} failed to build cantrip: #{inspect(reason)}"}
+
+      other ->
+        {:error, "remote node #{node} returned invalid cantrip response: #{inspect(other)}"}
+    end
+  end
+
+  defp remote_cast(node, %__MODULE__{} = cantrip, intent, opts) do
+    cantrip = %{cantrip | node: nil}
+
+    case rpc_call(node, __MODULE__, :__remote_cast__, [
+           cantrip,
+           intent,
+           remote_safe_cast_opts(opts)
+         ]) do
+      {:ok, value, %__MODULE__{} = next, loom, meta} ->
+        {:ok, value, %{next | node: node}, loom, meta}
+
+      {:error, reason, %__MODULE__{} = next} ->
+        {:error, reason, %{next | node: node}}
+
+      {:error, reason, next} ->
+        {:error, reason, next}
+
+      {:badrpc, reason} ->
+        {:error, "remote node #{node} failed to cast cantrip: #{inspect(reason)}",
+         %{cantrip | node: node}}
+
+      other ->
+        {:error, "remote node #{node} returned invalid cast response: #{inspect(other)}",
+         %{cantrip | node: node}}
+    end
+  end
+
+  defp remote_safe_cast_opts(opts) when is_list(opts) do
+    Keyword.drop(opts, [
+      :parent_context,
+      :record_parent_observation?,
+      :stream_to,
+      :stream_barrier?,
+      :cancel_on_parent
+    ])
+  end
+
+  defp remote_safe_cast_opts(_opts), do: []
+
+  defp rpc_call(node, module, function, args) do
+    rpc = Application.get_env(:cantrip, :rpc_module, :rpc)
+    apply(rpc, :call, [node, module, function, args])
+  end
+
+  defp remote_node(%__MODULE__{node: nil}), do: :local
+  defp remote_node(%__MODULE__{node: node}) when node == node(), do: :local
+  defp remote_node(%__MODULE__{node: node}) when is_atom(node), do: {:remote, node}
+
+  defp remote_node(attrs) when is_map(attrs) do
+    case Map.get(attrs, :node) || Map.get(attrs, "node") do
+      nil -> :local
+      node when node == node() -> :local
+      node when is_atom(node) -> {:remote, node}
+      _other -> :local
+    end
+  end
+
+  defp normalize_node_attr(attrs) when is_map(attrs) do
+    case Map.fetch(attrs, :node) do
+      {:ok, node} ->
+        Map.put(attrs, :node, normalize_node_value(node))
+
+      :error ->
+        case Map.fetch(attrs, "node") do
+          {:ok, node} -> attrs |> Map.delete("node") |> Map.put(:node, normalize_node_value(node))
+          :error -> attrs
+        end
+    end
+  end
+
+  defp normalize_node_value(node) when is_atom(node), do: node
+
+  defp normalize_node_value(node) when is_binary(node) do
+    Enum.find([node() | Node.list()], fn known -> Atom.to_string(known) == node end) ||
+      existing_atom_or_original(node)
+  end
+
+  defp normalize_node_value(node), do: node
+
+  defp existing_atom_or_original(value) do
+    String.to_existing_atom(value)
+  rescue
+    ArgumentError -> value
+  end
+
+  defp drop_node_attr(attrs) when is_map(attrs) do
+    attrs
+    |> Map.delete(:node)
+    |> Map.delete("node")
   end
 
   defp maybe_put_new(opts, _key, nil), do: opts
