@@ -28,6 +28,7 @@ defmodule Cantrip do
   alias Cantrip.{Identity, Circle, EntityServer, Loom, WardPolicy, Gate}
   alias Cantrip.Medium.Registry, as: MediumRegistry
 
+  @enforce_keys [:id, :llm_module, :llm_state, :identity, :circle]
   @derive {Inspect, except: [:llm_state, :child_llm]}
   defstruct schema_version: 1,
             id: nil,
@@ -60,6 +61,23 @@ defmodule Cantrip do
     backoff_max_ms: [type: :pos_integer, default: 30_000]
   ]
 
+  @root_schema [
+    llm: [type: :any],
+    identity: [type: :any, default: %{}],
+    circle: [type: :any, default: %{}],
+    child_llm: [type: :any],
+    loom_storage: [type: {:custom, __MODULE__, :validate_loom_storage_option, []}],
+    retry: [type: :any, default: %{}],
+    folding: [type: :any, default: %{}],
+    schema_version: [type: :pos_integer, default: 1],
+    parent_context: [type: :any]
+  ]
+
+  @folding_schema [
+    threshold_tokens: [type: :pos_integer],
+    trigger_after_turns: [type: :pos_integer]
+  ]
+
   @doc """
   Builds a reusable cantrip from keyword or map attributes.
 
@@ -73,7 +91,7 @@ defmodule Cantrip do
   """
   @spec new(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
   def new(attrs) do
-    attrs = Map.new(attrs)
+    attrs = normalize_input_map(attrs)
 
     parent_context =
       Map.get(attrs, :parent_context) || Map.get(attrs, "parent_context") ||
@@ -86,33 +104,36 @@ defmodule Cantrip do
   end
 
   defp new_root(attrs) do
-    llm = Map.get(attrs, :llm)
-    identity = Identity.new(Map.get(attrs, :identity, %{}))
+    with {:ok, attrs} <- validate_root_attrs(attrs),
+         {:ok, retry} <- validate_retry(Map.get(attrs, :retry, %{})),
+         {:ok, folding} <- validate_folding(Map.get(attrs, :folding, %{})) do
+      llm = Map.get(attrs, :llm)
+      identity = Identity.new(Map.get(attrs, :identity, %{}))
 
-    circle =
-      attrs
-      |> Map.get(:circle, %{})
-      |> Circle.new()
-      |> materialize_default_code_sandbox()
+      circle =
+        attrs
+        |> Map.get(:circle, %{})
+        |> Circle.new()
+        |> materialize_default_code_sandbox()
 
-    with :ok <- validate_llm(llm),
-         :ok <- validate_circle(circle, identity),
-         {:ok, retry} <- validate_retry(Map.get(attrs, :retry, %{})) do
-      {module, state} = llm
+      with :ok <- validate_llm(llm),
+           :ok <- validate_circle(circle, identity) do
+        {module, state} = llm
 
-      {:ok,
-       %__MODULE__{
-         schema_version: Map.get(attrs, :schema_version) || Map.get(attrs, "schema_version") || 1,
-         id: "cantrip_" <> Integer.to_string(System.unique_integer([:positive])),
-         llm_module: module,
-         llm_state: state,
-         child_llm: normalize_child_llm(Map.get(attrs, :child_llm), llm),
-         identity: identity,
-         circle: circle,
-         loom_storage: Map.get(attrs, :loom_storage),
-         retry: retry,
-         folding: Map.get(attrs, :folding, %{})
-       }}
+        {:ok,
+         %__MODULE__{
+           schema_version: Map.fetch!(attrs, :schema_version),
+           id: "cantrip_" <> Integer.to_string(System.unique_integer([:positive])),
+           llm_module: module,
+           llm_state: state,
+           child_llm: normalize_child_llm(Map.get(attrs, :child_llm), llm),
+           identity: identity,
+           circle: circle,
+           loom_storage: Map.get(attrs, :loom_storage),
+           retry: retry,
+           folding: folding
+         }}
+      end
     end
   end
 
@@ -1043,6 +1064,107 @@ defmodule Cantrip do
     case NimbleOptions.validate(opts, @retry_schema) do
       {:ok, validated} -> {:ok, Map.new(validated)}
       {:error, %NimbleOptions.ValidationError{message: msg}} -> {:error, msg}
+    end
+  end
+
+  defp validate_root_attrs(attrs) do
+    attrs = attrs |> normalize_input_map() |> prefer_atom_keys()
+
+    case reject_non_atom_option_keys(attrs) do
+      :ok ->
+        case NimbleOptions.validate(Map.to_list(attrs), @root_schema) do
+          {:ok, validated} -> {:ok, Map.new(validated)}
+          {:error, %NimbleOptions.ValidationError{message: msg}} -> {:error, msg}
+        end
+
+      {:error, msg} ->
+        {:error, msg}
+    end
+  end
+
+  defp validate_folding(folding) do
+    opts = folding |> normalize_input_map() |> prefer_atom_keys()
+
+    case NimbleOptions.validate(Map.to_list(opts), @folding_schema) do
+      {:ok, validated} -> {:ok, Map.new(validated)}
+      {:error, %NimbleOptions.ValidationError{message: msg}} -> {:error, msg}
+    end
+  end
+
+  @doc false
+  def validate_loom_storage_option(nil), do: {:ok, nil}
+  def validate_loom_storage_option(:memory), do: {:ok, :memory}
+
+  def validate_loom_storage_option({:jsonl, path} = storage) when is_binary(path),
+    do: {:ok, storage}
+
+  def validate_loom_storage_option({:jsonl, _path}) do
+    {:error, "expected :memory, {:jsonl, path}, {:mnesia, opts}, or {module, opts}"}
+  end
+
+  def validate_loom_storage_option({:mnesia, opts}) do
+    with {:ok, opts} <- validate_mnesia_storage_opts(opts) do
+      {:ok, {:mnesia, opts}}
+    end
+  end
+
+  def validate_loom_storage_option({module, _opts} = storage) when is_atom(module) do
+    if function_exported?(module, :init, 1) do
+      {:ok, storage}
+    else
+      {:error, "expected storage module to implement init/1"}
+    end
+  end
+
+  def validate_loom_storage_option(_other) do
+    {:error, "expected :memory, {:jsonl, path}, {:mnesia, opts}, or {module, opts}"}
+  end
+
+  defp validate_mnesia_storage_opts(opts) when is_map(opts) or is_list(opts) do
+    opts = opts |> normalize_input_map() |> prefer_atom_keys()
+
+    case NimbleOptions.validate(Map.to_list(opts), table: [type: :atom], mnesia: [type: :atom]) do
+      {:ok, validated} -> {:ok, Map.new(validated)}
+      {:error, %NimbleOptions.ValidationError{message: msg}} -> {:error, msg}
+    end
+  end
+
+  defp validate_mnesia_storage_opts(_opts), do: {:error, "expected mnesia opts as map or keyword"}
+
+  defp normalize_input_map(nil), do: %{}
+  defp normalize_input_map(attrs) when is_map(attrs), do: attrs
+  defp normalize_input_map(attrs) when is_list(attrs), do: Map.new(attrs)
+  defp normalize_input_map(other), do: %{invalid: other}
+
+  defp prefer_atom_keys(map) when is_map(map) do
+    Map.new(map, fn
+      {key, value} when is_atom(key) -> {key, value}
+      {key, value} when is_binary(key) -> {known_root_key(key), value}
+      pair -> pair
+    end)
+  end
+
+  defp known_root_key("llm"), do: :llm
+  defp known_root_key("identity"), do: :identity
+  defp known_root_key("circle"), do: :circle
+  defp known_root_key("child_llm"), do: :child_llm
+  defp known_root_key("loom_storage"), do: :loom_storage
+  defp known_root_key("retry"), do: :retry
+  defp known_root_key("folding"), do: :folding
+  defp known_root_key("schema_version"), do: :schema_version
+  defp known_root_key("parent_context"), do: :parent_context
+  defp known_root_key("threshold_tokens"), do: :threshold_tokens
+  defp known_root_key("trigger_after_turns"), do: :trigger_after_turns
+  defp known_root_key("table"), do: :table
+  defp known_root_key("mnesia"), do: :mnesia
+  defp known_root_key(key), do: key
+
+  defp reject_non_atom_option_keys(map) do
+    unknown = map |> Map.keys() |> Enum.reject(&is_atom/1)
+
+    case unknown do
+      [] -> :ok
+      keys -> {:error, "unknown options #{inspect(keys)}"}
     end
   end
 

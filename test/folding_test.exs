@@ -60,6 +60,7 @@ defmodule Cantrip.FoldingTest do
     {mod, state} = llm
 
     %Cantrip{
+      id: "folding-test",
       llm_module: mod,
       llm_state: state,
       identity: %Cantrip.Identity{system_prompt: "You are a familiar."},

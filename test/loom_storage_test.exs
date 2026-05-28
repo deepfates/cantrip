@@ -27,6 +27,20 @@ defmodule Cantrip.LoomStorageTest do
              Cantrip.Loom.Storage.Mnesia.init(table: :schema_exists, mnesia: MnesiaAlreadyExists)
   end
 
+  test "explicit malformed loom storage does not fall back to memory" do
+    assert_raise ArgumentError, ~r/invalid loom storage/, fn ->
+      Cantrip.Loom.new(%{system_prompt: nil}, storage: :jsonl)
+    end
+
+    assert_raise ArgumentError, ~r/invalid loom storage/, fn ->
+      Cantrip.Loom.new(%{system_prompt: nil}, storage: {:jsonl, 123})
+    end
+
+    assert_raise ArgumentError, ~r/invalid loom storage/, fn ->
+      Cantrip.Loom.new(%{system_prompt: nil}, storage: {:mnesia, 123})
+    end
+  end
+
   test "loom writes generic events to jsonl storage and rehydrates them faithfully" do
     path = tmp_jsonl_path()
     File.rm(path)

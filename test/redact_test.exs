@@ -32,7 +32,9 @@ defmodule Cantrip.RedactTest do
         id: "demo",
         llm_module: FakeLLM,
         llm_state: %{api_key: "sk-test-parent-secret", model: "demo"},
-        child_llm: {FakeLLM, %{api_key: "sk-test-child-secret"}}
+        child_llm: {FakeLLM, %{api_key: "sk-test-child-secret"}},
+        identity: Cantrip.Identity.new(),
+        circle: Cantrip.Circle.new(type: :conversation)
       })
 
     refute text =~ "llm_state"

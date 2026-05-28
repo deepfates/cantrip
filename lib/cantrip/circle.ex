@@ -7,6 +7,7 @@ defmodule Cantrip.Circle do
   declare exactly one medium using `:type`, `:medium`, or `:circle_type`.
   """
 
+  @enforce_keys [:type]
   defstruct schema_version: 1,
             gates: %{},
             wards: [],
@@ -25,7 +26,7 @@ defmodule Cantrip.Circle do
 
   @spec new(keyword() | map()) :: t()
   def new(attrs \\ %{}) do
-    attrs = Map.new(attrs)
+    attrs = attrs |> Map.new() |> reject_unknown_keys!()
     gates = attrs |> fetch(:gates, []) |> normalize_gates()
     wards = fetch(attrs, :wards, [])
 
@@ -108,6 +109,20 @@ defmodule Cantrip.Circle do
 
   defp fetch(map, key, default),
     do: Map.get(map, key) || Map.get(map, Atom.to_string(key), default)
+
+  defp reject_unknown_keys!(attrs) do
+    allowed = ~w(schema_version gates wards type medium circle_type medium_opts)
+
+    unknown =
+      attrs
+      |> Map.keys()
+      |> Enum.reject(&(to_string(&1) in allowed))
+
+    case unknown do
+      [] -> attrs
+      keys -> raise ArgumentError, "unknown circle options #{inspect(keys)}"
+    end
+  end
 
   defp normalize_gates(gates) do
     gates

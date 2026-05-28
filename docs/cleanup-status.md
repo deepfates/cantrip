@@ -72,8 +72,8 @@ holds — those are adjacent concerns, not a reopen.
 |---:|---|---|---|
 | 0 | Baseline & inventory | **done** | v1.0.0 baseline + Pass 0 ripgrep scans complete (Pass 4/6/8/10). |
 | 1 | Transformation safety | **done** | #27 AST rewrite shipped. No other regex-based source transforms in lib/. |
-| 2 | Boundary / DTO integrity | **partial** | #22 + #25 + #30 issue closures land the visible boundary work. Per-pass audit (`scratch/agent-comms/inbox/20260528T033046Z`) found four contract gaps still open: `@enforce_keys` missing on every durable struct (allows `%Cantrip{}` construction with all-nil fields, bypassing `Cantrip.new` validation); `validate_folding`/`validate_loom_storage` don't exist (only `validate_retry` uses NimbleOptions); no unknown-key rejection at any public constructor; `Loom.new` silently degrades to Memory backend on storage init failure (`lib/cantrip/loom.ex:81-92`). |
-| 3 | Atom safety | **partial** | #21 closed; all known production atom-creation paths are structurally bounded. Remaining contract gap from the per-pass audit: add a fuzz/property regression that proves adversarial public inputs do not grow the atom table. |
+| 2 | Boundary / DTO integrity | **done** | #22 + #25 + #30 issue closures land the visible boundary work. Public root construction now rejects unknown top-level options, validates `:folding` and `:loom_storage` through NimbleOptions-backed schemas, refuses malformed explicit loom storage instead of falling back to Memory, and uses conservative `@enforce_keys` on core runtime structs. Focused boundary tests cover unknown options, bad folding config, bad loom storage config, malformed direct `Loom.new/2` storage, and schema-version struct construction. |
+| 3 | Atom safety | **done** | #21 closed; all known production atom-creation paths are structurally bounded. Property coverage now probes untrusted string inputs across parent-context normalization, gate names, compile-and-load validation, and unknown top-level options while asserting the atom table does not grow. |
 | 4 | Configuration / ambient authority | **clean** | Pass 0 scan: 5 hits, all in boot/config paths. No hot-path violations. |
 | 5 | Secret redaction & error sanitization | **done** | Safe boundary formatting now covers gate observations, code-medium observations/protocol frames, ACP replies, CLI output, loom storage, child-cast observations/events, provider adapter errors, and default inspect output for `%Cantrip{}` LLM state. Diagnostic secret-key detection is centralized in one internal helper. |
 | 6 | Unsafe deserialization / runtime eval | **clean** | Pass 0 scan: all `binary_to_term` uses `[:safe]` flag; `Code.eval_quoted` only in sandboxed port child. `compile_and_load` gated by exact-module allowlist. |
@@ -91,14 +91,7 @@ holds — those are adjacent concerns, not a reopen.
 
 ## What's Left
 
-Open cleanup items remain:
-
-- Pass 2: boundary/DTO integrity still needs `@enforce_keys`, NimbleOptions
-  schemas for `:folding` and `:loom_storage`, unknown-key policy, and explicit
-  failure instead of silent Memory fallback when requested loom storage cannot
-  initialize.
-- Pass 3: add atom-table fuzz/property regression coverage for public input
-  boundaries.
+No open cleanup-guide contract items remain in the codebase.
 
 Plus two feature-roadmap items (`feature` label) that intentionally aren't blocking the cleanup-done milestone: #8 and #10.
 

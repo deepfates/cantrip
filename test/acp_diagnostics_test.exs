@@ -134,7 +134,10 @@ defmodule Cantrip.ACP.DiagnosticsTest do
     test "preserves struct __struct__ on Cantrip-shaped maps" do
       cantrip = %Cantrip{
         id: "c1",
-        llm_state: %{api_key: "leaky", model: "x"}
+        llm_module: Cantrip.FakeLLM,
+        llm_state: %{api_key: "leaky", model: "x"},
+        identity: Cantrip.Identity.new(),
+        circle: Cantrip.Circle.new(type: :conversation)
       }
 
       out = Diagnostics.redact(cantrip)

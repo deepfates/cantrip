@@ -17,6 +17,7 @@ defmodule Cantrip.EntityServer do
 
   use GenServer, restart: :temporary
 
+  @enforce_keys [:cantrip]
   defstruct schema_version: 1,
             cantrip: nil,
             entity_id: nil,
