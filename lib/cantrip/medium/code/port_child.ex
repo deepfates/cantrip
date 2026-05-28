@@ -207,7 +207,7 @@ defmodule Cantrip.Medium.Code.PortChild do
           end
         rescue
           e ->
-            reason = Exception.format(:error, e, __STACKTRACE__)
+            reason = "exception: " <> Cantrip.SafeFormat.exception(e)
             {state, {:eval_error, ref, state.binding, reason}}
         catch
           kind, reason ->
@@ -533,7 +533,7 @@ defmodule Cantrip.Medium.Code.PortChild do
       end
     rescue
       e ->
-        {binding, {:cantrip_error, Exception.message(e)}, false}
+        {binding, {:cantrip_error, Cantrip.SafeFormat.exception(e)}, false}
     catch
       {:cantrip_done, answer} ->
         {binding, answer, true}
@@ -566,7 +566,7 @@ defmodule Cantrip.Medium.Code.PortChild do
         {:ok, other} ->
           %{
             gate: "compile_and_load",
-            result: "unexpected compile response: #{inspect(other)}",
+            result: "unexpected compile response: #{Cantrip.SafeFormat.inspect(other)}",
             is_error: true
           }
 
@@ -576,7 +576,7 @@ defmodule Cantrip.Medium.Code.PortChild do
         {:error, reason} ->
           %{
             gate: "compile_and_load",
-            result: "compile rpc failed: #{inspect(reason)}",
+            result: "compile rpc failed: #{Cantrip.SafeFormat.inspect(reason)}",
             is_error: true
           }
       end
@@ -602,9 +602,9 @@ defmodule Cantrip.Medium.Code.PortChild do
 
     case read_frame() do
       {:ok, {:api_result, ^ref, reply}} -> reply
-      {:ok, other} -> {:error, "unexpected api response: #{inspect(other)}"}
+      {:ok, other} -> {:error, "unexpected api response: #{Cantrip.SafeFormat.inspect(other)}"}
       :eof -> {:error, "parent port closed"}
-      {:error, reason} -> {:error, "api rpc failed: #{inspect(reason)}"}
+      {:error, reason} -> {:error, "api rpc failed: #{Cantrip.SafeFormat.inspect(reason)}"}
     end
   end
 
@@ -617,13 +617,21 @@ defmodule Cantrip.Medium.Code.PortChild do
         observation
 
       {:ok, other} ->
-        %{gate: gate_name, result: "unexpected gate response: #{inspect(other)}", is_error: true}
+        %{
+          gate: gate_name,
+          result: "unexpected gate response: #{Cantrip.SafeFormat.inspect(other)}",
+          is_error: true
+        }
 
       :eof ->
         %{gate: gate_name, result: "parent port closed", is_error: true}
 
       {:error, reason} ->
-        %{gate: gate_name, result: "gate rpc failed: #{inspect(reason)}", is_error: true}
+        %{
+          gate: gate_name,
+          result: "gate rpc failed: #{Cantrip.SafeFormat.inspect(reason)}",
+          is_error: true
+        }
     end
   end
 

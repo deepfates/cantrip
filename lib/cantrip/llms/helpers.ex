@@ -9,8 +9,10 @@ defmodule Cantrip.LLMs.Helpers do
   Looks for `body["error"]["message"]`; falls back to `inspect(body)`.
   """
   @spec extract_error(term()) :: String.t()
-  def extract_error(%{"error" => %{"message" => message}}) when is_binary(message), do: message
-  def extract_error(body), do: inspect(body)
+  def extract_error(%{"error" => %{"message" => message}}) when is_binary(message),
+    do: Cantrip.SafeFormat.message(message)
+
+  def extract_error(body), do: Cantrip.SafeFormat.inspect(body)
 
   @doc """
   Normalizes opts to a map: keyword lists become maps, maps pass through, anything else becomes `%{}`.

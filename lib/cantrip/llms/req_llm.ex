@@ -264,7 +264,7 @@ defmodule Cantrip.LLMs.ReqLLM do
   # -- Error normalization --
 
   defp normalize_error(%{status: status, message: message}) do
-    %{status: status, message: message}
+    %{status: status, message: Cantrip.SafeFormat.message(message)}
   end
 
   defp normalize_error(%{status: status, body: body}) do
@@ -272,15 +272,15 @@ defmodule Cantrip.LLMs.ReqLLM do
   end
 
   defp normalize_error(reason) when is_binary(reason) do
-    %{status: nil, message: reason}
+    %{status: nil, message: Cantrip.SafeFormat.message(reason)}
   end
 
   defp normalize_error(%{__exception__: true} = exception) do
-    %{status: nil, message: Exception.message(exception)}
+    %{status: nil, message: Cantrip.SafeFormat.exception(exception)}
   end
 
   defp normalize_error(reason) do
-    %{status: nil, message: inspect(reason)}
+    %{status: nil, message: Cantrip.SafeFormat.inspect(reason)}
   end
 
   # -- Model detection --

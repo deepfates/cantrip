@@ -289,7 +289,7 @@ defmodule Cantrip.Loom.Storage.Jsonl do
   defp jsonable(%_struct{} = v) do
     v
     |> Map.from_struct()
-    |> Map.put(:__struct__, inspect(v.__struct__))
+    |> Map.put(:__struct__, Cantrip.SafeFormat.inspect(v.__struct__))
     |> jsonable()
   end
 
@@ -304,15 +304,15 @@ defmodule Cantrip.Loom.Storage.Jsonl do
   end
 
   defp jsonable(v) when is_atom(v), do: %{"__a__" => Atom.to_string(v)}
-  defp jsonable(v) when is_function(v), do: %{"__inspect__" => inspect(v)}
+  defp jsonable(v) when is_function(v), do: %{"__inspect__" => Cantrip.SafeFormat.inspect(v)}
 
   defp jsonable(v) when is_pid(v) or is_reference(v) or is_port(v),
-    do: %{"__inspect__" => inspect(v)}
+    do: %{"__inspect__" => Cantrip.SafeFormat.inspect(v)}
 
   defp jsonable(v), do: v
 
   defp jsonable_key(k) when is_atom(k) or is_binary(k) or is_number(k), do: k
-  defp jsonable_key(k), do: inspect(k)
+  defp jsonable_key(k), do: Cantrip.SafeFormat.inspect(k)
 
   # Reverse of jsonable/1: rebuild tagged terms into their Elixir form.
   # Used during load to make round-tripped turns indistinguishable (modulo

@@ -12,7 +12,10 @@ defmodule Cantrip.RedactTest do
 
   use ExUnit.Case, async: true
 
+  alias Cantrip.FakeLLM
+  alias Cantrip.LLMs.Helpers
   alias Cantrip.Redact
+  alias Cantrip.SafeFormat
 
   describe "scan/1 — well-known credential shapes" do
     test "redacts OpenAI/Anthropic sk-* keys" do
@@ -128,5 +131,77 @@ defmodule Cantrip.RedactTest do
 
       File.rm_rf!(tmp_dir)
     end
+  end
+
+  describe "Pass 5 boundary formatting" do
+    @secret "sk-proj-VeqpnxccDQtWXwhtUgtJXFDFsoesUWR4Y9kj9a5W857MeOAvSm"
+
+    test "SafeFormat redacts inspected values and exception messages" do
+      inspected = SafeFormat.inspect(%{api_key: @secret})
+      message = SafeFormat.exception(%RuntimeError{message: "failed with #{@secret}"})
+
+      assert inspected =~ "[REDACTED]"
+      refute inspected =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+      assert message =~ "[REDACTED]"
+      refute message =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+    end
+
+    test "LLM helper fallback redacts provider error bodies" do
+      message = Helpers.extract_error(%{provider_response: %{authorization: "Bearer #{@secret}"}})
+
+      assert message =~ "Bearer [REDACTED]"
+      refute message =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+    end
+
+    test "JSONL persistence redacts inspected fallback keys before disk write" do
+      path = tmp_jsonl_path()
+
+      event = %{
+        {:tuple_key, "OPENAI_API_KEY=#{@secret}"} => "value",
+        type: :unsafe_key
+      }
+
+      _loom =
+        %{system_prompt: nil}
+        |> Cantrip.Loom.new(storage: {:jsonl, path})
+        |> Cantrip.Loom.append_event(event)
+
+      body = File.read!(path)
+      assert body =~ "[REDACTED]"
+      refute body =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+
+      File.rm(path)
+    end
+
+    test "port code-medium exceptions are redacted and do not return stacktraces" do
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s[raise "boom OPENAI_API_KEY=#{@secret}"]}
+         ])}
+
+      {:ok, cantrip} =
+        Cantrip.new(
+          llm: llm,
+          circle: %{type: :code, gates: [:done], wards: [%{max_turns: 1}]}
+        )
+
+      {:ok, _result, _next, loom, _meta} = Cantrip.cast(cantrip, "trigger exception")
+
+      observations = Enum.flat_map(loom.turns, & &1.observation)
+      code_error = Enum.find(observations, &(&1.gate == "code" and &1.is_error))
+
+      assert code_error
+      assert code_error.result =~ "[REDACTED]"
+      refute code_error.result =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+      refute code_error.result =~ "lib/cantrip/medium/code/port_child.ex"
+    end
+  end
+
+  defp tmp_jsonl_path do
+    Path.join(
+      System.tmp_dir!(),
+      "cantrip_redact_jsonl_#{System.unique_integer([:positive])}.jsonl"
+    )
   end
 end

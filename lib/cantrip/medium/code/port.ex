@@ -71,11 +71,23 @@ defmodule Cantrip.Medium.Code.Port do
       receive do
         {^port, {:data, payload}} ->
           case safe_binary_to_term(payload) do
-            {:ok, :ready} -> {:ok, session, Map.put(state, :port_session, session)}
-            {:ok, {:ready, _}} -> {:ok, session, Map.put(state, :port_session, session)}
-            {:ok, {:init_error, reason}} -> init_error(session, inspect(reason))
-            {:ok, other} -> init_error(session, "unexpected init response: #{inspect(other)}")
-            {:error, reason} -> init_error(session, reason)
+            {:ok, :ready} ->
+              {:ok, session, Map.put(state, :port_session, session)}
+
+            {:ok, {:ready, _}} ->
+              {:ok, session, Map.put(state, :port_session, session)}
+
+            {:ok, {:init_error, reason}} ->
+              init_error(session, Cantrip.SafeFormat.inspect(reason))
+
+            {:ok, other} ->
+              init_error(
+                session,
+                "unexpected init response: #{Cantrip.SafeFormat.inspect(other)}"
+              )
+
+            {:error, reason} ->
+              init_error(session, reason)
           end
 
         {^port, {:exit_status, status}} ->
@@ -98,7 +110,7 @@ defmodule Cantrip.Medium.Code.Port do
         {:ok, port}
     end
   rescue
-    e -> {:error, Exception.message(e)}
+    e -> {:error, Cantrip.SafeFormat.exception(e)}
   end
 
   defp child_command(runtime) do
@@ -198,13 +210,19 @@ defmodule Cantrip.Medium.Code.Port do
             obs =
               observations
               |> append_stdio(captured_output)
-              |> Kernel.++([%{gate: "code", result: inspect(reason), is_error: true}])
+              |> Kernel.++([
+                %{gate: "code", result: Cantrip.SafeFormat.inspect(reason), is_error: true}
+              ])
 
             {next_state, obs, nil, false}
 
           {:ok, other} ->
             obs = [
-              %{gate: "code", result: "unexpected port frame: #{inspect(other)}", is_error: true}
+              %{
+                gate: "code",
+                result: "unexpected port frame: #{Cantrip.SafeFormat.inspect(other)}",
+                is_error: true
+              }
             ]
 
             {drop_session(state, session), observations ++ obs, nil, false}
@@ -307,7 +325,14 @@ defmodule Cantrip.Medium.Code.Port do
     else
       {:error, reason, next_cantrip} ->
         {next_handle, state} = put_child_handle(state, next_cantrip, handle)
-        observation = %{gate: "cast", result: inspect(reason), is_error: true, child_turns: []}
+
+        observation = %{
+          gate: "cast",
+          result: Cantrip.SafeFormat.inspect(reason),
+          is_error: true,
+          child_turns: []
+        }
+
         {{:error, reason, next_handle}, state, [observation]}
 
       {:error, reason} ->
@@ -344,7 +369,7 @@ defmodule Cantrip.Medium.Code.Port do
       {:error, reason} ->
         observation = %{
           gate: "cast_batch",
-          result: inspect(reason),
+          result: Cantrip.SafeFormat.inspect(reason),
           is_error: true,
           child_turns: []
         }
@@ -438,7 +463,7 @@ defmodule Cantrip.Medium.Code.Port do
   defp safe_binary_to_term(payload) do
     {:ok, :erlang.binary_to_term(payload, [:safe])}
   rescue
-    e -> {:error, Exception.message(e)}
+    e -> {:error, Cantrip.SafeFormat.exception(e)}
   end
 
   defp os_pid(port) do
