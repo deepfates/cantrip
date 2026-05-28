@@ -46,7 +46,7 @@ convert with `System.convert_time_unit/3` at the subscriber).
   parent cantrip context through child cantrips so a full trace forms a tree
   rooted at the originating episode.
 - User-supplied strings that are intentionally useful for operations, such as
-  root intents, are passed through `Cantrip.Redact` before emission so
+  root intents, pass through the internal redaction boundary before emission so
   credential-shaped substrings are scrubbed. LLM responses, provider response
   bodies, bearer tokens, and raw credentials must not appear in event metadata.
 

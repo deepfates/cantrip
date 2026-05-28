@@ -1,19 +1,5 @@
 defmodule Cantrip.Medium.Bash do
-  @moduledoc """
-  Bash medium boundary and evaluator.
-
-  Each command runs in a fresh subprocess (stateless across turns). Filesystem
-  changes persist but shell state (variables, cd) resets between commands.
-
-  Termination: The entity echoes a line starting with `SUBMIT:` to return its
-  final answer. For example: `echo "SUBMIT: 42"` or `echo "SUBMIT: $(wc -l < file.txt)"`.
-  Shell expansion happens before SUBMIT is detected, so computed values work.
-  When the `done` gate is declared, it is also available as `cantrip_done`.
-
-  Declared gates are projected into the shell as commands placed at the front
-  of PATH. The shell remains real bash, while gate effects are dispatched back
-  through the parent runtime.
-  """
+  @moduledoc false
 
   @behaviour Cantrip.Medium
 

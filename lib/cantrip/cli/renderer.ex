@@ -1,17 +1,5 @@
 defmodule Cantrip.CLI.Renderer do
-  @moduledoc """
-  Renders EntityServer streaming events to terminal output using Owl.
-
-  Pure functions: render_event/2 returns {iodata, device, state}. The caller
-  is responsible for writing to IO. This keeps the renderer testable.
-
-  Events arrive as {envelope, {type, data}} where the envelope carries
-  entity_id, depth, and medium. The renderer uses envelope depth for
-  indentation — no mutable depth tracking needed.
-
-  Progress goes to stderr. Final answer goes to stdout. This enables
-  `mix cantrip.familiar "task" > result.txt` to capture just the answer.
-  """
+  @moduledoc false
 
   defstruct schema_version: 1,
             turn: 0

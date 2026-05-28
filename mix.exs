@@ -18,6 +18,7 @@ defmodule Cantrip.MixProject do
       homepage_url: "https://github.com/deepfates/grimoire",
       docs: [
         main: "Cantrip",
+        warnings_as_errors: true,
         extras: [
           "README.md",
           "DEPLOYMENT.md",

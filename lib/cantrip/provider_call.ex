@@ -1,11 +1,5 @@
 defmodule Cantrip.ProviderCall do
-  @moduledoc """
-  Boundary for one provider invocation.
-
-  The entity process decides *when* to think. This module owns *how* a provider
-  request is attempted: request validation, retry policy, timing metadata, stop
-  reason normalization, usage extraction, and advancing provider state.
-  """
+  @moduledoc false
 
   alias Cantrip.LLM
 

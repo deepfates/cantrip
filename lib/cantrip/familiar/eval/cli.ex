@@ -1,7 +1,5 @@
 defmodule Cantrip.Familiar.Eval.CLI do
-  @moduledoc """
-  Argument parsing for `mix cantrip.eval`.
-  """
+  @moduledoc false
 
   @switches [
     out: :string,

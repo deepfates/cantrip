@@ -1,13 +1,5 @@
 defmodule Cantrip.ACP.AgentHandler do
-  @moduledoc """
-  ACP agent handler backed by f1729's agent_client_protocol library.
-
-  A plain module — no GenServer. Each request runs in a Task spawned by
-  the Connection, so concurrent requests (e.g. multiple sessions) run in
-  parallel naturally.
-
-  State (sessions, config) lives in an ETS table passed as `handler_state`.
-  """
+  @moduledoc false
 
   # --- Setup ---
 

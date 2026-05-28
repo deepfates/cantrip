@@ -21,6 +21,36 @@ The public API is organized around five distinct workflows:
 - **Runtime integration** - stream events, persist looms, run Mix tasks, or
   expose ACP without changing the cantrip shape.
 
+## Public Modules
+
+These modules are the package surface documented by ExDoc and treated as stable
+for application code:
+
+- `Cantrip` - construct, cast, batch-cast, summon, send, stream, and fork
+  cantrips.
+- `Cantrip.Familiar` - build the packaged codebase-facing coordinator.
+- `Cantrip.Familiar.Eval` - run Familiar eval scenarios from application code.
+- `Cantrip.LLM` - implement or configure LLM adapters.
+- `Cantrip.LLM.Response` - construct normalized responses from custom adapters.
+- `Cantrip.FakeLLM` - script deterministic LLM responses in tests and evals.
+- `Cantrip.Circle` - construct circle configuration data.
+- `Cantrip.Identity` - construct identity and model-facing option data.
+- `Cantrip.Medium` - implement custom medium modules.
+- `Cantrip.WardPolicy` - inspect and compose ward policy data.
+- `Cantrip.Loom` - inspect, persist, fork, and annotate loom records.
+- `Cantrip.Loom.Storage` - implement custom loom storage backends.
+- `Cantrip.Cluster` - connect and replicate Mnesia-backed loom tables on
+  explicit BEAM clusters.
+- `Cantrip.ACP.Server` - run the packaged stdio ACP entrypoint.
+- `Cantrip.ACP.Diagnostics` - inspect live ACP sessions and bridges from
+  remsh during operations.
+- `Mix.Tasks.Cantrip.Cast`, `Mix.Tasks.Cantrip.Familiar`, and
+  `Mix.Tasks.Cantrip.Eval` - command-line entrypoints shipped with the package.
+
+Other modules under `lib/` are implementation details. They can remain callable
+inside the package, tests, or advanced local debugging, but they are hidden from
+ExDoc so refactors do not become public API breakage.
+
 ## Build a Cantrip
 
 ```elixir

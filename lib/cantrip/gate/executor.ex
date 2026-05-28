@@ -1,11 +1,5 @@
 defmodule Cantrip.Gate.Executor do
-  @moduledoc """
-  Executes LLM-requested gate calls with runtime concerns in one place.
-
-  This module owns ordering, stable tool call ids, done termination, and gate
-  telemetry. It intentionally returns data; callers decide how to project that
-  into medium feedback, events, or loom turns.
-  """
+  @moduledoc false
 
   @type result :: %{
           observations: list(map()),

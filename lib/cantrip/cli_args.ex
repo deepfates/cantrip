@@ -1,7 +1,5 @@
 defmodule Cantrip.CLIArgs do
-  @moduledoc """
-  Shared argument parsing for Cantrip CLI and Mix tasks.
-  """
+  @moduledoc false
 
   @spec parse_example([String.t()]) ::
           {:list, keyword()}

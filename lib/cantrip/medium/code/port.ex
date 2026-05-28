@@ -1,12 +1,5 @@
 defmodule Cantrip.Medium.Code.Port do
-  @moduledoc """
-  Safe port evaluator for the code medium.
-
-  This module owns the parent side of the protocol. By default, user Elixir is
-  evaluated through Dune in a separate child BEAM process; injected gate and
-  API closures in that child request parent execution over a length-prefixed
-  Erlang-term protocol.
-  """
+  @moduledoc false
 
   alias Cantrip.{Gate, WardPolicy}
 

@@ -1,35 +1,5 @@
 defmodule Cantrip.LLMs.ReqLLM do
-  @moduledoc """
-  LLM adapter backed by the ReqLLM hex package.
-
-  ReqLLM provides a unified interface to 18+ LLM providers (Anthropic, OpenAI,
-  Google, Groq, xAI, etc.) via a single canonical data model.  This adapter
-  bridges ReqLLM's `generate_text/3` and `stream_text/3` into the
-  `Cantrip.LLM` behaviour.
-
-  ## State
-
-  The adapter expects a state map with:
-
-    * `:model` -- a ReqLLM model string, e.g. `"anthropic:claude-haiku-4-5"` or
-      `"openai:gpt-4o"`.  The provider prefix tells ReqLLM which API to target.
-    * `:stream` -- (optional, default `false`) whether to use streaming.
-    * `:temperature` -- (optional) sampling temperature.
-    * `:max_tokens` -- (optional) maximum tokens to generate.
-    * `:timeout_ms` -- (optional, default 60 000) receive timeout in ms.
-
-  API keys are resolved by ReqLLM's built-in `ReqLLM.Keys` subsystem (env vars,
-  `.env` files, etc.).
-
-  ## Example
-
-      state = %{model: "anthropic:claude-haiku-4-5"}
-      request = %{
-        messages: [%{role: :user, content: "Hello!"}],
-        tools: []
-      }
-      {:ok, response, next_state} = Cantrip.LLMs.ReqLLM.query(state, request)
-  """
+  @moduledoc false
 
   alias Cantrip.LLM.Response
   alias Cantrip.LLMs.Helpers

@@ -1,10 +1,5 @@
 defmodule Cantrip.Medium.Registry do
-  @moduledoc """
-  Resolves circle medium types to medium modules.
-
-  Keeping this lookup explicit gives the runtime one place to add future
-  mediums without teaching the entity loop about each substrate.
-  """
+  @moduledoc false
 
   @spec fetch(atom()) :: {:ok, module()} | {:error, String.t()}
   def fetch(:conversation), do: {:ok, Cantrip.Medium.Conversation}

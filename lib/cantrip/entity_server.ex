@@ -1,16 +1,5 @@
 defmodule Cantrip.EntityServer do
-  @moduledoc """
-  Supervised BEAM identity for one Cantrip entity.
-
-  `EntityServer` owns process lifetime, persistent medium state, cancellation
-  ancestry, stream subscribers, telemetry boundaries, and the entity's loom. It
-  deliberately delegates the cognitive transaction to `Cantrip.Turn`, provider
-  invocation to `Cantrip.ProviderCall`, gate execution to medium/gate modules,
-  and event shaping to `Cantrip.Event`.
-
-  This process owns lifecycle and state. The other runtime modules own the
-  pieces that are easier to test without a GenServer mailbox.
-  """
+  @moduledoc false
 
   alias Cantrip.{Gate, Loom, ProviderCall, WardPolicy}
   alias Cantrip.Medium.Registry, as: MediumRegistry

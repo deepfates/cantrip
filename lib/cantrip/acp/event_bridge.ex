@@ -1,18 +1,5 @@
 defmodule Cantrip.ACP.EventBridge do
-  @moduledoc """
-  Translates EntityServer stream events into ACP session notifications.
-
-  Spawned once per ACP session and reused across every prompt within that
-  session. Streaming runtimes send session updates through this process; the
-  AgentHandler only falls back to direct answers for non-streaming sessions or
-  dead bridges, so streamed final answers cannot be duplicated by timeout
-  races.
-
-  Events arrive as `{:cantrip_event, {envelope, {type, data}}}` from
-  EntityServer. The envelope carries entity context (entity_id, depth,
-  medium); we currently ignore it but it's preserved for future routing
-  and per-entity rendering.
-  """
+  @moduledoc false
 
   @doc """
   Start a bridge process for the given session.

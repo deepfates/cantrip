@@ -1,26 +1,5 @@
 defmodule Cantrip.Folding do
-  @moduledoc """
-  §6.8 + PROD-4: deliberate integration of loom history into circle state.
-
-  When prompt size approaches the LLM's context window, fold:
-
-    1. Keep the **identity** (system message) — LOOM-6 forbids compressing it.
-    2. Keep the **intent** (first user message) — LOOP-5 says the entity
-       MUST see its intent on every turn.
-    3. Keep the **recent tail** — the most recent turns stay verbatim so
-       the entity can compose against them.
-    4. Replace the **middle** with one summary message produced by an LLM
-       call against the folded turns. The summary is marked as a folded
-       view so the entity knows it is reading a compression, not a
-       literal turn.
-
-  The loom itself is never touched. LOOM-5: folding is a view, not a
-  mutation.
-
-  Trigger: total approximate token count of the message contents exceeds
-  `cantrip.folding[:threshold_tokens]` (default `100_000`, ~80% of a
-  typical 128K window). Approximation: bytes ÷ 4.
-  """
+  @moduledoc false
 
   @default_threshold_tokens 100_000
   @recent_keep_messages 4

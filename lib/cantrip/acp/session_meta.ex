@@ -1,13 +1,5 @@
 defmodule Cantrip.ACP.SessionMeta do
-  @moduledoc """
-  Whitelisted ACP `_meta` fields accepted by the Cantrip ACP boundary.
-
-  ACP metadata is protocol-side context. It is not a Familiar runtime
-  configuration channel; callers may correlate traces, but they may not override
-  the configured LLM, loom path, turn budget, or other runtime controls through
-  `_meta`. If editor-supplied runtime configuration is needed later, it should
-  be introduced as a separate typed request path with explicit policy.
-  """
+  @moduledoc false
 
   @trace_keys ["trace_id", "cantrip_trace_id", "traceId", "cantripTraceId"]
 

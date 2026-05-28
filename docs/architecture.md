@@ -32,7 +32,7 @@ runtime.
 
 ## Runtime Loop
 
-`Cantrip.cast/3` starts a supervised `Cantrip.EntityServer` for one episode.
+`Cantrip.cast/3` starts an internal supervised entity server for one episode.
 `Cantrip.summon/1` starts a persistent entity; `Cantrip.summon/2` starts one
 and immediately runs its first intent. `Cantrip.send/3` continues it.
 
@@ -40,8 +40,8 @@ Each turn:
 
 1. folds prompt context if configured
 2. presents the selected medium to the LLM
-3. invokes the provider through `Cantrip.ProviderCall`
-4. classifies the response in `Cantrip.Turn`
+3. invokes the provider through the internal provider-call boundary
+4. classifies the response into the selected medium's input shape
 5. executes through the medium
 6. appends the utterance and observations to the loom
 7. either terminates, truncates, or continues
@@ -51,9 +51,9 @@ They are returned to the loop as data instead of crashing the process.
 
 ## Mediums
 
-`Cantrip.Medium.Conversation` projects gates as provider tool definitions.
+The conversation medium projects gates as provider tool definitions.
 
-`Cantrip.Medium.Code` evaluates Elixir with persistent bindings. By default,
+The code medium evaluates Elixir with persistent bindings. By default,
 it evaluates Dune-restricted Elixir in a child BEAM process, equivalent to
 `sandbox: :port`. Add `%{port_runner: [...]}` to put that child under
 deployment-level OS/container controls. `sandbox: :port_unrestricted` keeps
@@ -63,7 +63,7 @@ variant of the code medium (see `docs/port-isolated-runtime.md` "Dune
 Variant"); entity prompts need to fit that surface. `sandbox: :unrestricted`
 uses the old host-BEAM evaluator for trusted local development.
 
-`Cantrip.Medium.Bash` executes one shell command per turn inside an OS
+The bash medium executes one shell command per turn inside an OS
 sandbox. Shell process state does not persist; filesystem effects do only for
 paths admitted by `%{bash_writable_paths: [...]}`. The medium fails closed when
 no sandbox adapter is available (`bubblewrap` on Linux, `sandbox-exec` on
@@ -252,11 +252,11 @@ shutdown semantics. Reference this section when adding a new process.
 
 | Process kind | Started by | Owner | Crash-restart | Shutdown |
 |---|---|---|---|---|
-| `Cantrip.EntityServer` (GenServer) | `Cantrip.cast/3`, `Cantrip.summon/1` via `DynamicSupervisor.start_child` | entity dynamic supervisor | `:temporary` (no auto-restart; caller gets error) | default GenServer 5s; `terminate/2` sends `:stop` to runner |
-| Per-entity runner Task | `EntityServer.start_runner/0` (`lib/cantrip/entity_server.ex:242`) | `Cantrip.EntityTaskSupervisor` (Task.Supervisor) | `:temporary` (Task.Supervisor default) | `:brutal_kill` 5s on app shutdown; in-progress episodes interrupted |
-| Code-medium child BEAM | `Cantrip.Medium.Code.Port.start_child` (`lib/cantrip/medium/code/port.ex:110`) | not supervised; linked to eval context | N/A (process-level) | on eval timeout or parent crash: implicit exit via port boundary |
+| Internal entity server (GenServer) | `Cantrip.cast/3`, `Cantrip.summon/1` via `DynamicSupervisor.start_child` | entity dynamic supervisor | `:temporary` (no auto-restart; caller gets error) | default GenServer 5s; `terminate/2` sends `:stop` to runner |
+| Per-entity runner Task | entity server runner (`lib/cantrip/entity_server.ex`) | registered Task.Supervisor named `:Cantrip.EntityTaskSupervisor` | `:temporary` (Task.Supervisor default) | `:brutal_kill` 5s on app shutdown; in-progress episodes interrupted |
+| Code-medium child BEAM | port sandbox launcher (`lib/cantrip/medium/code/port.ex`) | not supervised; linked to eval context | N/A (process-level) | on eval timeout or parent crash: implicit exit via port boundary |
 | Port-child protocol loop | `spawn_link` in `port_child.ex:140` | linked to parent (child-side bootstrap) | N/A (linked) | parent exit propagates crash via link |
-| ACP EventBridge loop | `Task.Supervisor.start_child/2` in `acp/event_bridge.ex` | `Cantrip.ACP.EventBridgeSupervisor` | `:temporary` (Task.Supervisor default) | `:DOWN` from monitored owner OR explicit `:stop` message |
+| ACP EventBridge loop | `Task.Supervisor.start_child/2` in `acp/event_bridge.ex` | registered Task.Supervisor named `:Cantrip.ACP.EventBridgeSupervisor` | `:temporary` (Task.Supervisor default) | `:DOWN` from monitored owner OR explicit `:stop` message |
 | `Cantrip.cast_stream/2` task | `Task.async` (`lib/cantrip.ex:696`) | linked to caller; caller drains via Stream | N/A (linked task) | stream close calls `Task.shutdown(:brutal_kill)` on early halt; normal completion drains remaining events |
 | `Cantrip.cast_batch/2` children | `Task.async_stream` (`lib/cantrip.ex:565`) | Task.async_stream context; bounded by `max_concurrent_children` ward | N/A (bounded enumeration) | killed on `max_concurrency` overflow or timeout |
 | Code/Bash medium eval Tasks | `Task.async` in `medium/code.ex:164`, `medium/bash.ex:121` | unlinked; timeout-guarded by `code_eval_timeout_ms` / similar ward | N/A (unlinked) | `Task.yield` + `Task.shutdown(:brutal_kill)` on timeout |

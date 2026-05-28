@@ -1,7 +1,5 @@
 defmodule Cantrip.LLMs.Helpers do
-  @moduledoc """
-  Shared helper functions for LLM adapters.
-  """
+  @moduledoc false
 
   @doc """
   Extracts an error message from an API response body.

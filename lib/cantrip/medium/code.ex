@@ -1,11 +1,5 @@
 defmodule Cantrip.Medium.Code do
-  @moduledoc """
-  Code medium boundary and evaluator.
-
-  The runtime injects a tiny host API into each evaluation:
-  - `done/1` terminates the turn and reports the final answer through the circle.
-  - child orchestration helpers construct and cast child Cantrip handles.
-  """
+  @moduledoc false
 
   @behaviour Cantrip.Medium
 

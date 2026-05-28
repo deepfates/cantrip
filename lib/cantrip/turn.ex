@@ -1,17 +1,5 @@
 defmodule Cantrip.Turn do
-  @moduledoc """
-  One cognitive transaction.
-
-  The living entity process owns lifecycle and durable state. This module owns
-  the pure and mostly-pure shape of a turn: preparing provider requests,
-  classifying provider responses, routing the response through the selected
-  medium, deciding termination, building continuation messages, and producing
-  turn attributes for the loom.
-
-  Provider I/O, process supervision, and durable storage stay outside this
-  module. That makes a turn small enough to red-green independently of ACP,
-  CLI, LiveView, or any future workbench.
-  """
+  @moduledoc false
 
   alias Cantrip.LLM.Response
   alias Cantrip.Medium.Registry, as: MediumRegistry

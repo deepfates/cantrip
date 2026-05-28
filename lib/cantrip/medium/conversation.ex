@@ -1,12 +1,5 @@
 defmodule Cantrip.Medium.Conversation do
-  @moduledoc """
-  Conversation medium boundary.
-
-  Conversation circles expose their gates as provider tool definitions. Gate
-  execution is still handled by the existing entity loop; this module exists so
-  medium presentation can be reasoned about without reaching into
-  `Cantrip.EntityServer`.
-  """
+  @moduledoc false
 
   @behaviour Cantrip.Medium
 

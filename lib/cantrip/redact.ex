@@ -1,21 +1,5 @@
 defmodule Cantrip.Redact do
-  @moduledoc """
-  PROD-8: credential redaction over arbitrary content before it reaches an
-  entity's observation channel.
-
-  The substrate's claim is that an entity can navigate user-provided
-  filesystems and data safely. That claim is hollow if observations leak
-  API keys, tokens, or env-shaped secrets verbatim. This module patches
-  common credential shapes with `[REDACTED]` while leaving the surrounding
-  text — including the variable name that held the secret — intact, so the
-  entity (and any human watching) can see *that* something was filtered
-  and *what kind of thing* it was, without seeing the value.
-
-  Conservative by design: matches well-known prefixes (`sk-`, `sk-ant-`,
-  `AIza`, `AKIA`, `ASIA`, `Bearer …`) plus a generic catch for env-style
-  assignments to variables named `*KEY`, `*SECRET`, `*TOKEN`, or
-  `*PASSWORD`. False positives are preferable to leaks.
-  """
+  @moduledoc false
 
   @redacted "[REDACTED]"
 

@@ -58,7 +58,7 @@ merges the parent's dependencies into the child's gates, so a child given
 
 ### 2. Credential redaction
 
-Every gate observation result passes through `Cantrip.Redact.scan/1`
+Every gate observation result passes through the internal redaction boundary
 before reaching the entity. Pattern-based scrubbing of common
 credential shapes:
 
@@ -136,8 +136,8 @@ reachable at all.
 
 ### 5. Alternate evaluators
 
-`Cantrip.Familiar.new/1` accepts `sandbox: :dune`. This routes the code medium through
-`Cantrip.Medium.Code.Dune`, which restricts language-level
+`Cantrip.Familiar.new/1` accepts `sandbox: :dune`. This routes the code medium
+through the in-process Dune evaluator, which restricts language-level
 `File.*`, `System.*`, `Process.*`, `spawn`, and `Code.*` (loading)
 calls.
 
@@ -220,7 +220,7 @@ the gate and scope it to the exact modules listed in `allow_compile_modules`.
 The built-in Familiar configuration allows the `Cantrip.Hot.*` modules it
 declares for evolution; arbitrary namespace allowlists are no longer accepted.
 The entity can hot-load those allowed modules into its child BEAM session. It
-cannot redefine `Cantrip.Familiar`, `Cantrip.Gate`, or any other framework
+cannot redefine `Cantrip.Familiar`, the gate runtime, or any other framework
 module — the parent rejects framework module names before the child compiles.
 
 This is the entity's evolutionary surface. Combined with the BEAM's

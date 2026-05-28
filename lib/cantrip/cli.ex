@@ -1,7 +1,5 @@
 defmodule Cantrip.CLI do
-  @moduledoc """
-  Escript entrypoint for the Cantrip command-line interface.
-  """
+  @moduledoc false
 
   def main(args) do
     case run(args) do

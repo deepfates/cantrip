@@ -1,10 +1,5 @@
 defmodule Cantrip.CLI.JsonRenderer do
-  @moduledoc """
-  Renders EntityServer streaming events as JSONL to stdout.
-
-  Each event is one JSON line with `type`, versioned envelope metadata, and
-  `data`. Events arrive as {envelope, {type, data}}.
-  """
+  @moduledoc false
 
   defstruct schema_version: 1
 

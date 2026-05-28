@@ -1,15 +1,5 @@
 defmodule Cantrip.Gate do
-  @moduledoc """
-  Built-in host-side gate capabilities.
-
-  A circle declares which gates an entity may use. This module contains the
-  concrete built-in effects for those gates: `done`, `echo`, filesystem reads,
-  search, scoped Mix tasks, and guarded compile/load.
-
-  Ordering, tool-call ids, telemetry, and the `done` control-flow convention
-  live in `Cantrip.Gate.Executor`; this module is deliberately closer to the
-  capability surface itself.
-  """
+  @moduledoc false
 
   alias Cantrip.Gate.{Args, CompileAndLoad, Mix, Spec}
   alias Cantrip.Gate.Path, as: GatePath

@@ -6,10 +6,10 @@ defmodule Cantrip.Medium do
   the LLM, how an utterance is executed, and how medium-local state is captured
   for persistence or fork.
 
-  `Cantrip.EntityServer` decides when an entity takes a turn; mediums decide
-  what an LLM utterance means inside that turn. Code, bash, and conversation
-  can therefore keep different execution semantics without hiding control flow
-  inside the entity process.
+  The runtime decides when an entity takes a turn; mediums decide what an LLM
+  utterance means inside that turn. Code, bash, and conversation can therefore
+  keep different execution semantics without hiding control flow inside the
+  entity process.
   """
 
   @type circle :: Cantrip.Circle.t()

@@ -1,32 +1,5 @@
 defmodule Cantrip.Medium.Code.Dune do
-  @moduledoc """
-  Dune-based sandboxed code evaluation for the code medium.
-
-  Provides the same `eval/3` interface as `Cantrip.Medium.Code` but evaluates
-  code through the Dune sandbox, which restricts access to dangerous modules
-  like File, System, Process, and spawn.
-
-  ## How it works
-
-  - Uses `Dune.Session` to maintain variable bindings across turns
-  - Gate closures (done., echo., etc.) are injected as session
-    bindings -- Dune allows calling closures passed in from the host
-  - Observations are collected via an Agent (since Dune runs code in a
-    separate process where Process dictionary is unavailable)
-  - `done.()` sets a flag via Agent and returns the answer (no raise/throw),
-    so bindings from the turn persist
-
-  ## Opt-in via ward
-
-  Add `%{sandbox: :dune}` to the circle's wards to use this evaluation path.
-
-  ## Limitations
-
-  - Code after `done.()` will still execute (unlike the throw-based original)
-  - Dune imposes reduction and heap limits; long-running code may be killed
-  - Module definitions (`defmodule`) are not supported in Dune
-  - The `compile_and_load` gate is not available in the Dune sandbox
-  """
+  @moduledoc false
 
   alias Cantrip.Gate
 

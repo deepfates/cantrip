@@ -1,14 +1,5 @@
 defmodule Cantrip.Event do
-  @moduledoc """
-  Canonical helpers for internal runtime events.
-
-  Events are plain `{type, payload}` tuples. When sent outside an entity, they
-  are wrapped in an envelope that carries routing/rendering context, version,
-  turn identity, correlation identity, timestamp, and monotonic runtime
-  sequence. Keeping this shape in one module is the first step toward making
-  events the runtime spine consumed by CLI, ACP, telemetry, and loom-related
-  tooling.
-  """
+  @moduledoc false
 
   @type envelope :: %{
           version: pos_integer(),

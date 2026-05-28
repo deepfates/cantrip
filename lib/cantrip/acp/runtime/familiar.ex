@@ -1,10 +1,5 @@
 defmodule Cantrip.ACP.Runtime.Familiar do
-  @moduledoc """
-  ACP runtime that creates sessions using Cantrip.Familiar configuration.
-
-  Uses the Familiar's gates (read_file, list_dir, search, done), identity,
-  and loom settings instead of the generic env-based config.
-  """
+  @moduledoc false
 
   @behaviour Cantrip.ACP.Runtime
 
