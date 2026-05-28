@@ -88,6 +88,8 @@ defmodule LiveAnthropicTest do
   # === Helpers ===
 
   defp drive_code_medium(llm) do
+    root = File.cwd!()
+
     {:ok, cantrip} =
       Cantrip.new(
         llm: llm,
@@ -97,7 +99,7 @@ defmodule LiveAnthropicTest do
         },
         circle: %{
           type: :code,
-          gates: [:done, :list_dir],
+          gates: [:done, %{name: "list_dir", dependencies: %{root: root}}],
           wards: [
             %{max_turns: 3},
             %{sandbox: :port},
