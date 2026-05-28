@@ -114,6 +114,19 @@ defmodule Cantrip.Event do
     :ok
   end
 
+  @spec send_with_barrier(pid() | nil, map(), event()) :: :ok | :dead | :timeout
+  def send_with_barrier(nil, _state, _event), do: :ok
+
+  def send_with_barrier(pid, state, event) when is_pid(pid) do
+    :ok = send(pid, state, event)
+
+    if Map.get(state, :stream_barrier?, false) do
+      barrier(pid, :infinity)
+    else
+      :ok
+    end
+  end
+
   @spec barrier(pid(), timeout()) :: :ok | :dead | :timeout
   def barrier(pid, timeout \\ 5_000) when is_pid(pid) do
     if Process.alive?(pid) do

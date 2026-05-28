@@ -124,6 +124,38 @@ defmodule Cantrip.EntityServerStreamTest do
 
       refute_received {:cantrip_event, _}
     end
+
+    test "stream_barrier? backpressures send/3 until receiver acknowledges" do
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{tool_calls: [%{gate: "done", args: %{answer: "hello"}}]}
+         ])}
+
+      {:ok, cantrip} =
+        Cantrip.new(
+          llm: llm,
+          circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+        )
+
+      {:ok, pid} = Cantrip.summon(cantrip)
+      parent = self()
+      receiver = spawn_link(fn -> barrier_receiver(parent, false) end)
+
+      send_task =
+        Task.async(fn ->
+          Cantrip.send(pid, "test", stream_to: receiver, stream_barrier?: true)
+        end)
+
+      assert_receive {:receiver_event, {_, {:step_start, _}}}, 500
+      assert_receive {:receiver_barrier, ^receiver, from, ref}, 500
+      refute Task.yield(send_task, 50)
+
+      send(receiver, {:release_barrier, from, ref})
+
+      assert {:ok, "hello", _cantrip, _loom, _meta} = Task.await(send_task, 500)
+      send(receiver, :stop)
+    end
   end
 
   describe "child delegation events" do
@@ -258,6 +290,31 @@ defmodule Cantrip.EntityServerStreamTest do
     else
       Process.sleep(10)
       assert_runner_restarted(entity_pid, old_runner, attempts - 1)
+    end
+  end
+
+  defp barrier_receiver(parent, auto_ack?) do
+    receive do
+      {:cantrip_event, event} ->
+        send(parent, {:receiver_event, event})
+        barrier_receiver(parent, auto_ack?)
+
+      {:cantrip_barrier, from, ref} ->
+        send(parent, {:receiver_barrier, self(), from, ref})
+
+        if auto_ack? do
+          send(from, {:cantrip_barriered, ref})
+          barrier_receiver(parent, true)
+        else
+          receive do
+            {:release_barrier, ^from, ^ref} ->
+              send(from, {:cantrip_barriered, ref})
+              barrier_receiver(parent, true)
+          end
+        end
+
+      :stop ->
+        :ok
     end
   end
 end

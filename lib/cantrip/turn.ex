@@ -324,7 +324,7 @@ defmodule Cantrip.Turn do
 
   defp maybe_put_event_emitter(request, state) do
     Map.put(request, :emit_event, fn event ->
-      Cantrip.Event.send(state.stream_to, state, event)
+      Cantrip.Event.send_with_barrier(state.stream_to, state, event)
     end)
   end
 

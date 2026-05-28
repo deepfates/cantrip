@@ -27,6 +27,23 @@ defmodule Cantrip.StreamingTest do
     end
   end
 
+  defmodule BlockingLLM do
+    @behaviour Cantrip.LLM
+
+    @impl true
+    def query(%{test_pid: test_pid} = state, _request) do
+      send(test_pid, {:blocking_llm_started, self()})
+
+      receive do
+        :release_blocking_llm ->
+          {:ok, %{tool_calls: [%{gate: "done", args: %{answer: "released"}}]}, state}
+      after
+        5_000 ->
+          {:error, %{message: "blocking llm was not released"}, state}
+      end
+    end
+  end
+
   # Helper to extract event type from enveloped events
   defp event_type({_envelope, {type, _data}}), do: type
   defp event_type({type, _data}) when is_atom(type), do: type
@@ -174,11 +191,58 @@ defmodule Cantrip.StreamingTest do
     assert meta.truncation_reason == "max_turns"
   end
 
+  test "cast_stream applies backpressure before the caller starts consuming" do
+    llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
+       ])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+      )
+
+    flush_mailbox()
+    {stream, task} = Cantrip.cast_stream(cantrip, "wait for consumer")
+
+    Process.sleep(50)
+
+    assert Process.alive?(task.pid)
+    assert {:message_queue_len, queue_len} = Process.info(self(), :message_queue_len)
+    assert queue_len <= 2
+
+    assert {:done, {:ok, "ok", _cantrip, _loom, _meta}} = stream |> Enum.to_list() |> List.last()
+  end
+
+  test "closing cast_stream early shuts down the running task" do
+    {:ok, cantrip} =
+      Cantrip.new(
+        llm: {BlockingLLM, %{test_pid: self()}},
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+      )
+
+    {stream, task} = Cantrip.cast_stream(cantrip, "start and stop")
+    ref = Process.monitor(task.pid)
+
+    assert [_first_event] = Enum.take(stream, 1)
+    assert_receive {:DOWN, ^ref, :process, _pid, _reason}, 500
+  end
+
   defp drain_cantrip_events(acc \\ []) do
     receive do
       {:cantrip_event, event} -> drain_cantrip_events([event | acc])
     after
       50 -> Enum.reverse(acc)
+    end
+  end
+
+  defp flush_mailbox do
+    receive do
+      _ -> flush_mailbox()
+    after
+      0 -> :ok
     end
   end
 end

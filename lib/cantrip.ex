@@ -694,40 +694,52 @@ defmodule Cantrip do
 
     task =
       Task.async(fn ->
-        run_cast(cantrip, intent, stream_to: caller)
+        run_cast(cantrip, intent, stream_to: caller, stream_barrier?: true)
       end)
 
     stream =
       Stream.resource(
         fn -> :running end,
+        &stream_next/1,
         fn
-          :done ->
-            {:halt, :done}
-
-          :running ->
-            receive do
-              {:cantrip_event, event} ->
-                {[event], :running}
-
-              {ref, result} when is_reference(ref) ->
-                # Task completed — drain any remaining events, then stop
-                Process.demonitor(ref, [:flush])
-                remaining = drain_events()
-                {remaining ++ [{:done, result}], :done}
-
-              {:DOWN, _ref, :process, _pid, reason} ->
-                {[{:done, {:error, reason}}], :done}
-            end
-        end,
-        fn _ -> :ok end
+          :done -> :ok
+          :running -> Task.shutdown(task, :brutal_kill)
+        end
       )
 
     {stream, task}
   end
 
+  defp stream_next(:done), do: {:halt, :done}
+
+  defp stream_next(:running) do
+    receive do
+      {:cantrip_event, event} ->
+        {[event], :running}
+
+      {:cantrip_barrier, from, ref} ->
+        Kernel.send(from, {:cantrip_barriered, ref})
+        stream_next(:running)
+
+      {ref, result} when is_reference(ref) ->
+        # Task completed — drain any remaining events, then stop
+        Process.demonitor(ref, [:flush])
+        remaining = drain_events()
+        {remaining ++ [{:done, result}], :done}
+
+      {:DOWN, _ref, :process, _pid, reason} ->
+        {[{:done, {:error, reason}}], :done}
+    end
+  end
+
   defp drain_events do
     receive do
-      {:cantrip_event, event} -> [event | drain_events()]
+      {:cantrip_event, event} ->
+        [event | drain_events()]
+
+      {:cantrip_barrier, from, ref} ->
+        Kernel.send(from, {:cantrip_barriered, ref})
+        drain_events()
     after
       0 -> []
     end

@@ -165,6 +165,43 @@ defmodule Cantrip.ACP.EventBridgeTest do
       assert :answered = EventBridge.flush(bridge)
     end
 
+    test "barriered delivery backpressures while notify_fn is blocked" do
+      parent = self()
+
+      notify_fn = fn _notification ->
+        send(parent, :notify_started)
+
+        receive do
+          :release_notify -> :ok
+        end
+      end
+
+      bridge = EventBridge.start(:ignored, "sess_backpressure", notify_fn: notify_fn)
+
+      task =
+        Task.async(fn ->
+          Cantrip.Event.send_with_barrier(
+            bridge,
+            %{
+              entity_id: "ent_backpressure",
+              depth: 0,
+              cantrip: %{circle: %{type: :conversation}},
+              trace_id: "trace_backpressure",
+              stream_barrier?: true
+            },
+            {:text, "slow"}
+          )
+        end)
+
+      assert_receive :notify_started, 500
+      refute Task.yield(task, 50)
+      assert {:message_queue_len, queue_len} = Process.info(bridge, :message_queue_len)
+      assert queue_len <= 1
+
+      send(bridge, :release_notify)
+      assert :ok = Task.await(task, 500)
+    end
+
     test "returns :timeout when bridge is unresponsive" do
       assert :timeout = EventBridge.flush(spawn(fn -> :timer.sleep(10_000) end), 50)
     end

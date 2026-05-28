@@ -766,7 +766,7 @@ defmodule Cantrip.EntityServer do
   defp emit_event(%{stream_to: nil}, _event), do: :ok
 
   defp emit_event(%{stream_to: pid} = state, event) when is_pid(pid) do
-    Cantrip.Event.send(pid, state, event)
+    Cantrip.Event.send_with_barrier(pid, state, event)
   end
 
   defp await_stream_barrier(%{stream_barrier?: true, stream_to: pid}) when is_pid(pid) do
