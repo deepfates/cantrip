@@ -225,9 +225,11 @@ is evaluated by Dune inside a child BEAM process, while gates, child cantrip
 API calls, stdio, and hot-loading are resolved through explicit parent/child
 protocol messages. Use `%{sandbox: :port}` when you want that default boundary
 to be explicit in a circle. Use `sandbox: :port_unrestricted` only when you
-explicitly want raw Elixir in the child process, `sandbox: :dune` when
-in-process language restriction is enough, or `sandbox: :unrestricted` only
-for trusted local development in the host BEAM.
+explicitly want raw Elixir in the child process, `sandbox: :dune` when you
+want in-process language restriction with a deliberately smaller binding
+surface (see [docs/port-isolated-runtime.md](./docs/port-isolated-runtime.md)
+for the divergence — entity prompts need to match the variant in use), or
+`sandbox: :unrestricted` only for trusted local development in the host BEAM.
 Child-origin atoms outside Cantrip's wire vocabulary cross the port boundary
 as strings, which keeps hot-loaded child code from forcing new atoms into the
 parent BEAM.
