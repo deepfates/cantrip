@@ -4,6 +4,51 @@
 
 Nothing yet.
 
+## 1.3.2 - 2026-05-28
+
+Package-coherence release for the Elixir cutover.
+
+**New:**
+
+- Added `docs/spellbook.md`, a vocabulary guide for cantrips, identities,
+  mediums, gates, wards, circles, looms, entities, and the Familiar. The
+  Spellbook is linked from the README, included in ExDoc, and shipped in the
+  Hex package. Evidence: PR #105, issue #103.
+- Added inhabitant-voice opening paragraphs to the documented public modules
+  so the README, Spellbook, generated docs, and Familiar prompt describe the
+  same runtime concepts. Evidence: PR #105, issue #102.
+- Conversation mediums now expose capability text that teaches the same
+  medium/gate/ward grammar used by code and Familiar flows, including the
+  conditional `done` ending. Evidence: PR #104, issue #96.
+- The Familiar prompt now names the BEAM/codebase environment more directly:
+  `Code.fetch_docs/1`, `loom.turns`, workspace boundaries, and the Cantrip
+  bibliography are all part of the orientation. Evidence: PR #104, issue #97.
+
+**Changed:**
+
+- Removed stale migration/audit docs and dead compatibility code from the
+  pre-cutover era. The old material remains available through git history,
+  while the source tree now presents the Elixir package as canonical. Evidence:
+  PR #101, issues #98 and #99.
+- Split long historical Zed trace replay behind
+  `RUN_REAL_LLM_TESTS=1 RUN_REAL_TRACE_REPLAY=1`. The ordinary real-LLM release
+  gate now covers stable live integration contracts; trace replay remains
+  available as an explicit stress/provenance check.
+
+**Verification:**
+
+- Fresh-install dogfood from the built Hex tar succeeded outside the repo:
+  package contents included `.env.example`, `README.md`, and
+  `docs/spellbook.md`; `mix deps.get`, `mix cantrip.cast "explain what a
+  cantrip is"`, and `mix cantrip.familiar "summarize the loom storage modules"`
+  all ran from the extracted package using local live LLM configuration.
+- `RUN_REAL_LLM_TESTS=1` over the explicit stable live/real integration suite
+  passed: 20 tests, 0 failures, including a focused real-LLM JSONL loom
+  rehydration smoke. The trace replay suite is no longer part of that default
+  live gate.
+- `mix verify`, `mix docs`, and `mix hex.build` pass with the package docs and
+  file list current.
+
 ## 1.3.1 - 2026-05-28
 
 Patch release for runtime/safety findings surfaced immediately after the

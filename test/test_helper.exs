@@ -10,6 +10,10 @@ defmodule Cantrip.Test.RealLLMEnv do
     enabled?() and env_on?("RUN_REAL_DELEGATION_EVAL")
   end
 
+  def trace_replay_enabled? do
+    enabled?() and env_on?("RUN_REAL_TRACE_REPLAY")
+  end
+
   defp env_on?(name), do: System.get_env(name) == "1"
 
   defp load_dotenv do

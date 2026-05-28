@@ -136,19 +136,79 @@ defmodule Cantrip.FamiliarRealLLMIntegrationTest do
       assert is_binary(stringified) and stringified != "",
              "Familiar must return an answer the bridge can convey"
 
-      # No observation may surface a function_clause / GenServer crash
-      # string — those were the original failure mode.
+      # No error observation may surface a function_clause / GenServer crash
+      # string — those were the original failure mode. Successful observations
+      # can legitimately contain source text that names those historical bugs.
       all_obs = Enum.flat_map(loom.turns, & &1.observation)
 
       refute Enum.any?(all_obs, fn obs ->
-               is_binary(obs.result) and obs.result =~ "function_clause"
+               obs.is_error and is_binary(obs.result) and obs.result =~ "function_clause"
              end),
              "no observation should surface a function_clause crash"
 
       refute Enum.any?(all_obs, fn obs ->
-               is_binary(obs.result) and obs.result =~ "IO.chardata_to_string"
+               obs.is_error and is_binary(obs.result) and obs.result =~ "IO.chardata_to_string"
              end),
              "no observation should surface an IO.chardata_to_string(nil) crash"
+    end
+  end
+
+  test "fresh Familiar summon can see prior JSONL loom turns with a real LLM", %{dir: dir} do
+    if not RealLLMEnv.enabled?() do
+      :ok
+    else
+      loom_path = Path.join(dir, "familiar.jsonl")
+      {:ok, llm} = Cantrip.LLM.from_env()
+
+      system_prompt =
+        Cantrip.Familiar.default_system_prompt() <>
+          """
+
+          You are running a release smoke test. For every prompt in this test,
+          write Elixir that computes `prior_turn_count = length(loom.turns)` and
+          immediately calls `done.(%{prior_turn_count: prior_turn_count})`.
+          Do not call list_dir, read_file, search, mix, or child cantrips.
+          """
+
+      {:ok, first} =
+        Cantrip.Familiar.new(
+          llm: llm,
+          root: dir,
+          loom_path: loom_path,
+          max_turns: 3,
+          system_prompt: system_prompt
+        )
+
+      {:ok, pid} = Cantrip.summon(first)
+
+      try do
+        {:ok, _result, _next, _loom, meta} = Cantrip.send(pid, "Record the first turn.")
+        assert meta.terminated
+      after
+        Process.exit(pid, :normal)
+      end
+
+      assert File.exists?(loom_path)
+      assert File.stat!(loom_path).size > 0
+
+      {:ok, second} =
+        Cantrip.Familiar.new(
+          llm: llm,
+          root: dir,
+          loom_path: loom_path,
+          max_turns: 3,
+          system_prompt: system_prompt
+        )
+
+      {:ok, pid} = Cantrip.summon(second)
+
+      try do
+        {:ok, result, _next, _loom, meta} = Cantrip.send(pid, "Report prior_turn_count.")
+        assert meta.terminated
+        assert prior_turn_count(result) >= 1
+      after
+        Process.exit(pid, :normal)
+      end
     end
   end
 
@@ -181,7 +241,8 @@ defmodule Cantrip.FamiliarRealLLMIntegrationTest do
         all_obs = Enum.flat_map(loom.turns, & &1.observation)
 
         refute Enum.any?(all_obs, fn obs ->
-                 is_binary(obs.result) and
+                 obs.is_error and
+                   is_binary(obs.result) and
                    (obs.result =~ "function_clause" or obs.result =~ "GenServer")
                end),
                "no observation should surface a runtime crash"
@@ -190,4 +251,8 @@ defmodule Cantrip.FamiliarRealLLMIntegrationTest do
       end
     end
   end
+
+  defp prior_turn_count(%{prior_turn_count: count}) when is_integer(count), do: count
+  defp prior_turn_count(%{"prior_turn_count" => count}) when is_integer(count), do: count
+  defp prior_turn_count(other), do: flunk("expected prior_turn_count map, got: #{inspect(other)}")
 end

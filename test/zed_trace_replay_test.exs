@@ -9,10 +9,10 @@ defmodule Cantrip.ZedTraceReplayTest do
   user prompts that broke the original sessions* now flow through the
   Familiar end-to-end and the user gets a substantive answer for each.
 
-  Gated by `RUN_REAL_LLM_TESTS=1`. Each scenario summons a single
-  Familiar against a tmp loom path, sends the original prompts in
-  sequence (no fork, no scripted replies), and after each `send`
-  asserts the user-facing contract:
+  Gated by `RUN_REAL_LLM_TESTS=1 RUN_REAL_TRACE_REPLAY=1`. Each scenario
+  summons a single Familiar against a tmp loom path, sends the original prompts
+  in sequence (no fork, no scripted replies), and after each `send` asserts the
+  user-facing contract:
 
     - The cast terminated (the loop reached done, not max_turns).
     - The ACP bridge can stringify the done answer to non-trivial text
@@ -101,7 +101,7 @@ defmodule Cantrip.ZedTraceReplayTest do
   end
 
   test "scratch/familiar-run-002.md prompts: each turn terminates with substantive output" do
-    if not RealLLMEnv.enabled?() do
+    if not RealLLMEnv.trace_replay_enabled?() do
       :ok
     else
       path = loom_path("run002")
@@ -111,7 +111,7 @@ defmodule Cantrip.ZedTraceReplayTest do
   end
 
   test "scratch/familiar-run-001.md prompts: each turn terminates with substantive output" do
-    if not RealLLMEnv.enabled?() do
+    if not RealLLMEnv.trace_replay_enabled?() do
       :ok
     else
       path = loom_path("run001")
@@ -121,7 +121,7 @@ defmodule Cantrip.ZedTraceReplayTest do
   end
 
   test "after a multi-turn session, a fresh summon against the same loom_path rehydrates the prior turns" do
-    if not RealLLMEnv.enabled?() do
+    if not RealLLMEnv.trace_replay_enabled?() do
       :ok
     else
       path = loom_path("rehydrate")
