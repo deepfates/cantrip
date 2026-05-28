@@ -46,8 +46,8 @@ defmodule Cantrip.FamiliarTest do
       gate_names = Map.keys(cantrip.circle.gates)
       assert "compile_and_load" in gate_names
 
-      assert Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_compile_namespaces) == [
-               "Elixir.Cantrip.Hot."
+      assert Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_compile_modules) == [
+               "Elixir.Cantrip.Hot.Tally"
              ]
 
       refute cantrip.identity.system_prompt =~ "compile_and_load"
@@ -62,7 +62,7 @@ defmodule Cantrip.FamiliarTest do
       {:ok, cantrip} = Familiar.new(llm: llm)
 
       refute cantrip.identity.system_prompt =~ "compile_and_load"
-      refute Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_compile_namespaces)
+      refute Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_compile_modules)
 
       capability_text = Cantrip.Medium.Registry.present(cantrip.circle).capability_text
       refute capability_text =~ "compile_and_load"

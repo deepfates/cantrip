@@ -97,7 +97,7 @@ BEAM.
 When `compile_and_load` is present in the circle, the child can request a hot
 load. The parent validates the request against compile wards:
 
-- allowed module names or namespaces
+- exact allowed module names
 - allowed compile paths
 - allowed source hashes
 - allowed signer keys and signatures

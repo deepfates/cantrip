@@ -167,8 +167,8 @@ defmodule Cantrip.Gate.Spec do
     lift that shape into a module.
 
     Familiars expose this gate only when constructed with `evolve: true`, and
-    the default ward scopes loaded modules to `Elixir.Cantrip.Hot.*` so you
-    cannot redefine the framework's own modules.
+    the default ward allows only `Elixir.Cantrip.Hot.Tally`. Reuse that module
+    name for iterative evolution instead of inventing fresh module names.
 
         compile_and_load.(%{
           module: "Elixir.Cantrip.Hot.Tally",

@@ -27,7 +27,7 @@ baseline.
 | 11 | Full telemetry coverage + observability runbook | **deferred-pending** | Post-v1 design scope (Pass 13). Same as #8. |
 | 12 | Dune sandbox over-restricts | **deferred-pending** | Tied to #3 Dune-parity board decision (Phase 5). |
 | 20 | Sandbox roots for filesystem gates | **ready-to-close** | Pre-v1 issue cites a `read` gate that no longer exists. `read_file`/`list_dir`/`search` route through `Cantrip.Gate.Path.validate/2`. Evidence: `test/gate_validation_test.exs:49+` (missing root, all three gates), `:78+` (path traversal, all three). Commit `d12875c`. |
-| 21 | Avoid unbounded atom creation from external strings | **partial** | `d12875c` removed unbounded atom creation at parent-context + gate-binding sites. `bc2bf01` tightened JSONL restore, Familiar table/node atoms, and cookie atoms. **Remaining:** `compile_and_load` exact allowlists are bounded, but namespace authorization can still mint new module atoms under an allowed prefix. Need deliberate hot-load policy before close. |
+| 21 | Avoid unbounded atom creation from external strings | **ready-to-close** | `d12875c` removed unbounded atom creation at parent-context + gate-binding sites. `bc2bf01` tightened JSONL restore, Familiar table/node atoms, and cookie atoms. Follow-up removed broad `allow_compile_namespaces`; `compile_and_load` now requires exact `allow_compile_modules`, so module atoms come only from caller-provided bounded vocabularies. |
 | 22 | Reject unknown medium types | **ready-to-close** | Validation added in `lib/cantrip/circle.ex` via `validate_known_medium/1`; `80287b7` restored `normalize_type/1` to a bounded codomain (`:conversation | :code | :bash | :unknown`). Evidence: `test/divergence_fixes_test.exs`. |
 | 23 | call_entity_batch parallel contract | **ready-to-close** | `Cantrip.cast_batch/2` uses `Task.async_stream/3` with `ordered: true`. Evidence: `test/composition_test.exs` pins request order, child-turn grafting, and a two-child concurrency probe where both heterogeneous children must enter `query/2` before either is released. |
 | 24 | Move long-running entity runs out of blocking GenServer calls | **live, design-phase** | Codex pass-2 confirmed `EntityServer.run/1` etc. still inside `GenServer.call(..., :infinity)`. Provider/medium work blocks the mailbox. Phase 6. |
@@ -56,7 +56,7 @@ baseline.
 | 0 | Baseline & inventory | **done** | v1.0.0 shipped with `mix verify` clean. This doc + the open issue tracker IS the inventory. |
 | 1 | Transformation safety | **partial** | #27 covers the code-medium regex rewriter. No other regex-based source transforms found. Phase 7. |
 | 2 | Boundary / DTO integrity | **ready-to-close-for-tracked-issues** | #22 and #30 are ready-to-close after `d12875c` + `80287b7`; #25 now has provider-encoding evidence in `test/req_llm_adapter_test.exs`. |
-| 3 | Atom safety | **partial** | `d12875c` covers parent-context + gate-binding; `bc2bf01` covers JSONL replay, Familiar operational atoms, and persisted cookie shape. Remaining policy question: broad `compile_and_load` namespace authorization. |
+| 3 | Atom safety | **ready-to-close-for-tracked-issues** | `d12875c` covers parent-context + gate-binding; `bc2bf01` covers JSONL replay, Familiar operational atoms, and persisted cookie shape. Follow-up makes `compile_and_load` exact-module allowlist only. |
 | 4 | Configuration / ambient authority | **scan-needed** | No open issue. Need to scan `Application.get_env`/`System.get_env` usage in non-boot paths. Likely scan-clean given Cantrip's explicit-injection idiom. |
 | 5 | Secret redaction & error sanitization | **done-for-current-findings** | `075878a` added `Cantrip.SafeFormat` and wired redaction into adapter errors, JSONL inspect fallbacks, and port code-medium error surfaces. Evidence: `test/redact_test.exs`; `mix verify` green. |
 | 6 | Unsafe deserialization / runtime eval | **scan-needed** | `compile_and_load` is the relevant gate; touched by #21 partial. `Code.eval_*` usage to be scanned. |
@@ -84,7 +84,7 @@ The 8-phase critical path from current state to 0 issues + clean codebase
 | 1 | Wrap `d12875c` properly: fix 4 cold-review blockers, close #20/#22/#26/#30/#31 with proof | **blockers-fixed** (`80287b7`); GitHub close-with-proof comments still pending |
 | 2 | Wrap pre-v1 verified-stale items: add regression tests + close #23 and #25 | **evidence-added**; GitHub close-with-proof comments still pending |
 | 3 | Pass 5 secret redaction coverage | **complete for current findings** (`075878a`) |
-| 4 | #21 remaining atom-creation sites | **partial** (`bc2bf01` landed; compile namespace policy remains) |
+| 4 | #21 remaining atom-creation sites | **evidence-added**; GitHub close-with-proof comment pending |
 | 5 | #3 Dune-parity decision (board question) | **pending — needs board input** |
 | 6 | #24 OTP lifecycle design + implementation | **pending** |
 | 7 | #27 parser-aware code-medium | **pending** |

@@ -158,7 +158,6 @@ Wards are maps. Common wards include:
 - `%{allow_compile_modules: modules}`
 - `%{allow_compile_paths: paths}`
 - `%{allow_compile_signers: signers}`
-- `%{allow_compile_namespaces: prefixes}`
 
 Gate failures are observations. They are returned to the entity as data so the
 next turn can adapt.

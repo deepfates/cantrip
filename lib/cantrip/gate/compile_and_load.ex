@@ -48,22 +48,11 @@ defmodule Cantrip.Gate.CompileAndLoad do
       end)
       |> Enum.uniq()
 
-    allow_namespaces =
-      gates
-      |> Enum.flat_map(fn
-        %{allow_compile_namespaces: prefixes} when is_list(prefixes) -> prefixes
-        _ -> []
-      end)
-      |> Enum.uniq()
-
     cond do
-      allow_exact == [] and allow_namespaces == [] ->
-        {:error, "compile_and_load requires allow_compile_modules or allow_compile_namespaces"}
+      allow_exact == [] ->
+        {:error, "compile_and_load requires allow_compile_modules"}
 
       module_name in allow_exact ->
-        :ok
-
-      Enum.any?(allow_namespaces, &String.starts_with?(module_name, &1)) ->
         :ok
 
       true ->

@@ -281,7 +281,7 @@ defmodule PortCodeMediumTest do
     {:ok, cantrip} =
       port_cantrip(llm,
         gates: [:done, :compile_and_load],
-        extra_wards: [%{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}]
+        extra_wards: [%{allow_compile_modules: [module_name]}]
       )
 
     assert {:ok, 123, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "hot load")
@@ -317,7 +317,7 @@ defmodule PortCodeMediumTest do
     {:ok, cantrip} =
       port_cantrip(llm,
         gates: [:done, :compile_and_load],
-        extra_wards: [%{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}]
+        extra_wards: [%{allow_compile_modules: [module_name]}]
       )
 
     assert {:ok, result, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "hot struct")
@@ -360,7 +360,7 @@ defmodule PortCodeMediumTest do
     {:ok, cantrip} =
       port_cantrip(llm,
         gates: [:done, :compile_and_load],
-        extra_wards: [%{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}]
+        extra_wards: [%{allow_compile_modules: [module_name]}]
       )
 
     atom_text = "child_only_atom_#{suffix}"

@@ -167,8 +167,8 @@ persists its loom.
 ```
 
 Hot-loading is opt-in. Pass `evolve: true` to include `compile_and_load`
-and the `Cantrip.Hot.*` namespace ward. Be careful what you wish for; the
-Familiar is minimally warded.
+and an exact allowlist for `Elixir.Cantrip.Hot.Tally`. Be careful what you
+wish for; the Familiar is minimally warded.
 
 ## Core API
 

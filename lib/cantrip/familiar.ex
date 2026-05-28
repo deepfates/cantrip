@@ -259,13 +259,9 @@ defmodule Cantrip.Familiar do
       })
     ]
 
-    # Self-modification capacity: the Familiar can write new Elixir
-    # modules at runtime and hot-load them. Scoped to the `Cantrip.Hot.`
-    # namespace via a ward so the entity cannot redefine framework
-    # modules (Cantrip.Familiar, Cantrip.Gate, etc.). This is the
-    # BEAM-native evolutionary surface — combined with supervised
-    # process restart, the entity can try a change and roll back if
-    # it crashes.
+    # Self-modification capacity: the Familiar can hot-load one fixed
+    # scratch module at runtime. Keeping the module name exact avoids
+    # unbounded atom creation from generated module names.
     evolution_gates =
       if evolve?,
         do: [%{name: "compile_and_load"}],
@@ -297,10 +293,7 @@ defmodule Cantrip.Familiar do
           ] ++
             if(evolve?,
               do: [
-                # Hot reload is scoped to the `Cantrip.Hot.` namespace; the
-                # Familiar cannot redefine framework modules but can write
-                # new modules into a designated sub-tree of the runtime.
-                %{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}
+                %{allow_compile_modules: ["Elixir.Cantrip.Hot.Tally"]}
               ],
               else: []
             ) ++ sandbox_ward(sandbox)

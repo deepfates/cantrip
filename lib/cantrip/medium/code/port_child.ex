@@ -19,7 +19,6 @@ defmodule Cantrip.Medium.Code.PortChild do
     Cantrip.FakeLLM,
     Cantrip.LLMs.ReqLLM,
     :allow_compile_modules,
-    :allow_compile_namespaces,
     :allow_compile_paths,
     :allow_compile_sha256,
     :allow_compile_signers,
