@@ -192,7 +192,8 @@ defmodule Cantrip do
       stream_to: Map.get(opts, :stream_to),
       stream_barrier?: Map.get(opts, :stream_barrier?, false),
       entity_state: Map.get(opts, :entity_state),
-      trace_id: Map.get(opts, :trace_id)
+      trace_id: Map.get(opts, :trace_id),
+      child_spawn_counter: Map.get(opts, :child_spawn_counter)
     }
   end
 
@@ -216,31 +217,40 @@ defmodule Cantrip do
 
       requested_gates = requested_child_gates(circle_attrs, parent)
       child_wards = fetch(circle_attrs, :wards, [])
-      composed_wards = WardPolicy.compose(parent.circle.wards, child_wards)
       child_gates = resolve_child_gates(parent, requested_gates, depth + 1, max_depth)
 
-      child_circle_attrs =
-        circle_attrs
-        |> Map.put(:gates, Map.values(child_gates))
-        |> Map.put(:wards, composed_wards)
-
-      child_identity = child_identity_attrs(attrs)
-
-      child_attrs = %{
-        llm: child_llm,
-        child_llm: Map.get(attrs, :child_llm) || Map.get(attrs, "child_llm") || child_llm,
-        node: Map.get(attrs, :node) || Map.get(attrs, "node"),
-        identity: child_identity,
-        circle: child_circle_attrs,
-        loom_storage: Map.get(attrs, :loom_storage) || Map.get(attrs, "loom_storage"),
-        retry: Map.get(attrs, :retry, parent.retry),
-        folding: Map.get(attrs, :folding, parent.folding)
+      child_circle_for_policy = %{
+        type: fetch(circle_attrs, :type, parent.circle.type),
+        gates: Map.values(child_gates),
+        wards: child_wards
       }
 
-      case remote_node(child_attrs) do
-        {:remote, node} -> remote_new(node, child_attrs)
-        {:error, reason} -> {:error, reason}
-        _local -> new_root(child_attrs)
+      with :ok <- WardPolicy.validate_child_spawn(parent.circle.wards, child_circle_for_policy) do
+        composed_wards = WardPolicy.compose(parent.circle.wards, child_wards)
+
+        child_circle_attrs =
+          circle_attrs
+          |> Map.put(:gates, Map.values(child_gates))
+          |> Map.put(:wards, composed_wards)
+
+        child_identity = child_identity_attrs(attrs)
+
+        child_attrs = %{
+          llm: child_llm,
+          child_llm: Map.get(attrs, :child_llm) || Map.get(attrs, "child_llm") || child_llm,
+          node: Map.get(attrs, :node) || Map.get(attrs, "node"),
+          identity: child_identity,
+          circle: child_circle_attrs,
+          loom_storage: Map.get(attrs, :loom_storage) || Map.get(attrs, "loom_storage"),
+          retry: Map.get(attrs, :retry, parent.retry),
+          folding: Map.get(attrs, :folding, parent.folding)
+        }
+
+        case remote_node(child_attrs) do
+          {:remote, node} -> remote_new(node, child_attrs)
+          {:error, reason} -> {:error, reason}
+          _local -> new_root(child_attrs)
+        end
       end
     end
   end
@@ -1002,12 +1012,69 @@ defmodule Cantrip do
     depth = Map.get(parent_context, :depth, 0)
     max_depth = WardPolicy.max_depth(parent.circle.wards)
 
-    if is_integer(max_depth) and depth >= max_depth do
-      {:error, "max_depth exceeded", cantrip}
-    else
-      composed_wards = WardPolicy.compose(parent.circle.wards, cantrip.circle.wards)
-      child_circle = %{cantrip.circle | wards: composed_wards}
-      {:ok, %{cantrip | circle: child_circle}, depth + 1}
+    cond do
+      is_integer(max_depth) and depth >= max_depth ->
+        reject_child_cast(parent_context, cantrip, "max_depth exceeded")
+
+      true ->
+        with :ok <- validate_declared_child_spawn(parent_context, cantrip),
+             :ok <- reserve_child_spawn(parent_context) do
+          composed_wards = WardPolicy.compose(parent.circle.wards, cantrip.circle.wards)
+          child_circle = %{cantrip.circle | wards: composed_wards}
+          {:ok, %{cantrip | circle: child_circle}, depth + 1}
+        else
+          {:error, reason} -> reject_child_cast(parent_context, cantrip, reason)
+        end
+    end
+  end
+
+  defp validate_declared_child_spawn(parent_context, cantrip) do
+    parent = Map.fetch!(parent_context, :parent_cantrip)
+    WardPolicy.validate_child_spawn(parent.circle.wards, cantrip.circle)
+  end
+
+  defp reserve_child_spawn(parent_context) do
+    parent = Map.fetch!(parent_context, :parent_cantrip)
+
+    case {WardPolicy.max_children_total(parent.circle.wards),
+          Map.get(parent_context, :child_spawn_counter)} do
+      {nil, _counter} ->
+        :ok
+
+      {_max_total, nil} ->
+        :ok
+
+      {max_total, counter} when is_pid(counter) ->
+        Agent.get_and_update(counter, fn count ->
+          if count < max_total do
+            {:ok, count + 1}
+          else
+            {{:error, "max_children_total exceeded: #{max_total}"}, count}
+          end
+        end)
+    end
+  end
+
+  defp reject_child_cast(parent_context, cantrip, reason) do
+    emit_child_rejected_telemetry(parent_context, cantrip, reason)
+    {:error, reason, cantrip}
+  end
+
+  defp emit_child_rejected_telemetry(parent_context, cantrip, reason) do
+    parent = Map.get(parent_context, :entity_state)
+
+    if parent do
+      Cantrip.Telemetry.execute(
+        [:cantrip, :ward, :child_rejected],
+        %{count: 1},
+        %{
+          entity_id: parent.entity_id,
+          trace_id: Map.get(parent_context, :trace_id),
+          child_id: cantrip.id,
+          child_medium: cantrip.circle.type,
+          reason: reason
+        }
+      )
     end
   end
 
@@ -1195,6 +1262,7 @@ defmodule Cantrip do
           "entity_state" -> :entity_state
           "trace_id" -> :trace_id
           "child_llm_ref" -> :child_llm_ref
+          "child_spawn_counter" -> :child_spawn_counter
           "remember_child_llm?" -> :remember_child_llm?
           "observation_collector" -> :observation_collector
           "record_parent_observation?" -> :record_parent_observation?

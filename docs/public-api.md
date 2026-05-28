@@ -108,6 +108,27 @@ boolean wards such as `require_done_tool` tighten with `or`. `cast_batch` uses
 the same child-cast path for each item and is bounded by the parent's
 `max_concurrent_children` ward.
 
+Parent circles can also declare what children are allowed to exist or run:
+
+```elixir
+wards: [
+  %{max_depth: 2},
+  %{child_medium_allowlist: [:conversation]},
+  %{child_gate_allowlist: [:done, :read_file]},
+  %{child_max_turns_ceiling: 5},
+  %{max_children_total: 10}
+]
+```
+
+These declaration-time child wards are checked before runtime composition.
+Allow/deny lists constrain the child circle. Child turn/depth ceilings require
+the child to declare `max_turns` / `max_depth` at or below the ceiling; Cantrip
+does not silently rewrite a nonconforming child. `max_children_total` is a
+cumulative accepted-cast budget for the parent code-medium entity. Rejected
+child construction returns `{:error, reason}`; rejected child casts return
+`{:error, reason, child}` and are recorded as error observations in the parent
+loom when called from a parent turn.
+
 ## Choose a Medium
 
 Conversation medium:
@@ -165,6 +186,12 @@ Wards are maps. Common wards include:
 - `%{max_depth: n}`
 - `%{port_runner: [executable, arg1, ...]}`
 - `%{max_concurrent_children: n}`
+- `%{max_children_total: n}`
+- `%{child_medium_allowlist: mediums}`
+- `%{child_gate_allowlist: gates}`
+- `%{child_gate_denylist: gates}`
+- `%{child_max_turns_ceiling: n}`
+- `%{child_max_depth_ceiling: n}`
 - `%{code_eval_timeout_ms: n}`
 - `%{allow_compile_modules: modules}`
 - `%{allow_compile_paths: paths}`

@@ -14,6 +14,7 @@ defmodule Cantrip.Telemetry do
     [:cantrip, :redact, :hit],
     [:cantrip, :fold, :trigger],
     [:cantrip, :ward, :truncate],
+    [:cantrip, :ward, :child_rejected],
     [:cantrip, :child, :start],
     [:cantrip, :child, :stop],
     [:cantrip, :loom, :persist_error],

@@ -50,6 +50,8 @@ defmodule Cantrip.Medium.Code do
 
     #{package_api_text(circle)}
 
+    #{child_policy_text(circle)}
+
     #{grain_text()}
 
     #{ending_text()}
@@ -58,17 +60,29 @@ defmodule Cantrip.Medium.Code do
 
   @impl true
   def execute(code, state, %{circle: circle} = runtime) when is_binary(code) do
-    {next_state, observations, result, terminated?} =
-      case Cantrip.WardPolicy.sandbox(circle.wards) do
-        nil -> eval_port(code, state, runtime)
-        :dune -> eval_dune(code, state, runtime)
-        :port -> eval_port(code, state, runtime)
-        :port_unrestricted -> eval_port(code, state, runtime)
-        :unrestricted -> eval_unrestricted(code, state, runtime)
-        _ -> eval_unrestricted(code, state, runtime)
-      end
+    {:ok, child_spawn_counter} =
+      Agent.start_link(fn -> Map.get(state, :children_spawned_total, 0) end)
 
-    {:ok, next_state, observations, result, terminated?}
+    runtime = put_child_spawn_counter(runtime, child_spawn_counter)
+
+    try do
+      {next_state, observations, result, terminated?} =
+        case Cantrip.WardPolicy.sandbox(circle.wards) do
+          nil -> eval_port(code, state, runtime)
+          :dune -> eval_dune(code, state, runtime)
+          :port -> eval_port(code, state, runtime)
+          :port_unrestricted -> eval_port(code, state, runtime)
+          :unrestricted -> eval_unrestricted(code, state, runtime)
+          _ -> eval_unrestricted(code, state, runtime)
+        end
+
+      next_state =
+        Map.put(next_state, :children_spawned_total, Agent.get(child_spawn_counter, & &1))
+
+      {:ok, next_state, observations, result, terminated?}
+    after
+      Agent.stop(child_spawn_counter)
+    end
   end
 
   def execute(_code, state, _runtime) do
@@ -84,6 +98,12 @@ defmodule Cantrip.Medium.Code do
   def restore(%{port_session: _} = snapshot), do: Cantrip.Medium.Code.Port.restore(snapshot)
   def restore(snapshot) when is_map(snapshot), do: snapshot
   def restore(_), do: %{}
+
+  defp put_child_spawn_counter(%{parent_context: %{} = parent_context} = runtime, counter) do
+    %{runtime | parent_context: Map.put(parent_context, :child_spawn_counter, counter)}
+  end
+
+  defp put_child_spawn_counter(runtime, _counter), do: runtime
 
   @spec eval(String.t(), state(), runtime()) :: {state(), list(map()), term() | nil, boolean()}
   def eval(code, state, runtime) when is_binary(code) do
@@ -639,6 +659,45 @@ defmodule Cantrip.Medium.Code do
         - Cantrip.cast_batch(items) casts children concurrently and returns {:ok, values, next_children, child_looms, meta} or {:error, reason}
         Parent-to-child casts are depth-bounded and run with wards composed from the parent and child circles.
         """
+    end
+  end
+
+  defp child_policy_text(circle) do
+    constraints =
+      [
+        child_list_constraint(circle.wards, :child_medium_allowlist, "child mediums"),
+        child_list_constraint(circle.wards, :child_gate_allowlist, "child gate allowlist"),
+        child_list_constraint(circle.wards, :child_gate_denylist, "child gate denylist"),
+        child_value_constraint(circle.wards, :child_max_turns_ceiling, "child max_turns ceiling"),
+        child_value_constraint(circle.wards, :child_max_depth_ceiling, "child max_depth ceiling"),
+        child_value_constraint(circle.wards, :max_children_total, "total child casts")
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    case constraints do
+      [] ->
+        ""
+
+      constraints ->
+        """
+        Child constraints declared by this circle:
+        #{Enum.map_join(constraints, "\n", &"- #{&1}")}
+        """
+    end
+  end
+
+  defp child_list_constraint(wards, key, label) do
+    case Cantrip.WardPolicy.get(wards, key) do
+      values when is_list(values) -> "#{label}: #{Enum.map_join(values, ", ", &to_string/1)}"
+      value when not is_nil(value) -> "#{label}: #{value}"
+      nil -> nil
+    end
+  end
+
+  defp child_value_constraint(wards, key, label) do
+    case Cantrip.WardPolicy.get(wards, key) do
+      nil -> nil
+      value -> "#{label}: #{value}"
     end
   end
 end

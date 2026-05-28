@@ -30,6 +30,7 @@ All events are emitted under the `[:cantrip, ...]` prefix.
 | `[:cantrip, :redact, :hit]` | `count` | `entity_id, trace_id` | `Redact.scan/1` when boundary redaction removes a credential |
 | `[:cantrip, :fold, :trigger]` | — | `entity_id, turn_number, trace_id` | `EntityServer.run_loop/1` when folding fires |
 | `[:cantrip, :ward, :truncate]` | — | `entity_id, ward, trace_id` | `EntityServer.run_loop/1` when a ward stops execution |
+| `[:cantrip, :ward, :child_rejected]` | `count` | `entity_id, child_id, child_medium, reason, trace_id` | child-cast coordinator when declaration-time child wards reject a spawn |
 | `[:cantrip, :child, :start]` | — | `entity_id, child_depth, trace_id` | child-cast coordinator before child cast |
 | `[:cantrip, :child, :stop]` | — | `entity_id, child_depth, outcome, trace_id` | child-cast coordinator after child cast |
 | `[:cantrip, :loom, :persist_error]` | `count` | `storage_module, event_type, reason, trace_id` | `Loom.append_event/2` when the storage backend rejects a write |
@@ -88,6 +89,8 @@ Recommended subscriptions for production deployments:
   volume per `entity_id`.
 - **`[:cantrip, :ward, :truncate]`** → counter per `ward` to see which guard
   is stopping work.
+- **`[:cantrip, :ward, :child_rejected]`** → counter per `reason` to catch
+  child-spawn policy pressure or prompt drift.
 - **`[:cantrip, :redact, :hit]`** → counter of credential-shaped content
   removed from entity/model-visible boundaries.
 - **`[:cantrip, :child, :start]` / `[:cantrip, :child, :stop]`** → counters

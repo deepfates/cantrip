@@ -141,6 +141,183 @@ defmodule Cantrip.CompositionTest do
              Cantrip.cast(parent, "delegate")
   end
 
+  test "declaration-time child medium allowlist rejects disallowed children at construction" do
+    parent_llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{
+           code: """
+           {:error, reason} =
+             Cantrip.new(circle: %{type: :code, gates: [:done], wards: [%{max_turns: 1}]})
+
+           done.(reason)
+           """
+         }
+       ])}
+
+    {:ok, parent} =
+      Cantrip.new(
+        llm: parent_llm,
+        circle: %{
+          type: :code,
+          gates: [:done],
+          wards: [
+            %{max_turns: 5},
+            %{max_depth: 1},
+            %{child_medium_allowlist: [:conversation]},
+            %{sandbox: :unrestricted}
+          ]
+        }
+      )
+
+    assert {:ok, reason, _parent, _loom, _meta} = Cantrip.cast(parent, "delegate")
+    assert reason =~ ~s(child medium "code" is not allowed)
+  end
+
+  test "declaration-time child gate denylist rejects pre-built child casts" do
+    child =
+      prebuilt_code_child([%{code: ~s[done.("blocked")]}],
+        gates: [:done, :compile_and_load],
+        wards: [%{max_turns: 1}]
+      )
+
+    child_literal = term_literal(child)
+
+    parent_llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{
+           code: """
+           child = :erlang.binary_to_term(#{child_literal})
+           {:error, reason, _child} = Cantrip.cast(child, "work")
+           done.(reason)
+           """
+         }
+       ])}
+
+    {:ok, parent} =
+      Cantrip.new(
+        llm: parent_llm,
+        circle: %{
+          type: :code,
+          gates: [:done],
+          wards: [
+            %{max_turns: 5},
+            %{max_depth: 1},
+            %{child_gate_denylist: [:compile_and_load]},
+            %{sandbox: :unrestricted}
+          ]
+        }
+      )
+
+    assert {:ok, "child gates denied: compile_and_load", _parent, loom, _meta} =
+             Cantrip.cast(parent, "delegate")
+
+    turn = Enum.find(loom.turns, fn turn -> "cast" in turn.gate_calls end)
+    cast_observation = Enum.find(turn.observation, &(&1.gate == "cast"))
+    assert cast_observation.is_error
+    assert cast_observation.result =~ "child gates denied: compile_and_load"
+    assert Map.get(cast_observation, :child_turns, []) == []
+  end
+
+  test "declaration-time child ceilings reject missing and excessive child wards" do
+    too_loose =
+      prebuilt_code_child([%{code: ~s[done.("too-loose")]}], wards: [%{max_turns: 4}])
+
+    missing = prebuilt_code_child([%{code: ~s[done.("missing")]}], wards: [%{max_turns: 1}])
+
+    ok_child =
+      prebuilt_code_child([%{code: ~s[done.("ok")]}], wards: [%{max_turns: 2}, %{max_depth: 1}])
+
+    parent_llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{
+           code: """
+           too_loose = :erlang.binary_to_term(#{term_literal(too_loose)})
+           missing = :erlang.binary_to_term(#{term_literal(missing)})
+           ok_child = :erlang.binary_to_term(#{term_literal(ok_child)})
+
+           {:error, loose_reason, _} = Cantrip.cast(too_loose, "work")
+           {:error, missing_reason, _} = Cantrip.cast(missing, "work")
+           {:ok, ok, _next_child, _loom, _meta} = Cantrip.cast(ok_child, "work")
+
+           done.({loose_reason, missing_reason, ok})
+           """
+         }
+       ])}
+
+    {:ok, parent} =
+      Cantrip.new(
+        llm: parent_llm,
+        circle: %{
+          type: :code,
+          gates: [:done],
+          wards: [
+            %{max_turns: 8},
+            %{max_depth: 1},
+            %{child_max_turns_ceiling: 2},
+            %{child_max_depth_ceiling: 1},
+            %{sandbox: :unrestricted}
+          ]
+        }
+      )
+
+    assert {:ok,
+            {"child max_turns 4 exceeds ceiling 2",
+             "child max_depth is required and must be <= 1", "ok"}, _parent, _loom, _meta} =
+             Cantrip.cast(parent, "delegate")
+  end
+
+  test "max_children_total is cumulative across code-medium turns" do
+    child_a = prebuilt_code_child([%{code: ~s[done.("a")]}], wards: [%{max_turns: 1}])
+    child_b = prebuilt_code_child([%{code: ~s[done.("b")]}], wards: [%{max_turns: 1}])
+
+    parent_llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{
+           code: """
+           child = :erlang.binary_to_term(#{term_literal(child_a)})
+           {:ok, _value, _next_child, _loom, _meta} = Cantrip.cast(child, "first")
+           """
+         },
+         %{
+           code: """
+           child = :erlang.binary_to_term(#{term_literal(child_b)})
+           {:error, reason, _child} = Cantrip.cast(child, "second")
+           done.(reason)
+           """
+         }
+       ])}
+
+    {:ok, parent} =
+      Cantrip.new(
+        llm: parent_llm,
+        circle: %{
+          type: :code,
+          gates: [:done],
+          wards: [
+            %{max_turns: 3},
+            %{max_depth: 1},
+            %{max_children_total: 1},
+            %{sandbox: :unrestricted}
+          ]
+        }
+      )
+
+    assert {:ok, "max_children_total exceeded: 1", _parent, loom, _meta} =
+             Cantrip.cast(parent, "delegate")
+
+    cast_observations =
+      loom.turns
+      |> Enum.flat_map(& &1.observation)
+      |> Enum.filter(&(&1.gate == "cast"))
+
+    assert Enum.count(cast_observations, &(!&1.is_error)) == 1
+    assert Enum.count(cast_observations, & &1.is_error) == 1
+  end
+
   test "cast_batch preserves request order and grafts child turns" do
     parent_llm =
       {FakeLLM,
@@ -367,11 +544,12 @@ defmodule Cantrip.CompositionTest do
 
   defp prebuilt_code_child(responses, opts) do
     wards = Keyword.fetch!(opts, :wards)
+    gates = Keyword.get(opts, :gates, [:done])
 
     {:ok, child} =
       Cantrip.new(
         llm: {FakeLLM, FakeLLM.new(responses)},
-        circle: %{type: :code, gates: [:done], wards: wards ++ [%{sandbox: :unrestricted}]}
+        circle: %{type: :code, gates: gates, wards: wards ++ [%{sandbox: :unrestricted}]}
       )
 
     child

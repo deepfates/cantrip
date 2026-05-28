@@ -94,6 +94,23 @@ tighten with `min`, boolean wards such as `require_done_tool` tighten with
 `or`, and `cast_batch` uses the same path for each child while respecting the
 parent's `max_concurrent_children`.
 
+Parents can also declare constraints on what kinds of children may be spawned.
+These declaration-time child wards are checked before runtime ward composition:
+
+- `%{child_medium_allowlist: [:conversation, :code]}`
+- `%{child_gate_allowlist: [:done, :read_file]}`
+- `%{child_gate_denylist: [:compile_and_load]}`
+- `%{child_max_turns_ceiling: n}`
+- `%{child_max_depth_ceiling: n}`
+- `%{max_children_total: n}`
+
+The allow/deny wards constrain the child circle shape. Ceiling wards require
+the child to declare the corresponding runtime ward at or below the ceiling;
+they do not silently rewrite the child. `max_children_total` counts accepted
+child casts cumulatively across a code-medium entity's state. Rejected child
+construction returns `{:error, reason}`. Rejected child casts produce an error
+observation on the parent loom and emit `[:cantrip, :ward, :child_rejected]`.
+
 This is the RLM pattern in package form: large context lives in the medium,
 subtasks run as child cantrips, and summaries return upward. Composition is
 code, not a static workflow graph.

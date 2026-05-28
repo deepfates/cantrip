@@ -126,6 +126,7 @@ defmodule CantripTelemetryTest do
                [:cantrip, :redact, :hit],
                [:cantrip, :fold, :trigger],
                [:cantrip, :ward, :truncate],
+               [:cantrip, :ward, :child_rejected],
                [:cantrip, :child, :start],
                [:cantrip, :child, :stop],
                [:cantrip, :loom, :persist_error],
@@ -367,6 +368,53 @@ defmodule CantripTelemetryTest do
 
       assert_received {^ref_stop, [:cantrip, :child, :stop], _,
                        %{entity_id: _, trace_id: ^trace_id, child_depth: 1, outcome: :ok}}
+    end
+
+    test "emits child_rejected ward event for rejected child casts" do
+      ref = attach([:cantrip, :ward, :child_rejected], "child-rejected")
+      trace_id = "child-rejected-trace"
+
+      child_code = ~s|done.("blocked")|
+
+      {:ok, child} =
+        Cantrip.new(
+          llm: {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: child_code}])},
+          circle: %{type: :code, gates: [:done, :compile_and_load], wards: [%{max_turns: 1}]}
+        )
+
+      parent_code = """
+      child = :erlang.binary_to_term(#{inspect(:erlang.term_to_binary(child), limit: :infinity)})
+      {:error, _reason, _child} = Cantrip.cast(child, "work")
+      done.("blocked")
+      """
+
+      llm = {FakeLLM, FakeLLM.new([%{code: parent_code}])}
+
+      {:ok, cantrip} =
+        Cantrip.new(
+          llm: llm,
+          identity: %{system_prompt: "test"},
+          circle: %{
+            type: :code,
+            gates: [:done],
+            wards: [
+              %{max_turns: 10},
+              %{max_depth: 1},
+              %{child_gate_denylist: [:compile_and_load]},
+              %{sandbox: :unrestricted}
+            ]
+          }
+        )
+
+      {:ok, "blocked", _, _, _} = Cantrip.cast(cantrip, "hello", trace_id: trace_id)
+
+      assert_received {^ref, [:cantrip, :ward, :child_rejected], %{count: 1},
+                       %{
+                         entity_id: _,
+                         trace_id: ^trace_id,
+                         child_medium: :code,
+                         reason: "child gates denied: compile_and_load"
+                       }}
     end
 
     test "emits compile_and_load event for hot-load attempts" do

@@ -500,6 +500,60 @@ defmodule CantripRuntimeBoundarySpikeTest do
       assert %{allow_compile_modules: ["Safe.Module"]} in resolved
       assert Cantrip.WardPolicy.sandbox(resolved) == :dune
     end
+
+    test "does not compose parent declaration-time child policy into the child" do
+      parent = [
+        %{max_children_total: 1},
+        %{child_medium_allowlist: [:conversation]},
+        %{child_max_turns_ceiling: 2}
+      ]
+
+      child = [
+        %{max_children_total: 3},
+        %{child_gate_denylist: [:compile_and_load]},
+        %{allow_compile_modules: ["Safe.Module"]}
+      ]
+
+      resolved = Cantrip.WardPolicy.compose(parent, child)
+
+      refute %{max_children_total: 1} in resolved
+      refute %{child_medium_allowlist: [:conversation]} in resolved
+      refute %{child_max_turns_ceiling: 2} in resolved
+      assert %{max_children_total: 3} in resolved
+      assert %{child_gate_denylist: [:compile_and_load]} in resolved
+      assert %{allow_compile_modules: ["Safe.Module"]} in resolved
+    end
+
+    test "validates declaration-time child spawn wards" do
+      parent = [
+        %{child_medium_allowlist: [:conversation]},
+        %{child_gate_allowlist: [:done, :read_file]},
+        %{child_gate_denylist: [:compile_and_load]},
+        %{child_max_turns_ceiling: 3},
+        %{child_max_depth_ceiling: 1}
+      ]
+
+      assert :ok =
+               Cantrip.WardPolicy.validate_child_spawn(parent, %{
+                 type: :conversation,
+                 gates: [:done, :read_file],
+                 wards: [%{max_turns: 3}, %{max_depth: 1}]
+               })
+
+      assert {:error, ~s(child medium "code" is not allowed; allowed: conversation)} =
+               Cantrip.WardPolicy.validate_child_spawn(parent, %{
+                 type: :code,
+                 gates: [:done],
+                 wards: [%{max_turns: 1}, %{max_depth: 0}]
+               })
+
+      assert {:error, "child gates not allowed: search; allowed: done, read_file"} =
+               Cantrip.WardPolicy.validate_child_spawn(parent, %{
+                 type: :conversation,
+                 gates: [:done, :search],
+                 wards: [%{max_turns: 1}, %{max_depth: 0}]
+               })
+    end
   end
 
   describe "loom projection helpers" do
