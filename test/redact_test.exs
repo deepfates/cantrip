@@ -17,6 +17,8 @@ defmodule Cantrip.RedactTest do
   alias Cantrip.Redact
   alias Cantrip.SafeFormat
 
+  @secret "sk-proj-aaaaaaaaaaaaaaaaaaaaaaaa"
+
   defmodule ErrorLLM do
     @behaviour Cantrip.LLM
 
@@ -24,6 +26,10 @@ defmodule Cantrip.RedactTest do
     def query(state, _request) do
       {:error, %{message: "OPENAI_API_KEY=#{Map.fetch!(state, :secret)}"}, state}
     end
+  end
+
+  defmodule SecretStruct do
+    defstruct [:api_key, :visible]
   end
 
   test "top-level Cantrip inspect output never prints LLM state secrets" do
@@ -45,30 +51,26 @@ defmodule Cantrip.RedactTest do
 
   describe "scan/1 — well-known credential shapes" do
     test "redacts OpenAI/Anthropic sk-* keys" do
-      assert Redact.scan(
-               "OPENAI_API_KEY=sk-proj-VeqpnxccDQtWXwhtUgtJXFDFsoesUWR4Y9kj9a5W857MeOAvSm"
-             ) =~
+      assert Redact.scan("OPENAI_API_KEY=sk-proj-aaaaaaaaaaaaaaaaaaaaaaaa") =~
                "[REDACTED]"
 
-      refute Redact.scan(
-               "OPENAI_API_KEY=sk-proj-VeqpnxccDQtWXwhtUgtJXFDFsoesUWR4Y9kj9a5W857MeOAvSm"
-             ) =~
-               "VeqpnxccDQtWXwhtUgtJXFDF"
+      refute Redact.scan("OPENAI_API_KEY=sk-proj-aaaaaaaaaaaaaaaaaaaaaaaa") =~
+               "aaaaaaaaaaaaaaaa"
     end
 
     test "redacts Anthropic sk-ant-* keys" do
-      assert Redact.scan("ANTHROPIC_API_KEY=sk-ant-api03-HCe3QI1DBMbWNFlNd0dJZylNrs") =~
+      assert Redact.scan("ANTHROPIC_API_KEY=sk-ant-api03-bbbbbbbbbbbbbbbbbbbbbbbb") =~
                "[REDACTED]"
 
-      refute Redact.scan("ANTHROPIC_API_KEY=sk-ant-api03-HCe3QI1DBMbWNFlNd0dJZylNrs") =~
-               "HCe3QI1DBMbWNFlNd0dJ"
+      refute Redact.scan("ANTHROPIC_API_KEY=sk-ant-api03-bbbbbbbbbbbbbbbbbbbbbbbb") =~
+               "bbbbbbbbbbbbbbbb"
     end
 
     test "redacts Google AIza keys" do
-      input = "GEMINI_API_KEY=AIzaSyDZwB5922WT87Q5pBkvfdA5vFRGZW5iO2A"
+      input = "GEMINI_API_KEY=AIzacccccccccccccccccccccccccccccccccc"
       out = Redact.scan(input)
       assert out =~ "[REDACTED]"
-      refute out =~ "AIzaSyDZwB5922WT87Q5pBkvfdA5"
+      refute out =~ "cccccccccccccccc"
     end
 
     test "redacts AWS access keys" do
@@ -96,14 +98,14 @@ defmodule Cantrip.RedactTest do
 
     test "preserves surrounding structure — keeps the env var name visible" do
       out =
-        Redact.scan("OPENAI_API_KEY=sk-proj-VeqpnxccDQtWXwhtUgtJXFDFsoesUWR4Y9kj9a5W857MeOAvSm")
+        Redact.scan("OPENAI_API_KEY=sk-proj-aaaaaaaaaaaaaaaaaaaaaaaa")
 
       # Keeping the variable name lets the user know what was redacted.
       assert out =~ "OPENAI_API_KEY"
     end
 
     test "scan is idempotent — redacting twice is the same as once" do
-      input = "OPENAI_API_KEY=sk-proj-VeqpnxccDQtWXwhtUgtJXFDFsoesUWR4Y9kj9a5W857MeOAvSm"
+      input = "OPENAI_API_KEY=sk-proj-aaaaaaaaaaaaaaaaaaaaaaaa"
       assert Redact.scan(Redact.scan(input)) == Redact.scan(input)
     end
 
@@ -112,6 +114,26 @@ defmodule Cantrip.RedactTest do
       assert Redact.scan(:atom) == :atom
       assert Redact.scan(nil) == nil
       assert Redact.scan(["a", 1]) == ["a", 1]
+    end
+
+    test "term/1 recursively redacts maps, lists, keywords, and tuples" do
+      input = %{
+        token: "OPENAI_API_KEY=#{@secret}",
+        nested: [
+          {:authorization, "Bearer #{@secret}"},
+          {"plain", "visible"},
+          %SecretStruct{api_key: @secret, visible: "struct-visible"}
+        ],
+        tuple: {:ok, "APP_SECRET=#{@secret}"}
+      }
+
+      output = Redact.term(input)
+      inspected = inspect(output)
+
+      assert inspected =~ "[REDACTED]"
+      assert inspected =~ "visible"
+      assert inspected =~ "struct-visible"
+      refute inspected =~ "aaaaaaaaaaaaaaaa"
     end
   end
 
@@ -122,9 +144,9 @@ defmodule Cantrip.RedactTest do
       env_path = Path.join(tmp_dir, ".env")
 
       env_body = """
-      OPENAI_API_KEY=sk-proj-VeqpnxccDQtWXwhtUgtJXFDFsoesUWR4Y9kj9a5W857MeOAvSm
-      ANTHROPIC_API_KEY=sk-ant-api03-HCe3QI1DBMbWNFlNd0dJZylNrsCUs6zZTxJvdmjfJp5YOZ
-      GEMINI_API_KEY=AIzaSyDZwB5922WT87Q5pBkvfdA5vFRGZW5iO2A
+      OPENAI_API_KEY=sk-proj-aaaaaaaaaaaaaaaaaaaaaaaa
+      ANTHROPIC_API_KEY=sk-ant-api03-bbbbbbbbbbbbbbbbbbbbbbbb
+      GEMINI_API_KEY=AIzacccccccccccccccccccccccccccccccccc
       INNOCENT_FIELD=just-a-value
       """
 
@@ -143,9 +165,9 @@ defmodule Cantrip.RedactTest do
       assert is_binary(obs.result)
 
       # The observation MUST NOT contain credential bodies.
-      refute obs.result =~ "VeqpnxccDQtWXwhtUgtJXFDF"
-      refute obs.result =~ "HCe3QI1DBMbWNFlNd0dJ"
-      refute obs.result =~ "AIzaSyDZwB5922WT87Q5pBkvfdA5"
+      refute obs.result =~ "aaaaaaaaaaaaaaaa"
+      refute obs.result =~ "bbbbbbbbbbbbbbbb"
+      refute obs.result =~ "cccccccccccccccc"
 
       # Innocent content survives.
       assert obs.result =~ "INNOCENT_FIELD"
@@ -160,23 +182,21 @@ defmodule Cantrip.RedactTest do
   end
 
   describe "Pass 5 boundary formatting" do
-    @secret "sk-proj-VeqpnxccDQtWXwhtUgtJXFDFsoesUWR4Y9kj9a5W857MeOAvSm"
-
     test "SafeFormat redacts inspected values and exception messages" do
       inspected = SafeFormat.inspect(%{api_key: @secret})
       message = SafeFormat.exception(%RuntimeError{message: "failed with #{@secret}"})
 
       assert inspected =~ "[REDACTED]"
-      refute inspected =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+      refute inspected =~ "aaaaaaaaaaaaaaaa"
       assert message =~ "[REDACTED]"
-      refute message =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+      refute message =~ "aaaaaaaaaaaaaaaa"
     end
 
     test "LLM helper fallback redacts provider error bodies" do
       message = Helpers.extract_error(%{provider_response: %{authorization: "Bearer #{@secret}"}})
 
       assert message =~ "Bearer [REDACTED]"
-      refute message =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+      refute message =~ "aaaaaaaaaaaaaaaa"
     end
 
     test "JSONL persistence redacts inspected fallback keys before disk write" do
@@ -194,7 +214,7 @@ defmodule Cantrip.RedactTest do
 
       body = File.read!(path)
       assert body =~ "[REDACTED]"
-      refute body =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+      refute body =~ "aaaaaaaaaaaaaaaa"
 
       File.rm(path)
     end
@@ -214,7 +234,120 @@ defmodule Cantrip.RedactTest do
 
       assert obs.result =~ "[REDACTED]"
       assert obs.result =~ "visible"
-      refute obs.result =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+      refute obs.result =~ "aaaaaaaaaaaaaaaa"
+    end
+
+    test "conversation tool-call observation args are redacted before persistence" do
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{
+             tool_calls: [
+               %{id: "call_echo", gate: "echo", args: %{text: "OPENAI_API_KEY=#{@secret}"}},
+               %{id: "call_done", gate: "done", args: %{answer: "ok"}}
+             ]
+           }
+         ])}
+
+      {:ok, cantrip} =
+        Cantrip.new(
+          llm: llm,
+          circle: %{type: :conversation, gates: [:echo, :done], wards: [%{max_turns: 1}]}
+        )
+
+      {:ok, "ok", _next, loom, _meta} = Cantrip.cast(cantrip, "call echo")
+
+      echo_obs =
+        loom.turns
+        |> Enum.flat_map(& &1.observation)
+        |> Enum.find(&(&1.gate == "echo"))
+
+      assert echo_obs.args.text =~ "[REDACTED]"
+      refute echo_obs.args.text =~ "aaaaaaaaaaaaaaaa"
+    end
+
+    test "malformed tool-call raw args are redacted before observation storage" do
+      circle =
+        Cantrip.Circle.new(%{type: :conversation, gates: [:echo], wards: [%{max_turns: 1}]})
+
+      %{observations: [obs]} =
+        Cantrip.Gate.Executor.execute_tool_calls(circle, [
+          %{
+            id: "bad_args",
+            gate: "echo",
+            args: %{},
+            args_decode_error: "invalid json",
+            args_raw: ~s({"text":"OPENAI_API_KEY=#{@secret}"})
+          }
+        ])
+
+      assert obs.args_raw =~ "[REDACTED]"
+      refute obs.args_raw =~ "aaaaaaaaaaaaaaaa"
+    end
+
+    test "port code-medium observation args are redacted before persistence" do
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s[echo.(%{text: "OPENAI_API_KEY=#{@secret}"}); done.("ok")]}
+         ])}
+
+      {:ok, cantrip} =
+        Cantrip.new(
+          llm: llm,
+          circle: %{type: :code, gates: [:echo, :done], wards: [%{max_turns: 1}]}
+        )
+
+      {:ok, "ok", _next, loom, _meta} = Cantrip.cast(cantrip, "call echo")
+
+      echo_obs =
+        loom.turns
+        |> Enum.flat_map(& &1.observation)
+        |> Enum.find(&(&1.gate == "echo"))
+
+      assert echo_obs.args.text =~ "[REDACTED]"
+      refute echo_obs.args.text =~ "aaaaaaaaaaaaaaaa"
+    end
+
+    test "port code-medium child gate observations redact compile args before persistence" do
+      module_name = "Elixir.CantripUserRedact#{System.unique_integer([:positive])}"
+
+      source = """
+      defmodule #{module_name} do
+        def value, do: "OPENAI_API_KEY=#{@secret}"
+      end
+      """
+
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{
+             code: """
+             compile_and_load.(%{module: #{inspect(module_name)}, source: #{inspect(source)}})
+             done.("ok")
+             """
+           }
+         ])}
+
+      {:ok, cantrip} =
+        Cantrip.new(
+          llm: llm,
+          circle: %{
+            type: :code,
+            gates: [:compile_and_load, :done],
+            wards: [%{max_turns: 1}, %{allow_compile_modules: [module_name]}]
+          }
+        )
+
+      {:ok, "ok", _next, loom, _meta} = Cantrip.cast(cantrip, "compile")
+
+      compile_obs =
+        loom.turns
+        |> Enum.flat_map(& &1.observation)
+        |> Enum.find(&(&1.gate == "compile_and_load"))
+
+      assert compile_obs.args.source =~ "[REDACTED]"
+      refute compile_obs.args.source =~ "aaaaaaaaaaaaaaaa"
     end
 
     test "unrestricted code-medium exception observations are redacted" do
@@ -236,7 +369,7 @@ defmodule Cantrip.RedactTest do
       code_error = Enum.find(observations, &(&1.gate == "code" and &1.is_error))
 
       assert code_error.result =~ "[REDACTED]"
-      refute code_error.result =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+      refute code_error.result =~ "aaaaaaaaaaaaaaaa"
     end
 
     test "ACP wire stringification redacts credential-shaped content" do
@@ -244,7 +377,7 @@ defmodule Cantrip.RedactTest do
 
       assert text =~ "[REDACTED]"
       assert text =~ "visible"
-      refute text =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+      refute text =~ "aaaaaaaaaaaaaaaa"
     end
 
     test "ACP runtime prompt errors redact provider error reasons" do
@@ -260,7 +393,7 @@ defmodule Cantrip.RedactTest do
                Cantrip.ACP.Runtime.Familiar.prompt(session, "trigger provider error")
 
       assert message =~ "[REDACTED]"
-      refute message =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+      refute message =~ "aaaaaaaaaaaaaaaa"
     end
 
     test "port code-medium exceptions are redacted and do not return stacktraces" do
@@ -283,7 +416,7 @@ defmodule Cantrip.RedactTest do
 
       assert code_error
       assert code_error.result =~ "[REDACTED]"
-      refute code_error.result =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+      refute code_error.result =~ "aaaaaaaaaaaaaaaa"
       refute code_error.result =~ "lib/cantrip/medium/code/port_child.ex"
     end
   end

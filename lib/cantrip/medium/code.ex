@@ -67,7 +67,7 @@ defmodule Cantrip.Medium.Code do
           :port -> eval_port(code, state, runtime)
           :port_unrestricted -> eval_port(code, state, runtime)
           :unrestricted -> eval_unrestricted(code, state, runtime)
-          _ -> eval_unrestricted(code, state, runtime)
+          other -> unsupported_sandbox(other, state)
         end
 
       next_state =
@@ -81,6 +81,11 @@ defmodule Cantrip.Medium.Code do
 
   def execute(_code, state, _runtime) do
     {:error, state, [%{gate: "code", result: "code utterance must be a string", is_error: true}]}
+  end
+
+  defp unsupported_sandbox(value, state) do
+    msg = "unsupported code sandbox: #{Cantrip.SafeFormat.inspect(value)}"
+    {state, [%{gate: "code", result: msg, is_error: true}], nil, false}
   end
 
   @impl true
@@ -415,7 +420,10 @@ defmodule Cantrip.Medium.Code do
                     true -> opts
                   end
 
-                observation = execute_gate.(gate_name, args) |> Map.put(:args, args)
+                observation =
+                  execute_gate.(gate_name, args)
+                  |> Map.put(:args, Cantrip.Redact.term(args))
+
                 push_observation(runtime.observation_collector, observation)
                 observation.result
               end

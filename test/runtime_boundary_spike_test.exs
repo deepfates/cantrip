@@ -111,6 +111,36 @@ defmodule CantripRuntimeBoundarySpikeTest do
       assert Enum.map(observations, & &1.gate) == ["echo", "done"]
     end
 
+    test "code adapter fails closed for unknown sandbox values" do
+      circle =
+        Cantrip.Circle.new(%{
+          type: :code,
+          gates: [:done],
+          wards: [%{max_turns: 3}, %{sandbox: :surprise}]
+        })
+
+      runtime = %{
+        circle: circle,
+        loom: nil,
+        execute_gate: fn gate, args -> Cantrip.Gate.execute(circle, gate, args) end
+      }
+
+      {:ok, _state, observations, result, terminated?} =
+        Cantrip.Medium.Code.execute(
+          ~s[Process.put(:unknown_sandbox_executed, true)],
+          %{},
+          runtime
+        )
+
+      assert [%{gate: "code", is_error: true, result: message}] = observations
+      assert message =~ "unsupported code sandbox"
+      refute terminated?
+      assert result == nil
+      refute Process.get(:unknown_sandbox_executed)
+    after
+      Process.delete(:unknown_sandbox_executed)
+    end
+
     test "bash adapter delegates to existing bash medium" do
       circle =
         Cantrip.Circle.new(%{

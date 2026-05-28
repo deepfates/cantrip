@@ -32,13 +32,13 @@ defmodule Cantrip.Gate.Executor do
                 result: malformed_args_message(error),
                 is_error: true
               }
-              |> maybe_put(:args_raw, args_raw, is_binary(args_raw))
+              |> maybe_put_redacted(:args_raw, args_raw, is_binary(args_raw))
 
             _ ->
               execute_gate.(circle, gate, args)
           end
           |> Map.put(:tool_call_id, tool_call_id)
-          |> Map.put(:args, args)
+          |> Map.put(:args, Cantrip.Redact.term(args))
 
         emit_gate_stop(entity_id, trace_id, gate, gate_start, observation)
 
@@ -87,6 +87,8 @@ defmodule Cantrip.Gate.Executor do
     "malformed tool-call arguments: #{error}"
   end
 
-  defp maybe_put(map, key, value, true), do: Map.put(map, key, value)
-  defp maybe_put(map, _key, _value, false), do: map
+  defp maybe_put_redacted(map, key, value, true),
+    do: Map.put(map, key, Cantrip.Redact.term(value))
+
+  defp maybe_put_redacted(map, _key, _value, false), do: map
 end

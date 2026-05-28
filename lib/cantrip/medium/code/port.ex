@@ -183,7 +183,7 @@ defmodule Cantrip.Medium.Code.Port do
             end
 
           {:ok, {:gate_observation, observation}} ->
-            observation = with_tool_call_id(observation)
+            observation = sanitize_observation(observation)
             await_eval(session, ref, runtime, state, observations ++ [observation], timeout)
 
           {:ok, {:telemetry, event, measurements, metadata}} ->
@@ -193,6 +193,7 @@ defmodule Cantrip.Medium.Code.Port do
           {:ok, {:api_call, call_ref, function, args}} ->
             function = normalize_api_function(function)
             {reply, state, api_observations} = execute_api_call(function, args, runtime, state)
+            api_observations = Enum.map(api_observations, &sanitize_observation/1)
             send_frame(session.port, {:api_result, call_ref, reply})
             await_eval(session, ref, runtime, state, observations ++ api_observations, timeout)
 
@@ -261,7 +262,7 @@ defmodule Cantrip.Medium.Code.Port do
 
     observation
     |> Map.put(:args, args)
-    |> with_tool_call_id()
+    |> sanitize_observation()
   end
 
   defp normalize_args(args) when is_map(args), do: args
@@ -288,7 +289,7 @@ defmodule Cantrip.Medium.Code.Port do
            is_error: true,
            args: args
          }
-         |> with_tool_call_id()}
+         |> sanitize_observation()}
     end
   end
 
@@ -473,10 +474,24 @@ defmodule Cantrip.Medium.Code.Port do
     ArgumentError -> value
   end
 
-  defp with_tool_call_id(observation) do
-    Map.put_new_lazy(observation, :tool_call_id, fn ->
+  defp sanitize_observation(observation) when is_map(observation) do
+    observation
+    |> redact_observation_field(:args)
+    |> redact_observation_field("args")
+    |> redact_observation_field(:args_raw)
+    |> redact_observation_field("args_raw")
+    |> Map.put_new_lazy(:tool_call_id, fn ->
       "call_" <> Integer.to_string(System.unique_integer([:positive]))
     end)
+  end
+
+  defp sanitize_observation(other), do: other
+
+  defp redact_observation_field(observation, key) do
+    case Map.fetch(observation, key) do
+      {:ok, value} -> Map.put(observation, key, Cantrip.Redact.term(value))
+      :error -> observation
+    end
   end
 
   defp send_frame(port, term), do: Port.command(port, :erlang.term_to_binary(term))

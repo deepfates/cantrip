@@ -52,6 +52,48 @@ defmodule Cantrip.Redact do
 
   def scan(value), do: value
 
+  @doc """
+  Recursively redact credential-shaped substrings inside common Elixir terms.
+
+  Unlike `scan/1`, which intentionally only operates on binaries, this is for
+  persistence and observation boundaries where maps/lists may carry user or
+  model-provided arguments. Lists, keyword lists, maps, tuples, and structs are
+  traversed recursively. Structs are persisted as sanitized plain maps with a
+  `:__struct__` marker instead of being reconstructed, because observation
+  storage should preserve inspectable shape without preserving executable type
+  semantics.
+  """
+  @spec term(term()) :: term()
+  def term(value) when is_binary(value), do: scan(value)
+
+  def term(value) when is_list(value) do
+    if Keyword.keyword?(value) do
+      Enum.map(value, fn {key, item} -> {key, term(item)} end)
+    else
+      Enum.map(value, &term/1)
+    end
+  end
+
+  def term(value) when is_map(value) and not is_struct(value) do
+    Map.new(value, fn {key, item} -> {key, term(item)} end)
+  end
+
+  def term(%{__struct__: struct} = value) do
+    value
+    |> Map.from_struct()
+    |> term()
+    |> Map.put(:__struct__, struct)
+  end
+
+  def term(value) when is_tuple(value) do
+    value
+    |> Tuple.to_list()
+    |> Enum.map(&term/1)
+    |> List.to_tuple()
+  end
+
+  def term(value), do: value
+
   defp emit_redaction_hit do
     case Cantrip.Telemetry.current_context() do
       %{entity_id: entity_id, trace_id: trace_id} ->

@@ -4,6 +4,23 @@
 
 Nothing yet.
 
+## 1.3.1 - 2026-05-28
+
+Patch release for runtime/safety findings surfaced immediately after the
+`1.3.0` tag.
+
+**Fixes:**
+
+- Unknown code-medium sandbox ward values now fail closed with a structured
+  `code` error observation instead of falling through to host-BEAM
+  unrestricted eval. Regression coverage proves the submitted code does not
+  execute under an unsupported sandbox value. Evidence: issue #93.
+- Observation arguments are now recursively redacted before they can be stored
+  on loom observations. Conversation tool-call args, malformed `args_raw`, and
+  port code-medium gate args are covered so secret-shaped values do not persist
+  through observation metadata while non-secret argument shape remains useful.
+  Evidence: issue #92.
+
 ## 1.3.0 - 2026-05-28
 
 Post-v1.2 stabilization release. This drains the hardening work that landed
