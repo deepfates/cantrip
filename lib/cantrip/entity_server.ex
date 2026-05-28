@@ -309,9 +309,9 @@ defmodule Cantrip.EntityServer do
 
   defp maybe_restore_stream_opts_from_running(
          %{
-          running: %{
-            restore_stream_to: restore_stream_to,
-            restore_stream_barrier?: restore_stream_barrier?
+           running: %{
+             restore_stream_to: restore_stream_to,
+             restore_stream_barrier?: restore_stream_barrier?
            }
          } = state
        ) do
