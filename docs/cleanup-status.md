@@ -20,9 +20,9 @@ baseline.
 
 **13 of 16 starting issues closed with proof. 4 new issues filed: #32 Pass 10
 versioning, #34 Pass 5 follow-up, #35 compile_and_load policy gaps, #36
-cookie overwrite. #11, #34, #35, and #36 are closed with proof. 3
-feature-roadmap issues labeled `feature` and kept open. 1 active cleanup issue
-remains (#32).**
+cookie overwrite. #11, #32, #34, #35, and #36 are closed with proof. 3
+feature-roadmap issues labeled `feature` and kept open. No active cleanup
+issues remain.**
 
 The post-d12875c cold review caught two reward-hacking patterns: Pass 5 was
 marked "done" while ~30 boundary inspect/Exception.message bypass channels
@@ -52,7 +52,7 @@ holds — those are adjacent concerns, not a reopen.
 | 27 | Parser-aware code-medium rewriting | **closed** | `add_dot_calls/2` now AST-based. Evidence: `test/code_medium_ergonomics_test.exs`. Commit `1d4e718`. |
 | 30 | Malformed-JSON tool-call args | **closed** | `args_raw`+`args_decode_error` plumbing; executor emits structured error. Evidence: `test/req_llm_adapter_test.exs:106+`, `:136+`. |
 | 31 | Mnesia create_schema error swallow | **closed** | `ensure_schema/0` propagates root cause. Evidence: `test/loom_storage_test.exs:20+`. |
-| 32 | Schema version for durable structs + JSONL | **open** | Filed post-Pass-0-scan. 8 defstructs lack version field; JSONL has no format header. Forward-prep, not active bug. |
+| 32 | Schema version for durable structs + JSONL | **closed** | Durable/runtime structs now carry `schema_version: 1`; new JSONL loom files start with `{"format":"cantrip-loom","version":1}`; loader treats no-header files as legacy v1. Evidence: `test/schema_version_test.exs` covers struct versions; `test/loom_jsonl_persistence_test.exs` covers header creation and legacy no-header loading. Commit `d53b944`. |
 | 34 | Pass 5: complete SafeFormat coverage at remaining boundary channels | **closed** | Boundary `inspect(...)` / `Exception.message(...)` sites now route through `Cantrip.SafeFormat` across gates, code-medium observations/protocol frames, ACP replies, CLI output, loom storage, child-cast observations/events, and provider adapter errors. Evidence: `test/redact_test.exs` covers non-binary gate output, unrestricted code-medium exceptions, ACP wire stringification, ACP runtime provider errors, JSONL persistence fallback, and port-medium exceptions; source scan shows no remaining raw boundary bypasses outside a static prompt example. Commit `4905898`. |
 | 35 | compile_and_load: reject framework module names + handle deprecated allow_compile_namespaces | **closed** | `compile_and_load` now rejects attempts to hot-load modules shipped by the `:cantrip` application even when explicitly allowlisted, and deprecated `allow_compile_namespaces` wards fail loudly. Docs now describe exact `allow_compile_modules` semantics. Evidence: `test/hot_reload_test.exs` covers both policy gaps; focused tests and `mix verify` passed after rebase. Commit `7423ff0`. |
 | 36 | Familiar cookie validation silently overwrites hand-edited cookies | **closed** | Workspace cookie policy now fails loud on invalid existing cookies and leaves the file unchanged. Evidence: `test/mix_cantrip_familiar_test.exs` covers generation with mode `0600`, reuse of valid existing cookies, and fail-loud/no-overwrite behavior for invalid hand-edited cookies. Commit `e013e85`. |
@@ -79,7 +79,7 @@ holds — those are adjacent concerns, not a reopen.
 | 7 | OTP lifecycle / supervision | **done-for-tracked-issues** | #24 moved long-running entity episodes out of `handle_call/3` into a supervised, monitored per-entity runner. |
 | 8 | Mailbox / backpressure | **clean** | Pass 0 scan: 0 `GenServer.cast`, 0 `handle_info`, raw `send/` only within supervised public API + port-child protocol. |
 | 9 | GenServer functional-core cleanup | **done-for-tracked-issues** | #24 moved the main blocking workflow out of `EntityServer.handle_call/3` while keeping lifecycle and coordination in the GenServer. |
-| 10 | Serialization / protocol / versioning | **issue-filed** | #32 captures the gap. Forward-prep work. |
+| 10 | Serialization / protocol / versioning | **done** | #32 closed with proof. Durable structs and JSONL loom format are versioned; no-header JSONL files load as legacy v1. |
 | 11 | Persistence / state backend cleanup | **done** | #31 closed; Mnesia restart persistence verified. |
 | 12 | Package / dependency boundaries | **done** | #3 closed (port surface proxies public API; Dune deliberate variant). |
 | 13 | Observability / context propagation | **done** | #11 closed with proof. `docs/observability.md` and `Cantrip.Telemetry.events/0` are aligned and tested. |
@@ -90,13 +90,13 @@ holds — those are adjacent concerns, not a reopen.
 
 ## What's Left
 
-One open cleanup item:
-
-1. **#32 schema versioning** — forward-prep, not blocking anything. Add `schema_version: 1` to durable structs + JSONL header. Codex lane when scheduled.
+No open cleanup items remain.
 
 Plus three feature-roadmap items (`feature` label) that intentionally aren't blocking the cleanup-done milestone: #8, #9, #10.
 
-The cleanup phase reaches "done" when #32 lands and `mix verify` stays green. Then we ship a v1.1.0 from `feat/comprehensive-cleanup` and the open issue tracker has only the three intentionally-deferred feature items.
+The cleanup phase is done when final PR CI is green. At that point we can ship
+v1.1.0 from `feat/comprehensive-cleanup`; the open issue tracker should contain
+only the three intentionally-deferred feature items.
 
 ---
 
