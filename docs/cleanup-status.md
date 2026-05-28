@@ -29,9 +29,9 @@ baseline.
 | 20 | Sandbox roots for filesystem gates | **ready-to-close** | Pre-v1 issue cites a `read` gate that no longer exists. `read_file`/`list_dir`/`search` route through `Cantrip.Gate.Path.validate/2`. Evidence: `test/gate_validation_test.exs:49+` (missing root, all three gates), `:78+` (path traversal, all three). Commit `d12875c`. |
 | 21 | Avoid unbounded atom creation from external strings | **partial** | `d12875c` removed unbounded atom creation at parent-context + gate-binding sites. `bc2bf01` tightened JSONL restore, Familiar table/node atoms, and cookie atoms. **Remaining:** `compile_and_load` exact allowlists are bounded, but namespace authorization can still mint new module atoms under an allowed prefix. Need deliberate hot-load policy before close. |
 | 22 | Reject unknown medium types | **ready-to-close** | Validation added in `lib/cantrip/circle.ex` via `validate_known_medium/1`; `80287b7` restored `normalize_type/1` to a bounded codomain (`:conversation | :code | :bash | :unknown`). Evidence: `test/divergence_fixes_test.exs`. |
-| 23 | call_entity_batch parallel contract | **ready-to-close-with-evidence-needed** | Codex pass-1 verified `Cantrip.cast_batch/2` uses `Task.async_stream/3` unconditionally in `lib/cantrip.ex:501-513` with ordered results. **Need:** regression test in `test/composition_test.exs` pinning request-order with two heterogeneous children. Phase 2. |
+| 23 | call_entity_batch parallel contract | **ready-to-close** | `Cantrip.cast_batch/2` uses `Task.async_stream/3` with `ordered: true`. Evidence: `test/composition_test.exs` pins request order, child-turn grafting, and a two-child concurrency probe where both heterogeneous children must enter `query/2` before either is released. |
 | 24 | Move long-running entity runs out of blocking GenServer calls | **live, design-phase** | Codex pass-2 confirmed `EntityServer.run/1` etc. still inside `GenServer.call(..., :infinity)`. Provider/medium work blocks the mailbox. Phase 6. |
-| 25 | Multi-system messages Anthropic/Gemini | **ready-to-close-with-evidence-needed** | Codex pass-1 verified `req_llm` 1.12 preserves all system messages for Anthropic (`encode_system_messages/1`) and Gemini (`split_messages_for_gemini/2`). **Need:** regression test fixturing multi-system Context, asserting messages survive to provider encoder. Phase 2. |
+| 25 | Multi-system messages Anthropic/Gemini | **ready-to-close** | Evidence: `test/req_llm_adapter_test.exs` fixtures a multi-system-message `ReqLLM.Context` and asserts Anthropic preserves both system blocks while Gemini preserves both in `systemInstruction`. |
 | 26 | Refresh README examples | **closed-with-proof** | Specific examples in issue body are no longer stale (verified). Drift now CI-detectable via `test/readme_examples_test.exs` (5 tests, green). Commit `05363e6`. Pending: close on GitHub with comment. |
 | 27 | Replace code-medium bare function rewriting with parser-aware handling | **live** | `add_dot_calls/2` at `lib/cantrip/medium/code.ex:403` still does regex source rewriting. Lower priority — current implementation works, just brittle. Phase 7. |
 | 30 | Surface malformed-JSON tool-call arguments | **ready-to-close** | Decode failure preserved as `args_raw` + `args_decode_error` on tool_call; executor emits structured error observation without invoking target gate. Evidence: `test/req_llm_adapter_test.exs` executor regression. Commit `d12875c`; blocker seam fixed in `80287b7` by making `normalize_response/1` private again. |
@@ -55,7 +55,7 @@ baseline.
 |---:|---|---|---|
 | 0 | Baseline & inventory | **done** | v1.0.0 shipped with `mix verify` clean. This doc + the open issue tracker IS the inventory. |
 | 1 | Transformation safety | **partial** | #27 covers the code-medium regex rewriter. No other regex-based source transforms found. Phase 7. |
-| 2 | Boundary / DTO integrity | **in-progress** | #22 (unknown medium) and #30 (malformed args) are ready-to-close after `d12875c` + `80287b7`. #25 still needs an evidence test. |
+| 2 | Boundary / DTO integrity | **ready-to-close-for-tracked-issues** | #22 and #30 are ready-to-close after `d12875c` + `80287b7`; #25 now has provider-encoding evidence in `test/req_llm_adapter_test.exs`. |
 | 3 | Atom safety | **partial** | `d12875c` covers parent-context + gate-binding; `bc2bf01` covers JSONL replay, Familiar operational atoms, and persisted cookie shape. Remaining policy question: broad `compile_and_load` namespace authorization. |
 | 4 | Configuration / ambient authority | **scan-needed** | No open issue. Need to scan `Application.get_env`/`System.get_env` usage in non-boot paths. Likely scan-clean given Cantrip's explicit-injection idiom. |
 | 5 | Secret redaction & error sanitization | **done-for-current-findings** | `075878a` added `Cantrip.SafeFormat` and wired redaction into adapter errors, JSONL inspect fallbacks, and port code-medium error surfaces. Evidence: `test/redact_test.exs`; `mix verify` green. |
@@ -82,7 +82,7 @@ The 8-phase critical path from current state to 0 issues + clean codebase
 | Phase | Scope | Status |
 |---:|---|---|
 | 1 | Wrap `d12875c` properly: fix 4 cold-review blockers, close #20/#22/#26/#30/#31 with proof | **blockers-fixed** (`80287b7`); GitHub close-with-proof comments still pending |
-| 2 | Wrap pre-v1 verified-stale items: add regression tests + close #23 and #25 | **pending** |
+| 2 | Wrap pre-v1 verified-stale items: add regression tests + close #23 and #25 | **evidence-added**; GitHub close-with-proof comments still pending |
 | 3 | Pass 5 secret redaction coverage | **complete for current findings** (`075878a`) |
 | 4 | #21 remaining atom-creation sites | **partial** (`bc2bf01` landed; compile namespace policy remains) |
 | 5 | #3 Dune-parity decision (board question) | **pending — needs board input** |

@@ -173,6 +173,47 @@ defmodule ReqLLMAdapterTest do
 
       assert {:error, _error, _state} = Adapter.query(state, request)
     end
+
+    test "Anthropic provider encoding preserves multiple system messages" do
+      context =
+        ReqLLM.Context.new([
+          ReqLLM.Context.system("first instruction"),
+          ReqLLM.Context.system("second instruction"),
+          ReqLLM.Context.user("hello")
+        ])
+
+      request = ReqLLM.Providers.Anthropic.Context.encode_request(context, "claude-test")
+
+      assert request.system == [
+               %{type: "text", text: "first instruction"},
+               %{type: "text", text: "second instruction"}
+             ]
+
+      assert request.messages == [%{role: "user", content: "hello"}]
+    end
+
+    test "Gemini provider encoding preserves multiple system messages" do
+      context =
+        ReqLLM.Context.new([
+          ReqLLM.Context.system("first instruction"),
+          ReqLLM.Context.system("second instruction"),
+          ReqLLM.Context.user("hello")
+        ])
+
+      {:ok, request} =
+        ReqLLM.Providers.Google.prepare_request(:chat, "google:gemini-2.5-flash", context,
+          api_key: "test"
+        )
+
+      request = ReqLLM.Providers.Google.encode_body(request)
+      body = Jason.decode!(request.body)
+
+      assert body["systemInstruction"] == %{
+               "parts" => [%{"text" => "first instruction\n\nsecond instruction"}]
+             }
+
+      assert body["contents"] == [%{"role" => "user", "parts" => [%{"text" => "hello"}]}]
+    end
   end
 
   describe "query/2 streaming mode" do

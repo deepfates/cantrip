@@ -3,6 +3,23 @@ defmodule Cantrip.CompositionTest do
 
   alias Cantrip.FakeLLM
 
+  defmodule BlockingLLM do
+    @behaviour Cantrip.LLM
+
+    @impl true
+    def query(%{notify_pid: notify_pid, label: label, answer: answer} = state, _request) do
+      send(notify_pid, {:cast_batch_child_started, label, self()})
+
+      receive do
+        {:release_cast_batch_child, ^label} ->
+          {:ok, %{tool_calls: [%{gate: "done", args: %{answer: answer}}]}, state}
+      after
+        1_000 ->
+          {:error, %{message: "child #{label} was not released"}, state}
+      end
+    end
+  end
+
   test "child cantrip composes through public new/cast API" do
     child_llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("child-ok")]}])}
 
@@ -70,6 +87,52 @@ defmodule Cantrip.CompositionTest do
     assert length(loom.turns) >= 4
   end
 
+  test "cast_batch starts heterogeneous children in parallel while preserving request order" do
+    test_pid = self()
+
+    coordinator =
+      spawn(fn ->
+        started =
+          Enum.reduce_while(1..2, [], fn _index, acc ->
+            receive do
+              {:cast_batch_child_started, label, pid} ->
+                {:cont, [{label, pid} | acc]}
+            after
+              500 ->
+                send(test_pid, {:cast_batch_parallel_probe_timeout, Enum.map(acc, &elem(&1, 0))})
+                {:halt, acc}
+            end
+          end)
+
+        if length(started) == 2 do
+          send(test_pid, {:cast_batch_children_started, Enum.map(started, &elem(&1, 0))})
+        end
+
+        Enum.each(started, fn {label, pid} ->
+          send(pid, {:release_cast_batch_child, label})
+        end)
+      end)
+
+    left = blocking_child(coordinator, :left, "slow-left")
+    right = blocking_child(coordinator, :right, "fast-right")
+
+    assert {:ok, ["slow-left", "fast-right"], _children, _looms, %{count: 2}} =
+             Cantrip.cast_batch(
+               [
+                 %{cantrip: left, intent: "left work"},
+                 %{cantrip: right, intent: "right work"}
+               ],
+               timeout: 1_500
+             )
+
+    assert_receive {:cast_batch_children_started, labels}, 100
+    assert Enum.sort(labels) == [:left, :right]
+
+    refute_receive {:cast_batch_parallel_probe_timeout, _started}, 0
+
+    refute Process.alive?(coordinator)
+  end
+
   test "child can use gates absent from parent when constructed explicitly" do
     child_llm = {FakeLLM, FakeLLM.new([%{code: ~s[text = echo.("child-only")\ndone.(text)]}])}
 
@@ -128,5 +191,17 @@ defmodule Cantrip.CompositionTest do
       )
 
     assert {:ok, false, _parent, _loom, _meta} = Cantrip.cast(parent, "delegate")
+  end
+
+  defp blocking_child(notify_pid, label, answer) do
+    llm = {BlockingLLM, %{notify_pid: notify_pid, label: label, answer: answer}}
+
+    {:ok, child} =
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 1}]}
+      )
+
+    child
   end
 end
