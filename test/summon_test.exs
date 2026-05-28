@@ -3,6 +3,24 @@ defmodule Cantrip.SummonTest do
 
   alias Cantrip.FakeLLM
 
+  defmodule BlockingLLM do
+    @behaviour Cantrip.LLM
+
+    @impl true
+    def query(%{test_pid: test_pid} = state, request) do
+      content = request.messages |> List.last() |> Map.fetch!(:content)
+      send(test_pid, {:blocking_llm_started, self(), content})
+
+      receive do
+        {:release_blocking_llm, ^content} ->
+          {:ok, %{tool_calls: [%{gate: "done", args: %{answer: "released:" <> content}}]}, state}
+      after
+        1_000 ->
+          {:error, %{message: "blocking llm was not released"}, state}
+      end
+    end
+  end
+
   test "summon/1 creates entity without running, send/2 runs first episode" do
     llm =
       {FakeLLM,
@@ -105,9 +123,42 @@ defmodule Cantrip.SummonTest do
     {:ok, pid, result1, _cantrip, _loom, _meta} = Cantrip.summon(cantrip, "set x")
     assert result1 == "42"
 
+    state_after_first = :sys.get_state(pid)
+    first_port = state_after_first.code_state.port_session.port
+    assert is_port(first_port)
+
     # Second intent can access x from first cast
     {:ok, result2, _cantrip, _loom, _meta} = Cantrip.send(pid, "use x")
     assert result2 == "43"
+
+    state_after_second = :sys.get_state(pid)
+    assert state_after_second.code_state.port_session.port == first_port
+  end
+
+  test "persistent entity mailbox stays responsive while an episode is running" do
+    llm = {BlockingLLM, %{test_pid: self()}}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 3}]}
+      )
+
+    {:ok, pid} = Cantrip.summon(cantrip)
+
+    running = Task.async(fn -> Cantrip.send(pid, "slow") end)
+
+    assert_receive {:blocking_llm_started, query_pid, "slow"}, 200
+
+    started_at = System.monotonic_time(:millisecond)
+    assert {:error, "entity is already running", _cantrip} = Cantrip.send(pid, "second")
+    elapsed = System.monotonic_time(:millisecond) - started_at
+
+    assert elapsed < 200,
+           "second send should be rejected by the EntityServer mailbox, not wait for provider work"
+
+    send(query_pid, {:release_blocking_llm, "slow"})
+    assert {:ok, "released:slow", _cantrip, _loom, _meta} = Task.await(running, 500)
   end
 
   test "send preserves the terminating turn's assistant message in state.messages" do

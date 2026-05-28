@@ -29,6 +29,8 @@ defmodule Cantrip.EntityServer do
             code_state: %{},
             stream_to: nil,
             stream_barrier?: false,
+            runner: nil,
+            running: nil,
             # The summary text from this turn's fold (if folding fired
             # in `prepare_request`). Threaded into the medium's runtime
             # so the entity can read it as a `folded_summary` binding
@@ -89,60 +91,84 @@ defmodule Cantrip.EntityServer do
       %{entity_id: entity_id, intent: intent}
     )
 
-    {:ok,
-     %__MODULE__{
-       cantrip: cantrip,
-       entity_id: entity_id,
-       messages: messages,
-       lazy: lazy and is_nil(intent),
-       loom: loom,
-       turns: turns,
-       depth: depth,
-       code_state: code_state,
-       stream_to: stream_to,
-       stream_barrier?: stream_barrier?,
-       cancel_on_parent: cancel_on_parent
-     }}
-  end
-
-  @impl true
-  def handle_call(:run, _from, state) do
-    case run_loop(state) do
-      {:error, reason, next_state} ->
-        emit_entity_stop(next_state, :error)
-        await_stream_barrier(next_state)
-        reply = {:error, reason, next_state.cantrip}
-        {:stop, :normal, reply, next_state}
-
-      {result, next_state, meta} ->
-        stop_reason = if meta[:truncated], do: :truncated, else: :done
-        emit_entity_stop(next_state, stop_reason)
-        await_stream_barrier(next_state)
-        reply = {:ok, result, next_state.cantrip, next_state.loom, meta}
-        {:stop, :normal, reply, next_state}
+    with {:ok, runner} <- start_runner() do
+      {:ok,
+       %__MODULE__{
+         cantrip: cantrip,
+         entity_id: entity_id,
+         messages: messages,
+         lazy: lazy and is_nil(intent),
+         loom: loom,
+         turns: turns,
+         depth: depth,
+         code_state: code_state,
+         stream_to: stream_to,
+         stream_barrier?: stream_barrier?,
+         cancel_on_parent: cancel_on_parent,
+         runner: runner
+       }}
     end
   end
 
   @impl true
-  def handle_call(:run_persistent, _from, state) do
-    case run_loop(state) do
-      {:error, reason, next_state} ->
-        emit_entity_stop(next_state, :error)
-        await_stream_barrier(next_state)
-        reply = {:error, reason, next_state.cantrip}
-        {:reply, reply, next_state}
+  def handle_call(:run, from, state) do
+    start_episode(state, from, :run, stop?: true)
+  end
 
-      {result, next_state, meta} ->
-        stop_reason = if meta[:truncated], do: :truncated, else: :done
-        emit_entity_stop(next_state, stop_reason)
-        await_stream_barrier(next_state)
-        reply = {:ok, result, next_state.cantrip, next_state.loom, meta}
-        {:reply, reply, next_state}
+  @impl true
+  def handle_call(:run_persistent, from, state) do
+    start_episode(state, from, :run_persistent, stop?: false)
+  end
+
+  @impl true
+  def handle_call({:send_intent, intent, opts}, from, state) do
+    if state.running do
+      {:reply, busy_reply(state), state}
+    else
+      start_send_intent_episode(state, from, intent, opts)
     end
   end
 
   @impl true
-  def handle_call({:send_intent, intent, opts}, _from, state) do
+  def handle_info(
+        {:entity_episode_result, ref, {reply, final_state, stop?}},
+        %{running: %{ref: ref, from: from}, runner: runner}
+      ) do
+    GenServer.reply(from, reply)
+
+    final_state = %{final_state | running: nil, runner: runner}
+
+    if stop? do
+      {:stop, :normal, final_state}
+    else
+      {:noreply, final_state}
+    end
+  end
+
+  def handle_info(
+        {:DOWN, monitor_ref, :process, pid, reason},
+        %{runner: %{pid: pid, monitor_ref: monitor_ref}} = state
+      ) do
+    state =
+      state
+      |> maybe_reply_runner_down(reason)
+      |> snapshot_runner_owned_state()
+
+    case start_runner() do
+      {:ok, runner} -> {:noreply, %{state | runner: runner, running: nil}}
+      {:error, _reason} -> {:stop, {:runner_down, reason}, %{state | runner: nil, running: nil}}
+    end
+  end
+
+  def handle_info(_message, state), do: {:noreply, state}
+
+  @impl true
+  def terminate(_reason, state) do
+    stop_runner(state.runner)
+    :ok
+  end
+
+  defp start_send_intent_episode(state, from, intent, opts) do
     next_messages =
       if state.lazy do
         initial_messages(state.cantrip.identity, state.cantrip.circle, intent)
@@ -175,16 +201,65 @@ defmodule Cantrip.EntityServer do
         stream_barrier?: call_stream_barrier?
     }
 
-    case run_loop(next_state) do
+    start_episode(next_state, from, :send_intent,
+      stop?: false,
+      restore_stream_to: original_stream_to,
+      restore_stream_barrier?: original_stream_barrier?
+    )
+  end
+
+  defp start_episode(%{running: nil, runner: %{pid: pid}} = state, from, kind, opts) do
+    ref = make_ref()
+
+    send(
+      pid,
+      {:run_episode, ref, self(), %{state | running: nil}, Keyword.put(opts, :kind, kind)}
+    )
+
+    {:noreply, %{state | running: %{ref: ref, from: from, kind: kind}}}
+  end
+
+  defp start_episode(%{running: nil} = state, _from, _kind, _opts),
+    do: {:reply, {:error, "entity runner is not available", state.cantrip}, state}
+
+  defp start_episode(state, _from, _kind, _opts), do: {:reply, busy_reply(state), state}
+
+  defp busy_reply(state), do: {:error, "entity is already running", state.cantrip}
+
+  defp start_runner do
+    case Task.Supervisor.start_child(Cantrip.EntityTaskSupervisor, fn -> runner_loop() end) do
+      {:ok, pid} -> {:ok, %{pid: pid, monitor_ref: Process.monitor(pid)}}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp runner_loop do
+    receive do
+      {:run_episode, ref, owner, state, opts} ->
+        send(owner, {:entity_episode_result, ref, run_episode(state, opts)})
+        runner_loop()
+
+      :stop ->
+        :ok
+    end
+  end
+
+  defp run_episode(state, opts) do
+    stop? = Keyword.fetch!(opts, :stop?)
+
+    case run_loop(state) do
       {:error, reason, final_state} ->
         emit_entity_stop(final_state, :error)
         await_stream_barrier(final_state)
 
         final_state =
-          restore_stream_opts(final_state, original_stream_to, original_stream_barrier?)
+          restore_stream_opts(
+            final_state,
+            Keyword.get(opts, :restore_stream_to, final_state.stream_to),
+            Keyword.get(opts, :restore_stream_barrier?, final_state.stream_barrier?)
+          )
 
-        reply = {:error, reason, final_state.cantrip}
-        {:reply, reply, final_state}
+        {{:error, reason, final_state.cantrip}, final_state, stop?}
 
       {result, final_state, meta} ->
         stop_reason = if meta[:truncated], do: :truncated, else: :done
@@ -192,12 +267,42 @@ defmodule Cantrip.EntityServer do
         await_stream_barrier(final_state)
 
         final_state =
-          restore_stream_opts(final_state, original_stream_to, original_stream_barrier?)
+          restore_stream_opts(
+            final_state,
+            Keyword.get(opts, :restore_stream_to, final_state.stream_to),
+            Keyword.get(opts, :restore_stream_barrier?, final_state.stream_barrier?)
+          )
 
-        reply = {:ok, result, final_state.cantrip, final_state.loom, meta}
-        {:reply, reply, final_state}
+        {{:ok, result, final_state.cantrip, final_state.loom, meta}, final_state, stop?}
     end
   end
+
+  defp maybe_reply_runner_down(%{running: %{from: from}} = state, reason) do
+    GenServer.reply(from, {:error, "entity run failed: #{inspect(reason)}", state.cantrip})
+    %{state | running: nil}
+  end
+
+  defp maybe_reply_runner_down(state, _reason), do: state
+
+  defp snapshot_runner_owned_state(
+         %{cantrip: %{circle: %{type: type}}, code_state: code_state} = state
+       )
+       when type in [:code, :bash] do
+    medium = MediumRegistry.fetch!(type)
+    %{state | code_state: apply(medium, :snapshot, [code_state])}
+  end
+
+  defp snapshot_runner_owned_state(state), do: state
+
+  defp stop_runner(%{pid: pid, monitor_ref: monitor_ref}) when is_pid(pid) do
+    Process.demonitor(monitor_ref, [:flush])
+
+    if Process.alive?(pid) do
+      send(pid, :stop)
+    end
+  end
+
+  defp stop_runner(_runner), do: :ok
 
   defp build_initial_messages(cantrip, intent, lazy) do
     cond do

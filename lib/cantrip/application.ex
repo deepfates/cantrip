@@ -14,6 +14,7 @@ defmodule Cantrip.Application do
     )
 
     children = [
+      {Task.Supervisor, name: Cantrip.EntityTaskSupervisor},
       Cantrip.EntitySupervisor
     ]
 

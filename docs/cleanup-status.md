@@ -9,18 +9,18 @@ the open set only when the underlying concern is gone and the repo contains
 evidence (passing regression test pinning the desired behavior, or a doc/
 contract change).
 
-**Sources:** the open GitHub issue tracker, the
-[Comprehensive Elixir Codebase Cleanup Guide](../comprehensive_elixir_codebase_cleanup_guide.md)
-(untracked operational reference), the v1.0.0 release commit `9638ea2` as
-the baseline.
+**Sources:** the open GitHub issue tracker, the local
+`comprehensive_elixir_codebase_cleanup_guide.md` operational reference
+(currently untracked), and the v1.0.0 release commit `9638ea2` as the
+baseline.
 
 ---
 
 ## Headline
 
-**12 of 16 starting issues closed with proof. 1 new issue filed (#32 Pass 10
-versioning). 3 feature-roadmap issues labeled `feature` and kept open. 3
-active cleanup issues remain (#11, #24, #32).**
+**13 of 16 starting issues closed with proof. 1 new issue filed (#32 Pass 10
+versioning). 3 feature-roadmap issues labeled `feature` and kept open. 2
+active cleanup issues remain (#11, #32).**
 
 ---
 
@@ -38,7 +38,7 @@ active cleanup issues remain (#11, #24, #32).**
 | 21 | Unbounded atom creation | **closed** | All paths bounded. Commits `d12875c`, `bc2bf01`, `80287b7`, `ca115b0`. |
 | 22 | Reject unknown medium types | **closed** | `validate_known_medium/1` + bounded codomain. Evidence: `test/divergence_fixes_test.exs:110`. |
 | 23 | cast_batch parallel contract | **closed** | `Task.async_stream/3` unconditional. Evidence: `test/composition_test.exs:37`, `test/readme_examples_test.exs:46+`. |
-| 24 | Long-running runs in blocking GenServer.call | **open, design-phase** | Phase 6. Provider/medium work still blocks mailbox. |
+| 24 | Long-running runs in blocking GenServer.call | **ready-to-close** | Entity episodes now run in a monitored per-entity runner and reply via `GenServer.reply/2`; concurrent sends are rejected immediately while provider work continues, and code-medium port ownership survives across persistent sends. Evidence: `test/summon_test.exs` blocks provider work, proves a second `send/2` returns busy without waiting, then releases the original episode; the code-state test also asserts the same live port session survives a follow-up send. |
 | 25 | Multi-system messages Anthropic/Gemini | **closed** | Evidence: `test/req_llm_adapter_test.exs:177` (Anthropic), `:195` (Gemini). |
 | 26 | README example drift | **closed** | Pinned by `test/readme_examples_test.exs`. Commit `05363e6`. |
 | 27 | Parser-aware code-medium rewriting | **closed** | `add_dot_calls/2` now AST-based. Evidence: `test/code_medium_ergonomics_test.exs`. Commit `1d4e718`. |
@@ -65,9 +65,9 @@ active cleanup issues remain (#11, #24, #32).**
 | 4 | Configuration / ambient authority | **clean** | Pass 0 scan: 5 hits, all in boot/config paths. No hot-path violations. |
 | 5 | Secret redaction & error sanitization | **done** | `Cantrip.SafeFormat` + wiring to adapter errors, JSONL inspect fallbacks, port code-medium error surfaces. Commit `075878a`. |
 | 6 | Unsafe deserialization / runtime eval | **clean** | Pass 0 scan: all `binary_to_term` uses `[:safe]` flag; `Code.eval_quoted` only in sandboxed port child. `compile_and_load` gated by exact-module allowlist. |
-| 7 | OTP lifecycle / supervision | **partial** | #24 is the main live defect. Bare `spawn`/`Task.start` not yet scanned. |
+| 7 | OTP lifecycle / supervision | **done-for-tracked-issues** | #24 moved long-running entity episodes out of `handle_call/3` into a supervised, monitored per-entity runner. |
 | 8 | Mailbox / backpressure | **clean** | Pass 0 scan: 0 `GenServer.cast`, 0 `handle_info`, raw `send/` only within supervised public API + port-child protocol. |
-| 9 | GenServer functional-core cleanup | **partial** | #24 covers the main offender. |
+| 9 | GenServer functional-core cleanup | **done-for-tracked-issues** | #24 moved the main blocking workflow out of `EntityServer.handle_call/3` while keeping lifecycle and coordination in the GenServer. |
 | 10 | Serialization / protocol / versioning | **issue-filed** | #32 captures the gap. Forward-prep work. |
 | 11 | Persistence / state backend cleanup | **done** | #31 closed; Mnesia restart persistence verified. |
 | 12 | Package / dependency boundaries | **done** | #3 closed (port surface proxies public API; Dune deliberate variant). |
@@ -79,11 +79,10 @@ active cleanup issues remain (#11, #24, #32).**
 
 ## What's Left
 
-Three open cleanup items, in priority order:
+Two open cleanup items, in priority order:
 
-1. **#24 OTP lifecycle** — design + implementation. The substantive remaining defect. Design analysis in flight (claude lane); implementation will be codex.
-2. **#32 schema versioning** — forward-prep, not blocking anything. Add `schema_version: 1` to durable structs + JSONL header. Codex lane when scheduled.
-3. **#11 telemetry coverage** — Pass 13 scope. Substantive design + implementation pass on its own. Lower urgency than #24/#32.
+1. **#32 schema versioning** — forward-prep, not blocking anything. Add `schema_version: 1` to durable structs + JSONL header. Codex lane when scheduled.
+2. **#11 telemetry coverage** — Pass 13 scope. Substantive design + implementation pass on its own. Lower urgency than #32.
 
 Plus three feature-roadmap items (`feature` label) that intentionally aren't blocking the cleanup-done milestone: #8, #9, #10.
 
