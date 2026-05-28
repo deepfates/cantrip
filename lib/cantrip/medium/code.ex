@@ -615,7 +615,8 @@ defmodule Cantrip.Medium.Code do
         package calls such as Cantrip.new/1, Cantrip.cast/2, and
         Cantrip.cast_batch/1 are proxied to the parent, so child cantrip
         composition remains available while LLM-written Elixir stays outside
-        the host BEAM.
+        the host BEAM. Parent-to-child casts are depth-bounded and run with
+        wards composed from the parent and child circles.
         """
 
       nil ->
@@ -626,7 +627,8 @@ defmodule Cantrip.Medium.Code do
         Public package calls such as Cantrip.new/1, Cantrip.cast/2, and
         Cantrip.cast_batch/1 are proxied to the parent, so child cantrip
         composition remains available while LLM-written Elixir stays outside
-        the host BEAM.
+        the host BEAM. Parent-to-child casts are depth-bounded and run with
+        wards composed from the parent and child circles.
         """
 
       _ ->
@@ -635,6 +637,7 @@ defmodule Cantrip.Medium.Code do
         - Cantrip.new(config) constructs a child cantrip and returns {:ok, child} or {:error, reason}
         - Cantrip.cast(child, intent) casts one child and returns {:ok, value, next_child, child_loom, meta} or {:error, reason, next_child}
         - Cantrip.cast_batch(items) casts children concurrently and returns {:ok, values, next_children, child_looms, meta} or {:error, reason}
+        Parent-to-child casts are depth-bounded and run with wards composed from the parent and child circles.
         """
     end
   end

@@ -87,6 +87,12 @@ Composition uses the public package API, not special delegation gates.
 Code-medium entities call `Cantrip.new/1`, `Cantrip.cast/3`, and
 `Cantrip.cast_batch/2` directly. Parent context supplies inherited child LLM,
 wards, root dependencies, cancellation, streaming, and loom grafting.
+Child casts are not an escape hatch around the circle: a parent checks its
+`max_depth` before any pre-built child starts, and the child runs under
+`WardPolicy.compose(parent.circle.wards, child.circle.wards)`. Numeric wards
+tighten with `min`, boolean wards such as `require_done_tool` tighten with
+`or`, and `cast_batch` uses the same path for each child while respecting the
+parent's `max_concurrent_children`.
 
 This is the RLM pattern in package form: large context lives in the medium,
 subtasks run as child cantrips, and summaries return upward. Composition is

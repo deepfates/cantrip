@@ -825,45 +825,72 @@ defmodule Cantrip do
   defp run_remote_child_cast(node, %__MODULE__{} = cantrip, intent, opts, parent_context) do
     parent_context = normalize_parent_context(parent_context)
     entity_state = Map.get(parent_context, :entity_state)
-    depth = Map.get(parent_context, :depth, 0) + 1
     record_observation? = Keyword.get(opts, :record_parent_observation?, true)
     parent_gate = Keyword.get(opts, :parent_gate, "cast")
     opts = Keyword.drop(opts, [:record_parent_observation?, :parent_gate])
 
-    cast_opts =
-      opts
-      |> Keyword.put_new(:depth, depth)
-      |> Keyword.put_new(:trace_id, Map.get(parent_context, :trace_id))
-      |> remote_safe_cast_opts()
+    case prepare_child_cast(cantrip, parent_context) do
+      {:ok, transient_cantrip, depth} ->
+        cast_opts =
+          opts
+          |> Keyword.put_new(:depth, depth)
+          |> Keyword.put_new(:trace_id, Map.get(parent_context, :trace_id))
+          |> remote_safe_cast_opts()
 
-    emit_parent_event(entity_state, {:child_start, %{depth: depth, intent: intent, node: node}})
-    emit_child_start_telemetry(parent_context, depth)
-
-    case remote_cast(node, cantrip, intent, cast_opts) do
-      {:ok, value, _next_cantrip, child_loom, _meta} = ok ->
-        emit_parent_event(entity_state, {:child_end, %{depth: depth, result: value, node: node}})
-        emit_child_stop_telemetry(parent_context, depth, :ok)
-
-        if record_observation?,
-          do:
-            push_parent_cast_observation(
-              parent_context,
-              parent_gate,
-              value,
-              false,
-              child_loom.turns
-            )
-
-        ok
-
-      {:error, reason, next_cantrip} ->
         emit_parent_event(
           entity_state,
-          {:child_end, %{depth: depth, error: Cantrip.SafeFormat.inspect(reason), node: node}}
+          {:child_start, %{depth: depth, intent: intent, node: node}}
         )
 
-        emit_child_stop_telemetry(parent_context, depth, :error)
+        emit_child_start_telemetry(parent_context, depth)
 
+        case remote_cast(node, transient_cantrip, intent, cast_opts) do
+          {:ok, value, next_cantrip, child_loom, meta} ->
+            next_cantrip = restore_child_declared_wards(cantrip, next_cantrip)
+
+            emit_parent_event(
+              entity_state,
+              {:child_end, %{depth: depth, result: value, node: node}}
+            )
+
+            emit_child_stop_telemetry(parent_context, depth, :ok)
+
+            if record_observation?,
+              do:
+                push_parent_cast_observation(
+                  parent_context,
+                  parent_gate,
+                  value,
+                  false,
+                  child_loom.turns
+                )
+
+            {:ok, value, next_cantrip, child_loom, meta}
+
+          {:error, reason, next_cantrip} ->
+            next_cantrip = restore_child_declared_wards(cantrip, next_cantrip)
+
+            emit_parent_event(
+              entity_state,
+              {:child_end, %{depth: depth, error: Cantrip.SafeFormat.inspect(reason), node: node}}
+            )
+
+            emit_child_stop_telemetry(parent_context, depth, :error)
+
+            if record_observation?,
+              do:
+                push_parent_cast_observation(
+                  parent_context,
+                  parent_gate,
+                  Cantrip.SafeFormat.inspect(reason),
+                  true,
+                  []
+                )
+
+            {:error, reason, %{next_cantrip | node: node}}
+        end
+
+      {:error, reason, next_cantrip} ->
         if record_observation?,
           do:
             push_parent_cast_observation(
@@ -874,59 +901,76 @@ defmodule Cantrip do
               []
             )
 
-        {:error, reason, %{next_cantrip | node: node}}
+        {:error, reason, next_cantrip}
     end
   end
 
   defp run_child_cast(%__MODULE__{} = cantrip, intent, opts, parent_context) do
     parent_context = normalize_parent_context(parent_context)
     entity_state = Map.get(parent_context, :entity_state)
-    depth = Map.get(parent_context, :depth, 0) + 1
     record_observation? = Keyword.get(opts, :record_parent_observation?, true)
     parent_gate = Keyword.get(opts, :parent_gate, "cast")
     opts = Keyword.drop(opts, [:record_parent_observation?, :parent_gate])
 
-    cantrip = refresh_default_child_llm(cantrip, parent_context)
+    case prepare_child_cast(cantrip, parent_context) do
+      {:ok, transient_cantrip, depth} ->
+        transient_cantrip = refresh_default_child_llm(transient_cantrip, parent_context)
 
-    cast_opts =
-      opts
-      |> Keyword.put_new(:depth, depth)
-      |> Keyword.put_new(:trace_id, Map.get(parent_context, :trace_id))
-      |> Keyword.put_new(:cancel_on_parent, child_cancel_on_parent(parent_context))
-      |> maybe_put_new(:stream_to, Map.get(parent_context, :stream_to))
-      |> maybe_put_new(:stream_barrier?, Map.get(parent_context, :stream_barrier?))
+        cast_opts =
+          opts
+          |> Keyword.put_new(:depth, depth)
+          |> Keyword.put_new(:trace_id, Map.get(parent_context, :trace_id))
+          |> Keyword.put_new(:cancel_on_parent, child_cancel_on_parent(parent_context))
+          |> maybe_put_new(:stream_to, Map.get(parent_context, :stream_to))
+          |> maybe_put_new(:stream_barrier?, Map.get(parent_context, :stream_barrier?))
 
-    emit_parent_event(entity_state, {:child_start, %{depth: depth, intent: intent}})
-    emit_child_start_telemetry(parent_context, depth)
+        emit_parent_event(entity_state, {:child_start, %{depth: depth, intent: intent}})
+        emit_child_start_telemetry(parent_context, depth)
 
-    case run_cast(cantrip, intent, cast_opts) do
-      {:ok, value, next_cantrip, child_loom, _meta} = ok ->
-        remember_parent_child_llm(parent_context, next_cantrip)
-        emit_parent_event(entity_state, {:child_end, %{depth: depth, result: value}})
-        emit_child_stop_telemetry(parent_context, depth, :ok)
+        case run_cast(transient_cantrip, intent, cast_opts) do
+          {:ok, value, next_cantrip, child_loom, meta} ->
+            next_cantrip = restore_child_declared_wards(cantrip, next_cantrip)
+            remember_parent_child_llm(parent_context, next_cantrip)
+            emit_parent_event(entity_state, {:child_end, %{depth: depth, result: value}})
+            emit_child_stop_telemetry(parent_context, depth, :ok)
 
-        if record_observation?,
-          do:
-            push_parent_cast_observation(
-              parent_context,
-              parent_gate,
-              value,
-              false,
-              child_loom.turns
+            if record_observation?,
+              do:
+                push_parent_cast_observation(
+                  parent_context,
+                  parent_gate,
+                  value,
+                  false,
+                  child_loom.turns
+                )
+
+            {:ok, value, next_cantrip, child_loom, meta}
+
+          {:error, reason, next_cantrip} ->
+            next_cantrip = restore_child_declared_wards(cantrip, next_cantrip)
+            remember_parent_child_llm(parent_context, next_cantrip)
+
+            emit_parent_event(
+              entity_state,
+              {:child_end, %{depth: depth, error: Cantrip.SafeFormat.inspect(reason)}}
             )
 
-        ok
+            emit_child_stop_telemetry(parent_context, depth, :error)
 
-      {:error, reason, next_cantrip} = error ->
-        remember_parent_child_llm(parent_context, next_cantrip)
+            if record_observation?,
+              do:
+                push_parent_cast_observation(
+                  parent_context,
+                  parent_gate,
+                  Cantrip.SafeFormat.inspect(reason),
+                  true,
+                  []
+                )
 
-        emit_parent_event(
-          entity_state,
-          {:child_end, %{depth: depth, error: Cantrip.SafeFormat.inspect(reason)}}
-        )
+            {:error, reason, next_cantrip}
+        end
 
-        emit_child_stop_telemetry(parent_context, depth, :error)
-
+      {:error, reason, _next_cantrip} = error ->
         if record_observation?,
           do:
             push_parent_cast_observation(
@@ -939,6 +983,24 @@ defmodule Cantrip do
 
         error
     end
+  end
+
+  defp prepare_child_cast(%__MODULE__{} = cantrip, parent_context) do
+    parent = Map.fetch!(parent_context, :parent_cantrip)
+    depth = Map.get(parent_context, :depth, 0)
+    max_depth = WardPolicy.max_depth(parent.circle.wards)
+
+    if is_integer(max_depth) and depth >= max_depth do
+      {:error, "max_depth exceeded", cantrip}
+    else
+      composed_wards = WardPolicy.compose(parent.circle.wards, cantrip.circle.wards)
+      child_circle = %{cantrip.circle | wards: composed_wards}
+      {:ok, %{cantrip | circle: child_circle}, depth + 1}
+    end
+  end
+
+  defp restore_child_declared_wards(%__MODULE__{} = declared, %__MODULE__{} = next) do
+    %{next | circle: %{next.circle | wards: declared.circle.wards}}
   end
 
   defp run_cast(%__MODULE__{} = cantrip, intent, extra_opts) do

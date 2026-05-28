@@ -100,7 +100,13 @@ For fan-out:
 ```
 
 When called from a parent code-medium turn, child results are returned upward
-and child turns are grafted into the parent loom.
+and child turns are grafted into the parent loom. The parent circle still
+applies: casting a pre-built child checks the parent's `max_depth` before the
+child starts, and the child runs with wards composed from parent and child
+circles. Numeric wards such as `max_turns` and `max_depth` tighten with `min`;
+boolean wards such as `require_done_tool` tighten with `or`. `cast_batch` uses
+the same child-cast path for each item and is bounded by the parent's
+`max_concurrent_children` ward.
 
 ## Choose a Medium
 

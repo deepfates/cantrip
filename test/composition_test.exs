@@ -51,6 +51,91 @@ defmodule Cantrip.CompositionTest do
     assert "cast" in turn.gate_calls
   end
 
+  test "pre-built child cast fails closed when parent max_depth is zero" do
+    child = prebuilt_code_child([%{code: ~s[done.("should not run")]}], wards: [%{max_turns: 10}])
+    child_literal = term_literal(child)
+
+    parent_llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{
+           code: """
+           child = :erlang.binary_to_term(#{child_literal})
+           {:error, reason, _child} = Cantrip.cast(child, "work")
+           done.(reason)
+           """
+         }
+       ])}
+
+    {:ok, parent} =
+      Cantrip.new(
+        llm: parent_llm,
+        circle: %{
+          type: :code,
+          gates: [:done],
+          wards: [%{max_turns: 5}, %{max_depth: 0}, %{sandbox: :unrestricted}]
+        }
+      )
+
+    assert {:ok, "max_depth exceeded", _parent, loom, _meta} = Cantrip.cast(parent, "delegate")
+    turn = Enum.find(loom.turns, fn turn -> "cast" in turn.gate_calls end)
+    cast_observation = Enum.find(turn.observation, &(&1.gate == "cast"))
+    assert cast_observation.is_error
+    assert cast_observation.result =~ "max_depth exceeded"
+    assert Map.get(cast_observation, :child_turns, []) == []
+  end
+
+  test "pre-built child cast tightens looser child wards to the parent" do
+    child =
+      prebuilt_code_child(
+        [
+          %{code: "first = :ok"},
+          %{code: "second = :ok"},
+          %{code: ~s[done.("too late")]}
+        ],
+        wards: [%{max_turns: 10}, %{require_done_tool: false}]
+      )
+
+    child_literal = term_literal(child)
+
+    parent_llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{
+           code: """
+           child = :erlang.binary_to_term(#{child_literal})
+           {:ok, _value, next_child, _loom, child_meta} = Cantrip.cast(child, "work")
+           done.({
+             child_meta.truncated,
+             child_meta.turns,
+             child_meta.truncation_reason,
+             Cantrip.WardPolicy.max_turns(next_child.circle.wards),
+             Cantrip.WardPolicy.require_done_tool?(next_child.circle.wards),
+             Cantrip.WardPolicy.max_turns(:erlang.binary_to_term(:erlang.term_to_binary(next_child)).circle.wards)
+           })
+           """
+         }
+       ])}
+
+    {:ok, parent} =
+      Cantrip.new(
+        llm: parent_llm,
+        circle: %{
+          type: :code,
+          gates: [:done],
+          wards: [
+            %{max_turns: 2},
+            %{max_depth: 1},
+            %{require_done_tool: true},
+            %{sandbox: :unrestricted}
+          ]
+        }
+      )
+
+    assert {:ok, {true, 2, "max_turns", 10, false, 10}, _parent, _loom, _meta} =
+             Cantrip.cast(parent, "delegate")
+  end
+
   test "cast_batch preserves request order and grafts child turns" do
     parent_llm =
       {FakeLLM,
@@ -85,6 +170,71 @@ defmodule Cantrip.CompositionTest do
     cast_batch = Enum.find(turn.observation, &(&1.gate == "cast_batch"))
     assert cast_batch.result == ["a", "b", "c"]
     assert length(loom.turns) >= 4
+  end
+
+  test "cast_batch with pre-built children fails closed when parent max_depth is zero" do
+    child = prebuilt_code_child([%{code: ~s[done.("should not run")]}], wards: [%{max_turns: 10}])
+    child_literal = term_literal(child)
+
+    parent_llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{
+           code: """
+           child = :erlang.binary_to_term(#{child_literal})
+           {:error, reason} = Cantrip.cast_batch([%{cantrip: child, intent: "work"}])
+           done.(reason)
+           """
+         }
+       ])}
+
+    {:ok, parent} =
+      Cantrip.new(
+        llm: parent_llm,
+        circle: %{
+          type: :code,
+          gates: [:done],
+          wards: [%{max_turns: 5}, %{max_depth: 0}, %{sandbox: :unrestricted}]
+        }
+      )
+
+    assert {:ok, "max_depth exceeded", _parent, loom, _meta} = Cantrip.cast(parent, "batch")
+    turn = Enum.find(loom.turns, fn turn -> "cast_batch" in turn.gate_calls end)
+    cast_batch = Enum.find(turn.observation, &(&1.gate == "cast_batch"))
+    assert cast_batch.is_error
+    assert cast_batch.result =~ "max_depth exceeded"
+    assert Map.get(cast_batch, :child_turns, []) == []
+  end
+
+  test "cast_batch with pre-built children tightens looser child wards to the parent" do
+    child = prebuilt_code_child([%{code: ~s[done.("ok")]}], wards: [%{max_turns: 10}])
+    child_literal = term_literal(child)
+
+    parent_llm =
+      {FakeLLM,
+       FakeLLM.new([
+         %{
+           code: """
+           child = :erlang.binary_to_term(#{child_literal})
+           {:ok, ["ok"], [next_child], _looms, _meta} =
+             Cantrip.cast_batch([%{cantrip: child, intent: "work"}])
+
+           done.(Cantrip.WardPolicy.max_turns(next_child.circle.wards))
+           """
+         }
+       ])}
+
+    {:ok, parent} =
+      Cantrip.new(
+        llm: parent_llm,
+        circle: %{
+          type: :code,
+          gates: [:done],
+          wards: [%{max_turns: 3}, %{max_depth: 1}, %{sandbox: :unrestricted}]
+        }
+      )
+
+    assert {:ok, 10, _parent, _loom, _meta} = Cantrip.cast(parent, "batch")
   end
 
   test "cast_batch starts heterogeneous children in parallel while preserving request order" do
@@ -209,4 +359,18 @@ defmodule Cantrip.CompositionTest do
 
     child
   end
+
+  defp prebuilt_code_child(responses, opts) do
+    wards = Keyword.fetch!(opts, :wards)
+
+    {:ok, child} =
+      Cantrip.new(
+        llm: {FakeLLM, FakeLLM.new(responses)},
+        circle: %{type: :code, gates: [:done], wards: wards ++ [%{sandbox: :unrestricted}]}
+      )
+
+    child
+  end
+
+  defp term_literal(term), do: inspect(:erlang.term_to_binary(term), limit: :infinity)
 end
