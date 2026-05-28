@@ -137,6 +137,11 @@ operations (`binding/0`, `try/1`, `Code.ensure_loaded?/1`, plus the
 cross-boundary capabilities all sandboxes block: `File.*`, `System.*`,
 `Process.*`, `spawn`, `Code.load_*`).
 
+Declared gates still flow through the parent in both variants. If a Dune
+circle grants `mix`, `read_file`, `search`, or any other gate, the entity can
+call that gate subject to the gate's own dependencies and wards; Dune only
+changes the language surface around those explicit capabilities.
+
 This divergence is intentional: Dune is a security-language boundary
 mechanism. If your entity needs the full public API surface or in-medium
 introspection, use the default `sandbox: :port` boundary. If you specifically

@@ -46,7 +46,7 @@ defmodule Cantrip.MixGateTest do
   test "runs an allowlisted task under the configured root", %{root: root, mix_path: mix_path} do
     circle =
       circle(root, mix_path, [
-        %{allow_mix_tasks: ["test"], mix_timeout_ms: 1_000, max_output_bytes: 50_000}
+        %{allow_mix_tasks: ["test"], mix_timeout_ms: 1_000, mix_max_output_bytes: 50_000}
       ])
 
     obs =
@@ -58,7 +58,7 @@ defmodule Cantrip.MixGateTest do
 
     assert obs.is_error == false
     assert obs.result.exit_status == 0
-    assert obs.result.stderr == ""
+    refute Map.has_key?(obs.result, :stderr)
     assert obs.result.stderr_merged == true
     assert obs.result.stdout =~ "task=test"
     assert obs.result.stdout =~ "args=test/example_test.exs"
@@ -85,6 +85,16 @@ defmodule Cantrip.MixGateTest do
     assert obs.result =~ "test"
   end
 
+  test "rejects task-name injection before spawning", %{root: root, mix_path: mix_path} do
+    obs =
+      root
+      |> circle(mix_path, [%{allow_mix_tasks: ["test"]}])
+      |> Cantrip.Gate.execute("mix", %{"task" => "test ; rm -rf /"})
+
+    assert obs.is_error == true
+    assert obs.result =~ "one name"
+  end
+
   test "rejects cwd traversal outside the root", %{root: root, mix_path: mix_path} do
     obs =
       root
@@ -109,7 +119,7 @@ defmodule Cantrip.MixGateTest do
   test "bounds output while preserving structured result", %{root: root, mix_path: mix_path} do
     obs =
       root
-      |> circle(mix_path, [%{allow_mix_tasks: ["noisy"], max_output_bytes: 8}])
+      |> circle(mix_path, [%{allow_mix_tasks: ["noisy"], mix_max_output_bytes: 8}])
       |> Cantrip.Gate.execute("mix", %{"task" => "noisy"})
 
     assert obs.is_error == false

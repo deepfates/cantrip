@@ -153,9 +153,9 @@ Familiar only includes `compile_and_load` when constructed with `evolve: true`.
 Wards are maps. Common wards include:
 
 - `%{max_turns: n}`
-- `%{allow_mix_tasks: ["compile", "test"]}`
+- `%{allow_mix_tasks: ["compile", "format"]}`
 - `%{mix_timeout_ms: 60_000}`
-- `%{max_output_bytes: 50_000}`
+- `%{mix_max_output_bytes: 50_000}`
 - `%{max_depth: n}`
 - `%{port_runner: [executable, arg1, ...]}`
 - `%{max_concurrent_children: n}`

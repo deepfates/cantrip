@@ -14,7 +14,7 @@ defmodule Cantrip.Gate.Mix do
          {:ok, env} <- validate_env(opts.env),
          {:ok, mix_path} <- find_mix(gate) do
       timeout_ms = positive_ward(wards, :mix_timeout_ms, @default_timeout_ms)
-      max_output_bytes = positive_ward(wards, :max_output_bytes, @default_max_output_bytes)
+      max_output_bytes = positive_ward(wards, :mix_max_output_bytes, @default_max_output_bytes)
 
       {result, timed_out?} =
         run_mix(mix_path, opts.task, opts.args, cwd, env, timeout_ms, max_output_bytes)
@@ -58,7 +58,7 @@ defmodule Cantrip.Gate.Mix do
 
     cond do
       task == "" -> {:error, "mix task is required"}
-      String.contains?(task, [" ", "\t", "\n", "\r"]) -> {:error, "mix task must be one atom"}
+      String.contains?(task, [" ", "\t", "\n", "\r"]) -> {:error, "mix task must be one name"}
       true -> {:ok, task}
     end
   end
@@ -158,7 +158,7 @@ defmodule Cantrip.Gate.Mix do
 
     await_port(
       port,
-      %{stdout: "", stderr: "", exit_status: nil, started_at: started_at},
+      %{stdout: "", exit_status: nil, started_at: started_at},
       deadline,
       max_output_bytes
     )

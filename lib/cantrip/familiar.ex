@@ -185,6 +185,11 @@ defmodule Cantrip.Familiar do
     * `:root` — sandbox root for filesystem gates (optional)
     * `:evolve` — include the `compile_and_load` gate and hot-load ward
       (default: `false`)
+    * `:run_tests` — include `test` in the Familiar's default Mix task
+      allowlist (default: `false`)
+    * `:allow_mix_tasks` — override the Familiar's Mix task allowlist
+      (default: `["compile", "format"]`, plus `"test"` when `:run_tests`
+      is true)
     * `:system_prompt` — override the default system prompt (optional)
     * `:sandbox` — `:port` (default) runs Familiar code through Dune in a
       child BEAM process and resolves gates / child cantrip API calls through
@@ -205,6 +210,8 @@ defmodule Cantrip.Familiar do
     sandbox = Keyword.get(opts, :sandbox, :port)
     port_runner = Keyword.get(opts, :port_runner)
     evolve? = Keyword.get(opts, :evolve, false)
+    run_tests? = Keyword.get(opts, :run_tests, false)
+    allow_mix_tasks = Keyword.get(opts, :allow_mix_tasks, default_mix_tasks(run_tests?))
 
     # Default identity prompt + a single non-imperative cwd line when root is set.
     # The cwd note tells the entity where it lives without commanding
@@ -298,9 +305,9 @@ defmodule Cantrip.Familiar do
             %{max_turns: max_turns},
             %{max_depth: 3},
             %{
-              allow_mix_tasks: ["compile", "test", "format"],
+              allow_mix_tasks: allow_mix_tasks,
               mix_timeout_ms: 60_000,
-              max_output_bytes: 50_000
+              mix_max_output_bytes: 50_000
             },
             # Casts to child cantrips run synchronously inside the eval —
             # each child involves an LLM round-trip. The default 30s isn't
@@ -339,6 +346,9 @@ defmodule Cantrip.Familiar do
 
   defp sandbox_ward(other),
     do: raise(ArgumentError, "unsupported Familiar sandbox: #{Cantrip.SafeFormat.inspect(other)}")
+
+  defp default_mix_tasks(true), do: ["compile", "format", "test"]
+  defp default_mix_tasks(false), do: ["compile", "format"]
 
   # Mnesia table names are atoms, so derive a short fixed-shape name from
   # a hash instead of embedding user-controlled path text in the atom.
