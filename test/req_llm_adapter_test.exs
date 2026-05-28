@@ -103,36 +103,6 @@ defmodule ReqLLMAdapterTest do
   end
 
   describe "tool-call argument normalization" do
-    test "malformed JSON arguments preserve decode failure signal" do
-      response = %ReqLLM.Response{
-        id: "resp_test",
-        model: "anthropic:test",
-        context: ReqLLM.Context.new([ReqLLM.Context.user("echo")]),
-        message: %ReqLLM.Message{
-          role: :assistant,
-          content: [],
-          tool_calls: [
-            ReqLLM.ToolCall.new("tc_bad", "echo", ~s({"text":))
-          ]
-        }
-      }
-
-      normalized = Adapter.normalize_response(response)
-
-      assert [
-               %{
-                 id: "tc_bad",
-                 gate: "echo",
-                 args: %{},
-                 args_raw: ~s({"text":),
-                 args_decode_error: error
-               }
-             ] = normalized.tool_calls
-
-      assert is_binary(error)
-      assert error != ""
-    end
-
     test "malformed JSON arguments become error observations without invoking the gate" do
       circle =
         Circle.new(%{

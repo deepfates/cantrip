@@ -79,11 +79,10 @@ defmodule Cantrip.Circle do
       type when type in [:conversation, :code, :bash] ->
         :ok
 
-      invalid ->
+      :unknown ->
         valid = "conversation, code, bash"
 
-        {:error,
-         "unknown medium #{inspect(invalid)} from #{inspect(value)}; valid mediums: #{valid}"}
+        {:error, "unknown medium #{inspect(value)}; valid mediums: #{valid}"}
     end
   end
 
@@ -121,7 +120,7 @@ defmodule Cantrip.Circle do
   defp normalize_type("code"), do: :code
   defp normalize_type(:bash), do: :bash
   defp normalize_type("bash"), do: :bash
-  defp normalize_type(other), do: other
+  defp normalize_type(_), do: :unknown
 
   defp canonical_gate_name(name), do: name
 end

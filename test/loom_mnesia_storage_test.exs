@@ -24,14 +24,15 @@ defmodule Cantrip.LoomMnesiaStorageTest do
       {:ok, "ok", _next_cantrip, loom, _meta} = Cantrip.cast(cantrip, "persist mnesia")
       {:ok, _loom} = Cantrip.Loom.annotate_reward(loom, 0, 0.5)
 
-      assert {:ok, events} = MnesiaStorage.read_events(table)
+      {:ok, restored} = MnesiaStorage.init(table: table)
+      assert {:ok, %{events: events}} = MnesiaStorage.load(restored)
 
       assert Enum.any?(events, fn event ->
-               event[:type] == "turn" and event[:turn][:sequence] == 1
+               event[:type] == :turn and event[:turn][:sequence] == 1
              end)
 
       assert Enum.any?(events, fn event ->
-               event[:type] == "reward" and event[:index] == 0 and event[:reward] == 0.5
+               event[:type] == :reward and event[:index] == 0 and event[:reward] == 0.5
              end)
     else
       assert true

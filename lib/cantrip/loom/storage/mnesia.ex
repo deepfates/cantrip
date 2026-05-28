@@ -101,7 +101,7 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     {Enum.reverse(evts), Enum.reverse(trns)}
   end
 
-  def read_events(table, mnesia \\ :mnesia) when is_atom(table) do
+  defp read_events(table, mnesia) when is_atom(table) do
     case call(mnesia, :transaction, [fn -> call(mnesia, :match_object, [{table, :_, :_}]) end]) do
       {:atomic, rows} ->
         events =

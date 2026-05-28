@@ -194,8 +194,7 @@ defmodule Cantrip.LLMs.ReqLLM do
 
   # -- Response normalization --
 
-  @doc false
-  def normalize_response(%ReqLLM.Response{} = response) do
+  defp normalize_response(%ReqLLM.Response{} = response) do
     text = ReqLLM.Response.text(response)
     tool_calls = ReqLLM.Response.tool_calls(response)
     usage = ReqLLM.Response.usage(response) || %{}
