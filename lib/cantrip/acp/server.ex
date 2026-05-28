@@ -4,6 +4,8 @@ defmodule Cantrip.ACP.Server do
   """
 
   def run(opts \\ []) do
+    {:ok, _apps} = Application.ensure_all_started(:cantrip)
+
     runtime = Keyword.get(opts, :runtime, Cantrip.ACP.Runtime.Familiar)
     table = Cantrip.ACP.AgentHandler.new(runtime: runtime)
 

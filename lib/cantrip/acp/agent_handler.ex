@@ -44,8 +44,8 @@ defmodule Cantrip.ACP.AgentHandler do
 
       [{:conn, other}] ->
         raise ArgumentError,
-              "AgentHandler table already bound to connection #{inspect(other)}; " <>
-                "cannot rebind to #{inspect(conn)}. Create a fresh table per connection."
+              "AgentHandler table already bound to connection #{Cantrip.SafeFormat.inspect(other)}; " <>
+                "cannot rebind to #{Cantrip.SafeFormat.inspect(conn)}. Create a fresh table per connection."
 
       [] ->
         :ets.insert(table, {:conn, conn})
@@ -156,7 +156,7 @@ defmodule Cantrip.ACP.AgentHandler do
       {:error, reason, next_session} ->
         if bridge, do: Cantrip.ACP.EventBridge.flush(bridge)
         :ets.insert(table, {{:session, session_id}, next_session})
-        {:error, %ACP.Error{code: -32_002, message: inspect(reason)}}
+        {:error, %ACP.Error{code: -32_002, message: Cantrip.SafeFormat.inspect(reason)}}
     end
   end
 

@@ -4,7 +4,7 @@ defmodule Cantrip.MixProject do
   def project do
     [
       app: :cantrip,
-      version: "1.0.0",
+      version: "1.1.0",
       elixir: "~> 1.19",
       name: "Cantrip",
       description: description(),
@@ -24,6 +24,8 @@ defmodule Cantrip.MixProject do
           "CONTRIBUTING.md",
           "CHANGELOG.md",
           "docs/architecture.md",
+          "docs/cleanup-status.md",
+          "docs/observability.md",
           "docs/public-api.md",
           "docs/migration-v1.md",
           "docs/port-isolated-runtime.md",
@@ -95,6 +97,8 @@ defmodule Cantrip.MixProject do
         "CONTRIBUTING.md",
         "CHANGELOG.md",
         "docs/architecture.md",
+        "docs/cleanup-status.md",
+        "docs/observability.md",
         "docs/public-api.md",
         "docs/migration-v1.md",
         "docs/port-isolated-runtime.md",

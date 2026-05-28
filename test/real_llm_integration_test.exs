@@ -16,8 +16,12 @@ defmodule Cantrip.RealLLMIntegrationTest do
         Cantrip.new(
           llm: llm,
           identity: %{
-            system_prompt:
-              "Use tools only. First call echo with text exactly as requested. Then call done with the same text as answer.",
+            system_prompt: """
+            You are running a two-step live integration check.
+            Step 1: call echo exactly once with the requested token.
+            Step 2: after the echo observation is returned, do not call echo again. Call done with answer equal to that same token.
+            The test is incomplete until done is called.
+            """,
             tool_choice: "required"
           },
           circle: %{
@@ -25,6 +29,8 @@ defmodule Cantrip.RealLLMIntegrationTest do
             gates: [
               %{
                 name: :done,
+                description:
+                  "finish the integration check with the exact token after echo has succeeded",
                 parameters: %{
                   type: "object",
                   properties: %{answer: %{type: "string"}},
@@ -33,6 +39,7 @@ defmodule Cantrip.RealLLMIntegrationTest do
               },
               %{
                 name: :echo,
+                description: "one-shot echo tool; call exactly once before done",
                 parameters: %{
                   type: "object",
                   properties: %{text: %{type: "string"}},
@@ -40,12 +47,15 @@ defmodule Cantrip.RealLLMIntegrationTest do
                 }
               }
             ],
-            wards: [%{max_turns: 5}, %{require_done_tool: true}]
+            wards: [%{max_turns: 8}, %{require_done_tool: true}]
           }
         )
 
       assert {:ok, _result, _cantrip, loom, meta} =
-               Cantrip.cast(cantrip, "Echo this exact token and then finish: #{token}")
+               Cantrip.cast(
+                 cantrip,
+                 "Token: #{token}. Call echo once with this token. After echo returns, call done."
+               )
 
       assert meta.terminated
       assert loom.turns != []

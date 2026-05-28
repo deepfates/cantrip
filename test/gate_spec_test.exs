@@ -60,6 +60,17 @@ defmodule Cantrip.GateSpecTest do
       assert spec.args_summary_key == :pattern
     end
 
+    test "mix requires :root and summarises by task" do
+      spec = Gate.spec("mix")
+
+      assert spec.parameters.properties.task.type == "string"
+      assert spec.parameters.properties.args.type == "array"
+      assert "task" in spec.parameters.required
+      assert :root in spec.depends_required
+      assert spec.kind == :execute
+      assert spec.args_summary_key == :task
+    end
+
     test "echo and unknown gates return a generic spec" do
       assert %{description: _, parameters: %{type: "object"}, depends_required: []} =
                Gate.spec("echo")

@@ -2,6 +2,7 @@ defmodule ReqLLMAdapterTest do
   use ExUnit.Case, async: true
 
   alias Cantrip.LLMs.ReqLLM, as: Adapter
+  alias Cantrip.Circle
 
   describe "module availability" do
     setup do
@@ -101,6 +102,47 @@ defmodule ReqLLMAdapterTest do
     end
   end
 
+  describe "tool-call argument normalization" do
+    test "malformed JSON arguments become error observations without invoking the gate" do
+      circle =
+        Circle.new(%{
+          type: :conversation,
+          gates: [:echo, :done],
+          wards: [%{max_turns: 1}]
+        })
+
+      result =
+        Cantrip.Gate.Executor.execute_tool_calls(
+          circle,
+          [
+            %{
+              id: "tc_bad",
+              gate: "echo",
+              args: %{},
+              args_raw: ~s({"text":),
+              args_decode_error: "unexpected end of input"
+            }
+          ],
+          execute_gate: fn _circle, _gate, _args -> flunk("gate should not execute") end
+        )
+
+      assert [
+               %{
+                 gate: "echo",
+                 tool_call_id: "tc_bad",
+                 args: %{},
+                 args_raw: ~s({"text":),
+                 is_error: true,
+                 result: result_text
+               }
+             ] = result.observations
+
+      assert result_text =~ "malformed tool-call arguments"
+      assert result_text =~ "unexpected end of input"
+      refute result.terminated?
+    end
+  end
+
   describe "query/2 message normalization" do
     test "handles system, user, assistant, and tool roles" do
       state = %{model: "bad:model", timeout_ms: 500}
@@ -130,6 +172,47 @@ defmodule ReqLLMAdapterTest do
       }
 
       assert {:error, _error, _state} = Adapter.query(state, request)
+    end
+
+    test "Anthropic provider encoding preserves multiple system messages" do
+      context =
+        ReqLLM.Context.new([
+          ReqLLM.Context.system("first instruction"),
+          ReqLLM.Context.system("second instruction"),
+          ReqLLM.Context.user("hello")
+        ])
+
+      request = ReqLLM.Providers.Anthropic.Context.encode_request(context, "claude-test")
+
+      assert request.system == [
+               %{type: "text", text: "first instruction"},
+               %{type: "text", text: "second instruction"}
+             ]
+
+      assert request.messages == [%{role: "user", content: "hello"}]
+    end
+
+    test "Gemini provider encoding preserves multiple system messages" do
+      context =
+        ReqLLM.Context.new([
+          ReqLLM.Context.system("first instruction"),
+          ReqLLM.Context.system("second instruction"),
+          ReqLLM.Context.user("hello")
+        ])
+
+      {:ok, request} =
+        ReqLLM.Providers.Google.prepare_request(:chat, "google:gemini-2.5-flash", context,
+          api_key: "test"
+        )
+
+      request = ReqLLM.Providers.Google.encode_body(request)
+      body = Jason.decode!(request.body)
+
+      assert body["systemInstruction"] == %{
+               "parts" => [%{"text" => "first instruction\n\nsecond instruction"}]
+             }
+
+      assert body["contents"] == [%{"role" => "user", "parts" => [%{"text" => "hello"}]}]
     end
   end
 

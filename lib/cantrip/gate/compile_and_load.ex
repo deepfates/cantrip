@@ -1,6 +1,8 @@
 defmodule Cantrip.Gate.CompileAndLoad do
   @moduledoc false
 
+  @framework_root_module "Elixir.Cantrip"
+
   @spec validate(map(), [map()]) ::
           {:ok,
            %{
@@ -40,31 +42,62 @@ defmodule Cantrip.Gate.CompileAndLoad do
   end
 
   defp guard_compile_module(gates, module_name) when is_binary(module_name) do
-    allow_exact =
-      gates
-      |> Enum.flat_map(fn
-        %{allow_compile_modules: names} when is_list(names) -> names
-        _ -> []
-      end)
-      |> Enum.uniq()
+    with :ok <- reject_deprecated_namespace_wards(gates),
+         :ok <- reject_framework_module(module_name) do
+      allow_exact =
+        gates
+        |> Enum.flat_map(fn
+          %{allow_compile_modules: names} when is_list(names) -> names
+          %{"allow_compile_modules" => names} when is_list(names) -> names
+          _ -> []
+        end)
+        |> Enum.map(&to_string/1)
+        |> Enum.uniq()
 
-    allow_namespaces =
-      gates
-      |> Enum.flat_map(fn
-        %{allow_compile_namespaces: prefixes} when is_list(prefixes) -> prefixes
-        _ -> []
-      end)
-      |> Enum.uniq()
+      cond do
+        allow_exact == [] ->
+          {:error, "compile_and_load requires allow_compile_modules"}
 
-    cond do
-      allow_exact == [] and allow_namespaces == [] -> :ok
-      module_name in allow_exact -> :ok
-      Enum.any?(allow_namespaces, &String.starts_with?(module_name, &1)) -> :ok
-      true -> {:error, "module not allowed: #{module_name}"}
+        module_name in allow_exact ->
+          :ok
+
+        true ->
+          {:error, "module not allowed: #{module_name}"}
+      end
     end
   end
 
   defp guard_compile_module(_gates, _), do: {:error, "module is required"}
+
+  defp reject_deprecated_namespace_wards(gates) do
+    if Enum.any?(gates, &deprecated_namespace_ward?/1) do
+      {:error, "allow_compile_namespaces is no longer supported; use allow_compile_modules"}
+    else
+      :ok
+    end
+  end
+
+  defp deprecated_namespace_ward?(%{allow_compile_namespaces: _}), do: true
+  defp deprecated_namespace_ward?(%{"allow_compile_namespaces" => _}), do: true
+  defp deprecated_namespace_ward?(_ward), do: false
+
+  defp reject_framework_module(@framework_root_module),
+    do: {:error, "framework module names cannot be hot-loaded"}
+
+  defp reject_framework_module(module_name) do
+    if module_name in framework_module_names() do
+      {:error, "framework module names cannot be hot-loaded"}
+    else
+      :ok
+    end
+  end
+
+  defp framework_module_names do
+    case :application.get_key(:cantrip, :modules) do
+      {:ok, modules} -> Enum.map(modules, &Atom.to_string/1)
+      :undefined -> []
+    end
+  end
 
   defp guard_compile_path(_gates, nil), do: :ok
 
@@ -248,7 +281,7 @@ defmodule Cantrip.Gate.CompileAndLoad do
     end
   rescue
     e ->
-      fallback = Map.get(gate, :compile_error, Exception.message(e))
+      fallback = Map.get(gate, :compile_error, Cantrip.SafeFormat.exception(e))
       {:error, fallback}
   end
 

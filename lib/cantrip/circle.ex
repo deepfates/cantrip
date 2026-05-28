@@ -7,11 +7,18 @@ defmodule Cantrip.Circle do
   declare exactly one medium using `:type`, `:medium`, or `:circle_type`.
   """
 
-  defstruct gates: %{}, wards: [], type: :conversation, medium_sources: [], medium_opts: %{}
+  @enforce_keys [:type]
+  defstruct schema_version: 1,
+            gates: %{},
+            wards: [],
+            type: :conversation,
+            medium_sources: [],
+            medium_opts: %{}
 
   @type gate :: %{required(:name) => String.t(), optional(:parameters) => map()}
   @type t :: %__MODULE__{
           gates: %{String.t() => map()},
+          schema_version: pos_integer(),
           wards: list(map()),
           type: atom(),
           medium_opts: map()
@@ -19,7 +26,7 @@ defmodule Cantrip.Circle do
 
   @spec new(keyword() | map()) :: t()
   def new(attrs \\ %{}) do
-    attrs = Map.new(attrs)
+    attrs = attrs |> Map.new() |> reject_unknown_keys!()
     gates = attrs |> fetch(:gates, []) |> normalize_gates()
     wards = fetch(attrs, :wards, [])
 
@@ -36,6 +43,7 @@ defmodule Cantrip.Circle do
     medium_opts = fetch(attrs, :medium_opts, %{}) |> Map.new()
 
     %__MODULE__{
+      schema_version: fetch(attrs, :schema_version, 1),
       gates: gates,
       wards: wards,
       type: type,
@@ -57,17 +65,32 @@ defmodule Cantrip.Circle do
       [] ->
         {:error, "circle must declare a medium"}
 
-      [{_source, _value}] ->
-        :ok
+      [{_source, value}] ->
+        validate_known_medium(value)
 
       sources ->
         values = sources |> Enum.map(fn {_s, v} -> normalize_type(v) end) |> Enum.uniq()
 
-        if length(values) == 1 do
-          :ok
-        else
-          {:error, "circle must declare exactly one medium"}
+        cond do
+          length(values) != 1 ->
+            {:error, "circle must declare exactly one medium"}
+
+          true ->
+            [{_source, value} | _] = sources
+            validate_known_medium(value)
         end
+    end
+  end
+
+  defp validate_known_medium(value) do
+    case normalize_type(value) do
+      type when type in [:conversation, :code, :bash] ->
+        :ok
+
+      :unknown ->
+        valid = "conversation, code, bash"
+
+        {:error, "unknown medium #{Cantrip.SafeFormat.inspect(value)}; valid mediums: #{valid}"}
     end
   end
 
@@ -87,6 +110,20 @@ defmodule Cantrip.Circle do
   defp fetch(map, key, default),
     do: Map.get(map, key) || Map.get(map, Atom.to_string(key), default)
 
+  defp reject_unknown_keys!(attrs) do
+    allowed = ~w(schema_version gates wards type medium circle_type medium_opts)
+
+    unknown =
+      attrs
+      |> Map.keys()
+      |> Enum.reject(&(to_string(&1) in allowed))
+
+    case unknown do
+      [] -> attrs
+      keys -> raise ArgumentError, "unknown circle options #{inspect(keys)}"
+    end
+  end
+
   defp normalize_gates(gates) do
     gates
     |> Enum.map(fn
@@ -99,11 +136,13 @@ defmodule Cantrip.Circle do
     |> Map.new(fn gate -> {gate.name, gate} end)
   end
 
+  defp normalize_type(:conversation), do: :conversation
+  defp normalize_type("conversation"), do: :conversation
   defp normalize_type(:code), do: :code
   defp normalize_type("code"), do: :code
   defp normalize_type(:bash), do: :bash
   defp normalize_type("bash"), do: :bash
-  defp normalize_type(_), do: :conversation
+  defp normalize_type(_), do: :unknown
 
   defp canonical_gate_name(name), do: name
 end

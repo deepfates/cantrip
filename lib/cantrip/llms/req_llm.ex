@@ -63,7 +63,7 @@ defmodule Cantrip.LLMs.ReqLLM do
     end
   rescue
     e ->
-      {:error, %{status: nil, message: Exception.message(e)}, normalize_state(state)}
+      {:error, %{status: nil, message: Cantrip.SafeFormat.exception(e)}, normalize_state(state)}
   end
 
   # -- Sync path --
@@ -187,7 +187,7 @@ defmodule Cantrip.LLMs.ReqLLM do
         name: tool[:name],
         description: tool[:description] || "",
         parameter_schema: tool[:parameters] || %{type: "object", properties: %{}},
-        callback: fn args -> {:ok, inspect(args)} end
+        callback: fn args -> {:ok, Cantrip.SafeFormat.inspect(args)} end
       )
     end)
   end
@@ -214,30 +214,38 @@ defmodule Cantrip.LLMs.ReqLLM do
 
       args_raw = func[:arguments] || func["arguments"] || %{}
 
-      args =
-        cond do
-          is_map(args_raw) ->
-            args_raw
+      {args, decode_error} = normalize_tool_args(args_raw)
 
-          is_binary(args_raw) ->
-            case Jason.decode(args_raw) do
-              {:ok, map} when is_map(map) -> map
-              _ -> %{}
-            end
-
-          true ->
-            %{}
-        end
-
-      %{
-        id: tc_map[:id] || tc_map["id"],
-        gate: func[:name] || func["name"],
-        args: args
-      }
+      %{}
+      |> Map.put(:id, tc_map[:id] || tc_map["id"])
+      |> Map.put(:gate, func[:name] || func["name"])
+      |> Map.put(:args, args)
+      |> maybe_put(:args_raw, args_raw, is_binary(args_raw))
+      |> maybe_put(:args_decode_error, decode_error, not is_nil(decode_error))
     end)
   end
 
   defp normalize_tool_calls(_), do: []
+
+  defp normalize_tool_args(args_raw) when is_map(args_raw), do: {args_raw, nil}
+
+  defp normalize_tool_args(args_raw) when is_binary(args_raw) do
+    case Jason.decode(args_raw) do
+      {:ok, map} when is_map(map) ->
+        {map, nil}
+
+      {:ok, _other} ->
+        {%{}, "tool-call arguments JSON must decode to an object"}
+
+      {:error, error} ->
+        {%{}, Cantrip.SafeFormat.exception(error)}
+    end
+  end
+
+  defp normalize_tool_args(_args_raw), do: {%{}, nil}
+
+  defp maybe_put(map, key, value, true), do: Map.put(map, key, value)
+  defp maybe_put(map, _key, _value, false), do: map
 
   defp normalize_usage(usage) when is_map(usage) do
     %{
@@ -255,7 +263,7 @@ defmodule Cantrip.LLMs.ReqLLM do
   # -- Error normalization --
 
   defp normalize_error(%{status: status, message: message}) do
-    %{status: status, message: message}
+    %{status: status, message: Cantrip.SafeFormat.message(message)}
   end
 
   defp normalize_error(%{status: status, body: body}) do
@@ -263,15 +271,15 @@ defmodule Cantrip.LLMs.ReqLLM do
   end
 
   defp normalize_error(reason) when is_binary(reason) do
-    %{status: nil, message: reason}
+    %{status: nil, message: Cantrip.SafeFormat.message(reason)}
   end
 
   defp normalize_error(%{__exception__: true} = exception) do
-    %{status: nil, message: Exception.message(exception)}
+    %{status: nil, message: Cantrip.SafeFormat.exception(exception)}
   end
 
   defp normalize_error(reason) do
-    %{status: nil, message: inspect(reason)}
+    %{status: nil, message: Cantrip.SafeFormat.inspect(reason)}
   end
 
   # -- Model detection --

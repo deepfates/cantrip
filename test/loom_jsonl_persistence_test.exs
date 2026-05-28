@@ -24,10 +24,14 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
   alias Cantrip.Loom
 
   defp tmp_path do
-    Path.join(
-      System.tmp_dir!(),
-      "loom_jsonl_#{System.unique_integer([:positive])}.jsonl"
-    )
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "loom_jsonl_#{System.unique_integer([:positive, :monotonic])}.jsonl"
+      )
+
+    File.rm(path)
+    path
   end
 
   defp read_jsonl(path) do
@@ -35,6 +39,61 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
     |> File.read!()
     |> String.split("\n", trim: true)
     |> Enum.map(&Jason.decode!/1)
+    |> Enum.reject(&match?(%{"format" => "cantrip-loom"}, &1))
+  end
+
+  test "new JSONL loom files start with a format header" do
+    path = tmp_path()
+    loom = Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+    _loom = Loom.append_turn(loom, %{utterance: %{content: "hi"}, observation: []})
+
+    [header | _] =
+      path
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Enum.map(&Jason.decode!/1)
+
+    assert header == %{"format" => "cantrip-loom", "version" => 1}
+  end
+
+  test "legacy JSONL loom files without a header still load as version 1" do
+    path = tmp_path()
+
+    legacy_turn = %{
+      type: "turn",
+      turn: %{
+        id: "turn_legacy",
+        sequence: 1,
+        cantrip_id: "c1",
+        entity_id: "e1",
+        role: "turn",
+        utterance: %{content: "legacy"},
+        observation: [],
+        gate_calls: [],
+        terminated: false,
+        truncated: false,
+        metadata: %{}
+      }
+    }
+
+    File.write!(path, Jason.encode!(legacy_turn) <> "\n")
+
+    loom = Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+
+    assert [%{id: "turn_legacy", utterance: %{content: "legacy"}}] = loom.turns
+  end
+
+  test "unsupported JSONL loom versions fail with a clear error" do
+    path = tmp_path()
+
+    File.write!(
+      path,
+      Jason.encode!(%{format: "cantrip-loom", version: 999}) <> "\n"
+    )
+
+    assert_raise RuntimeError, ~r/unsupported loom JSONL version: 999/, fn ->
+      Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+    end
   end
 
   test "persists a turn whose observation contains a list of match maps (search-shape)" do
@@ -236,6 +295,45 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
     binding = restored.code_state.binding
     assert is_list(binding)
     assert binding == [{:x, {:tuple_demo, "value"}}]
+  end
+
+  test "code_state.binding drops unknown atom names from disk instead of creating atoms" do
+    path = tmp_path()
+    on_exit(fn -> File.rm(path) end)
+
+    unknown =
+      "cantrip_unknown_jsonl_binding_" <>
+        Integer.to_string(System.unique_integer([:positive]))
+
+    assert_raise ArgumentError, fn -> :erlang.binary_to_existing_atom(unknown) end
+
+    persisted = %{
+      type: "turn",
+      turn: %{
+        cantrip_id: "c1",
+        entity_id: "e1",
+        role: "turn",
+        utterance: %{code: "ok", content: nil},
+        observation: [],
+        gate_calls: [],
+        terminated: false,
+        code_state: %{
+          binding: [
+            %{"__t__" => [%{"__a__" => unknown}, 1]},
+            %{"__t__" => [%{"__a__" => "x"}, 2]}
+          ]
+        },
+        metadata: %{timestamp: DateTime.utc_now()}
+      }
+    }
+
+    File.write!(path, Jason.encode!(persisted) <> "\n")
+
+    loom = Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+    [restored] = loom.turns
+
+    assert restored.code_state.binding == [x: 2]
+    assert_raise ArgumentError, fn -> :erlang.binary_to_existing_atom(unknown) end
   end
 
   test "round-trips a full executed turn including child_turns subtree (pattern 15/16 shape)" do

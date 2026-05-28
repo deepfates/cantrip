@@ -6,9 +6,9 @@ defmodule Cantrip.CLI.JsonRenderer do
   `data`. Events arrive as {envelope, {type, data}}.
   """
 
-  defstruct []
+  defstruct schema_version: 1
 
-  @type t :: %__MODULE__{}
+  @type t :: %__MODULE__{schema_version: pos_integer()}
 
   @spec new() :: t()
   def new, do: %__MODULE__{}
@@ -44,7 +44,7 @@ defmodule Cantrip.CLI.JsonRenderer do
   end
 
   defp serialize_data(data) when is_binary(data), do: data
-  defp serialize_data(data), do: inspect(data)
+  defp serialize_data(data), do: Cantrip.SafeFormat.inspect(data)
 
   defp serialize_value(v) when is_binary(v), do: v
   defp serialize_value(v) when is_number(v), do: v
@@ -55,7 +55,7 @@ defmodule Cantrip.CLI.JsonRenderer do
   defp serialize_value(v) when is_map(v),
     do: Map.new(v, fn {k, val} -> {to_string(k), serialize_value(val)} end)
 
-  defp serialize_value(v), do: inspect(v)
+  defp serialize_value(v), do: Cantrip.SafeFormat.inspect(v)
 
   defp serialize_timestamp(%DateTime{} = timestamp), do: DateTime.to_iso8601(timestamp)
   defp serialize_timestamp(timestamp), do: timestamp

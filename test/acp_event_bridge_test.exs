@@ -111,6 +111,12 @@ defmodule Cantrip.ACP.EventBridgeTest do
   end
 
   describe "flush/2 — synchronous drain of the bridge mailbox" do
+    test "bridge process is owned by the ACP EventBridge task supervisor" do
+      bridge = EventBridge.start(:ignored, "sess_supervised", notify_fn: fn _ -> :ok end)
+
+      assert bridge in Task.Supervisor.children(Cantrip.ACP.EventBridgeSupervisor)
+    end
+
     test "returns :no_answer when no :final_response was observed" do
       test_pid = self()
 

@@ -87,9 +87,9 @@ and compile requests cross the protocol explicitly. On timeout, the parent
 closes and kills the child OS process.
 
 Hot-loading with `evolve: true` also stays inside the child. The parent
-validates `compile_and_load` wards (namespace/path/hash/signer policy), then
-the child compiles and loads the allowed module in its own runtime, not in the
-framework VM.
+validates `compile_and_load` wards (exact module names, path, hash, and signer
+policy), then the child compiles and loads the allowed module in its own
+runtime, not in the framework VM.
 
 This is the default sandbox: Dune denies ambient `File.*`, `System.*`,
 `Process.*`, `spawn`, node, and similar calls, while the port boundary protects
@@ -188,6 +188,14 @@ basename plus a short hash of the full path), so multiple summons
 against the same workspace converge on the same loom; distinct
 workspaces don't collide.
 
+Workspace-scoped Mnesia uses a named BEAM node. The launcher persists that
+node's distributed-Erlang cookie at `.cantrip/cookie` with mode `0600`. Cantrip
+generates cookies in the format `cantrip_<48 lowercase hex chars>` so it can
+reuse them without creating atoms from arbitrary file content. If the cookie
+file exists but does not match that format, startup fails and leaves the file
+unchanged. Delete `.cantrip/cookie` explicitly when you want Cantrip to rotate
+the workspace cookie.
+
 ## Wards: bounding the loop
 
 Default wards on the Familiar's circle:
@@ -197,7 +205,7 @@ Default wards on the Familiar's circle:
 | `max_turns` | 20 | Cap on iterations per cast |
 | `max_depth` | 3 | Cap on recursive child spawning |
 | `code_eval_timeout_ms` | 120,000 (2 min) | Per-turn time bound |
-| `allow_compile_namespaces` | only when `evolve: true` | Hot-reload restricted to a sub-namespace |
+| `allow_compile_modules` | only when `evolve: true` | Hot-reload restricted to exact module names |
 
 Tune per deployment. Long-running workflows may want higher
 `max_turns`; cost-sensitive deployments may want lower
@@ -208,11 +216,12 @@ entity.
 ## Hot reload (self-modification)
 
 `compile_and_load` is opt-in for the Familiar. Pass `evolve: true` to include
-the gate and scope it to the `Cantrip.Hot.*` namespace. The entity can then
-write new Elixir modules into that subtree and hot-load them into its child
-BEAM session. It cannot redefine `Cantrip.Familiar`, `Cantrip.Gate`, or any
-other framework module in the parent runtime — the parent validates the
-namespace boundary before the child compiles.
+the gate and scope it to the exact modules listed in `allow_compile_modules`.
+The built-in Familiar configuration allows the `Cantrip.Hot.*` modules it
+declares for evolution; arbitrary namespace allowlists are no longer accepted.
+The entity can hot-load those allowed modules into its child BEAM session. It
+cannot redefine `Cantrip.Familiar`, `Cantrip.Gate`, or any other framework
+module — the parent rejects framework module names before the child compiles.
 
 This is the entity's evolutionary surface. Combined with the BEAM's
 hot-code-loading semantics (old version stays loaded for active

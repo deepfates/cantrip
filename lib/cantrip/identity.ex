@@ -3,12 +3,14 @@ defmodule Cantrip.Identity do
   Immutable identity configuration (identity + llm knobs).
   """
 
-  defstruct system_prompt: nil,
+  defstruct schema_version: 1,
+            system_prompt: nil,
             temperature: nil,
             tool_choice: nil
 
   @type t :: %__MODULE__{
           system_prompt: String.t() | nil,
+          schema_version: pos_integer(),
           temperature: number() | nil,
           tool_choice: String.t() | nil
         }
@@ -18,6 +20,7 @@ defmodule Cantrip.Identity do
     attrs = Map.new(attrs)
 
     %__MODULE__{
+      schema_version: fetch(attrs, :schema_version) || 1,
       system_prompt: fetch(attrs, :system_prompt),
       temperature: fetch(attrs, :temperature),
       tool_choice: fetch(attrs, :tool_choice)

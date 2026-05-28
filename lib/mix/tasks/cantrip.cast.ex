@@ -136,14 +136,16 @@ defmodule Mix.Tasks.Cantrip.Cast do
           {:error, reason, _cantrip} ->
             IO.write(
               :stderr,
-              IO.ANSI.red() <> "Error: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n"
+              IO.ANSI.red() <>
+                "Error: #{Cantrip.SafeFormat.inspect(reason)}" <> IO.ANSI.reset() <> "\n"
             )
         end
 
       {:DOWN, _ref, :process, _pid, reason} ->
         IO.write(
           :stderr,
-          IO.ANSI.red() <> "Crashed: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n"
+          IO.ANSI.red() <>
+            "Crashed: #{Cantrip.SafeFormat.inspect(reason)}" <> IO.ANSI.reset() <> "\n"
         )
     end
   end

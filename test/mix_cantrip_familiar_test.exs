@@ -18,6 +18,7 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
   """
 
   use ExUnit.Case, async: true
+  import Bitwise, only: [&&&: 2]
 
   alias Cantrip.FakeLLM
   alias Mix.Tasks.Cantrip.Familiar, as: Task
@@ -179,6 +180,68 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
     test "the name is a valid distributed-Erlang longname (contains @)" do
       name = Task.node_name_for_workspace("/tmp/whatever")
       assert name |> Atom.to_string() |> String.contains?("@")
+    end
+
+    test "the name does not embed workspace path text in the atom" do
+      name = Task.node_name_for_workspace("/tmp/customer-secret-workspace")
+
+      refute name |> Atom.to_string() |> String.contains?("customer")
+      refute name |> Atom.to_string() |> String.contains?("secret")
+      refute name |> Atom.to_string() |> String.contains?("workspace")
+    end
+  end
+
+  describe "workspace cookie policy" do
+    test "missing workspace cookie is generated with restrictive permissions" do
+      tmp = Path.join(System.tmp_dir!(), "fam_cookie_#{System.unique_integer([:positive])}")
+
+      try do
+        cookie = Cantrip.Familiar.Cookie.for_workspace!(tmp)
+        cookie_path = Path.join([tmp, ".cantrip", "cookie"])
+
+        assert Atom.to_string(cookie) =~ ~r/\Acantrip_[0-9a-f]{48}\z/
+        assert File.read!(cookie_path) == Atom.to_string(cookie)
+
+        {:ok, stat} = File.stat(cookie_path)
+        assert (stat.mode &&& 0o777) == 0o600
+      after
+        File.rm_rf!(tmp)
+      end
+    end
+
+    test "valid workspace cookie is reused" do
+      tmp = Path.join(System.tmp_dir!(), "fam_cookie_reuse_#{System.unique_integer([:positive])}")
+      cookie_path = Path.join([tmp, ".cantrip", "cookie"])
+      cookie = "cantrip_" <> String.duplicate("a", 48)
+
+      try do
+        File.mkdir_p!(Path.dirname(cookie_path))
+        File.write!(cookie_path, cookie <> "\n")
+
+        assert Cantrip.Familiar.Cookie.for_workspace!(tmp) == String.to_atom(cookie)
+        assert File.read!(cookie_path) == cookie <> "\n"
+      after
+        File.rm_rf!(tmp)
+      end
+    end
+
+    test "invalid existing workspace cookie fails loud and is not overwritten" do
+      tmp = Path.join(System.tmp_dir!(), "fam_cookie_bad_#{System.unique_integer([:positive])}")
+      cookie_path = Path.join([tmp, ".cantrip", "cookie"])
+      hand_edited = "operator_hand_edited_cookie"
+
+      try do
+        File.mkdir_p!(Path.dirname(cookie_path))
+        File.write!(cookie_path, hand_edited)
+
+        assert_raise ArgumentError, ~r/Refusing to overwrite/, fn ->
+          Cantrip.Familiar.Cookie.for_workspace!(tmp)
+        end
+
+        assert File.read!(cookie_path) == hand_edited
+      after
+        File.rm_rf!(tmp)
+      end
     end
   end
 end

@@ -43,7 +43,9 @@ defmodule Cantrip.Loom do
 
   alias Cantrip.Loom.Storage.Memory
 
-  defstruct identity: nil,
+  @enforce_keys [:identity]
+  defstruct schema_version: 1,
+            identity: nil,
             events: [],
             intents: [],
             turns: [],
@@ -52,6 +54,7 @@ defmodule Cantrip.Loom do
 
   @type t :: %__MODULE__{
           identity: term(),
+          schema_version: pos_integer(),
           events: [map()],
           intents: [map()],
           turns: [map()],
@@ -61,7 +64,7 @@ defmodule Cantrip.Loom do
 
   def new(identity, opts \\ []) do
     requested_storage = Keyword.get(opts, :storage)
-    {storage_module, storage_opts} = normalize_storage(requested_storage)
+    {storage_module, storage_opts} = normalize_storage!(requested_storage)
 
     case storage_module.init(storage_opts) do
       {:ok, storage_state} ->
@@ -98,9 +101,9 @@ defmodule Cantrip.Loom do
         raise """
         Loom storage backend init failed.
 
-          requested:  #{inspect(requested_storage)}
-          backend:    #{inspect(storage_module)}
-          reason:     #{inspect(reason)}
+          requested:  #{Cantrip.SafeFormat.inspect(requested_storage)}
+          backend:    #{Cantrip.SafeFormat.inspect(storage_module)}
+          reason:     #{Cantrip.SafeFormat.inspect(reason)}
 
         Common causes:
           * `:mnesia` not listed in `extra_applications` in mix.exs
@@ -426,15 +429,33 @@ defmodule Cantrip.Loom do
     end
   end
 
-  defp normalize_storage({:jsonl, path}) when is_binary(path),
+  defp normalize_storage!(nil), do: {Memory, %{}}
+  defp normalize_storage!(:memory), do: {Memory, %{}}
+
+  defp normalize_storage!({:jsonl, path}) when is_binary(path),
     do: {Cantrip.Loom.Storage.Jsonl, path}
 
-  defp normalize_storage({:mnesia, opts}),
+  defp normalize_storage!({:jsonl, path}), do: invalid_storage!({:jsonl, path})
+
+  defp normalize_storage!({:mnesia, opts}) when is_map(opts) or is_list(opts),
     do: {Cantrip.Loom.Storage.Mnesia, opts}
 
-  defp normalize_storage({module, opts}) when is_atom(module), do: {module, opts}
+  defp normalize_storage!({:mnesia, opts}), do: invalid_storage!({:mnesia, opts})
 
-  defp normalize_storage(_), do: {Memory, %{}}
+  defp normalize_storage!({module, opts}) when is_atom(module) do
+    if function_exported?(module, :init, 1) do
+      {module, opts}
+    else
+      raise ArgumentError, "loom storage module #{inspect(module)} does not implement init/1"
+    end
+  end
+
+  defp normalize_storage!(storage), do: invalid_storage!(storage)
+
+  defp invalid_storage!(storage) do
+    raise ArgumentError,
+          "invalid loom storage #{Cantrip.SafeFormat.inspect(storage)}; expected :memory, {:jsonl, path}, {:mnesia, opts}, or {module, opts}"
+  end
 
   defp persist_event(module, storage_state, event) do
     cond do

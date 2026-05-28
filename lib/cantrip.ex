@@ -28,7 +28,10 @@ defmodule Cantrip do
   alias Cantrip.{Identity, Circle, EntityServer, Loom, WardPolicy, Gate}
   alias Cantrip.Medium.Registry, as: MediumRegistry
 
-  defstruct id: nil,
+  @enforce_keys [:id, :llm_module, :llm_state, :identity, :circle]
+  @derive {Inspect, except: [:llm_state, :child_llm]}
+  defstruct schema_version: 1,
+            id: nil,
             llm_module: nil,
             llm_state: nil,
             child_llm: nil,
@@ -40,6 +43,7 @@ defmodule Cantrip do
 
   @type t :: %__MODULE__{
           id: String.t(),
+          schema_version: pos_integer(),
           llm_module: module(),
           llm_state: term(),
           child_llm: {module(), term()} | nil,
@@ -57,6 +61,23 @@ defmodule Cantrip do
     backoff_max_ms: [type: :pos_integer, default: 30_000]
   ]
 
+  @root_schema [
+    llm: [type: :any],
+    identity: [type: :any, default: %{}],
+    circle: [type: :any, default: %{}],
+    child_llm: [type: :any],
+    loom_storage: [type: {:custom, __MODULE__, :validate_loom_storage_option, []}],
+    retry: [type: :any, default: %{}],
+    folding: [type: :any, default: %{}],
+    schema_version: [type: {:in, [1]}, default: 1],
+    parent_context: [type: :any]
+  ]
+
+  @folding_schema [
+    threshold_tokens: [type: :pos_integer],
+    trigger_after_turns: [type: :pos_integer]
+  ]
+
   @doc """
   Builds a reusable cantrip from keyword or map attributes.
 
@@ -70,7 +91,7 @@ defmodule Cantrip do
   """
   @spec new(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
   def new(attrs) do
-    attrs = Map.new(attrs)
+    attrs = normalize_input_map(attrs)
 
     parent_context =
       Map.get(attrs, :parent_context) || Map.get(attrs, "parent_context") ||
@@ -83,32 +104,36 @@ defmodule Cantrip do
   end
 
   defp new_root(attrs) do
-    llm = Map.get(attrs, :llm)
-    identity = Identity.new(Map.get(attrs, :identity, %{}))
+    with {:ok, attrs} <- validate_root_attrs(attrs),
+         {:ok, retry} <- validate_retry(Map.get(attrs, :retry, %{})),
+         {:ok, folding} <- validate_folding(Map.get(attrs, :folding, %{})) do
+      llm = Map.get(attrs, :llm)
+      identity = Identity.new(Map.get(attrs, :identity, %{}))
 
-    circle =
-      attrs
-      |> Map.get(:circle, %{})
-      |> Circle.new()
-      |> materialize_default_code_sandbox()
+      circle =
+        attrs
+        |> Map.get(:circle, %{})
+        |> Circle.new()
+        |> materialize_default_code_sandbox()
 
-    with :ok <- validate_llm(llm),
-         :ok <- validate_circle(circle, identity),
-         {:ok, retry} <- validate_retry(Map.get(attrs, :retry, %{})) do
-      {module, state} = llm
+      with :ok <- validate_llm(llm),
+           :ok <- validate_circle(circle, identity) do
+        {module, state} = llm
 
-      {:ok,
-       %__MODULE__{
-         id: "cantrip_" <> Integer.to_string(System.unique_integer([:positive])),
-         llm_module: module,
-         llm_state: state,
-         child_llm: normalize_child_llm(Map.get(attrs, :child_llm), llm),
-         identity: identity,
-         circle: circle,
-         loom_storage: Map.get(attrs, :loom_storage),
-         retry: retry,
-         folding: Map.get(attrs, :folding, %{})
-       }}
+        {:ok,
+         %__MODULE__{
+           schema_version: Map.fetch!(attrs, :schema_version),
+           id: "cantrip_" <> Integer.to_string(System.unique_integer([:positive])),
+           llm_module: module,
+           llm_state: state,
+           child_llm: normalize_child_llm(Map.get(attrs, :child_llm), llm),
+           identity: identity,
+           circle: circle,
+           loom_storage: Map.get(attrs, :loom_storage),
+           retry: retry,
+           folding: folding
+         }}
+      end
     end
   end
 
@@ -138,7 +163,8 @@ defmodule Cantrip do
       cancel_on_parent: Map.get(opts, :cancel_on_parent, []),
       stream_to: Map.get(opts, :stream_to),
       stream_barrier?: Map.get(opts, :stream_barrier?, false),
-      entity_state: Map.get(opts, :entity_state)
+      entity_state: Map.get(opts, :entity_state),
+      trace_id: Map.get(opts, :trace_id)
     }
   end
 
@@ -428,6 +454,9 @@ defmodule Cantrip do
         {:ok, result, next_cantrip, loom, meta} ->
           {:ok, pid, result, next_cantrip, loom, meta}
 
+        {:error, reason, next_cantrip} ->
+          {:error, reason, next_cantrip}
+
         {:error, reason} ->
           {:error, reason, cantrip}
       end
@@ -522,7 +551,14 @@ defmodule Cantrip do
             |> Enum.find(&match?({:error, _, _}, &1))
             |> elem(1)
 
-          push_parent_cast_observation(parent_context, "cast_batch", inspect(reason), true, [])
+          push_parent_cast_observation(
+            parent_context,
+            "cast_batch",
+            Cantrip.SafeFormat.inspect(reason),
+            true,
+            []
+          )
+
           {:error, reason}
         else
           values = Enum.map(payloads, fn {:ok, value, _next, _loom, _meta} -> value end)
@@ -534,7 +570,14 @@ defmodule Cantrip do
         end
 
       {:error, reason} ->
-        push_parent_cast_observation(parent_context, "cast_batch", inspect(reason), true, [])
+        push_parent_cast_observation(
+          parent_context,
+          "cast_batch",
+          Cantrip.SafeFormat.inspect(reason),
+          true,
+          []
+        )
+
         {:error, reason}
     end
   end
@@ -722,7 +765,9 @@ defmodule Cantrip do
   end
 
   defp coerce_intent(intent) when is_binary(intent), do: intent
-  defp coerce_intent(intent), do: inspect(intent, pretty: true, limit: :infinity)
+
+  defp coerce_intent(intent),
+    do: Cantrip.SafeFormat.inspect(intent, pretty: true, limit: :infinity)
 
   defp run_cast_with_parent_context(%__MODULE__{} = cantrip, intent, opts) do
     case Keyword.get(opts, :parent_context) || Process.get(:cantrip_parent_context) do
@@ -748,16 +793,19 @@ defmodule Cantrip do
     cast_opts =
       opts
       |> Keyword.put_new(:depth, depth)
+      |> Keyword.put_new(:trace_id, Map.get(parent_context, :trace_id))
       |> Keyword.put_new(:cancel_on_parent, child_cancel_on_parent(parent_context))
       |> maybe_put_new(:stream_to, Map.get(parent_context, :stream_to))
       |> maybe_put_new(:stream_barrier?, Map.get(parent_context, :stream_barrier?))
 
     emit_parent_event(entity_state, {:child_start, %{depth: depth, intent: intent}})
+    emit_child_start_telemetry(parent_context, depth)
 
     case run_cast(cantrip, intent, cast_opts) do
       {:ok, value, next_cantrip, child_loom, _meta} = ok ->
         remember_parent_child_llm(parent_context, next_cantrip)
         emit_parent_event(entity_state, {:child_end, %{depth: depth, result: value}})
+        emit_child_stop_telemetry(parent_context, depth, :ok)
 
         if record_observation?,
           do:
@@ -773,10 +821,23 @@ defmodule Cantrip do
 
       {:error, reason, next_cantrip} = error ->
         remember_parent_child_llm(parent_context, next_cantrip)
-        emit_parent_event(entity_state, {:child_end, %{depth: depth, error: inspect(reason)}})
+
+        emit_parent_event(
+          entity_state,
+          {:child_end, %{depth: depth, error: Cantrip.SafeFormat.inspect(reason)}}
+        )
+
+        emit_child_stop_telemetry(parent_context, depth, :error)
 
         if record_observation?,
-          do: push_parent_cast_observation(parent_context, parent_gate, inspect(reason), true, [])
+          do:
+            push_parent_cast_observation(
+              parent_context,
+              parent_gate,
+              Cantrip.SafeFormat.inspect(reason),
+              true,
+              []
+            )
 
         error
     end
@@ -817,7 +878,24 @@ defmodule Cantrip do
 
   defp normalize_parent_context(%{} = context) do
     Map.new(context, fn {k, v} ->
-      key = if is_atom(k), do: k, else: String.to_atom(to_string(k))
+      key =
+        case k do
+          atom when is_atom(atom) -> atom
+          "parent_cantrip" -> :parent_cantrip
+          "depth" -> :depth
+          "child_llm" -> :child_llm
+          "cancel_on_parent" -> :cancel_on_parent
+          "stream_to" -> :stream_to
+          "stream_barrier?" -> :stream_barrier?
+          "entity_state" -> :entity_state
+          "trace_id" -> :trace_id
+          "child_llm_ref" -> :child_llm_ref
+          "remember_child_llm?" -> :remember_child_llm?
+          "observation_collector" -> :observation_collector
+          "record_parent_observation?" -> :record_parent_observation?
+          other -> other
+        end
+
       {key, v}
     end)
   end
@@ -835,6 +913,39 @@ defmodule Cantrip do
 
   defp emit_parent_event(%{stream_to: pid} = state, event) when is_pid(pid) do
     Cantrip.Event.send(pid, state, event)
+  end
+
+  defp emit_child_start_telemetry(parent_context, depth) do
+    parent = Map.get(parent_context, :entity_state)
+
+    if parent do
+      Cantrip.Telemetry.execute(
+        [:cantrip, :child, :start],
+        %{},
+        %{
+          entity_id: parent.entity_id,
+          trace_id: Map.get(parent_context, :trace_id),
+          child_depth: depth
+        }
+      )
+    end
+  end
+
+  defp emit_child_stop_telemetry(parent_context, depth, outcome) do
+    parent = Map.get(parent_context, :entity_state)
+
+    if parent do
+      Cantrip.Telemetry.execute(
+        [:cantrip, :child, :stop],
+        %{},
+        %{
+          entity_id: parent.entity_id,
+          trace_id: Map.get(parent_context, :trace_id),
+          child_depth: depth,
+          outcome: outcome
+        }
+      )
+    end
   end
 
   defp remember_parent_child_llm(parent_context, next_cantrip) do
@@ -905,7 +1016,7 @@ defmodule Cantrip do
           observations
           |> Enum.map(fn obs ->
             prefix = if obs.is_error, do: "Error: ", else: ""
-            "#{prefix}#{inspect(obs.result)}"
+            "#{prefix}#{Cantrip.SafeFormat.inspect(obs.result)}"
           end)
           |> Enum.join("\n")
 
@@ -953,6 +1064,107 @@ defmodule Cantrip do
     case NimbleOptions.validate(opts, @retry_schema) do
       {:ok, validated} -> {:ok, Map.new(validated)}
       {:error, %NimbleOptions.ValidationError{message: msg}} -> {:error, msg}
+    end
+  end
+
+  defp validate_root_attrs(attrs) do
+    attrs = attrs |> normalize_input_map() |> prefer_atom_keys()
+
+    case reject_non_atom_option_keys(attrs) do
+      :ok ->
+        case NimbleOptions.validate(Map.to_list(attrs), @root_schema) do
+          {:ok, validated} -> {:ok, Map.new(validated)}
+          {:error, %NimbleOptions.ValidationError{message: msg}} -> {:error, msg}
+        end
+
+      {:error, msg} ->
+        {:error, msg}
+    end
+  end
+
+  defp validate_folding(folding) do
+    opts = folding |> normalize_input_map() |> prefer_atom_keys()
+
+    case NimbleOptions.validate(Map.to_list(opts), @folding_schema) do
+      {:ok, validated} -> {:ok, Map.new(validated)}
+      {:error, %NimbleOptions.ValidationError{message: msg}} -> {:error, msg}
+    end
+  end
+
+  @doc false
+  def validate_loom_storage_option(nil), do: {:ok, nil}
+  def validate_loom_storage_option(:memory), do: {:ok, :memory}
+
+  def validate_loom_storage_option({:jsonl, path} = storage) when is_binary(path),
+    do: {:ok, storage}
+
+  def validate_loom_storage_option({:jsonl, _path}) do
+    {:error, "expected :memory, {:jsonl, path}, {:mnesia, opts}, or {module, opts}"}
+  end
+
+  def validate_loom_storage_option({:mnesia, opts}) do
+    with {:ok, opts} <- validate_mnesia_storage_opts(opts) do
+      {:ok, {:mnesia, opts}}
+    end
+  end
+
+  def validate_loom_storage_option({module, _opts} = storage) when is_atom(module) do
+    if function_exported?(module, :init, 1) do
+      {:ok, storage}
+    else
+      {:error, "expected storage module to implement init/1"}
+    end
+  end
+
+  def validate_loom_storage_option(_other) do
+    {:error, "expected :memory, {:jsonl, path}, {:mnesia, opts}, or {module, opts}"}
+  end
+
+  defp validate_mnesia_storage_opts(opts) when is_map(opts) or is_list(opts) do
+    opts = opts |> normalize_input_map() |> prefer_atom_keys()
+
+    case NimbleOptions.validate(Map.to_list(opts), table: [type: :atom], mnesia: [type: :atom]) do
+      {:ok, validated} -> {:ok, Map.new(validated)}
+      {:error, %NimbleOptions.ValidationError{message: msg}} -> {:error, msg}
+    end
+  end
+
+  defp validate_mnesia_storage_opts(_opts), do: {:error, "expected mnesia opts as map or keyword"}
+
+  defp normalize_input_map(nil), do: %{}
+  defp normalize_input_map(attrs) when is_map(attrs), do: attrs
+  defp normalize_input_map(attrs) when is_list(attrs), do: Map.new(attrs)
+  defp normalize_input_map(other), do: %{invalid: other}
+
+  defp prefer_atom_keys(map) when is_map(map) do
+    Map.new(map, fn
+      {key, value} when is_atom(key) -> {key, value}
+      {key, value} when is_binary(key) -> {known_root_key(key), value}
+      pair -> pair
+    end)
+  end
+
+  defp known_root_key("llm"), do: :llm
+  defp known_root_key("identity"), do: :identity
+  defp known_root_key("circle"), do: :circle
+  defp known_root_key("child_llm"), do: :child_llm
+  defp known_root_key("loom_storage"), do: :loom_storage
+  defp known_root_key("retry"), do: :retry
+  defp known_root_key("folding"), do: :folding
+  defp known_root_key("schema_version"), do: :schema_version
+  defp known_root_key("parent_context"), do: :parent_context
+  defp known_root_key("threshold_tokens"), do: :threshold_tokens
+  defp known_root_key("trigger_after_turns"), do: :trigger_after_turns
+  defp known_root_key("table"), do: :table
+  defp known_root_key("mnesia"), do: :mnesia
+  defp known_root_key(key), do: key
+
+  defp reject_non_atom_option_keys(map) do
+    unknown = map |> Map.keys() |> Enum.reject(&is_atom/1)
+
+    case unknown do
+      [] -> :ok
+      keys -> {:error, "unknown options #{inspect(keys)}"}
     end
   end
 

@@ -28,6 +28,8 @@ defmodule Cantrip.Medium.Code.Port do
           code,
           %{
             gate_names: gate_names(runtime),
+            entity_id: Map.get(runtime, :entity_id),
+            trace_id: Map.get(runtime, :trace_id),
             loom: Map.get(runtime, :loom),
             folded_summary: Map.get(runtime, :folded_summary),
             evaluator: evaluator(runtime)
@@ -63,6 +65,11 @@ defmodule Cantrip.Medium.Code.Port do
   end
 
   defp ensure_session(state, runtime) do
+    # Child boot is a startup budget, not the user's eval budget. Keep the old
+    # short-timeout behavior for eval itself while allowing larger deployment
+    # budgets to cover slow CI/container process startup.
+    init_timeout = max(5_000, WardPolicy.code_eval_timeout_ms(runtime.circle.wards))
+
     with {:ok, port} <- start_child(runtime) do
       session = %{port: port, os_pid: os_pid(port)}
       binding = Map.get(state, :binding, [])
@@ -71,17 +78,29 @@ defmodule Cantrip.Medium.Code.Port do
       receive do
         {^port, {:data, payload}} ->
           case safe_binary_to_term(payload) do
-            {:ok, :ready} -> {:ok, session, Map.put(state, :port_session, session)}
-            {:ok, {:ready, _}} -> {:ok, session, Map.put(state, :port_session, session)}
-            {:ok, {:init_error, reason}} -> init_error(session, inspect(reason))
-            {:ok, other} -> init_error(session, "unexpected init response: #{inspect(other)}")
-            {:error, reason} -> init_error(session, reason)
+            {:ok, :ready} ->
+              {:ok, session, Map.put(state, :port_session, session)}
+
+            {:ok, {:ready, _}} ->
+              {:ok, session, Map.put(state, :port_session, session)}
+
+            {:ok, {:init_error, reason}} ->
+              init_error(session, Cantrip.SafeFormat.inspect(reason))
+
+            {:ok, other} ->
+              init_error(
+                session,
+                "unexpected init response: #{Cantrip.SafeFormat.inspect(other)}"
+              )
+
+            {:error, reason} ->
+              init_error(session, reason)
           end
 
         {^port, {:exit_status, status}} ->
           {:error, "child exited during init with status #{status}"}
       after
-        5_000 ->
+        init_timeout ->
           close_session(session)
           {:error, "child init timed out"}
       end
@@ -98,7 +117,7 @@ defmodule Cantrip.Medium.Code.Port do
         {:ok, port}
     end
   rescue
-    e -> {:error, Exception.message(e)}
+    e -> {:error, Cantrip.SafeFormat.exception(e)}
   end
 
   defp child_command(runtime) do
@@ -174,6 +193,10 @@ defmodule Cantrip.Medium.Code.Port do
             observation = with_tool_call_id(observation)
             await_eval(session, ref, runtime, state, observations ++ [observation], timeout)
 
+          {:ok, {:telemetry, event, measurements, metadata}} ->
+            emit_child_telemetry(event, measurements, metadata)
+            await_eval(session, ref, runtime, state, observations, timeout)
+
           {:ok, {:api_call, call_ref, function, args}} ->
             function = normalize_api_function(function)
             {reply, state, api_observations} = execute_api_call(function, args, runtime, state)
@@ -198,13 +221,19 @@ defmodule Cantrip.Medium.Code.Port do
             obs =
               observations
               |> append_stdio(captured_output)
-              |> Kernel.++([%{gate: "code", result: inspect(reason), is_error: true}])
+              |> Kernel.++([
+                %{gate: "code", result: Cantrip.SafeFormat.inspect(reason), is_error: true}
+              ])
 
             {next_state, obs, nil, false}
 
           {:ok, other} ->
             obs = [
-              %{gate: "code", result: "unexpected port frame: #{inspect(other)}", is_error: true}
+              %{
+                gate: "code",
+                result: "unexpected port frame: #{Cantrip.SafeFormat.inspect(other)}",
+                is_error: true
+              }
             ]
 
             {drop_session(state, session), observations ++ obs, nil, false}
@@ -307,7 +336,14 @@ defmodule Cantrip.Medium.Code.Port do
     else
       {:error, reason, next_cantrip} ->
         {next_handle, state} = put_child_handle(state, next_cantrip, handle)
-        observation = %{gate: "cast", result: inspect(reason), is_error: true, child_turns: []}
+
+        observation = %{
+          gate: "cast",
+          result: Cantrip.SafeFormat.inspect(reason),
+          is_error: true,
+          child_turns: []
+        }
+
         {{:error, reason, next_handle}, state, [observation]}
 
       {:error, reason} ->
@@ -344,7 +380,7 @@ defmodule Cantrip.Medium.Code.Port do
       {:error, reason} ->
         observation = %{
           gate: "cast_batch",
-          result: inspect(reason),
+          result: Cantrip.SafeFormat.inspect(reason),
           is_error: true,
           child_turns: []
         }
@@ -379,19 +415,19 @@ defmodule Cantrip.Medium.Code.Port do
   defp fetch_child_handle(state, %Cantrip{id: id}) do
     case Map.fetch(Map.get(state, :child_handles, %{}), id) do
       {:ok, cantrip} -> {:ok, cantrip}
-      :error -> {:error, "unknown cantrip handle: #{inspect(id)}"}
+      :error -> {:error, "unknown cantrip handle: #{Cantrip.SafeFormat.inspect(id)}"}
     end
   end
 
   defp fetch_child_handle(state, id) when is_binary(id) do
     case Map.fetch(Map.get(state, :child_handles, %{}), id) do
       {:ok, cantrip} -> {:ok, cantrip}
-      :error -> {:error, "unknown cantrip handle: #{inspect(id)}"}
+      :error -> {:error, "unknown cantrip handle: #{Cantrip.SafeFormat.inspect(id)}"}
     end
   end
 
   defp fetch_child_handle(_state, other),
-    do: {:error, "expected cantrip handle, got: #{inspect(other)}"}
+    do: {:error, "expected cantrip handle, got: #{Cantrip.SafeFormat.inspect(other)}"}
 
   defp child_handle_key(%Cantrip{id: id}), do: id
   defp child_handle_key(id) when is_binary(id), do: id
@@ -425,6 +461,25 @@ defmodule Cantrip.Medium.Code.Port do
 
   defp append_stdio(obs, _captured), do: obs
 
+  defp emit_child_telemetry(event, measurements, metadata)
+       when is_list(event) and is_map(metadata) do
+    event = Enum.map(event, &normalize_existing_atom/1)
+
+    if event in Cantrip.Telemetry.events() do
+      Cantrip.Telemetry.execute(event, Map.new(measurements || %{}), metadata)
+    end
+  end
+
+  defp emit_child_telemetry(_event, _measurements, _metadata), do: :ok
+
+  defp normalize_existing_atom(atom) when is_atom(atom), do: atom
+
+  defp normalize_existing_atom(value) do
+    String.to_existing_atom(to_string(value))
+  rescue
+    ArgumentError -> value
+  end
+
   defp with_tool_call_id(observation) do
     Map.put_new_lazy(observation, :tool_call_id, fn ->
       "call_" <> Integer.to_string(System.unique_integer([:positive]))
@@ -438,7 +493,7 @@ defmodule Cantrip.Medium.Code.Port do
   defp safe_binary_to_term(payload) do
     {:ok, :erlang.binary_to_term(payload, [:safe])}
   rescue
-    e -> {:error, Exception.message(e)}
+    e -> {:error, Cantrip.SafeFormat.exception(e)}
   end
 
   defp os_pid(port) do

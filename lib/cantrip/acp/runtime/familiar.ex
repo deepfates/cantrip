@@ -73,7 +73,7 @@ defmodule Cantrip.ACP.Runtime.Familiar do
         end
 
       {:error, reason, next_cantrip} ->
-        {:error, inspect(reason), %{session | cantrip: next_cantrip}}
+        {:error, Cantrip.SafeFormat.inspect(reason), %{session | cantrip: next_cantrip}}
     end
   end
 
@@ -90,15 +90,18 @@ defmodule Cantrip.ACP.Runtime.Familiar do
         end
 
       {:error, reason} ->
-        {:error, inspect(reason), session}
+        {:error, Cantrip.SafeFormat.inspect(reason), session}
     end
   end
 
   defp normalize_answer(nil), do: ""
-  defp normalize_answer(answer) when is_binary(answer), do: String.trim(answer)
+
+  defp normalize_answer(answer) when is_binary(answer),
+    do: answer |> Cantrip.SafeFormat.message() |> String.trim()
+
   # Non-binary answers (agents that called done() with a map, list, etc.)
   # get inspected — never raise. Mirrors Cantrip.ACP.EventBridge.stringify/1.
-  defp normalize_answer(answer), do: inspect(answer) |> String.trim()
+  defp normalize_answer(answer), do: answer |> Cantrip.SafeFormat.inspect() |> String.trim()
 
   defp stream_opts(%{stream_to: stream_to}) when is_pid(stream_to),
     do: [stream_to: stream_to, stream_barrier?: true]

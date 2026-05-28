@@ -4,6 +4,8 @@ defmodule Cantrip.Loom.Storage.Mnesia do
   @behaviour Cantrip.Loom.Storage
   import Cantrip.LLMs.Helpers, only: [normalize_opts: 1]
 
+  @version 1
+
   @impl true
   def init(opts) do
     if not available?() do
@@ -11,22 +13,24 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     else
       opts = normalize_opts(opts)
       table = Map.get(opts, :table, default_table())
+      mnesia = Map.get(opts, :mnesia, :mnesia)
 
-      with :ok <- ensure_mnesia_started(),
-           :ok <- ensure_table(table) do
-        {:ok, %{table: table}}
+      with :ok <- ensure_mnesia_started(mnesia),
+           :ok <- ensure_table(table, mnesia) do
+        {:ok, %{table: table, mnesia: mnesia}}
       else
-        {:error, reason} -> {:error, inspect(reason)}
+        {:error, reason} -> {:error, Cantrip.SafeFormat.inspect(reason)}
       end
     end
   end
 
   @impl true
   def append_turn(%{table: table} = state, turn) do
+    mnesia = Map.get(state, :mnesia, :mnesia)
     key = System.unique_integer([:positive, :monotonic])
     event = storage_event(%{type: :turn, turn: turn})
 
-    case call(:transaction, [fn -> call(:write, [{table, key, event}]) end]) do
+    case call(mnesia, :transaction, [fn -> call(mnesia, :write, [{table, key, event}]) end]) do
       {:atomic, :ok} -> {:ok, state}
       {:aborted, reason} -> {:error, reason}
       other -> {:error, other}
@@ -35,10 +39,11 @@ defmodule Cantrip.Loom.Storage.Mnesia do
 
   @impl true
   def annotate_reward(%{table: table} = state, index, reward) do
+    mnesia = Map.get(state, :mnesia, :mnesia)
     key = System.unique_integer([:positive, :monotonic])
     event = storage_event(%{type: :reward, index: index, reward: reward})
 
-    case call(:transaction, [fn -> call(:write, [{table, key, event}]) end]) do
+    case call(mnesia, :transaction, [fn -> call(mnesia, :write, [{table, key, event}]) end]) do
       {:atomic, :ok} -> {:ok, state}
       {:aborted, reason} -> {:error, reason}
       other -> {:error, other}
@@ -47,20 +52,20 @@ defmodule Cantrip.Loom.Storage.Mnesia do
 
   @impl true
   def append_event(%{table: table} = state, event) do
+    mnesia = Map.get(state, :mnesia, :mnesia)
     key = System.unique_integer([:positive, :monotonic])
     event = storage_event(event)
 
-    case call(:transaction, [fn -> call(:write, [{table, key, event}]) end]) do
+    case call(mnesia, :transaction, [fn -> call(mnesia, :write, [{table, key, event}]) end]) do
       {:atomic, :ok} -> {:ok, state}
       {:aborted, reason} -> {:error, reason}
       other -> {:error, other}
     end
   end
 
-  # Mnesia preserves native Erlang terms so no tagging or atomize is needed.
   @impl true
-  def load(%{table: table}) do
-    case read_events(table) do
+  def load(%{table: table} = state) do
+    case read_events(table, Map.get(state, :mnesia, :mnesia)) do
       {:ok, events} ->
         {evts, trns} = classify_native(events)
         {:ok, %{events: evts, turns: trns}}
@@ -72,7 +77,8 @@ defmodule Cantrip.Loom.Storage.Mnesia do
 
   defp classify_native(events) do
     {evts, trns} =
-      Enum.reduce(events, {[], []}, fn event, {evts_acc, trns_acc} ->
+      Enum.reduce(events, {[], []}, fn stored_event, {evts_acc, trns_acc} ->
+        event = upcast!(stored_event)
         type = Map.get(event, :type) || Map.get(event, "type")
 
         cond do
@@ -97,8 +103,8 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     {Enum.reverse(evts), Enum.reverse(trns)}
   end
 
-  def read_events(table) when is_atom(table) do
-    case call(:transaction, [fn -> call(:match_object, [{table, :_, :_}]) end]) do
+  defp read_events(table, mnesia) when is_atom(table) do
+    case call(mnesia, :transaction, [fn -> call(mnesia, :match_object, [{table, :_, :_}]) end]) do
       {:atomic, rows} ->
         events =
           rows
@@ -115,33 +121,33 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     end
   end
 
-  defp ensure_mnesia_started do
-    case call(:system_info, [:is_running]) do
+  defp ensure_mnesia_started(mnesia) do
+    case call(mnesia, :system_info, [:is_running]) do
       :yes ->
         :ok
 
       _ ->
-        ensure_schema()
-
-        case call(:start, []) do
-          :ok -> :ok
-          {:error, {:already_started, :mnesia}} -> :ok
-          {:error, reason} -> {:error, reason}
-          other -> {:error, other}
+        with :ok <- ensure_schema(mnesia) do
+          case call(mnesia, :start, []) do
+            :ok -> :ok
+            {:error, {:already_started, :mnesia}} -> :ok
+            {:error, reason} -> {:error, reason}
+            other -> {:error, other}
+          end
         end
     end
   end
 
-  defp ensure_schema do
-    case call(:create_schema, [[node()]]) do
+  defp ensure_schema(mnesia) do
+    case call(mnesia, :create_schema, [[node()]]) do
       :ok -> :ok
       {:error, {_kind, {:already_exists, _node}}} -> :ok
       {:error, {:already_exists, _node}} -> :ok
-      {:error, _reason} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  defp ensure_table(table) do
+  defp ensure_table(table, mnesia) do
     # Disc copies require a named node. On `:nonode@nohost` (unnamed
     # BEAM, e.g. tests, REPL without distributed Erlang) Mnesia
     # rejects `disc_copies` with `:bad_type`. Fall back to in-memory
@@ -160,20 +166,20 @@ defmodule Cantrip.Loom.Storage.Mnesia do
       {copies_key, [node()]}
     ]
 
-    case call(:create_table, [table, create_opts]) do
+    case call(mnesia, :create_table, [table, create_opts]) do
       {:atomic, :ok} ->
-        wait_for_table(table)
+        wait_for_table(table, mnesia)
 
       {:aborted, {:already_exists, ^table}} ->
-        wait_for_table(table)
+        wait_for_table(table, mnesia)
 
       {:aborted, reason} ->
         {:error, reason}
     end
   end
 
-  defp wait_for_table(table) do
-    case call(:wait_for_tables, [[table], 5_000]) do
+  defp wait_for_table(table, mnesia) do
+    case call(mnesia, :wait_for_tables, [[table], 5_000]) do
       :ok -> :ok
       {:timeout, _tables} = timeout -> {:error, timeout}
       {:error, reason} -> {:error, reason}
@@ -192,11 +198,17 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     Code.ensure_loaded?(:mnesia)
   end
 
-  defp call(fun, args) do
-    apply(:mnesia, fun, args)
+  defp call(mnesia, fun, args) do
+    apply(mnesia, fun, args)
   end
 
   defp storage_event(event) do
+    {:cantrip_loom_event, @version, normalize_event(event)}
+  end
+
+  defp event_type(event), do: Map.get(event, :type) || Map.get(event, "type")
+
+  defp normalize_event(event) do
     case event_type(event) do
       :turn ->
         %{type: "turn", turn: Map.fetch!(event, :turn)}
@@ -221,5 +233,12 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     end
   end
 
-  defp event_type(event), do: Map.get(event, :type) || Map.get(event, "type")
+  defp upcast!({:cantrip_loom_event, @version, event}), do: event
+
+  defp upcast!({:cantrip_loom_event, version, _event}) do
+    raise "unsupported loom Mnesia version: #{version}"
+  end
+
+  # Legacy v1 records before the version envelope stored the event map directly.
+  defp upcast!(event) when is_map(event), do: event
 end

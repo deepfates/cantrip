@@ -35,8 +35,39 @@ defmodule Cantrip.FamiliarTest do
       assert "done" in gate_names
       assert "list_dir" in gate_names
       assert "search" in gate_names
+      refute "mix" in gate_names
       refute "read_file" in gate_names
       refute "compile_and_load" in gate_names
+    end
+
+    test "rooted familiar exposes mix without test by default" do
+      llm = {FakeLLM, FakeLLM.new([])}
+      {:ok, cantrip} = Familiar.new(llm: llm, root: System.tmp_dir!())
+
+      assert "mix" in Map.keys(cantrip.circle.gates)
+
+      assert Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_mix_tasks) == [
+               "compile",
+               "format"
+             ]
+    end
+
+    test "run_tests opts into the mix test task" do
+      llm = {FakeLLM, FakeLLM.new([])}
+      {:ok, cantrip} = Familiar.new(llm: llm, root: System.tmp_dir!(), run_tests: true)
+
+      assert Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_mix_tasks) == [
+               "compile",
+               "format",
+               "test"
+             ]
+    end
+
+    test "allow_mix_tasks overrides the familiar mix allowlist" do
+      llm = {FakeLLM, FakeLLM.new([])}
+      {:ok, cantrip} = Familiar.new(llm: llm, root: System.tmp_dir!(), allow_mix_tasks: ["test"])
+
+      assert Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_mix_tasks) == ["test"]
     end
 
     test "compile_and_load is opt-in through evolve: true" do
@@ -46,8 +77,8 @@ defmodule Cantrip.FamiliarTest do
       gate_names = Map.keys(cantrip.circle.gates)
       assert "compile_and_load" in gate_names
 
-      assert Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_compile_namespaces) == [
-               "Elixir.Cantrip.Hot."
+      assert Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_compile_modules) == [
+               "Elixir.Cantrip.Hot.Tally"
              ]
 
       refute cantrip.identity.system_prompt =~ "compile_and_load"
@@ -62,7 +93,7 @@ defmodule Cantrip.FamiliarTest do
       {:ok, cantrip} = Familiar.new(llm: llm)
 
       refute cantrip.identity.system_prompt =~ "compile_and_load"
-      refute Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_compile_namespaces)
+      refute Cantrip.WardPolicy.get(cantrip.circle.wards, :allow_compile_modules)
 
       capability_text = Cantrip.Medium.Registry.present(cantrip.circle).capability_text
       refute capability_text =~ "compile_and_load"
@@ -376,6 +407,7 @@ defmodule Cantrip.FamiliarTest do
       assert "done" in gate_names
       assert "list_dir" in gate_names
       assert "search" in gate_names
+      assert "mix" in gate_names
       refute "read_file" in gate_names
     end
 

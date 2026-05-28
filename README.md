@@ -167,8 +167,8 @@ persists its loom.
 ```
 
 Hot-loading is opt-in. Pass `evolve: true` to include `compile_and_load`
-and the `Cantrip.Hot.*` namespace ward. Be careful what you wish for; the
-Familiar is minimally warded.
+and an exact allowlist for `Elixir.Cantrip.Hot.Tally`. Be careful what you
+wish for; the Familiar is minimally warded.
 
 ## Core API
 
@@ -225,9 +225,11 @@ is evaluated by Dune inside a child BEAM process, while gates, child cantrip
 API calls, stdio, and hot-loading are resolved through explicit parent/child
 protocol messages. Use `%{sandbox: :port}` when you want that default boundary
 to be explicit in a circle. Use `sandbox: :port_unrestricted` only when you
-explicitly want raw Elixir in the child process, `sandbox: :dune` when
-in-process language restriction is enough, or `sandbox: :unrestricted` only
-for trusted local development in the host BEAM.
+explicitly want raw Elixir in the child process, `sandbox: :dune` when you
+want in-process language restriction with a deliberately smaller binding
+surface (see [docs/port-isolated-runtime.md](./docs/port-isolated-runtime.md)
+for the divergence — entity prompts need to match the variant in use), or
+`sandbox: :unrestricted` only for trusted local development in the host BEAM.
 Child-origin atoms outside Cantrip's wire vocabulary cross the port boundary
 as strings, which keeps hot-loaded child code from forcing new atoms into the
 parent BEAM.
@@ -247,6 +249,7 @@ observations the entity reads as data:
 - `list_dir(%{path})` — list a directory under `:root`
 - `search(%{pattern, path})` — regex search returning `%{path, line, text}`
   matches
+- `mix(%{task, args})` — run an allowlisted Mix task under `:root`
 - `compile_and_load(%{module, source})` — compile and hot-load a module
   (opt-in via `evolve: true` on the Familiar)
 
@@ -304,6 +307,6 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full posture.
 
 ## Package status
 
-This package is `1.0.0`. ACP support depends on
+This package is `1.1.0`. ACP support depends on
 `agent_client_protocol ~> 0.1.0` from Hex. The package surface is checked with
 `mix docs` and `mix hex.build`.

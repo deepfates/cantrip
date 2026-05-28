@@ -106,6 +106,33 @@ defmodule DivergenceFixesTest do
       assert {:error, msg} = result
       assert msg =~ "medium"
     end
+
+    test "Circle.new rejects unknown options" do
+      assert_raise ArgumentError, ~r/unknown circle options/, fn ->
+        Circle.new(type: :conversation, gates: [:done], mystery: true)
+      end
+    end
+
+    test "Cantrip.new rejects unknown medium instead of falling back to conversation" do
+      llm = {FakeLLM, FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])}
+
+      result =
+        Cantrip.new(
+          llm: llm,
+          circle: %{
+            type: :converstation,
+            gates: [:done],
+            wards: [%{max_turns: 10}]
+          }
+        )
+
+      assert {:error, msg} = result
+      assert msg =~ "unknown medium"
+      assert msg =~ ":converstation"
+      assert msg =~ "conversation"
+      assert msg =~ "code"
+      assert msg =~ "bash"
+    end
   end
 
   # ===========================================================================

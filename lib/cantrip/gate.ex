@@ -4,14 +4,14 @@ defmodule Cantrip.Gate do
 
   A circle declares which gates an entity may use. This module contains the
   concrete built-in effects for those gates: `done`, `echo`, filesystem reads,
-  search, and guarded compile/load.
+  search, scoped Mix tasks, and guarded compile/load.
 
   Ordering, tool-call ids, telemetry, and the `done` control-flow convention
   live in `Cantrip.Gate.Executor`; this module is deliberately closer to the
   capability surface itself.
   """
 
-  alias Cantrip.Gate.{CompileAndLoad, Spec}
+  alias Cantrip.Gate.{CompileAndLoad, Mix, Spec}
   alias Cantrip.Gate.Path, as: GatePath
 
   @spec names(Cantrip.Circle.t()) :: [String.t()]
@@ -91,7 +91,9 @@ defmodule Cantrip.Gate do
     if is_nil(answer) do
       %{gate: "done", result: "missing required argument: answer", is_error: true}
     else
-      result = if is_binary(answer), do: answer, else: inspect(answer, pretty: true)
+      result =
+        if is_binary(answer), do: answer, else: Cantrip.SafeFormat.inspect(answer, pretty: true)
+
       %{gate: "done", result: result, is_error: false}
     end
   end
@@ -107,8 +109,11 @@ defmodule Cantrip.Gate do
   defp run_gate(%{name: "read_file"} = gate, args, _wards) when is_binary(args) do
     with {:ok, path} <- GatePath.validate(args, gate) do
       case File.read(path) do
-        {:ok, content} -> %{gate: "read_file", result: content, is_error: false}
-        {:error, reason} -> %{gate: "read_file", result: inspect(reason), is_error: true}
+        {:ok, content} ->
+          %{gate: "read_file", result: content, is_error: false}
+
+        {:error, reason} ->
+          %{gate: "read_file", result: Cantrip.SafeFormat.inspect(reason), is_error: true}
       end
     end
   end
@@ -118,8 +123,11 @@ defmodule Cantrip.Gate do
 
     with {:ok, path} <- GatePath.validate(path, gate) do
       case File.read(path) do
-        {:ok, content} -> %{gate: "read_file", result: content, is_error: false}
-        {:error, reason} -> %{gate: "read_file", result: inspect(reason), is_error: true}
+        {:ok, content} ->
+          %{gate: "read_file", result: content, is_error: false}
+
+        {:error, reason} ->
+          %{gate: "read_file", result: Cantrip.SafeFormat.inspect(reason), is_error: true}
       end
     end
   end
@@ -152,7 +160,7 @@ defmodule Cantrip.Gate do
             results = search_files(path, pattern)
             %{gate: "search", result: results, is_error: false}
           rescue
-            e -> %{gate: "search", result: Exception.message(e), is_error: true}
+            e -> %{gate: "search", result: Cantrip.SafeFormat.exception(e), is_error: true}
           end
         end
     end
@@ -160,6 +168,10 @@ defmodule Cantrip.Gate do
 
   defp run_gate(%{name: "compile_and_load"} = gate, args, wards) do
     CompileAndLoad.execute(args, wards, gate)
+  end
+
+  defp run_gate(%{name: "mix"} = gate, args, wards) do
+    Mix.execute(args, wards, gate)
   end
 
   defp run_gate(%{behavior: :throw, error: msg, name: name}, _args, _wards) do
@@ -188,7 +200,7 @@ defmodule Cantrip.Gate do
         %{gate: "list_dir", result: Enum.sort(entries), is_error: false}
 
       {:error, reason} ->
-        %{gate: "list_dir", result: inspect(reason), is_error: true}
+        %{gate: "list_dir", result: Cantrip.SafeFormat.inspect(reason), is_error: true}
     end
   end
 

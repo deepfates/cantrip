@@ -18,6 +18,8 @@ defmodule Cantrip.Medium.Code do
     :folded_summary
   ]
 
+  @builtin_gate_atoms ~w(done echo read_file list_dir search compile_and_load mix)a
+
   @type runtime :: %{
           required(:circle) => Circle.t(),
           optional(:execute_gate) => (String.t(), map() -> map()),
@@ -184,7 +186,11 @@ defmodule Cantrip.Medium.Code do
   catch
     :exit, reason ->
       obs = [
-        %{gate: "code", result: "code evaluation crashed: #{inspect(reason)}", is_error: true}
+        %{
+          gate: "code",
+          result: "code evaluation crashed: #{Cantrip.SafeFormat.inspect(reason)}",
+          is_error: true
+        }
       ]
 
       {state, obs, nil, false}
@@ -199,9 +205,15 @@ defmodule Cantrip.Medium.Code do
 
   defp append_stdio(obs, _captured), do: obs
 
-  defp emit_eval_stop(%{entity_id: entity_id}, started_at) when is_binary(entity_id) do
+  defp emit_eval_stop(%{entity_id: entity_id, trace_id: trace_id}, started_at)
+       when is_binary(entity_id) do
     duration = System.monotonic_time() - started_at
-    :telemetry.execute([:cantrip, :code, :eval], %{duration: duration}, %{entity_id: entity_id})
+
+    Cantrip.Telemetry.execute(
+      [:cantrip, :code, :eval],
+      %{duration: duration},
+      %{entity_id: entity_id, trace_id: trace_id}
+    )
   end
 
   defp emit_eval_stop(_runtime, _started_at), do: :ok
@@ -231,7 +243,10 @@ defmodule Cantrip.Medium.Code do
           eval_statements(extract_statements(quoted), binding, collector)
 
         {:error, {line, error, token}} ->
-          msg = "parse error at #{inspect(line)}: #{inspect(error)} #{inspect(token)}"
+          msg =
+            "parse error at #{Cantrip.SafeFormat.inspect(line)}: " <>
+              "#{Cantrip.SafeFormat.inspect(error)} #{Cantrip.SafeFormat.inspect(token)}"
+
           push_observation(collector, %{gate: "code", result: msg, is_error: true})
           {binding, nil, false}
       end
@@ -256,7 +271,12 @@ defmodule Cantrip.Medium.Code do
       end
     rescue
       e ->
-        push_observation(collector, %{gate: "code", result: Exception.message(e), is_error: true})
+        push_observation(collector, %{
+          gate: "code",
+          result: Cantrip.SafeFormat.exception(e),
+          is_error: true
+        })
+
         {binding, nil, false}
     catch
       {:cantrip_done, answer} ->
@@ -358,32 +378,45 @@ defmodule Cantrip.Medium.Code do
         runtime.circle
         |> Gate.names()
         |> Enum.reduce(binding, fn gate_name, acc ->
-          binding_name = String.to_atom(gate_name)
+          case gate_binding_name(gate_name) do
+            {:ok, binding_name} when binding_name not in @reserved_bindings ->
+              gate_fun = fn opts ->
+                # In code medium, models may pass bare values (strings, numbers)
+                # rather than maps. Normalize maps/lists but pass bare values through
+                # so gate handlers can interpret them directly.
+                args =
+                  cond do
+                    is_map(opts) -> opts
+                    is_list(opts) -> Map.new(opts)
+                    true -> opts
+                  end
 
-          if binding_name in @reserved_bindings do
-            acc
-          else
-            gate_fun = fn opts ->
-              # In code medium, models may pass bare values (strings, numbers)
-              # rather than maps. Normalize maps/lists but pass bare values through
-              # so gate handlers can interpret them directly.
-              args =
-                cond do
-                  is_map(opts) -> opts
-                  is_list(opts) -> Map.new(opts)
-                  true -> opts
-                end
+                observation = execute_gate.(gate_name, args) |> Map.put(:args, args)
+                push_observation(runtime.observation_collector, observation)
+                observation.result
+              end
 
-              observation = execute_gate.(gate_name, args) |> Map.put(:args, args)
-              push_observation(runtime.observation_collector, observation)
-              observation.result
-            end
+              Keyword.put(acc, binding_name, gate_fun)
 
-            Keyword.put(acc, binding_name, gate_fun)
+            _ ->
+              acc
           end
         end)
     end
   end
+
+  defp gate_binding_name(name) when is_atom(name), do: {:ok, name}
+
+  defp gate_binding_name(name) when is_binary(name) do
+    case Enum.find(@builtin_gate_atoms, &(Atom.to_string(&1) == name)) do
+      nil -> {:ok, String.to_existing_atom(name)}
+      atom -> {:ok, atom}
+    end
+  rescue
+    ArgumentError -> :error
+  end
+
+  defp gate_binding_name(_), do: :error
 
   # Extract gate function names from bindings (all function-valued bindings)
   defp extract_gate_names(binding) do
@@ -393,83 +426,51 @@ defmodule Cantrip.Medium.Code do
   end
 
   @doc false
-  # Transform bare gate calls like `done(x)` into `done.(x)` so LLMs
-  # don't need to remember Elixir's dot-call syntax for closures.
-  #
-  # Rules:
-  # - Don't transform inside strings (single or double quoted, heredocs)
-  # - Don't transform module-qualified calls: `Mod.done(`
-  # - Don't transform already-dotted calls: `done.(`
   def add_dot_calls(code, gate_names) when gate_names == [], do: code
 
   def add_dot_calls(code, gate_names) do
-    names_pattern = gate_names |> Enum.sort_by(&(-String.length(&1))) |> Enum.join("|")
-    regex = Regex.compile!("(?<![.\\w])(#{names_pattern})\\(")
+    gate_set = MapSet.new(gate_names)
 
-    code
-    |> split_string_segments()
-    |> Enum.map(fn
-      {:code, segment} -> Regex.replace(regex, segment, "\\1.(")
-      {:string, segment} -> segment
-    end)
-    |> Enum.join()
+    case Code.string_to_quoted(code) do
+      {:ok, quoted} ->
+        quoted
+        |> rewrite_gate_calls(gate_set)
+        |> Macro.to_string()
+
+      {:error, _reason} ->
+        code
+    end
   end
 
-  # Split code into alternating code/string segments
-  defp split_string_segments(code) do
-    split_segments(code, [], "", false, nil)
+  @definition_forms [:def, :defp, :defmacro, :defmacrop]
+
+  defp rewrite_gate_calls({form, meta, [head, body]}, gate_set)
+       when form in @definition_forms and is_list(body) do
+    {form, meta, [head, rewrite_gate_calls(body, gate_set)]}
   end
 
-  defp split_segments("", acc, current, in_string, _delim) do
-    type = if in_string, do: :string, else: :code
-    Enum.reverse([{type, current} | acc])
+  defp rewrite_gate_calls({name, meta, args}, gate_set) when is_atom(name) and is_list(args) do
+    args = Enum.map(args, &rewrite_gate_calls(&1, gate_set))
+
+    if MapSet.member?(gate_set, Atom.to_string(name)) do
+      {{:., meta, [{name, meta, nil}]}, meta, args}
+    else
+      {name, meta, args}
+    end
   end
 
-  # Heredoc double-quote open
-  defp split_segments(~s(""") <> rest, acc, current, false, nil) do
-    split_segments(rest, [{:code, current} | acc], ~s("""), true, :heredoc_double)
+  defp rewrite_gate_calls(list, gate_set) when is_list(list) do
+    Enum.map(list, &rewrite_gate_calls(&1, gate_set))
   end
 
-  defp split_segments(~s(""") <> rest, acc, current, true, :heredoc_double) do
-    split_segments(rest, [{:string, current <> ~s(""")} | acc], "", false, nil)
+  defp rewrite_gate_calls(tuple, gate_set) when is_tuple(tuple) do
+    tuple
+    |> Tuple.to_list()
+    |> Enum.map(&rewrite_gate_calls(&1, gate_set))
+    |> List.to_tuple()
   end
 
-  # Heredoc single-quote open
-  defp split_segments("'''" <> rest, acc, current, false, nil) do
-    split_segments(rest, [{:code, current} | acc], "'''", true, :heredoc_single)
-  end
-
-  defp split_segments("'''" <> rest, acc, current, true, :heredoc_single) do
-    split_segments(rest, [{:string, current <> "'''"} | acc], "", false, nil)
-  end
-
-  # Escaped chars inside strings
-  defp split_segments("\\" <> <<c::utf8>> <> rest, acc, current, true, delim) do
-    split_segments(rest, acc, current <> "\\" <> <<c::utf8>>, true, delim)
-  end
-
-  # Double-quote boundaries
-  defp split_segments("\"" <> rest, acc, current, false, nil) do
-    split_segments(rest, [{:code, current} | acc], "\"", true, :double)
-  end
-
-  defp split_segments("\"" <> rest, acc, current, true, :double) do
-    split_segments(rest, [{:string, current <> "\""} | acc], "", false, nil)
-  end
-
-  # Single-quote boundaries
-  defp split_segments("'" <> rest, acc, current, false, nil) do
-    split_segments(rest, [{:code, current} | acc], "'", true, :single)
-  end
-
-  defp split_segments("'" <> rest, acc, current, true, :single) do
-    split_segments(rest, [{:string, current <> "'"} | acc], "", false, nil)
-  end
-
-  # Any other character
-  defp split_segments(<<c::utf8>> <> rest, acc, current, in_string, delim) do
-    split_segments(rest, acc, current <> <<c::utf8>>, in_string, delim)
-  end
+  defp rewrite_gate_calls(other, _gate_set), do: other
 
   defp medium_intro_text do
     """

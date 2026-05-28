@@ -138,6 +138,33 @@ defmodule Cantrip.Medium.CodeErgonomicsTest do
       assert_raise ArgumentError, fn -> :erlang.binary_to_existing_atom(atom_name) end
     end
 
+    test "parent context normalization does not create atoms from unknown string keys" do
+      atom_name =
+        "cantrip_unknown_parent_context_" <> Integer.to_string(System.unique_integer([:positive]))
+
+      assert_raise ArgumentError, fn -> :erlang.binary_to_existing_atom(atom_name) end
+
+      {:ok, parent} =
+        Cantrip.new(
+          llm: {Cantrip.FakeLLM, Cantrip.FakeLLM.new([])},
+          circle: %{type: :code, gates: [:done], wards: [%{max_turns: 3}]}
+        )
+
+      parent_context =
+        parent
+        |> Cantrip.parent_context()
+        |> Map.put(Atom.to_string(:parent_cantrip), parent)
+        |> Map.put(atom_name, "ignored")
+
+      assert {:ok, _child} =
+               Cantrip.new(%{
+                 parent_context: parent_context,
+                 circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 1}]}
+               })
+
+      assert_raise ArgumentError, fn -> :erlang.binary_to_existing_atom(atom_name) end
+    end
+
     test "deleted delegation gates are not injected" do
       runtime = make_runtime([:done])
 
@@ -228,6 +255,18 @@ defmodule Cantrip.Medium.CodeErgonomicsTest do
 
       assert terminated
       assert result == "hello"
+    end
+
+    test "parser-aware transform does not rewrite function definitions" do
+      transformed =
+        Cantrip.Medium.Code.add_dot_calls(
+          ~s[def done(value), do: {:local, value}\nresult = done("x")],
+          ["done"]
+        )
+
+      assert transformed =~ "def done(value)"
+      assert transformed =~ ~s|result = done.("x")|
+      refute transformed =~ "def done.(value)"
     end
   end
 

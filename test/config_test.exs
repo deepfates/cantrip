@@ -41,6 +41,60 @@ defmodule Cantrip.ConfigTest do
              )
   end
 
+  test "CANTRIP-1 rejects unknown top-level options" do
+    llm = {FakeLLM, FakeLLM.new([%{content: "hello"}])}
+
+    assert {:error, msg} =
+             Cantrip.new(
+               llm: llm,
+               circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]},
+               unexpected: true
+             )
+
+    assert msg =~ "unknown options"
+    assert msg =~ ":unexpected"
+  end
+
+  test "folding options are validated at construction" do
+    llm = {FakeLLM, FakeLLM.new([%{content: "hello"}])}
+
+    assert {:error, msg} =
+             Cantrip.new(
+               llm: llm,
+               circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]},
+               folding: %{threshold_tokens: "many"}
+             )
+
+    assert msg =~ "threshold_tokens"
+  end
+
+  test "schema_version is pinned to the supported version" do
+    llm = {FakeLLM, FakeLLM.new([%{content: "hello"}])}
+
+    assert {:error, msg} =
+             Cantrip.new(
+               llm: llm,
+               circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]},
+               schema_version: 99
+             )
+
+    assert msg =~ "schema_version"
+  end
+
+  test "loom_storage options are validated at construction" do
+    llm = {FakeLLM, FakeLLM.new([%{content: "hello"}])}
+
+    assert {:error, msg} =
+             Cantrip.new(
+               llm: llm,
+               circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]},
+               loom_storage: {:jsonl, 123}
+             )
+
+    assert msg =~ "loom_storage"
+    assert msg =~ "expected :memory"
+  end
+
   test "valid m1 cantrip builds with normalized medium presentation" do
     llm = {FakeLLM, FakeLLM.new([%{content: "ok"}], record_inputs: true)}
 

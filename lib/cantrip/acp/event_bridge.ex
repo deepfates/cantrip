@@ -35,10 +35,13 @@ defmodule Cantrip.ACP.EventBridge do
     notify_fn = Keyword.get(opts, :notify_fn, default_notify_fn(conn))
     monitor_pid = monitor_target(conn) || Keyword.get(opts, :owner, self())
 
-    spawn(fn ->
-      ref = if monitor_pid, do: Process.monitor(monitor_pid)
-      loop(notify_fn, session_id, false, ref)
-    end)
+    {:ok, pid} =
+      Task.Supervisor.start_child(Cantrip.ACP.EventBridgeSupervisor, fn ->
+        ref = if monitor_pid, do: Process.monitor(monitor_pid)
+        loop(notify_fn, session_id, false, ref)
+      end)
+
+    pid
   end
 
   @doc """
@@ -148,12 +151,12 @@ defmodule Cantrip.ACP.EventBridge do
   cannot Stringify, because a crash here strands the whole session
   (no agent_message_chunk, flush timeout, hung prompt response).
   """
-  def stringify(value) when is_binary(value), do: value
+  def stringify(value) when is_binary(value), do: Cantrip.SafeFormat.message(value)
   def stringify(value) when is_atom(value), do: to_string(value)
   def stringify(value) when is_number(value), do: to_string(value)
   def stringify(value) when is_list(value), do: stringify_list(value)
   def stringify(value) when is_map(value) and not is_struct(value), do: stringify_map(value)
-  def stringify(value), do: inspect(value)
+  def stringify(value), do: Cantrip.SafeFormat.inspect(value)
 
   # Render maps and lists as readable text rather than raw Elixir term
   # syntax. The bridge feeds the user — not the entity's introspection

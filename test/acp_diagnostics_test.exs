@@ -108,7 +108,7 @@ defmodule Cantrip.ACP.DiagnosticsTest do
       assert second.token == "<redacted 2 chars>"
     end
 
-    test "redacts any key whose name contains a secret pattern (token, password, secret, authorization, cookie)" do
+    test "redacts any key whose name contains a secret pattern" do
       patterns = %{
         anthropic_api_key: "a",
         access_token: "b",
@@ -116,7 +116,9 @@ defmodule Cantrip.ACP.DiagnosticsTest do
         password: "d",
         client_secret: "e",
         authorization: "f",
-        session_cookie: "g"
+        session_cookie: "g",
+        bearer: "h",
+        private_key: "i"
       }
 
       out = Diagnostics.redact(patterns)
@@ -132,7 +134,10 @@ defmodule Cantrip.ACP.DiagnosticsTest do
     test "preserves struct __struct__ on Cantrip-shaped maps" do
       cantrip = %Cantrip{
         id: "c1",
-        llm_state: %{api_key: "leaky", model: "x"}
+        llm_module: Cantrip.FakeLLM,
+        llm_state: %{api_key: "leaky", model: "x"},
+        identity: Cantrip.Identity.new(),
+        circle: Cantrip.Circle.new(type: :conversation)
       }
 
       out = Diagnostics.redact(cantrip)

@@ -9,6 +9,7 @@ defmodule Cantrip.Familiar do
 
   Gates:
   - Navigation: list_dir, search (read-only filesystem; delegate reading to children)
+  - Verification: mix (allowlisted Mix tasks under the workspace root)
   - Orchestration: the public Cantrip package API (`Cantrip.new`, `Cantrip.cast`, `Cantrip.cast_batch`)
   - Control: done (terminate with answer)
 
@@ -184,6 +185,11 @@ defmodule Cantrip.Familiar do
     * `:root` — sandbox root for filesystem gates (optional)
     * `:evolve` — include the `compile_and_load` gate and hot-load ward
       (default: `false`)
+    * `:run_tests` — include `test` in the Familiar's default Mix task
+      allowlist (default: `false`)
+    * `:allow_mix_tasks` — override the Familiar's Mix task allowlist
+      (default: `["compile", "format"]`, plus `"test"` when `:run_tests`
+      is true)
     * `:system_prompt` — override the default system prompt (optional)
     * `:sandbox` — `:port` (default) runs Familiar code through Dune in a
       child BEAM process and resolves gates / child cantrip API calls through
@@ -204,6 +210,8 @@ defmodule Cantrip.Familiar do
     sandbox = Keyword.get(opts, :sandbox, :port)
     port_runner = Keyword.get(opts, :port_runner)
     evolve? = Keyword.get(opts, :evolve, false)
+    run_tests? = Keyword.get(opts, :run_tests, false)
+    allow_mix_tasks = Keyword.get(opts, :allow_mix_tasks, default_mix_tasks(run_tests?))
 
     # Default identity prompt + a single non-imperative cwd line when root is set.
     # The cwd note tells the entity where it lives without commanding
@@ -259,13 +267,19 @@ defmodule Cantrip.Familiar do
       })
     ]
 
-    # Self-modification capacity: the Familiar can write new Elixir
-    # modules at runtime and hot-load them. Scoped to the `Cantrip.Hot.`
-    # namespace via a ward so the entity cannot redefine framework
-    # modules (Cantrip.Familiar, Cantrip.Gate, etc.). This is the
-    # BEAM-native evolutionary surface — combined with supervised
-    # process restart, the entity can try a change and roll back if
-    # it crashes.
+    mix_gates =
+      if root,
+        do: [
+          Map.merge(base_gate, %{
+            name: "mix",
+            description: "run allowlisted Mix tasks in this workspace; opts must include :task"
+          })
+        ],
+        else: []
+
+    # Self-modification capacity: the Familiar can hot-load one fixed
+    # scratch module at runtime. Keeping the module name exact avoids
+    # unbounded atom creation from generated module names.
     evolution_gates =
       if evolve?,
         do: [%{name: "compile_and_load"}],
@@ -275,7 +289,7 @@ defmodule Cantrip.Familiar do
       %{name: "done"}
     ]
 
-    gates = control_gates ++ observation_gates ++ evolution_gates
+    gates = control_gates ++ observation_gates ++ mix_gates ++ evolution_gates
 
     attrs = %{
       llm: llm,
@@ -290,6 +304,11 @@ defmodule Cantrip.Familiar do
           [
             %{max_turns: max_turns},
             %{max_depth: 3},
+            %{
+              allow_mix_tasks: allow_mix_tasks,
+              mix_timeout_ms: 60_000,
+              mix_max_output_bytes: 50_000
+            },
             # Casts to child cantrips run synchronously inside the eval —
             # each child involves an LLM round-trip. The default 30s isn't
             # enough for any non-trivial cast_batch.
@@ -297,10 +316,7 @@ defmodule Cantrip.Familiar do
           ] ++
             if(evolve?,
               do: [
-                # Hot reload is scoped to the `Cantrip.Hot.` namespace; the
-                # Familiar cannot redefine framework modules but can write
-                # new modules into a designated sub-tree of the runtime.
-                %{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}
+                %{allow_compile_modules: ["Elixir.Cantrip.Hot.Tally"]}
               ],
               else: []
             ) ++ sandbox_ward(sandbox)
@@ -329,19 +345,20 @@ defmodule Cantrip.Familiar do
   defp sandbox_ward("unrestricted"), do: sandbox_ward(:unrestricted)
 
   defp sandbox_ward(other),
-    do: raise(ArgumentError, "unsupported Familiar sandbox: #{inspect(other)}")
+    do: raise(ArgumentError, "unsupported Familiar sandbox: #{Cantrip.SafeFormat.inspect(other)}")
 
-  # Derive a stable Mnesia table name from the workspace root. The
-  # table name needs to be a valid Erlang atom — alphanumerics + a
-  # short hash of the full path so distinct workspaces with similar
-  # basenames don't collide. We use to_atom (not to_existing_atom)
-  # deliberately: each unique workspace produces one new atom, which
-  # is fine for the bounded set of Familiar deployments in a single
-  # BEAM. Using `:erlang.phash2` for the suffix keeps it short and
-  # deterministic.
+  defp default_mix_tasks(true), do: ["compile", "format", "test"]
+  defp default_mix_tasks(false), do: ["compile", "format"]
+
+  # Mnesia table names are atoms, so derive a short fixed-shape name from
+  # a hash instead of embedding user-controlled path text in the atom.
   defp mnesia_table_for_root(root) when is_binary(root) do
-    suffix = :erlang.phash2(root) |> Integer.to_string()
-    base = root |> Path.basename() |> String.replace(~r/[^A-Za-z0-9_]/, "_")
-    String.to_atom("cantrip_familiar_" <> base <> "_" <> suffix)
+    String.to_atom("cantrip_familiar_" <> workspace_fingerprint(root))
+  end
+
+  defp workspace_fingerprint(root) do
+    :crypto.hash(:sha256, root)
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 16)
   end
 end

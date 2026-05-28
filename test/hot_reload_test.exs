@@ -3,6 +3,51 @@ defmodule Cantrip.HotReloadTest do
 
   alias Cantrip.FakeLLM
 
+  test "compile_and_load requires an explicit module allowlist" do
+    module_name = "Elixir.Cantrip.HotReloadNoAllow"
+
+    obs =
+      Cantrip.Gate.CompileAndLoad.execute(
+        %{module: module_name, source: "defmodule Cantrip.HotReloadNoAllow do end"},
+        [%{max_turns: 1}],
+        %{name: "compile_and_load"}
+      )
+
+    assert obs.is_error
+    assert obs.result =~ "requires allow_compile_modules"
+  end
+
+  test "compile_and_load rejects framework module names even when explicitly allowed" do
+    module_name = "Elixir.Cantrip.Familiar"
+
+    obs =
+      Cantrip.Gate.CompileAndLoad.execute(
+        %{
+          module: module_name,
+          source: "defmodule Cantrip.Familiar do def compromised?, do: true end end"
+        },
+        [%{max_turns: 1}, %{allow_compile_modules: [module_name]}],
+        %{name: "compile_and_load"}
+      )
+
+    assert obs.is_error
+    assert obs.result =~ "framework module names cannot be hot-loaded"
+  end
+
+  test "compile_and_load rejects deprecated namespace allowlists loudly" do
+    module_name = "Elixir.MyApp.Plugin"
+
+    obs =
+      Cantrip.Gate.CompileAndLoad.execute(
+        %{module: module_name, source: "defmodule MyApp.Plugin do end"},
+        [%{max_turns: 1}, %{allow_compile_namespaces: ["Elixir.MyApp."]}],
+        %{name: "compile_and_load"}
+      )
+
+    assert obs.is_error
+    assert obs.result =~ "allow_compile_namespaces is no longer supported"
+  end
+
   test "hot-reload gate compiles and reloads allowed module" do
     module_name = "Elixir.Cantrip.HotReloadDemo"
     module = String.to_atom(module_name)
@@ -46,11 +91,7 @@ defmodule Cantrip.HotReloadTest do
     purge_module(module)
   end
 
-  test "hot-reload gate accepts modules in an allowed namespace" do
-    # The Familiar uses namespace prefixes rather than exact allowlists
-    # so it can write new modules at runtime as long as they live in a
-    # scoped sub-tree (e.g., `Cantrip.Hot.*`) without redefining core
-    # framework modules.
+  test "hot-reload gate accepts modules in an exact allowlist" do
     module_name = "Elixir.Cantrip.Hot.SafeNs"
     module = String.to_atom(module_name)
     purge_module(module)
@@ -80,12 +121,12 @@ defmodule Cantrip.HotReloadTest do
           gates: [:done, :compile_and_load],
           wards: [
             %{max_turns: 10},
-            %{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}
+            %{allow_compile_modules: [module_name]}
           ]
         }
       )
 
-    assert {:ok, "loaded", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "namespace ok")
+    assert {:ok, "loaded", _cantrip, loom, _meta} = Cantrip.cast(cantrip, "exact allowlist ok")
 
     assert Enum.any?(loom.turns, fn turn ->
              Enum.any?(turn.observation, &(&1.gate == "compile_and_load" and not &1.is_error))
@@ -94,7 +135,7 @@ defmodule Cantrip.HotReloadTest do
     purge_module(module)
   end
 
-  test "hot-reload gate rejects modules outside the allowed namespace" do
+  test "hot-reload gate rejects modules outside the exact allowlist" do
     module_name = "Elixir.Cantrip.Familiar"
 
     source = """
@@ -122,18 +163,18 @@ defmodule Cantrip.HotReloadTest do
           gates: [:done, :compile_and_load],
           wards: [
             %{max_turns: 10},
-            %{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}
+            %{allow_compile_modules: ["Elixir.Cantrip.Hot.SafeNs"]}
           ]
         }
       )
 
     assert {:ok, "blocked", _cantrip, loom, _meta} =
-             Cantrip.cast(cantrip, "namespace blocks Familiar redefinition")
+             Cantrip.cast(cantrip, "exact allowlist blocks Familiar redefinition")
 
     [turn] = loom.turns
     [obs | _] = turn.observation
     assert obs.is_error
-    assert obs.result =~ "module not allowed"
+    assert obs.result =~ "framework module names cannot be hot-loaded"
   end
 
   test "hot-reload gate rejects non-warded modules" do

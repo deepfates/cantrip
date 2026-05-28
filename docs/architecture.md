@@ -58,11 +58,18 @@ it evaluates Dune-restricted Elixir in a child BEAM process, equivalent to
 `sandbox: :port`. Add `%{port_runner: [...]}` to put that child under
 deployment-level OS/container controls. `sandbox: :port_unrestricted` keeps
 the child process but evaluates raw Elixir there. `sandbox: :dune` routes
-through the in-process Dune evaluator. `sandbox: :unrestricted` uses the old
-host-BEAM evaluator for trusted local development.
+through the in-process Dune evaluator — a deliberately smaller-surface
+variant of the code medium (see `docs/port-isolated-runtime.md` "Dune
+Variant"); entity prompts need to fit that surface. `sandbox: :unrestricted`
+uses the old host-BEAM evaluator for trusted local development.
 
 `Cantrip.Medium.Bash` executes one shell command per turn. Shell process state
 does not persist; filesystem effects do.
+
+ACP stdio embedding must start the `:cantrip` application before sessions
+create event bridges. `Cantrip.ACP.Server.run/1` does this for the packaged
+entrypoint; custom embedders should either call `Application.ensure_all_started(:cantrip)`
+or supervise `Cantrip.ACP.EventBridgeSupervisor` themselves.
 
 ## Composition
 
@@ -102,12 +109,50 @@ The controls are explicit and scoped:
 - loop wards bound turns, depth, timeouts, and selected policies
 - Dune-in-port evaluation denies ambient filesystem/system/process authority
   and keeps LLM-written Elixir out of the host BEAM
+- child-BEAM telemetry events are forwarded over the port protocol and
+  re-emitted by the parent with the same trace context
 - `port_runner` lets deployments put the child process inside an OS/container
   sandbox
 - optional Dune routes code evaluation through an in-VM restricted evaluator
-- compile/load wards scope hot-loaded modules, paths, hashes, signers, and
-  namespaces
+- compile/load wards scope hot-loaded modules (exact `allow_compile_modules`
+  list), paths, hashes, and signers; framework modules under `Elixir.Cantrip.*`
+  (except `Elixir.Cantrip.Hot.*`) are rejected even when explicitly allowlisted
 
 The default port sandbox protects the host BEAM and denies ambient language
 capabilities. Deployment-level OS controls remain useful defense in depth for
 mounts, network, CPU, memory, and user isolation.
+
+### Struct conventions for credential-bearing data
+
+Any struct that holds credential-shaped fields — API keys, bearer tokens,
+authorization headers, signed cookies — must declare `@derive {Inspect, only:
+[<non-secret-fields>]}` (or `@derive {Inspect, except: [<secret-fields>]}`).
+This prevents accidental leak via default `inspect/1` in IEx sessions, error
+output, logger calls, or debug dumps. The safe formatting helpers cover the
+runtime boundary error surfaces; the `@derive Inspect` convention covers the
+construction-and-debug surface.
+
+Current durable structs do not hold credentials directly — `:llm_state` on the
+top-level `%Cantrip{}` is a plain map carrying provider state including
+`:api_key`, and downstream code is expected to either redact at the boundary
+via the safe formatting helpers or to not log raw `:llm_state`. Future structs that
+directly hold credentials must adopt the convention above.
+
+## Process Inventory
+
+Every process kind cantrip starts, plus its owner, restart strategy, and
+shutdown semantics. Reference this section when adding a new process.
+
+| Process kind | Started by | Owner | Crash-restart | Shutdown |
+|---|---|---|---|---|
+| `Cantrip.EntityServer` (GenServer) | `Cantrip.cast/3`, `Cantrip.summon/1` via `DynamicSupervisor.start_child` | entity dynamic supervisor | `:temporary` (no auto-restart; caller gets error) | default GenServer 5s; `terminate/2` sends `:stop` to runner |
+| Per-entity runner Task | `EntityServer.start_runner/0` (`lib/cantrip/entity_server.ex:240`) | `Cantrip.EntityTaskSupervisor` (Task.Supervisor) | `:temporary` (Task.Supervisor default) | `:brutal_kill` 5s on app shutdown; in-progress episodes interrupted |
+| Code-medium child BEAM | `Cantrip.Medium.Code.Port.start_child` (line 109) | not supervised; linked to eval context | N/A (process-level) | on eval timeout or parent crash: implicit exit via port boundary |
+| Port-child protocol loop | `spawn_link` in `port_child.ex:138` | linked to parent (child-side bootstrap) | N/A (linked) | parent exit propagates crash via link |
+| ACP EventBridge loop | `Task.Supervisor.start_child/2` in `acp/event_bridge.ex` | `Cantrip.ACP.EventBridgeSupervisor` | `:temporary` (Task.Supervisor default) | `:DOWN` from monitored owner OR explicit `:stop` message |
+| `Cantrip.cast_stream/2` task | `Task.async` (`lib/cantrip.ex:641`) | unlinked; caller drains via Stream | N/A (unlinked) | implicit when stream resource closes |
+| `Cantrip.cast_batch/2` children | `Task.async_stream` (`lib/cantrip.ex:510`) | Task.async_stream context; bounded by `max_concurrent_children` ward | N/A (bounded enumeration) | killed on `max_concurrency` overflow or timeout |
+| Code/Bash medium eval Tasks | `Task.async` in `medium/code.ex:163`, `medium/bash.ex:119` | unlinked; timeout-guarded by `code_eval_timeout_ms` / similar ward | N/A (unlinked) | `Task.yield` + `Task.shutdown(:brutal_kill)` on timeout |
+
+This inventory is the contract; any new long-lived or supervised process must
+extend this table.

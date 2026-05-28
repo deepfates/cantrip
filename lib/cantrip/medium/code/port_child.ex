@@ -13,11 +13,12 @@ defmodule Cantrip.Medium.Code.PortChild do
     :folded_summary
   ]
 
+  @builtin_gate_atoms ~w(done echo read_file list_dir search compile_and_load mix)a
+
   @wire_safe_atoms [
     Cantrip.FakeLLM,
     Cantrip.LLMs.ReqLLM,
     :allow_compile_modules,
-    :allow_compile_namespaces,
     :allow_compile_paths,
     :allow_compile_sha256,
     :allow_compile_signers,
@@ -77,6 +78,7 @@ defmodule Cantrip.Medium.Code.PortChild do
     :port,
     :port_unrestricted,
     :prompt_tokens,
+    :redact,
     :record_inputs,
     :record_parent_observation?,
     :require_done_tool,
@@ -103,6 +105,7 @@ defmodule Cantrip.Medium.Code.PortChild do
     :tool_call_id,
     :tool_calls,
     :tool_choice,
+    :trace_id,
     :tokens_cached,
     :tokens_completion,
     :tokens_prompt,
@@ -190,6 +193,12 @@ defmodule Cantrip.Medium.Code.PortChild do
   end
 
   defp eval(code, state, env, ref) do
+    with_child_telemetry_context(env, fn ->
+      do_eval(code, state, env, ref)
+    end)
+  end
+
+  defp do_eval(code, state, env, ref) do
     {captured_output, result} =
       capture_stdio(fn ->
         try do
@@ -205,7 +214,7 @@ defmodule Cantrip.Medium.Code.PortChild do
           end
         rescue
           e ->
-            reason = Exception.format(:error, e, __STACKTRACE__)
+            reason = "exception: " <> Cantrip.SafeFormat.exception(e)
             {state, {:eval_error, ref, state.binding, reason}}
         catch
           kind, reason ->
@@ -224,6 +233,36 @@ defmodule Cantrip.Medium.Code.PortChild do
          {:eval_error, ref, externalize_binding(binding), externalize_term(reason),
           captured_output}}
     end
+  end
+
+  defp with_child_telemetry_context(%{entity_id: entity_id, trace_id: trace_id}, fun)
+       when is_binary(entity_id) and is_binary(trace_id) do
+    handler_id = {__MODULE__, :telemetry_forwarder, self(), make_ref()}
+    {:ok, _apps} = Application.ensure_all_started(:telemetry)
+
+    :ok =
+      :telemetry.attach_many(
+        handler_id,
+        Cantrip.Telemetry.events(),
+        &__MODULE__.forward_telemetry/4,
+        nil
+      )
+
+    try do
+      Cantrip.Telemetry.with_context(entity_id, trace_id, fun)
+    after
+      :telemetry.detach(handler_id)
+    end
+  end
+
+  defp with_child_telemetry_context(_env, fun), do: fun.()
+
+  @doc false
+  def forward_telemetry(event, measurements, metadata, _config) do
+    write_frame(
+      {:telemetry, externalize_term(event), externalize_term(measurements),
+       externalize_term(metadata)}
+    )
   end
 
   defp eval_raw(code, state, env, ref) do
@@ -328,25 +367,29 @@ defmodule Cantrip.Medium.Code.PortChild do
 
     binding =
       Enum.reduce(gate_names, user_binding, fn gate_name, acc ->
-        binding_name = String.to_atom(gate_name)
+        case gate_binding_name(gate_name) do
+          {:ok, binding_name} ->
+            gate_fun =
+              cond do
+                gate_name == "done" ->
+                  done_fun(evaluator)
 
-        gate_fun =
-          cond do
-            gate_name == "done" ->
-              done_fun(evaluator)
+                gate_name == "compile_and_load" ->
+                  fn opts -> compile_and_load(normalize_args(opts)) end
 
-            gate_name == "compile_and_load" ->
-              fn opts -> compile_and_load(normalize_args(opts)) end
-
-            true ->
-              fn opts ->
-                args = normalize_args(opts)
-                observation = call_gate(gate_name, args)
-                observation.result
+                true ->
+                  fn opts ->
+                    args = normalize_args(opts)
+                    observation = call_gate(gate_name, args)
+                    observation.result
+                  end
               end
-          end
 
-        Keyword.put(acc, binding_name, gate_fun)
+            Keyword.put(acc, binding_name, gate_fun)
+
+          _ ->
+            acc
+        end
       end)
 
     binding =
@@ -414,7 +457,9 @@ defmodule Cantrip.Medium.Code.PortChild do
         {:ok, statements}
 
       {:error, {line, error, token}} ->
-        {:error, "parse error at #{inspect(line)}: #{inspect(error)} #{inspect(token)}"}
+        {:error,
+         "parse error at #{Cantrip.SafeFormat.inspect(line)}: " <>
+           "#{Cantrip.SafeFormat.inspect(error)} #{Cantrip.SafeFormat.inspect(token)}"}
     end
   end
 
@@ -505,7 +550,10 @@ defmodule Cantrip.Medium.Code.PortChild do
           eval_statements(extract_statements(quoted), binding)
 
         {:error, {line, error, token}} ->
-          msg = "parse error at #{inspect(line)}: #{inspect(error)} #{inspect(token)}"
+          msg =
+            "parse error at #{Cantrip.SafeFormat.inspect(line)}: " <>
+              "#{Cantrip.SafeFormat.inspect(error)} #{Cantrip.SafeFormat.inspect(token)}"
+
           {binding, {:cantrip_error, msg}, false}
       end
     end
@@ -527,7 +575,7 @@ defmodule Cantrip.Medium.Code.PortChild do
       end
     rescue
       e ->
-        {binding, {:cantrip_error, Exception.message(e)}, false}
+        {binding, {:cantrip_error, Cantrip.SafeFormat.exception(e)}, false}
     catch
       {:cantrip_done, answer} ->
         {binding, answer, true}
@@ -560,7 +608,7 @@ defmodule Cantrip.Medium.Code.PortChild do
         {:ok, other} ->
           %{
             gate: "compile_and_load",
-            result: "unexpected compile response: #{inspect(other)}",
+            result: "unexpected compile response: #{Cantrip.SafeFormat.inspect(other)}",
             is_error: true
           }
 
@@ -570,7 +618,7 @@ defmodule Cantrip.Medium.Code.PortChild do
         {:error, reason} ->
           %{
             gate: "compile_and_load",
-            result: "compile rpc failed: #{inspect(reason)}",
+            result: "compile rpc failed: #{Cantrip.SafeFormat.inspect(reason)}",
             is_error: true
           }
       end
@@ -596,9 +644,9 @@ defmodule Cantrip.Medium.Code.PortChild do
 
     case read_frame() do
       {:ok, {:api_result, ^ref, reply}} -> reply
-      {:ok, other} -> {:error, "unexpected api response: #{inspect(other)}"}
+      {:ok, other} -> {:error, "unexpected api response: #{Cantrip.SafeFormat.inspect(other)}"}
       :eof -> {:error, "parent port closed"}
-      {:error, reason} -> {:error, "api rpc failed: #{inspect(reason)}"}
+      {:error, reason} -> {:error, "api rpc failed: #{Cantrip.SafeFormat.inspect(reason)}"}
     end
   end
 
@@ -611,13 +659,21 @@ defmodule Cantrip.Medium.Code.PortChild do
         observation
 
       {:ok, other} ->
-        %{gate: gate_name, result: "unexpected gate response: #{inspect(other)}", is_error: true}
+        %{
+          gate: gate_name,
+          result: "unexpected gate response: #{Cantrip.SafeFormat.inspect(other)}",
+          is_error: true
+        }
 
       :eof ->
         %{gate: gate_name, result: "parent port closed", is_error: true}
 
       {:error, reason} ->
-        %{gate: gate_name, result: "gate rpc failed: #{inspect(reason)}", is_error: true}
+        %{
+          gate: gate_name,
+          result: "gate rpc failed: #{Cantrip.SafeFormat.inspect(reason)}",
+          is_error: true
+        }
     end
   end
 
@@ -640,9 +696,28 @@ defmodule Cantrip.Medium.Code.PortChild do
     binding
     |> Enum.flat_map(fn
       {key, value} when is_atom(key) -> [{key, value}]
-      {key, value} when is_binary(key) -> [{String.to_atom(key), value}]
+      {key, value} when is_binary(key) -> existing_binding(key, value)
       _ -> []
     end)
+  end
+
+  defp gate_binding_name(name) when is_atom(name), do: {:ok, name}
+
+  defp gate_binding_name(name) when is_binary(name) do
+    case Enum.find(@builtin_gate_atoms, &(Atom.to_string(&1) == name)) do
+      nil -> {:ok, String.to_existing_atom(name)}
+      atom -> {:ok, atom}
+    end
+  rescue
+    ArgumentError -> :error
+  end
+
+  defp gate_binding_name(_), do: :error
+
+  defp existing_binding(key, value) do
+    [{String.to_existing_atom(key), value}]
+  rescue
+    ArgumentError -> []
   end
 
   defp externalize_term(%Cantrip{id: id}), do: id
@@ -669,10 +744,10 @@ defmodule Cantrip.Medium.Code.PortChild do
   defp externalize_term(tuple) when is_tuple(tuple),
     do: tuple |> Tuple.to_list() |> externalize_term() |> List.to_tuple()
 
-  defp externalize_term(fun) when is_function(fun), do: inspect(fun)
-  defp externalize_term(pid) when is_pid(pid), do: inspect(pid)
-  defp externalize_term(ref) when is_reference(ref), do: inspect(ref)
-  defp externalize_term(port) when is_port(port), do: inspect(port)
+  defp externalize_term(fun) when is_function(fun), do: Cantrip.SafeFormat.inspect(fun)
+  defp externalize_term(pid) when is_pid(pid), do: Cantrip.SafeFormat.inspect(pid)
+  defp externalize_term(ref) when is_reference(ref), do: Cantrip.SafeFormat.inspect(ref)
+  defp externalize_term(port) when is_port(port), do: Cantrip.SafeFormat.inspect(port)
   defp externalize_term(nil), do: nil
   defp externalize_term(true), do: true
   defp externalize_term(false), do: false
@@ -762,7 +837,7 @@ defmodule Cantrip.Medium.Code.PortChild do
         {:error, {:bad_header, other}}
     end
   rescue
-    e -> {:error, Exception.message(e)}
+    e -> {:error, Cantrip.SafeFormat.exception(e)}
   end
 
   defp write_frame(term) do

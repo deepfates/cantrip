@@ -138,19 +138,24 @@ Use `%{port_runner: [...]}` or `Cantrip.Familiar.new(port_runner: [...])` when
 you also want deployment-level OS/container controls. `sandbox:
 :port_unrestricted` keeps the child process but evaluates raw Elixir there.
 `sandbox: :dune` is available when in-process restrictions are the right
-tradeoff. `sandbox: :unrestricted` is the trusted host-BEAM evaluator escape
-hatch.
+tradeoff — it is a deliberately smaller-surface variant of the code medium
+(see `docs/port-isolated-runtime.md` "Dune Variant"); entity prompts need
+to match that surface. `sandbox: :unrestricted` is the trusted host-BEAM
+evaluator escape hatch.
 
 ## Configure Gates and Wards
 
-Built-in gates are `done`, `echo`, `read_file`, `list_dir`, `search`, and
-`compile_and_load`. Filesystem gates require root dependencies in production
-contexts; the Familiar wires these from its `:root` option. The Familiar only
-includes `compile_and_load` when constructed with `evolve: true`.
+Built-in gates are `done`, `echo`, `read_file`, `list_dir`, `search`, `mix`,
+and `compile_and_load`. Filesystem and Mix gates require root dependencies in
+production contexts; the Familiar wires these from its `:root` option. The
+Familiar only includes `compile_and_load` when constructed with `evolve: true`.
 
 Wards are maps. Common wards include:
 
 - `%{max_turns: n}`
+- `%{allow_mix_tasks: ["compile", "format"]}`
+- `%{mix_timeout_ms: 60_000}`
+- `%{mix_max_output_bytes: 50_000}`
 - `%{max_depth: n}`
 - `%{port_runner: [executable, arg1, ...]}`
 - `%{max_concurrent_children: n}`
@@ -158,7 +163,10 @@ Wards are maps. Common wards include:
 - `%{allow_compile_modules: modules}`
 - `%{allow_compile_paths: paths}`
 - `%{allow_compile_signers: signers}`
-- `%{allow_compile_namespaces: prefixes}`
+
+`compile_and_load` accepts exact module allowlists via `allow_compile_modules`.
+Deprecated `allow_compile_namespaces` wards are rejected loudly, and framework
+module names are not hot-loadable.
 
 Gate failures are observations. They are returned to the entity as data so the
 next turn can adapt.

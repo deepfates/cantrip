@@ -62,16 +62,6 @@ defmodule Cantrip.ACP.Diagnostics do
   """
   def redact(term), do: do_redact(term)
 
-  @secret_key_patterns [
-    "api_key",
-    "apikey",
-    "secret",
-    "password",
-    "token",
-    "authorization",
-    "cookie"
-  ]
-
   defp do_redact(%{__struct__: struct} = s) do
     s
     |> Map.from_struct()
@@ -81,7 +71,7 @@ defmodule Cantrip.ACP.Diagnostics do
 
   defp do_redact(%{} = m) do
     Enum.into(m, %{}, fn {k, v} ->
-      if secret_key?(k), do: {k, redact_value(v)}, else: {k, do_redact(v)}
+      if Cantrip.Secrets.secret_key?(k), do: {k, redact_value(v)}, else: {k, do_redact(v)}
     end)
   end
 
@@ -92,15 +82,6 @@ defmodule Cantrip.ACP.Diagnostics do
   end
 
   defp do_redact(other), do: other
-
-  defp secret_key?(k) when is_atom(k), do: secret_key?(Atom.to_string(k))
-
-  defp secret_key?(k) when is_binary(k) do
-    lower = String.downcase(k)
-    Enum.any?(@secret_key_patterns, &String.contains?(lower, &1))
-  end
-
-  defp secret_key?(_), do: false
 
   defp redact_value(v) when is_binary(v) and v != "", do: "<redacted #{byte_size(v)} chars>"
   defp redact_value(nil), do: nil
@@ -193,19 +174,21 @@ defmodule Cantrip.ACP.Diagnostics do
          bridges: bridges,
          last_answers: last_answers
        }) do
-    IO.puts("=== AgentHandler table #{inspect(table)} ===")
-    IO.puts("  conn: #{inspect(conn)}")
+    IO.puts("=== AgentHandler table #{Cantrip.SafeFormat.inspect(table)} ===")
+    IO.puts("  conn: #{Cantrip.SafeFormat.inspect(conn)}")
     IO.puts("  sessions: #{length(sessions)}")
 
     Enum.each(sessions, fn {id, session} ->
       keys = session |> Map.keys() |> Enum.reject(&(&1 in [:cantrip, :stream_to]))
-      IO.puts("    #{id}  keys=#{inspect(keys)}")
+      IO.puts("    #{id}  keys=#{Cantrip.SafeFormat.inspect(keys)}")
     end)
 
     IO.puts("  bridges:")
 
     Enum.each(bridges, fn {id, pid, info} ->
-      IO.puts("    #{id} -> #{inspect(pid)}  #{inspect(info)}")
+      IO.puts(
+        "    #{id} -> #{Cantrip.SafeFormat.inspect(pid)}  #{Cantrip.SafeFormat.inspect(info)}"
+      )
     end)
 
     if last_answers != [] do

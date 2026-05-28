@@ -10,7 +10,7 @@ defmodule Cantrip.Medium.Registry do
   def fetch(:conversation), do: {:ok, Cantrip.Medium.Conversation}
   def fetch(:code), do: {:ok, Cantrip.Medium.Code}
   def fetch(:bash), do: {:ok, Cantrip.Medium.Bash}
-  def fetch(other), do: {:error, "unknown medium: #{inspect(other)}"}
+  def fetch(other), do: {:error, "unknown medium: #{Cantrip.SafeFormat.inspect(other)}"}
 
   @spec fetch!(atom()) :: module()
   def fetch!(type) do

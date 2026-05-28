@@ -54,6 +54,57 @@ defmodule PortCodeMediumTest do
     assert Enum.any?(observations, &(&1.gate == "done" and &1.result == "observed"))
   end
 
+  test "port child receives the parent telemetry context" do
+    trace_id = "port-trace-123"
+
+    code = """
+    %{entity_id: entity_id, trace_id: trace_id} = Cantrip.Telemetry.current_context()
+    done.({entity_id, trace_id})
+    """
+
+    llm = {FakeLLM, FakeLLM.new([%{code: code}])}
+    {:ok, cantrip} = port_cantrip(llm, sandbox: :port_unrestricted)
+
+    assert {:ok, {entity_id, ^trace_id}, _cantrip, _loom, _meta} =
+             Cantrip.cast(cantrip, "context", trace_id: trace_id)
+
+    assert is_binary(entity_id)
+  end
+
+  test "parent and port-child telemetry events share the same trace id" do
+    trace_id = "port-boundary-trace-#{System.unique_integer([:positive])}"
+    test_pid = self()
+    handler_id = "port-boundary-trace-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach_many(
+      handler_id,
+      [[:cantrip, :entity, :start], [:cantrip, :code, :eval], [:cantrip, :redact, :hit]],
+      &__MODULE__.handle_trace_event/4,
+      test_pid
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    code = """
+    Cantrip.Redact.scan("OPENAI_API_KEY=sk-proj-portchild-secret-token")
+    done.("ok")
+    """
+
+    llm = {FakeLLM, FakeLLM.new([%{code: code}])}
+    {:ok, cantrip} = port_cantrip(llm, sandbox: :port_unrestricted)
+
+    assert {:ok, "ok", _cantrip, _loom, _meta} =
+             Cantrip.cast(cantrip, "telemetry", trace_id: trace_id)
+
+    assert_received {:telemetry_event, [:cantrip, :entity, :start], ^trace_id}
+    assert_received {:telemetry_event, [:cantrip, :code, :eval], ^trace_id}
+    assert_received {:telemetry_event, [:cantrip, :redact, :hit], ^trace_id}
+  end
+
+  def handle_trace_event(event, _measurements, metadata, test_pid) do
+    send(test_pid, {:telemetry_event, event, metadata[:trace_id]})
+  end
+
   test "child stdout is captured without corrupting the port protocol" do
     llm =
       {FakeLLM,
@@ -281,7 +332,7 @@ defmodule PortCodeMediumTest do
     {:ok, cantrip} =
       port_cantrip(llm,
         gates: [:done, :compile_and_load],
-        extra_wards: [%{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}]
+        extra_wards: [%{allow_compile_modules: [module_name]}]
       )
 
     assert {:ok, 123, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "hot load")
@@ -317,7 +368,7 @@ defmodule PortCodeMediumTest do
     {:ok, cantrip} =
       port_cantrip(llm,
         gates: [:done, :compile_and_load],
-        extra_wards: [%{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}]
+        extra_wards: [%{allow_compile_modules: [module_name]}]
       )
 
     assert {:ok, result, _cantrip, loom, _meta} = Cantrip.cast(cantrip, "hot struct")
@@ -360,7 +411,7 @@ defmodule PortCodeMediumTest do
     {:ok, cantrip} =
       port_cantrip(llm,
         gates: [:done, :compile_and_load],
-        extra_wards: [%{allow_compile_namespaces: ["Elixir.Cantrip.Hot."]}]
+        extra_wards: [%{allow_compile_modules: [module_name]}]
       )
 
     atom_text = "child_only_atom_#{suffix}"
