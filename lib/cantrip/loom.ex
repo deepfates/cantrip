@@ -98,9 +98,9 @@ defmodule Cantrip.Loom do
         raise """
         Loom storage backend init failed.
 
-          requested:  #{inspect(requested_storage)}
-          backend:    #{inspect(storage_module)}
-          reason:     #{inspect(reason)}
+          requested:  #{Cantrip.SafeFormat.inspect(requested_storage)}
+          backend:    #{Cantrip.SafeFormat.inspect(storage_module)}
+          reason:     #{Cantrip.SafeFormat.inspect(reason)}
 
         Common causes:
           * `:mnesia` not listed in `extra_applications` in mix.exs

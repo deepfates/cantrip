@@ -428,6 +428,9 @@ defmodule Cantrip do
         {:ok, result, next_cantrip, loom, meta} ->
           {:ok, pid, result, next_cantrip, loom, meta}
 
+        {:error, reason, next_cantrip} ->
+          {:error, reason, next_cantrip}
+
         {:error, reason} ->
           {:error, reason, cantrip}
       end
@@ -522,7 +525,14 @@ defmodule Cantrip do
             |> Enum.find(&match?({:error, _, _}, &1))
             |> elem(1)
 
-          push_parent_cast_observation(parent_context, "cast_batch", inspect(reason), true, [])
+          push_parent_cast_observation(
+            parent_context,
+            "cast_batch",
+            Cantrip.SafeFormat.inspect(reason),
+            true,
+            []
+          )
+
           {:error, reason}
         else
           values = Enum.map(payloads, fn {:ok, value, _next, _loom, _meta} -> value end)
@@ -534,7 +544,14 @@ defmodule Cantrip do
         end
 
       {:error, reason} ->
-        push_parent_cast_observation(parent_context, "cast_batch", inspect(reason), true, [])
+        push_parent_cast_observation(
+          parent_context,
+          "cast_batch",
+          Cantrip.SafeFormat.inspect(reason),
+          true,
+          []
+        )
+
         {:error, reason}
     end
   end
@@ -722,7 +739,9 @@ defmodule Cantrip do
   end
 
   defp coerce_intent(intent) when is_binary(intent), do: intent
-  defp coerce_intent(intent), do: inspect(intent, pretty: true, limit: :infinity)
+
+  defp coerce_intent(intent),
+    do: Cantrip.SafeFormat.inspect(intent, pretty: true, limit: :infinity)
 
   defp run_cast_with_parent_context(%__MODULE__{} = cantrip, intent, opts) do
     case Keyword.get(opts, :parent_context) || Process.get(:cantrip_parent_context) do
@@ -773,10 +792,21 @@ defmodule Cantrip do
 
       {:error, reason, next_cantrip} = error ->
         remember_parent_child_llm(parent_context, next_cantrip)
-        emit_parent_event(entity_state, {:child_end, %{depth: depth, error: inspect(reason)}})
+
+        emit_parent_event(
+          entity_state,
+          {:child_end, %{depth: depth, error: Cantrip.SafeFormat.inspect(reason)}}
+        )
 
         if record_observation?,
-          do: push_parent_cast_observation(parent_context, parent_gate, inspect(reason), true, [])
+          do:
+            push_parent_cast_observation(
+              parent_context,
+              parent_gate,
+              Cantrip.SafeFormat.inspect(reason),
+              true,
+              []
+            )
 
         error
     end
@@ -921,7 +951,7 @@ defmodule Cantrip do
           observations
           |> Enum.map(fn obs ->
             prefix = if obs.is_error, do: "Error: ", else: ""
-            "#{prefix}#{inspect(obs.result)}"
+            "#{prefix}#{Cantrip.SafeFormat.inspect(obs.result)}"
           end)
           |> Enum.join("\n")
 

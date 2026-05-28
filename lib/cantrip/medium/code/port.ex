@@ -404,19 +404,19 @@ defmodule Cantrip.Medium.Code.Port do
   defp fetch_child_handle(state, %Cantrip{id: id}) do
     case Map.fetch(Map.get(state, :child_handles, %{}), id) do
       {:ok, cantrip} -> {:ok, cantrip}
-      :error -> {:error, "unknown cantrip handle: #{inspect(id)}"}
+      :error -> {:error, "unknown cantrip handle: #{Cantrip.SafeFormat.inspect(id)}"}
     end
   end
 
   defp fetch_child_handle(state, id) when is_binary(id) do
     case Map.fetch(Map.get(state, :child_handles, %{}), id) do
       {:ok, cantrip} -> {:ok, cantrip}
-      :error -> {:error, "unknown cantrip handle: #{inspect(id)}"}
+      :error -> {:error, "unknown cantrip handle: #{Cantrip.SafeFormat.inspect(id)}"}
     end
   end
 
   defp fetch_child_handle(_state, other),
-    do: {:error, "expected cantrip handle, got: #{inspect(other)}"}
+    do: {:error, "expected cantrip handle, got: #{Cantrip.SafeFormat.inspect(other)}"}
 
   defp child_handle_key(%Cantrip{id: id}), do: id
   defp child_handle_key(id) when is_binary(id), do: id

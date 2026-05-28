@@ -131,11 +131,17 @@ defmodule Mix.Tasks.Cantrip.Familiar do
         :ok
 
       {:error, reason} ->
-        IO.puts(:stderr, "warning: could not register diagnostic node: #{inspect(reason)}")
+        IO.puts(
+          :stderr,
+          "warning: could not register diagnostic node: #{Cantrip.SafeFormat.inspect(reason)}"
+        )
     end
   rescue
     e ->
-      IO.puts(:stderr, "warning: diagnostic node setup raised: #{Exception.message(e)}")
+      IO.puts(
+        :stderr,
+        "warning: diagnostic node setup raised: #{Cantrip.SafeFormat.exception(e)}"
+      )
   end
 
   # Promote the BEAM to a workspace-stable named node. Mnesia ties
@@ -166,7 +172,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
 
           {:error, reason} ->
             raise """
-            Could not promote the BEAM to a named node: #{inspect(reason)}
+            Could not promote the BEAM to a named node: #{Cantrip.SafeFormat.inspect(reason)}
 
             The Familiar's workspace-keyed Mnesia loom requires a named
             node so prior turns survive restarts. Common causes:
@@ -448,20 +454,23 @@ defmodule Mix.Tasks.Cantrip.Familiar do
           {:error, reason, _cantrip} ->
             IO.write(
               :stderr,
-              IO.ANSI.red() <> "Error: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n"
+              IO.ANSI.red() <>
+                "Error: #{Cantrip.SafeFormat.inspect(reason)}" <> IO.ANSI.reset() <> "\n"
             )
 
           {:error, reason} ->
             IO.write(
               :stderr,
-              IO.ANSI.red() <> "Error: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n"
+              IO.ANSI.red() <>
+                "Error: #{Cantrip.SafeFormat.inspect(reason)}" <> IO.ANSI.reset() <> "\n"
             )
         end
 
       {:DOWN, _ref, :process, _pid, reason} ->
         IO.write(
           :stderr,
-          IO.ANSI.red() <> "Entity crashed: #{inspect(reason)}" <> IO.ANSI.reset() <> "\n"
+          IO.ANSI.red() <>
+            "Entity crashed: #{Cantrip.SafeFormat.inspect(reason)}" <> IO.ANSI.reset() <> "\n"
         )
     end
   end

@@ -17,6 +17,15 @@ defmodule Cantrip.RedactTest do
   alias Cantrip.Redact
   alias Cantrip.SafeFormat
 
+  defmodule ErrorLLM do
+    @behaviour Cantrip.LLM
+
+    @impl true
+    def query(state, _request) do
+      {:error, %{message: "OPENAI_API_KEY=#{Map.fetch!(state, :secret)}"}, state}
+    end
+  end
+
   describe "scan/1 — well-known credential shapes" do
     test "redacts OpenAI/Anthropic sk-* keys" do
       assert Redact.scan(
@@ -171,6 +180,70 @@ defmodule Cantrip.RedactTest do
       refute body =~ "VeqpnxccDQtWXwhtUgtJXFDF"
 
       File.rm(path)
+    end
+
+    test "gate observations redact inspected non-binary done results" do
+      circle =
+        Cantrip.Circle.new(%{
+          type: :conversation,
+          gates: [:done],
+          wards: [%{max_turns: 1}]
+        })
+
+      obs =
+        Cantrip.Gate.execute(circle, "done", %{
+          answer: %{api_key: @secret, visible: "kept"}
+        })
+
+      assert obs.result =~ "[REDACTED]"
+      assert obs.result =~ "visible"
+      refute obs.result =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+    end
+
+    test "unrestricted code-medium exception observations are redacted" do
+      circle =
+        Cantrip.Circle.new(%{
+          type: :code,
+          gates: [:done],
+          wards: [%{sandbox: :unrestricted, max_turns: 1}]
+        })
+
+      runtime = %Cantrip.Runtime{
+        circle: circle,
+        execute_gate: fn gate, args -> Cantrip.Gate.execute(circle, gate, args) end
+      }
+
+      {:ok, _state, observations, _result, _terminated?} =
+        Cantrip.Medium.Code.execute(~s[raise "OPENAI_API_KEY=#{@secret}"], %{}, runtime)
+
+      code_error = Enum.find(observations, &(&1.gate == "code" and &1.is_error))
+
+      assert code_error.result =~ "[REDACTED]"
+      refute code_error.result =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+    end
+
+    test "ACP wire stringification redacts credential-shaped content" do
+      text = Cantrip.ACP.EventBridge.stringify(%{api_key: @secret, answer: "visible"})
+
+      assert text =~ "[REDACTED]"
+      assert text =~ "visible"
+      refute text =~ "VeqpnxccDQtWXwhtUgtJXFDF"
+    end
+
+    test "ACP runtime prompt errors redact provider error reasons" do
+      {:ok, cantrip} =
+        Cantrip.new(
+          llm: {ErrorLLM, %{secret: @secret}},
+          circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 1}]}
+        )
+
+      session = %{cantrip: cantrip, entity_pid: nil, stream_to: nil}
+
+      assert {:error, message, _session} =
+               Cantrip.ACP.Runtime.Familiar.prompt(session, "trigger provider error")
+
+      assert message =~ "[REDACTED]"
+      refute message =~ "VeqpnxccDQtWXwhtUgtJXFDF"
     end
 
     test "port code-medium exceptions are redacted and do not return stacktraces" do

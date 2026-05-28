@@ -123,13 +123,13 @@ defmodule Cantrip.Medium.Bash do
             stderr_to_stdout: true
           )
         rescue
-          e -> {"Error: #{Exception.message(e)}", 1}
+          e -> {"Error: #{Cantrip.SafeFormat.exception(e)}", 1}
         end
       end)
 
     case Task.yield(task, timeout) || Task.shutdown(task) do
       {:ok, result} -> result
-      {:exit, reason} -> {"Error: Command task exited: #{inspect(reason)}", 1}
+      {:exit, reason} -> {"Error: Command task exited: #{Cantrip.SafeFormat.inspect(reason)}", 1}
       nil -> {"Error: Command timed out after #{div(timeout, 1000)}s", 124}
     end
   end

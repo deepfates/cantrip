@@ -9,7 +9,7 @@ defmodule Cantrip.Loom.Storage.Jsonl do
     File.write!(path, "", [:append])
     {:ok, %{path: path}}
   rescue
-    e -> {:error, Exception.message(e)}
+    e -> {:error, Cantrip.SafeFormat.exception(e)}
   end
 
   def init(_), do: {:error, "jsonl storage requires a file path"}
@@ -19,7 +19,7 @@ defmodule Cantrip.Loom.Storage.Jsonl do
     append_jsonl(path, storage_event(%{type: :turn, turn: turn}))
     {:ok, state}
   rescue
-    e -> {:error, Exception.message(e)}
+    e -> {:error, Cantrip.SafeFormat.exception(e)}
   end
 
   @impl true
@@ -27,7 +27,7 @@ defmodule Cantrip.Loom.Storage.Jsonl do
     append_jsonl(path, storage_event(%{type: :reward, index: index, reward: reward}))
     {:ok, state}
   rescue
-    e -> {:error, Exception.message(e)}
+    e -> {:error, Cantrip.SafeFormat.exception(e)}
   end
 
   @impl true
@@ -35,7 +35,7 @@ defmodule Cantrip.Loom.Storage.Jsonl do
     append_jsonl(path, storage_event(event))
     {:ok, state}
   rescue
-    e -> {:error, Exception.message(e)}
+    e -> {:error, Cantrip.SafeFormat.exception(e)}
   end
 
   # Read the existing JSONL and reconstruct the in-memory events/turns

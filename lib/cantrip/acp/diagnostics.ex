@@ -193,19 +193,21 @@ defmodule Cantrip.ACP.Diagnostics do
          bridges: bridges,
          last_answers: last_answers
        }) do
-    IO.puts("=== AgentHandler table #{inspect(table)} ===")
-    IO.puts("  conn: #{inspect(conn)}")
+    IO.puts("=== AgentHandler table #{Cantrip.SafeFormat.inspect(table)} ===")
+    IO.puts("  conn: #{Cantrip.SafeFormat.inspect(conn)}")
     IO.puts("  sessions: #{length(sessions)}")
 
     Enum.each(sessions, fn {id, session} ->
       keys = session |> Map.keys() |> Enum.reject(&(&1 in [:cantrip, :stream_to]))
-      IO.puts("    #{id}  keys=#{inspect(keys)}")
+      IO.puts("    #{id}  keys=#{Cantrip.SafeFormat.inspect(keys)}")
     end)
 
     IO.puts("  bridges:")
 
     Enum.each(bridges, fn {id, pid, info} ->
-      IO.puts("    #{id} -> #{inspect(pid)}  #{inspect(info)}")
+      IO.puts(
+        "    #{id} -> #{Cantrip.SafeFormat.inspect(pid)}  #{Cantrip.SafeFormat.inspect(info)}"
+      )
     end)
 
     if last_answers != [] do

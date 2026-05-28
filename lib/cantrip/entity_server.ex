@@ -278,7 +278,11 @@ defmodule Cantrip.EntityServer do
   end
 
   defp maybe_reply_runner_down(%{running: %{from: from}} = state, reason) do
-    GenServer.reply(from, {:error, "entity run failed: #{inspect(reason)}", state.cantrip})
+    GenServer.reply(
+      from,
+      {:error, "entity run failed: #{Cantrip.SafeFormat.inspect(reason)}", state.cantrip}
+    )
+
     %{state | running: nil}
   end
 
@@ -368,7 +372,7 @@ defmodule Cantrip.EntityServer do
 
       case ProviderCall.invoke(state.cantrip, request) do
         {:error, reason, next_cantrip, _provider_meta} ->
-          error_message = if is_binary(reason), do: reason, else: inspect(reason)
+          error_message = Cantrip.SafeFormat.message(reason)
 
           emit_turn_stop(state.entity_id, turn_number, turn_start_time)
 
@@ -613,7 +617,7 @@ defmodule Cantrip.EntityServer do
     result =
       if is_binary(result),
         do: result,
-        else: inspect(result, pretty: false, limit: 20)
+        else: Cantrip.SafeFormat.inspect(result, pretty: false, limit: 20)
 
     result
     |> String.replace(~r/\s+/, " ")

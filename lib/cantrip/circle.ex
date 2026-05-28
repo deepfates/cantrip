@@ -82,7 +82,7 @@ defmodule Cantrip.Circle do
       :unknown ->
         valid = "conversation, code, bash"
 
-        {:error, "unknown medium #{inspect(value)}; valid mediums: #{valid}"}
+        {:error, "unknown medium #{Cantrip.SafeFormat.inspect(value)}; valid mediums: #{valid}"}
     end
   end
 

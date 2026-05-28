@@ -148,12 +148,12 @@ defmodule Cantrip.ACP.EventBridge do
   cannot Stringify, because a crash here strands the whole session
   (no agent_message_chunk, flush timeout, hung prompt response).
   """
-  def stringify(value) when is_binary(value), do: value
+  def stringify(value) when is_binary(value), do: Cantrip.SafeFormat.message(value)
   def stringify(value) when is_atom(value), do: to_string(value)
   def stringify(value) when is_number(value), do: to_string(value)
   def stringify(value) when is_list(value), do: stringify_list(value)
   def stringify(value) when is_map(value) and not is_struct(value), do: stringify_map(value)
-  def stringify(value), do: inspect(value)
+  def stringify(value), do: Cantrip.SafeFormat.inspect(value)
 
   # Render maps and lists as readable text rather than raw Elixir term
   # syntax. The bridge feeds the user — not the entity's introspection

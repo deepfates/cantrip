@@ -397,8 +397,10 @@ defmodule Cantrip.Turn do
   end
 
   defp summarize_result(result) when is_binary(result) do
-    if byte_size(result) <= @feedback_max_bytes do
-      result
+    redacted = Cantrip.SafeFormat.message(result)
+
+    if byte_size(redacted) <= @feedback_max_bytes do
+      redacted
     else
       lines = length(String.split(result, "\n"))
       "ok (#{byte_size(result)} bytes, #{lines} lines) — stored in variable"
@@ -406,7 +408,7 @@ defmodule Cantrip.Turn do
   end
 
   defp summarize_result(result) when is_list(result) do
-    text = inspect(result, pretty: false, limit: 5)
+    text = Cantrip.SafeFormat.inspect(result, pretty: false, limit: 5)
 
     if byte_size(text) <= @feedback_max_bytes do
       text
@@ -415,10 +417,12 @@ defmodule Cantrip.Turn do
     end
   end
 
-  defp summarize_result(result), do: inspect(result, pretty: false, limit: 10)
+  defp summarize_result(result), do: Cantrip.SafeFormat.inspect(result, pretty: false, limit: 10)
 
-  defp stringify_tool_result(result) when is_binary(result), do: result
-  defp stringify_tool_result(result), do: inspect(result)
+  defp stringify_tool_result(result) when is_binary(result),
+    do: Cantrip.SafeFormat.message(result)
+
+  defp stringify_tool_result(result), do: Cantrip.SafeFormat.inspect(result)
 
   defp extract_code_from_tool_call([%{gate: gate, args: args} | _], gate, key) do
     Map.get(args, key) || Map.get(args, string_key(key)) || Map.get(args, existing_atom_key(key))

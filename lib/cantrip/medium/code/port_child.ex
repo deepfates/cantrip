@@ -419,7 +419,9 @@ defmodule Cantrip.Medium.Code.PortChild do
         {:ok, statements}
 
       {:error, {line, error, token}} ->
-        {:error, "parse error at #{inspect(line)}: #{inspect(error)} #{inspect(token)}"}
+        {:error,
+         "parse error at #{Cantrip.SafeFormat.inspect(line)}: " <>
+           "#{Cantrip.SafeFormat.inspect(error)} #{Cantrip.SafeFormat.inspect(token)}"}
     end
   end
 
@@ -510,7 +512,10 @@ defmodule Cantrip.Medium.Code.PortChild do
           eval_statements(extract_statements(quoted), binding)
 
         {:error, {line, error, token}} ->
-          msg = "parse error at #{inspect(line)}: #{inspect(error)} #{inspect(token)}"
+          msg =
+            "parse error at #{Cantrip.SafeFormat.inspect(line)}: " <>
+              "#{Cantrip.SafeFormat.inspect(error)} #{Cantrip.SafeFormat.inspect(token)}"
+
           {binding, {:cantrip_error, msg}, false}
       end
     end
@@ -701,10 +706,10 @@ defmodule Cantrip.Medium.Code.PortChild do
   defp externalize_term(tuple) when is_tuple(tuple),
     do: tuple |> Tuple.to_list() |> externalize_term() |> List.to_tuple()
 
-  defp externalize_term(fun) when is_function(fun), do: inspect(fun)
-  defp externalize_term(pid) when is_pid(pid), do: inspect(pid)
-  defp externalize_term(ref) when is_reference(ref), do: inspect(ref)
-  defp externalize_term(port) when is_port(port), do: inspect(port)
+  defp externalize_term(fun) when is_function(fun), do: Cantrip.SafeFormat.inspect(fun)
+  defp externalize_term(pid) when is_pid(pid), do: Cantrip.SafeFormat.inspect(pid)
+  defp externalize_term(ref) when is_reference(ref), do: Cantrip.SafeFormat.inspect(ref)
+  defp externalize_term(port) when is_port(port), do: Cantrip.SafeFormat.inspect(port)
   defp externalize_term(nil), do: nil
   defp externalize_term(true), do: true
   defp externalize_term(false), do: false
@@ -794,7 +799,7 @@ defmodule Cantrip.Medium.Code.PortChild do
         {:error, {:bad_header, other}}
     end
   rescue
-    e -> {:error, Exception.message(e)}
+    e -> {:error, Cantrip.SafeFormat.exception(e)}
   end
 
   defp write_frame(term) do

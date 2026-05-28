@@ -244,7 +244,7 @@ defmodule Cantrip.Gate.CompileAndLoad do
     end
   rescue
     e ->
-      fallback = Map.get(gate, :compile_error, Exception.message(e))
+      fallback = Map.get(gate, :compile_error, Cantrip.SafeFormat.exception(e))
       {:error, fallback}
   end
 

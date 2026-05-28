@@ -322,7 +322,7 @@ defmodule Cantrip.Familiar do
   defp sandbox_ward("unrestricted"), do: sandbox_ward(:unrestricted)
 
   defp sandbox_ward(other),
-    do: raise(ArgumentError, "unsupported Familiar sandbox: #{inspect(other)}")
+    do: raise(ArgumentError, "unsupported Familiar sandbox: #{Cantrip.SafeFormat.inspect(other)}")
 
   # Mnesia table names are atoms, so derive a short fixed-shape name from
   # a hash instead of embedding user-controlled path text in the atom.

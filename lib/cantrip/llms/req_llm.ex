@@ -63,7 +63,7 @@ defmodule Cantrip.LLMs.ReqLLM do
     end
   rescue
     e ->
-      {:error, %{status: nil, message: Exception.message(e)}, normalize_state(state)}
+      {:error, %{status: nil, message: Cantrip.SafeFormat.exception(e)}, normalize_state(state)}
   end
 
   # -- Sync path --
@@ -187,7 +187,7 @@ defmodule Cantrip.LLMs.ReqLLM do
         name: tool[:name],
         description: tool[:description] || "",
         parameter_schema: tool[:parameters] || %{type: "object", properties: %{}},
-        callback: fn args -> {:ok, inspect(args)} end
+        callback: fn args -> {:ok, Cantrip.SafeFormat.inspect(args)} end
       )
     end)
   end
@@ -238,7 +238,7 @@ defmodule Cantrip.LLMs.ReqLLM do
         {%{}, "tool-call arguments JSON must decode to an object"}
 
       {:error, error} ->
-        {%{}, Exception.message(error)}
+        {%{}, Cantrip.SafeFormat.exception(error)}
     end
   end
 

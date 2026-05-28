@@ -128,7 +128,11 @@ defmodule Cantrip.CLI.Renderer do
   # Only the root entity writes to stdout.
 
   def render_event(state, {%{depth: 0}, {:final_response, %{result: result}}}) do
-    result_str = if is_binary(result), do: result, else: inspect(result, pretty: true)
+    result_str =
+      if is_binary(result),
+        do: Cantrip.SafeFormat.message(result),
+        else: Cantrip.SafeFormat.inspect(result, pretty: true)
+
     {[result_str, "\n"], :stdout, state}
   end
 
@@ -196,7 +200,7 @@ defmodule Cantrip.CLI.Renderer do
   end
 
   defp summarize(result) when is_list(result) do
-    text = inspect(result, pretty: false, limit: 5)
+    text = Cantrip.SafeFormat.inspect(result, pretty: false, limit: 5)
 
     if byte_size(text) <= @max_display do
       text
@@ -206,7 +210,7 @@ defmodule Cantrip.CLI.Renderer do
   end
 
   defp summarize(result) do
-    text = inspect(result, pretty: false, limit: 10)
+    text = Cantrip.SafeFormat.inspect(result, pretty: false, limit: 10)
 
     if byte_size(text) <= @max_display do
       text

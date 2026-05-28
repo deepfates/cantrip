@@ -20,8 +20,9 @@ baseline.
 
 **13 of 16 starting issues closed with proof. 4 new issues filed: #32 Pass 10
 versioning, #34 Pass 5 follow-up, #35 compile_and_load policy gaps, #36
-cookie overwrite. 3 feature-roadmap issues labeled `feature` and kept open.
-5 active cleanup issues remain (#11, #32, #34, #35, #36).**
+cookie overwrite. #34 is fixed locally pending issue close. 3 feature-roadmap
+issues labeled `feature` and kept open. 4 active cleanup issues remain (#11,
+#32, #35, #36).**
 
 The post-d12875c cold review caught two reward-hacking patterns: Pass 5 was
 marked "done" while ~30 boundary inspect/Exception.message bypass channels
@@ -52,7 +53,7 @@ holds — those are adjacent concerns, not a reopen.
 | 30 | Malformed-JSON tool-call args | **closed** | `args_raw`+`args_decode_error` plumbing; executor emits structured error. Evidence: `test/req_llm_adapter_test.exs:106+`, `:136+`. |
 | 31 | Mnesia create_schema error swallow | **closed** | `ensure_schema/0` propagates root cause. Evidence: `test/loom_storage_test.exs:20+`. |
 | 32 | Schema version for durable structs + JSONL | **open** | Filed post-Pass-0-scan. 8 defstructs lack version field; JSONL has no format header. Forward-prep, not active bug. |
-| 34 | Pass 5: complete SafeFormat coverage at remaining boundary channels | **open** | Cold-review of `075878a` found ~30 `inspect(...)` + `Exception.message(...)` bypass channels at boundary surfaces. Each needs SafeFormat or a justifying comment + regression test asserting credential redaction. |
+| 34 | Pass 5: complete SafeFormat coverage at remaining boundary channels | **ready-to-close** | Boundary `inspect(...)` / `Exception.message(...)` sites now route through `Cantrip.SafeFormat` across gates, code-medium observations/protocol frames, ACP replies, CLI output, loom storage, child-cast observations/events, and provider adapter errors. Evidence: `test/redact_test.exs` covers non-binary gate output, unrestricted code-medium exceptions, ACP wire stringification, ACP runtime provider errors, JSONL persistence fallback, and port-medium exceptions; source scan shows no remaining raw boundary bypasses outside a static prompt example. |
 | 35 | compile_and_load: reject framework module names + handle deprecated allow_compile_namespaces | **open** | Cold-review of `ca115b0` found two concerns: gate doesn't reject `Elixir.Cantrip.*` modules in allowlists, and `allow_compile_namespaces` is silently ignored (permission broadening relative to caller intent). Doc drift in `DEPLOYMENT.md:200`. |
 | 36 | Familiar cookie validation silently overwrites hand-edited cookies | **open** | Cold-review of `bc2bf01`. `validate_or_regenerate_cookie` silently regenerates non-matching cookies, breaking existing distributed connections without warning. Either log on overwrite or hard-fail and require explicit deletion. |
 
@@ -73,7 +74,7 @@ holds — those are adjacent concerns, not a reopen.
 | 2 | Boundary / DTO integrity | **done** | #22 + #25 + #30 all closed with proof. |
 | 3 | Atom safety | **done** | #21 closed; all paths bounded. |
 | 4 | Configuration / ambient authority | **clean** | Pass 0 scan: 5 hits, all in boot/config paths. No hot-path violations. |
-| 5 | Secret redaction & error sanitization | **partial** | `Cantrip.SafeFormat` shipped in `075878a` and wired to ReqLLM adapter, JSONL fallbacks, port code-medium. **#34 captures the remaining boundary channels** — ~30 `inspect(...)` and `Exception.message(...)` sites still bypass redaction. Will be done when #34 lands. |
+| 5 | Secret redaction & error sanitization | **done** | `Cantrip.SafeFormat` now covers boundary formatting across gate observations, code-medium observations/protocol frames, ACP replies, CLI output, loom storage, child-cast observations/events, and provider adapter errors. Evidence: `test/redact_test.exs` Pass 5 boundary formatting tests plus the source scan recorded in #34. |
 | 6 | Unsafe deserialization / runtime eval | **clean** | Pass 0 scan: all `binary_to_term` uses `[:safe]` flag; `Code.eval_quoted` only in sandboxed port child. `compile_and_load` gated by exact-module allowlist. |
 | 7 | OTP lifecycle / supervision | **done-for-tracked-issues** | #24 moved long-running entity episodes out of `handle_call/3` into a supervised, monitored per-entity runner. |
 | 8 | Mailbox / backpressure | **clean** | Pass 0 scan: 0 `GenServer.cast`, 0 `handle_info`, raw `send/` only within supervised public API + port-child protocol. |
@@ -89,17 +90,16 @@ holds — those are adjacent concerns, not a reopen.
 
 ## What's Left
 
-Five open cleanup items, in priority order:
+Four open cleanup items, in priority order:
 
-1. **#34 Pass 5 follow-up** — extend SafeFormat coverage at the ~30 remaining boundary channels. This blocks the "Pass 5 done" claim. Codex lane.
-2. **#35 compile_and_load policy gaps** — reject framework module names; handle deprecated `allow_compile_namespaces` either with deprecation warning or explicit validation error; update `DEPLOYMENT.md` doc drift. Codex lane (with #34 doc updates probably batched).
-3. **#11 telemetry coverage** — implementation against the contract in `docs/observability.md`. Trace_id propagation + 7 missing events + per-event regression tests. Codex lane.
-4. **#32 schema versioning** — forward-prep, not blocking anything. Add `schema_version: 1` to durable structs + JSONL header. Codex lane when scheduled.
-5. **#36 cookie overwrite** — small, operator-experience fix. Either log on regeneration or hard-fail. Codex lane.
+1. **#35 compile_and_load policy gaps** — reject framework module names; handle deprecated `allow_compile_namespaces` either with deprecation warning or explicit validation error; update `DEPLOYMENT.md` doc drift. Codex lane.
+2. **#11 telemetry coverage** — implementation against the contract in `docs/observability.md`. Trace_id propagation + 7 missing events + per-event regression tests. Codex lane.
+3. **#32 schema versioning** — forward-prep, not blocking anything. Add `schema_version: 1` to durable structs + JSONL header. Codex lane when scheduled.
+4. **#36 cookie overwrite** — small, operator-experience fix. Either log on regeneration or hard-fail. Codex lane.
 
 Plus three feature-roadmap items (`feature` label) that intentionally aren't blocking the cleanup-done milestone: #8, #9, #10.
 
-The cleanup phase reaches "done" when #34, #35, #11, #32, #36 land and `mix verify` stays green. Then we ship a v1.1.0 from `feat/comprehensive-cleanup` and the open issue tracker has only the three intentionally-deferred feature items.
+The cleanup phase reaches "done" when #35, #11, #32, #36 land and `mix verify` stays green. Then we ship a v1.1.0 from `feat/comprehensive-cleanup` and the open issue tracker has only the three intentionally-deferred feature items.
 
 ---
 

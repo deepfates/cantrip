@@ -186,7 +186,11 @@ defmodule Cantrip.Medium.Code do
   catch
     :exit, reason ->
       obs = [
-        %{gate: "code", result: "code evaluation crashed: #{inspect(reason)}", is_error: true}
+        %{
+          gate: "code",
+          result: "code evaluation crashed: #{Cantrip.SafeFormat.inspect(reason)}",
+          is_error: true
+        }
       ]
 
       {state, obs, nil, false}
@@ -233,7 +237,10 @@ defmodule Cantrip.Medium.Code do
           eval_statements(extract_statements(quoted), binding, collector)
 
         {:error, {line, error, token}} ->
-          msg = "parse error at #{inspect(line)}: #{inspect(error)} #{inspect(token)}"
+          msg =
+            "parse error at #{Cantrip.SafeFormat.inspect(line)}: " <>
+              "#{Cantrip.SafeFormat.inspect(error)} #{Cantrip.SafeFormat.inspect(token)}"
+
           push_observation(collector, %{gate: "code", result: msg, is_error: true})
           {binding, nil, false}
       end
@@ -258,7 +265,12 @@ defmodule Cantrip.Medium.Code do
       end
     rescue
       e ->
-        push_observation(collector, %{gate: "code", result: Exception.message(e), is_error: true})
+        push_observation(collector, %{
+          gate: "code",
+          result: Cantrip.SafeFormat.exception(e),
+          is_error: true
+        })
+
         {binding, nil, false}
     catch
       {:cantrip_done, answer} ->

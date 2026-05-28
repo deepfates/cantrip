@@ -17,7 +17,7 @@ defmodule Cantrip.Loom.Storage.Mnesia do
            :ok <- ensure_table(table, mnesia) do
         {:ok, %{table: table, mnesia: mnesia}}
       else
-        {:error, reason} -> {:error, inspect(reason)}
+        {:error, reason} -> {:error, Cantrip.SafeFormat.inspect(reason)}
       end
     end
   end
