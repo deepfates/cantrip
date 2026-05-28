@@ -19,10 +19,8 @@ defmodule Cantrip.Loom.Storage do
   [], turns: []}}` for backends that don't yet support rehydration.
 
   This is what makes the loom an actual replay buffer rather than a
-  write-only log. Pattern 16 ("Persistent Loom + Filesystem Children")
-  depends on it: a Familiar summoned a second time against the same
-  `loom_path` should resume with its prior turns visible in
-  `loom.turns`.
+  write-only log: a Familiar summoned a second time against the same
+  `loom_path` should resume with its prior turns visible in `loom.turns`.
   """
   @callback load(storage_state()) ::
               {:ok, %{events: [map()], turns: [map()]}} | {:error, term()}

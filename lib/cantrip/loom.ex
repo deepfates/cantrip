@@ -14,9 +14,8 @@ defmodule Cantrip.Loom do
 
   When a storage backend implements the optional `load/1` callback, `new/2`
   rehydrates the in-memory `events` and `turns` lists from durable state.
-  That is what makes pattern 16 ("Persistent Loom + Filesystem Children")
-  work: a Familiar summoned a second time against the same `loom_path`
-  resumes with its prior turns accessible via `loom.turns`.
+  That is what lets a Familiar summoned a second time against the same
+  `loom_path` resume with its prior turns accessible via `loom.turns`.
 
   The on-disk projection round-trips Elixir-native terms faithfully:
   tuples and atoms are tagged on write (`%{"__t__" => [...]}`,
@@ -121,8 +120,8 @@ defmodule Cantrip.Loom do
 
   # If the storage backend implements `load/1` (optional callback), use
   # it to rehydrate prior events and turns from durable state. This is
-  # what makes pattern 16's "summon, work, kill, resume" promise hold:
-  # without it, the JSONL is write-only and a second summon starts blind.
+  # what lets a Familiar work across process lifetimes: without it, the
+  # JSONL is write-only and a second summon starts blind.
   #
   # `intents` is projected from `events` (its source of truth) so the
   # storage `load/1` contract stays unchanged — adapters only need to

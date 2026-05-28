@@ -318,7 +318,6 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full posture.
   scenario evaluation
 - [`docs/architecture.md`](./docs/architecture.md) — how the modules fit
 - [`DEPLOYMENT.md`](./DEPLOYMENT.md) — current deployment posture
-- [`docs/migration-v1.md`](./docs/migration-v1.md) — moving from pre-v1
 - [`docs/port-isolated-runtime.md`](./docs/port-isolated-runtime.md) — the
   port-isolated code-medium boundary
 - [Cantrip bibliography](https://deepfates.com/cantrip-bibliography) — the

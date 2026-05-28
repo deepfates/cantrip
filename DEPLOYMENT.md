@@ -5,10 +5,10 @@ spawns other entities at runtime, persists its loom across summons,
 and can hot-load new code into its own runtime. This document is about running
 it responsibly in production.
 
-Cantrip `1.0.0-rc.1` makes the Familiar's default code medium a safe port
-evaluator: LLM-written Elixir is evaluated by Dune inside a child BEAM process
-while the parent BEAM owns gates, child cantrip orchestration, loom grafting,
-telemetry, provider access, and hot-load policy.
+The Familiar's default code medium is a safe port evaluator: LLM-written
+Elixir is evaluated by Dune inside a child BEAM process while the parent BEAM
+owns gates, child cantrip orchestration, loom grafting, telemetry, provider
+access, and hot-load policy.
 
 ## The runtime shape
 

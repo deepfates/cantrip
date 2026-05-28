@@ -66,8 +66,7 @@ RUN_REAL_LLM_TESTS=1 CANTRIP_LLM_PROVIDER=anthropic ANTHROPIC_MODEL=claude-haiku
 
 The class of bugs these catch is "code paths that look fine because the unit
 mocks return what the production code expects, not what real providers
-actually return." Several were found this way during v1 prep; see
-`docs/v1-audit.md`.
+actually return."
 
 CI runs the Anthropic live subset on pushes to `main`, `release/**`, and
 `v*` tags. Those refs require the `ANTHROPIC_API_KEY` repository secret; PRs

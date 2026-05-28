@@ -52,8 +52,9 @@ metadata fixes, and Familiar composition guidance.
 - Familiar prompt/runtime evaluation now has a composition metric:
   `child_medium_used` scores whether a child turn used the expected medium.
   Turn metadata records `medium_type`, JSONL rehydration preserves it, and
-  the eval suite contrasts raw data-dump answers with code-gathering plus
-  conversation-child synthesis. Evidence: PR #90, issue #83.
+  the eval suite scores whether a Familiar child turn used the expected
+  medium for synthesis-shaped tasks. This is rubric coverage; behavioral
+  validation still requires real-LLM runs. Evidence: PR #90, issue #83.
 - Default Familiar guidance now explicitly teaches answer-shape selection:
   gather and compose in code, then delegate speech-shaped synthesis,
   explanation, review, naming, judgment, decision, or voice to a
