@@ -168,9 +168,15 @@ defmodule Cantrip.Medium.Bash do
     end
   end
 
-  defp emit_eval_stop(%{entity_id: entity_id}, started_at) when is_binary(entity_id) do
+  defp emit_eval_stop(%{entity_id: entity_id, trace_id: trace_id}, started_at)
+       when is_binary(entity_id) do
     duration = System.monotonic_time() - started_at
-    :telemetry.execute([:cantrip, :bash, :eval], %{duration: duration}, %{entity_id: entity_id})
+
+    Cantrip.Telemetry.execute(
+      [:cantrip, :bash, :eval],
+      %{duration: duration},
+      %{entity_id: entity_id, trace_id: trace_id}
+    )
   end
 
   defp emit_eval_stop(_runtime, _started_at), do: :ok

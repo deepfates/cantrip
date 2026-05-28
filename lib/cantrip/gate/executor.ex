@@ -16,6 +16,7 @@ defmodule Cantrip.Gate.Executor do
   @spec execute_tool_calls(Cantrip.Circle.t(), list(map()), keyword()) :: result()
   def execute_tool_calls(circle, tool_calls, opts \\ []) when is_list(tool_calls) do
     entity_id = Keyword.get(opts, :entity_id)
+    trace_id = Keyword.get(opts, :trace_id)
     execute_gate = Keyword.get(opts, :execute_gate, &Cantrip.Gate.execute/3)
 
     {observations, result, terminated?} =
@@ -26,7 +27,7 @@ defmodule Cantrip.Gate.Executor do
         args_decode_error = call[:args_decode_error] || call["args_decode_error"]
         args_raw = call[:args_raw] || call["args_raw"]
 
-        emit_gate_start(entity_id, gate)
+        emit_gate_start(entity_id, trace_id, gate)
         gate_start = System.monotonic_time()
 
         observation =
@@ -45,7 +46,7 @@ defmodule Cantrip.Gate.Executor do
           |> Map.put(:tool_call_id, tool_call_id)
           |> Map.put(:args, args)
 
-        emit_gate_stop(entity_id, gate, gate_start, observation)
+        emit_gate_stop(entity_id, trace_id, gate, gate_start, observation)
 
         acc = [observation | acc]
 
@@ -61,26 +62,28 @@ defmodule Cantrip.Gate.Executor do
     %{observations: observations, result: result, terminated?: terminated?}
   end
 
-  defp emit_gate_start(entity_id, gate) when is_binary(entity_id) do
-    :telemetry.execute([:cantrip, :gate, :start], %{}, %{
+  defp emit_gate_start(entity_id, trace_id, gate) when is_binary(entity_id) do
+    Cantrip.Telemetry.execute([:cantrip, :gate, :start], %{}, %{
       entity_id: entity_id,
+      trace_id: trace_id,
       gate_name: gate
     })
   end
 
-  defp emit_gate_start(_entity_id, _gate), do: :ok
+  defp emit_gate_start(_entity_id, _trace_id, _gate), do: :ok
 
-  defp emit_gate_stop(entity_id, gate, started_at, observation) when is_binary(entity_id) do
+  defp emit_gate_stop(entity_id, trace_id, gate, started_at, observation)
+       when is_binary(entity_id) do
     duration = System.monotonic_time() - started_at
 
-    :telemetry.execute(
+    Cantrip.Telemetry.execute(
       [:cantrip, :gate, :stop],
       %{duration: duration},
-      %{entity_id: entity_id, gate_name: gate, is_error: observation.is_error}
+      %{entity_id: entity_id, trace_id: trace_id, gate_name: gate, is_error: observation.is_error}
     )
   end
 
-  defp emit_gate_stop(_entity_id, _gate, _started_at, _observation), do: :ok
+  defp emit_gate_stop(_entity_id, _trace_id, _gate, _started_at, _observation), do: :ok
 
   defp mint_tool_call_id do
     "call_" <> Integer.to_string(System.unique_integer([:positive]))

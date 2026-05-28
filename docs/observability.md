@@ -26,6 +26,12 @@ All events are emitted under the `[:cantrip, ...]` prefix.
 | `[:cantrip, :gate, :stop]` | `duration` | `entity_id, gate_name, is_error, trace_id` | `Gate.Executor.emit_gate_stop/4` per gate invocation |
 | `[:cantrip, :code, :eval]` | `duration` | `entity_id, trace_id` | `Medium.Code` per LLM-emitted Elixir evaluation |
 | `[:cantrip, :bash, :eval]` | `duration` | `entity_id, trace_id` | `Medium.Bash` per shell command |
+| `[:cantrip, :usage]` | `prompt_tokens, completion_tokens, total_tokens` | `entity_id, turn_number, trace_id` | `EntityServer.run_loop/1` after provider response |
+| `[:cantrip, :fold, :trigger]` | — | `entity_id, turn_number, trace_id` | `EntityServer.run_loop/1` when folding fires |
+| `[:cantrip, :ward, :truncate]` | — | `entity_id, ward, trace_id` | `EntityServer.run_loop/1` when a ward stops execution |
+| `[:cantrip, :child, :start]` | — | `entity_id, child_depth, trace_id` | `Cantrip.run_child_cast/4` before child cast |
+| `[:cantrip, :child, :stop]` | — | `entity_id, child_depth, outcome, trace_id` | `Cantrip.run_child_cast/4` after child cast |
+| `[:cantrip, :compile_and_load]` | `duration` | `entity_id, module, outcome, trace_id` | `EntityServer.execute_compile_and_load/2` per hot-load attempt |
 
 `duration` measurements are `System.monotonic_time/0` deltas (native units —
 convert with `System.convert_time_unit/3` at the subscriber).
@@ -75,6 +81,12 @@ Recommended subscriptions for production deployments:
   counter of `is_error: true` per `gate_name` for gate-error rates.
 - **`[:cantrip, :entity, :stop]`** → counter per `reason` to track terminated
   vs truncated vs error termination.
+- **`[:cantrip, :usage]`** → counters for prompt/completion/total token
+  volume per `entity_id`.
+- **`[:cantrip, :ward, :truncate]`** → counter per `ward` to see which guard
+  is stopping work.
+- **`[:cantrip, :child, :start]` / `[:cantrip, :child, :stop]`** → counters
+  and outcome tags for delegation fanout.
 - **`[:cantrip, :code, :eval]`** and **`[:cantrip, :bash, :eval]`** →
   histogram of `duration` for medium-evaluation latency.
 
@@ -114,6 +126,7 @@ Prometheus, Datadog, and other backends have equivalent
 | `cantrip.gate.error.rate` | > 5% over 5 min, per `gate_name` | High gate error rate = LLM misuse or provider drift |
 | `cantrip.turn.stop.duration` p95 | > 60s | Long turns suggest provider slowness, runaway code-medium evaluation, or hung gate |
 | `cantrip.entity.stop.reason` = `:truncated` | > 10% over 1 hour | High truncation rate = `max_turns` ward set too low for the workload |
+| `cantrip.ward.truncate.count` | sudden increase by `ward` | A runtime guard is stopping work more often than expected |
 | `cantrip.code.eval.duration` p95 | > 30s | Long code-medium evaluations suggest sandbox starvation or hung port |
 
 ---
@@ -159,19 +172,8 @@ Cantrip.cast(cantrip, intent, trace_id: external_request_id)
 
 ---
 
-## Gaps tracked elsewhere
+## Event Registry In Code
 
-The following events are not yet emitted; tracked under issue #11:
-
-- `[:cantrip, :usage]` — LLM token usage per turn (prompt + completion tokens
-  per provider).
-- `[:cantrip, :fold, :trigger]` — when folding fires on a session.
-- `[:cantrip, :ward, :truncate]` — when a ward stops execution (with the ward
-  type as metadata).
-- `[:cantrip, :child, :start]` / `[:cantrip, :child, :stop]` — explicit
-  parent/child relationship events distinct from the nested entity events.
-- `[:cantrip, :compile_and_load]` — hot-load attempts (with allowlist
-  outcome).
-
-When these land, they go in the event registry table above with the same
-metadata invariants.
+`Cantrip.Telemetry.events/0` returns the runtime registry used by tests and
+documentation review. New telemetry surfaces should be added there first, then
+pinned by a regression test and documented in the table above.

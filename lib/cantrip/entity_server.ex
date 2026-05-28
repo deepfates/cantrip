@@ -19,6 +19,7 @@ defmodule Cantrip.EntityServer do
 
   defstruct cantrip: nil,
             entity_id: nil,
+            trace_id: nil,
             messages: [],
             lazy: false,
             loom: nil,
@@ -31,6 +32,7 @@ defmodule Cantrip.EntityServer do
             stream_barrier?: false,
             runner: nil,
             running: nil,
+            entity_started_at: nil,
             # The summary text from this turn's fold (if folding fired
             # in `prepare_request`). Threaded into the medium's runtime
             # so the entity can read it as a `folded_summary` binding
@@ -63,6 +65,7 @@ defmodule Cantrip.EntityServer do
     lazy = Keyword.get(opts, :lazy, false)
 
     entity_id = "ent_" <> Integer.to_string(System.unique_integer([:positive]))
+    trace_id = Cantrip.Telemetry.trace_id(Keyword.get(opts, :trace_id))
 
     messages = Keyword.get(opts, :messages, build_initial_messages(cantrip, intent, lazy))
 
@@ -85,10 +88,10 @@ defmodule Cantrip.EntityServer do
     stream_barrier? = Keyword.get(opts, :stream_barrier?, false)
     cancel_on_parent = normalize_cancel_parents(Keyword.get(opts, :cancel_on_parent))
 
-    :telemetry.execute(
+    Cantrip.Telemetry.execute(
       [:cantrip, :entity, :start],
       %{},
-      %{entity_id: entity_id, intent: intent}
+      %{entity_id: entity_id, intent: intent, trace_id: trace_id}
     )
 
     with {:ok, runner} <- start_runner() do
@@ -96,6 +99,7 @@ defmodule Cantrip.EntityServer do
        %__MODULE__{
          cantrip: cantrip,
          entity_id: entity_id,
+         trace_id: trace_id,
          messages: messages,
          lazy: lazy and is_nil(intent),
          loom: loom,
@@ -105,7 +109,8 @@ defmodule Cantrip.EntityServer do
          stream_to: stream_to,
          stream_barrier?: stream_barrier?,
          cancel_on_parent: cancel_on_parent,
-         runner: runner
+         runner: runner,
+         entity_started_at: System.monotonic_time()
        }}
     end
   end
@@ -357,6 +362,12 @@ defmodule Cantrip.EntityServer do
     reason = truncation_reason(state)
 
     if reason do
+      Cantrip.Telemetry.execute(
+        [:cantrip, :ward, :truncate],
+        %{},
+        %{entity_id: state.entity_id, trace_id: state.trace_id, ward: reason}
+      )
+
       stream_result = truncation_stream_result(reason, state)
 
       loom =
@@ -384,10 +395,10 @@ defmodule Cantrip.EntityServer do
     else
       turn_number = state.turns + 1
 
-      :telemetry.execute(
+      Cantrip.Telemetry.execute(
         [:cantrip, :turn, :start],
         %{},
-        %{entity_id: state.entity_id, turn_number: turn_number}
+        %{entity_id: state.entity_id, turn_number: turn_number, trace_id: state.trace_id}
       )
 
       turn_start_time = System.monotonic_time()
@@ -400,13 +411,21 @@ defmodule Cantrip.EntityServer do
       # stale summary from a prior turn.
       state = %{state | folded_summary: Map.get(request, :folded_summary)}
 
+      if state.folded_summary do
+        Cantrip.Telemetry.execute(
+          [:cantrip, :fold, :trigger],
+          %{},
+          %{entity_id: state.entity_id, trace_id: state.trace_id, turn_number: turn_number}
+        )
+      end
+
       emit_event(state, {:message_start, %{turn: state.turns + 1}})
 
       case ProviderCall.invoke(state.cantrip, request) do
         {:error, reason, next_cantrip, _provider_meta} ->
           error_message = Cantrip.SafeFormat.message(reason)
 
-          emit_turn_stop(state.entity_id, turn_number, turn_start_time)
+          emit_turn_stop(state.entity_id, turn_number, turn_start_time, state.trace_id)
 
           {:error, error_message,
            %{
@@ -428,6 +447,16 @@ defmodule Cantrip.EntityServer do
                prompt_tokens: Map.get(provider_meta.usage, :prompt_tokens, 0),
                completion_tokens: Map.get(provider_meta.usage, :completion_tokens, 0)
              }}
+          )
+
+          Cantrip.Telemetry.execute(
+            [:cantrip, :usage],
+            %{
+              prompt_tokens: Map.get(provider_meta.usage, :prompt_tokens, 0),
+              completion_tokens: Map.get(provider_meta.usage, :completion_tokens, 0),
+              total_tokens: Map.get(provider_meta.usage, :total_tokens, 0)
+            },
+            %{entity_id: state.entity_id, trace_id: state.trace_id, turn_number: turn_number}
           )
 
           execute_turn(
@@ -493,7 +522,7 @@ defmodule Cantrip.EntityServer do
 
     emit_event(state, {:step_complete, %{turn: next_state.turns, terminated: terminated}})
 
-    emit_turn_stop(state.entity_id, turn_number, turn_start_time)
+    emit_turn_stop(state.entity_id, turn_number, turn_start_time, state.trace_id)
 
     # The terminating turn's assistant message must be folded into
     # `state.messages` too, otherwise persistent entities lose every
@@ -553,7 +582,8 @@ defmodule Cantrip.EntityServer do
       cancel_on_parent: state.cancel_on_parent,
       stream_to: state.stream_to,
       stream_barrier?: state.stream_barrier?,
-      entity_state: state
+      entity_state: state,
+      trace_id: state.trace_id
     )
   end
 
@@ -561,7 +591,20 @@ defmodule Cantrip.EntityServer do
     do: {state.cantrip.llm_module, state.cantrip.llm_state}
 
   defp execute_compile_and_load(state, opts) do
+    started_at = System.monotonic_time()
     observation = Gate.execute(state.cantrip.circle, "compile_and_load", opts)
+
+    Cantrip.Telemetry.execute(
+      [:cantrip, :compile_and_load],
+      %{duration: System.monotonic_time() - started_at},
+      %{
+        entity_id: state.entity_id,
+        trace_id: state.trace_id,
+        module: Map.get(opts, "module", Map.get(opts, :module)),
+        outcome: if(observation.is_error, do: :error, else: :ok)
+      }
+    )
+
     %{value: observation.result, observation: observation}
   end
 
@@ -570,8 +613,9 @@ defmodule Cantrip.EntityServer do
       circle: state.cantrip.circle,
       loom: state.loom,
       entity_id: state.entity_id,
+      trace_id: state.trace_id,
       execute_gate: fn gate, args ->
-        Gate.execute(state.cantrip.circle, gate, args)
+        execute_code_gate(state, gate, args)
       end,
       parent_context: parent_context(state),
       compile_and_load: fn opts -> execute_compile_and_load(state, opts) end
@@ -589,7 +633,8 @@ defmodule Cantrip.EntityServer do
   defp turn_runtime(state, %{mode: :bash_command}) do
     %Cantrip.Runtime{
       circle: state.cantrip.circle,
-      entity_id: state.entity_id
+      entity_id: state.entity_id,
+      trace_id: state.trace_id
     }
   end
 
@@ -597,10 +642,35 @@ defmodule Cantrip.EntityServer do
     %Cantrip.Runtime{
       circle: state.cantrip.circle,
       entity_id: state.entity_id,
+      trace_id: state.trace_id,
       execute_gate: fn gate, args ->
         Gate.execute(state.cantrip.circle, gate, args)
       end
     }
+  end
+
+  defp execute_code_gate(state, gate, args) do
+    Cantrip.Telemetry.execute(
+      [:cantrip, :gate, :start],
+      %{},
+      %{entity_id: state.entity_id, trace_id: state.trace_id, gate_name: gate}
+    )
+
+    started_at = System.monotonic_time()
+    observation = Gate.execute(state.cantrip.circle, gate, args)
+
+    Cantrip.Telemetry.execute(
+      [:cantrip, :gate, :stop],
+      %{duration: System.monotonic_time() - started_at},
+      %{
+        entity_id: state.entity_id,
+        trace_id: state.trace_id,
+        gate_name: gate,
+        is_error: observation.is_error
+      }
+    )
+
+    observation
   end
 
   defp truncation_reason(state) do
@@ -672,20 +742,20 @@ defmodule Cantrip.EntityServer do
   end
 
   defp emit_entity_stop(state, reason) do
-    :telemetry.execute(
+    Cantrip.Telemetry.execute(
       [:cantrip, :entity, :stop],
-      %{},
-      %{entity_id: state.entity_id, reason: reason}
+      %{duration: System.monotonic_time() - state.entity_started_at},
+      %{entity_id: state.entity_id, reason: reason, trace_id: state.trace_id}
     )
   end
 
-  defp emit_turn_stop(entity_id, turn_number, turn_start_time) do
+  defp emit_turn_stop(entity_id, turn_number, turn_start_time, trace_id) do
     duration = System.monotonic_time() - turn_start_time
 
-    :telemetry.execute(
+    Cantrip.Telemetry.execute(
       [:cantrip, :turn, :stop],
       %{duration: duration},
-      %{entity_id: entity_id, turn_number: turn_number}
+      %{entity_id: entity_id, turn_number: turn_number, trace_id: trace_id}
     )
   end
 

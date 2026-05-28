@@ -4,6 +4,7 @@ defmodule Cantrip.Runtime do
   defstruct circle: nil,
             loom: nil,
             entity_id: nil,
+            trace_id: nil,
             execute_gate: nil,
             parent_context: nil,
             compile_and_load: nil,

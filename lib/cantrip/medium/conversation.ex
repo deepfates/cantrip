@@ -35,6 +35,7 @@ defmodule Cantrip.Medium.Conversation do
     result =
       Cantrip.Gate.Executor.execute_tool_calls(circle, tool_calls,
         entity_id: Map.get(runtime, :entity_id),
+        trace_id: Map.get(runtime, :trace_id),
         execute_gate: &execute_gate(runtime, &1, &2, &3)
       )
 

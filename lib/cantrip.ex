@@ -138,7 +138,8 @@ defmodule Cantrip do
       cancel_on_parent: Map.get(opts, :cancel_on_parent, []),
       stream_to: Map.get(opts, :stream_to),
       stream_barrier?: Map.get(opts, :stream_barrier?, false),
-      entity_state: Map.get(opts, :entity_state)
+      entity_state: Map.get(opts, :entity_state),
+      trace_id: Map.get(opts, :trace_id)
     }
   end
 
@@ -767,16 +768,19 @@ defmodule Cantrip do
     cast_opts =
       opts
       |> Keyword.put_new(:depth, depth)
+      |> Keyword.put_new(:trace_id, Map.get(parent_context, :trace_id))
       |> Keyword.put_new(:cancel_on_parent, child_cancel_on_parent(parent_context))
       |> maybe_put_new(:stream_to, Map.get(parent_context, :stream_to))
       |> maybe_put_new(:stream_barrier?, Map.get(parent_context, :stream_barrier?))
 
     emit_parent_event(entity_state, {:child_start, %{depth: depth, intent: intent}})
+    emit_child_start_telemetry(parent_context, depth)
 
     case run_cast(cantrip, intent, cast_opts) do
       {:ok, value, next_cantrip, child_loom, _meta} = ok ->
         remember_parent_child_llm(parent_context, next_cantrip)
         emit_parent_event(entity_state, {:child_end, %{depth: depth, result: value}})
+        emit_child_stop_telemetry(parent_context, depth, :ok)
 
         if record_observation?,
           do:
@@ -797,6 +801,8 @@ defmodule Cantrip do
           entity_state,
           {:child_end, %{depth: depth, error: Cantrip.SafeFormat.inspect(reason)}}
         )
+
+        emit_child_stop_telemetry(parent_context, depth, :error)
 
         if record_observation?,
           do:
@@ -857,6 +863,7 @@ defmodule Cantrip do
           "stream_to" -> :stream_to
           "stream_barrier?" -> :stream_barrier?
           "entity_state" -> :entity_state
+          "trace_id" -> :trace_id
           "child_llm_ref" -> :child_llm_ref
           "remember_child_llm?" -> :remember_child_llm?
           "observation_collector" -> :observation_collector
@@ -881,6 +888,39 @@ defmodule Cantrip do
 
   defp emit_parent_event(%{stream_to: pid} = state, event) when is_pid(pid) do
     Cantrip.Event.send(pid, state, event)
+  end
+
+  defp emit_child_start_telemetry(parent_context, depth) do
+    parent = Map.get(parent_context, :entity_state)
+
+    if parent do
+      Cantrip.Telemetry.execute(
+        [:cantrip, :child, :start],
+        %{},
+        %{
+          entity_id: parent.entity_id,
+          trace_id: Map.get(parent_context, :trace_id),
+          child_depth: depth
+        }
+      )
+    end
+  end
+
+  defp emit_child_stop_telemetry(parent_context, depth, outcome) do
+    parent = Map.get(parent_context, :entity_state)
+
+    if parent do
+      Cantrip.Telemetry.execute(
+        [:cantrip, :child, :stop],
+        %{},
+        %{
+          entity_id: parent.entity_id,
+          trace_id: Map.get(parent_context, :trace_id),
+          child_depth: depth,
+          outcome: outcome
+        }
+      )
+    end
   end
 
   defp remember_parent_child_llm(parent_context, next_cantrip) do
