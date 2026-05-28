@@ -20,9 +20,9 @@ baseline.
 
 **13 of 16 starting issues closed with proof. 4 new issues filed: #32 Pass 10
 versioning, #34 Pass 5 follow-up, #35 compile_and_load policy gaps, #36
-cookie overwrite. #34 and #35 are closed with proof. 3 feature-roadmap issues
-labeled `feature` and kept open. 3 active cleanup issues remain (#11, #32,
-#36).**
+cookie overwrite. #34, #35, and #36 are closed with proof. 3 feature-roadmap
+issues labeled `feature` and kept open. 2 active cleanup issues remain (#11,
+#32).**
 
 The post-d12875c cold review caught two reward-hacking patterns: Pass 5 was
 marked "done" while ~30 boundary inspect/Exception.message bypass channels
@@ -55,7 +55,7 @@ holds — those are adjacent concerns, not a reopen.
 | 32 | Schema version for durable structs + JSONL | **open** | Filed post-Pass-0-scan. 8 defstructs lack version field; JSONL has no format header. Forward-prep, not active bug. |
 | 34 | Pass 5: complete SafeFormat coverage at remaining boundary channels | **closed** | Boundary `inspect(...)` / `Exception.message(...)` sites now route through `Cantrip.SafeFormat` across gates, code-medium observations/protocol frames, ACP replies, CLI output, loom storage, child-cast observations/events, and provider adapter errors. Evidence: `test/redact_test.exs` covers non-binary gate output, unrestricted code-medium exceptions, ACP wire stringification, ACP runtime provider errors, JSONL persistence fallback, and port-medium exceptions; source scan shows no remaining raw boundary bypasses outside a static prompt example. Commit `4905898`. |
 | 35 | compile_and_load: reject framework module names + handle deprecated allow_compile_namespaces | **closed** | `compile_and_load` now rejects attempts to hot-load modules shipped by the `:cantrip` application even when explicitly allowlisted, and deprecated `allow_compile_namespaces` wards fail loudly. Docs now describe exact `allow_compile_modules` semantics. Evidence: `test/hot_reload_test.exs` covers both policy gaps; focused tests and `mix verify` passed after rebase. Commit `7423ff0`. |
-| 36 | Familiar cookie validation silently overwrites hand-edited cookies | **open** | Cold-review of `bc2bf01`. `validate_or_regenerate_cookie` silently regenerates non-matching cookies, breaking existing distributed connections without warning. Either log on overwrite or hard-fail and require explicit deletion. |
+| 36 | Familiar cookie validation silently overwrites hand-edited cookies | **closed** | Workspace cookie policy now fails loud on invalid existing cookies and leaves the file unchanged. Evidence: `test/mix_cantrip_familiar_test.exs` covers generation with mode `0600`, reuse of valid existing cookies, and fail-loud/no-overwrite behavior for invalid hand-edited cookies. Commit `e013e85`. |
 
 **Status legend:**
 - `closed` — issue closed on GitHub with proof comment citing evidence
@@ -90,15 +90,14 @@ holds — those are adjacent concerns, not a reopen.
 
 ## What's Left
 
-Three open cleanup items, in priority order:
+Two open cleanup items, in priority order:
 
 1. **#11 telemetry coverage** — implementation against the contract in `docs/observability.md`. Trace_id propagation + 7 missing events + per-event regression tests. Codex lane.
 2. **#32 schema versioning** — forward-prep, not blocking anything. Add `schema_version: 1` to durable structs + JSONL header. Codex lane when scheduled.
-3. **#36 cookie overwrite** — small, operator-experience fix. Either log on regeneration or hard-fail. Codex lane.
 
 Plus three feature-roadmap items (`feature` label) that intentionally aren't blocking the cleanup-done milestone: #8, #9, #10.
 
-The cleanup phase reaches "done" when #11, #32, #36 land and `mix verify` stays green. Then we ship a v1.1.0 from `feat/comprehensive-cleanup` and the open issue tracker has only the three intentionally-deferred feature items.
+The cleanup phase reaches "done" when #11 and #32 land and `mix verify` stays green. Then we ship a v1.1.0 from `feat/comprehensive-cleanup` and the open issue tracker has only the three intentionally-deferred feature items.
 
 ---
 
