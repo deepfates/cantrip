@@ -43,9 +43,10 @@ convert with `System.convert_time_unit/3` at the subscriber).
 - **`trace_id`** is always a binary, present on every event. Propagates from
   parent cantrip context through child cantrips so a full trace forms a tree
   rooted at the originating episode.
-- **No raw prompts, no LLM responses, no credentials, no provider response
-  bodies** appear in event metadata. Event-emission sites that accept strings
-  pass those values through the safe boundary-formatting layer.
+- User-supplied strings that are intentionally useful for operations, such as
+  root intents, are passed through `Cantrip.Redact` before emission so
+  credential-shaped substrings are scrubbed. LLM responses, provider response
+  bodies, bearer tokens, and raw credentials must not appear in event metadata.
 
 ---
 

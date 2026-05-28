@@ -13,6 +13,7 @@ defmodule Cantrip.Event do
   @type envelope :: %{
           version: pos_integer(),
           entity_id: String.t(),
+          trace_id: String.t(),
           turn_id: String.t(),
           correlation_id: String.t(),
           depth: non_neg_integer(),
@@ -33,6 +34,7 @@ defmodule Cantrip.Event do
     %{
       version: 1,
       entity_id: entity_id,
+      trace_id: Map.fetch!(state, :trace_id),
       turn_id: turn_id,
       correlation_id: correlation_id(event, turn_id),
       depth: depth,

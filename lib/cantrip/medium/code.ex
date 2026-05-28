@@ -158,17 +158,20 @@ defmodule Cantrip.Medium.Code do
     timeout = Cantrip.WardPolicy.code_eval_timeout_ms(runtime.circle.wards)
 
     eval_start = System.monotonic_time()
+    telemetry_context = Cantrip.Telemetry.current_context()
 
     task =
       Task.async(fn ->
-        {:ok, capture_pid} = StringIO.open("")
-        Process.group_leader(self(), capture_pid)
+        with_telemetry_context(telemetry_context, fn ->
+          {:ok, capture_pid} = StringIO.open("")
+          Process.group_leader(self(), capture_pid)
 
-        result = eval(code, state, runtime)
-        {_, captured_output} = StringIO.contents(capture_pid)
-        StringIO.close(capture_pid)
+          result = eval(code, state, runtime)
+          {_, captured_output} = StringIO.contents(capture_pid)
+          StringIO.close(capture_pid)
 
-        {result, captured_output}
+          {result, captured_output}
+        end)
       end)
 
     case Task.yield(task, timeout) do
@@ -204,6 +207,13 @@ defmodule Cantrip.Medium.Code do
   end
 
   defp append_stdio(obs, _captured), do: obs
+
+  defp with_telemetry_context(%{entity_id: entity_id, trace_id: trace_id}, fun)
+       when is_function(fun, 0) do
+    Cantrip.Telemetry.with_context(entity_id, trace_id, fun)
+  end
+
+  defp with_telemetry_context(_context, fun) when is_function(fun, 0), do: fun.()
 
   defp emit_eval_stop(%{entity_id: entity_id, trace_id: trace_id}, started_at)
        when is_binary(entity_id) do

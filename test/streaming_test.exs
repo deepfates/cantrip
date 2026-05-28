@@ -3,6 +3,30 @@ defmodule Cantrip.StreamingTest do
 
   alias Cantrip.FakeLLM
 
+  defmodule StreamingReqLLM do
+    def generate_text(_model, _context, _opts), do: {:error, :sync_path_not_expected}
+
+    def stream_text(model, context, _opts) do
+      {:ok,
+       %ReqLLM.StreamResponse{
+         stream: [ReqLLM.StreamChunk.text("streamed "), ReqLLM.StreamChunk.text("answer")],
+         metadata_handle: metadata_handle(),
+         cancel: fn -> :ok end,
+         model: LLMDB.Model.new!(%{provider: :anthropic, id: model}),
+         context: context
+       }}
+    end
+
+    defp metadata_handle do
+      {:ok, handle} =
+        ReqLLM.StreamResponse.MetadataHandle.start_link(fn ->
+          %{usage: %{input_tokens: 5, output_tokens: 2}, finish_reason: :stop}
+        end)
+
+      handle
+    end
+  end
+
   # Helper to extract event type from enveloped events
   defp event_type({_envelope, {type, _data}}), do: type
   defp event_type({type, _data}) when is_atom(type), do: type
@@ -41,6 +65,44 @@ defmodule Cantrip.StreamingTest do
 
     last = List.last(events)
     assert {:done, {:ok, "finished", _cantrip, _loom, _meta}} = last
+  end
+
+  test "stream_to emits provider text deltas with trace_id in the event envelope" do
+    trace_id = "stream-trace-#{System.unique_integer([:positive])}"
+
+    llm =
+      {Cantrip.LLMs.ReqLLM,
+       %{client: StreamingReqLLM, model: "claude-test", stream: true, timeout_ms: 1_000}}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 3}]}
+      )
+
+    assert {:ok, "streamed answer", _cantrip, _loom, meta} =
+             Cantrip.cast(cantrip, "stream please", trace_id: trace_id, stream_to: self())
+
+    events = drain_cantrip_events()
+
+    text_deltas = Enum.filter(events, &(event_type(&1) == :text_delta))
+
+    assert [
+             {%{trace_id: ^trace_id, entity_id: entity_id}, {:text_delta, "streamed "}},
+             {%{trace_id: ^trace_id, entity_id: second_entity_id}, {:text_delta, "answer"}}
+           ] = text_deltas
+
+    assert second_entity_id == entity_id
+
+    assert Enum.any?(events, fn
+             {%{trace_id: ^trace_id, entity_id: ^entity_id}, {:usage, %{prompt_tokens: 5}}} ->
+               true
+
+             _ ->
+               false
+           end)
+
+    assert meta.cumulative_usage.total_tokens == 7
   end
 
   test "cast_stream emits usage events" do
@@ -110,5 +172,13 @@ defmodule Cantrip.StreamingTest do
     assert {:done, {:ok, nil, _cantrip, _loom, meta}} = last
     assert meta.truncated
     assert meta.truncation_reason == "max_turns"
+  end
+
+  defp drain_cantrip_events(acc \\ []) do
+    receive do
+      {:cantrip_event, event} -> drain_cantrip_events([event | acc])
+    after
+      50 -> Enum.reverse(acc)
+    end
   end
 end

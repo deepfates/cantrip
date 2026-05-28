@@ -603,6 +603,7 @@ defmodule CantripRuntimeBoundarySpikeTest do
     test "wraps events with entity routing context" do
       state = %{
         entity_id: "ent_1",
+        trace_id: "trace_1",
         turns: 3,
         depth: 2,
         cantrip: %{circle: %{type: :code}}
@@ -611,6 +612,7 @@ defmodule CantripRuntimeBoundarySpikeTest do
       assert {%{
                 version: 1,
                 entity_id: "ent_1",
+                trace_id: "trace_1",
                 turn_id: "ent_1:turn:4",
                 correlation_id: "ent_1:turn:4",
                 depth: 2,
@@ -626,6 +628,7 @@ defmodule CantripRuntimeBoundarySpikeTest do
     test "correlates tool call/result events by tool_call_id" do
       state = %{
         entity_id: "ent_1",
+        trace_id: "trace_1",
         turns: 0,
         depth: 0,
         cantrip: %{circle: %{type: :conversation}}
@@ -639,6 +642,29 @@ defmodule CantripRuntimeBoundarySpikeTest do
 
       assert call_correlation == "call_1"
       assert result_correlation == "call_1"
+    end
+
+    test "JSON renderer includes trace_id from the event envelope" do
+      event =
+        Cantrip.Event.wrap(
+          %{
+            entity_id: "ent_1",
+            trace_id: "trace_1",
+            turns: 0,
+            depth: 0,
+            cantrip: %{circle: %{type: :conversation}}
+          },
+          {:text_delta, "hello"}
+        )
+
+      {iodata, :stdout, _renderer} =
+        Cantrip.CLI.JsonRenderer.render_event(Cantrip.CLI.JsonRenderer.new(), event)
+
+      json = iodata |> IO.iodata_to_binary() |> Jason.decode!()
+
+      assert json["trace_id"] == "trace_1"
+      assert json["entity_id"] == "ent_1"
+      assert json["type"] == "text_delta"
     end
 
     test "builds paired tool call/result events from observations" do
@@ -700,6 +726,7 @@ defmodule CantripRuntimeBoundarySpikeTest do
     test "assigns monotonic sequence metadata to each wrapped event" do
       state = %{
         entity_id: "ent_1",
+        trace_id: "trace_1",
         turns: 0,
         depth: 0,
         cantrip: %{circle: %{type: :conversation}}

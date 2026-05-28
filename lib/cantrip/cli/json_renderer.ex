@@ -22,6 +22,7 @@ defmodule Cantrip.CLI.JsonRenderer do
         type: Atom.to_string(type),
         version: envelope[:version],
         entity_id: envelope[:entity_id],
+        trace_id: envelope[:trace_id],
         turn_id: envelope[:turn_id],
         correlation_id: envelope[:correlation_id],
         depth: envelope[:depth] || 0,

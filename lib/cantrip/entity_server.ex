@@ -93,7 +93,7 @@ defmodule Cantrip.EntityServer do
     Cantrip.Telemetry.execute(
       [:cantrip, :entity, :start],
       %{},
-      %{entity_id: entity_id, intent: intent, trace_id: trace_id}
+      %{entity_id: entity_id, intent: Cantrip.Redact.scan(intent), trace_id: trace_id}
     )
 
     with {:ok, runner} <- start_runner() do

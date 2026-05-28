@@ -42,14 +42,19 @@ defmodule CantripTelemetryTest do
   end
 
   describe "entity lifecycle" do
-    test "emits :entity :start when cast begins" do
+    test "emits :entity :start with redacted intent metadata" do
       ref = attach([:cantrip, :entity, :start], "entity-start-1")
+      secret_intent = "hello with OPENAI_API_KEY=sk-proj-abcdefghijklmnop"
 
       cantrip = make_cantrip([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])
-      {:ok, "ok", _, _, _} = Cantrip.cast(cantrip, "hello")
+      {:ok, "ok", _, _, _} = Cantrip.cast(cantrip, secret_intent)
 
-      assert_received {^ref, [:cantrip, :entity, :start], _, %{entity_id: id, intent: "hello"}}
+      assert_received {^ref, [:cantrip, :entity, :start], _, metadata}
+      %{entity_id: id, intent: intent, trace_id: trace_id} = metadata
       assert is_binary(id)
+      assert is_binary(trace_id)
+      assert intent =~ "hello with OPENAI_API_KEY=[REDACTED]"
+      refute inspect(metadata) =~ "sk-proj-abcdefghijklmnop"
     end
 
     test "emits :entity :stop with reason :done on successful termination" do
@@ -406,6 +411,33 @@ defmodule CantripTelemetryTest do
   end
 
   describe "code medium" do
+    test "unrestricted code eval preserves telemetry context across async redaction" do
+      ref = attach([:cantrip, :redact, :hit], "code-unrestricted-redact-context")
+      trace_id = "unrestricted-redact-trace"
+
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s|done.("OPENAI_API_KEY=sk-proj-abcdefghijklmnop")|}
+         ])}
+
+      {:ok, cantrip} =
+        Cantrip.new(
+          llm: llm,
+          identity: %{system_prompt: "test"},
+          circle: %{
+            type: :code,
+            gates: [:done],
+            wards: [%{max_turns: 10}, %{sandbox: :unrestricted}]
+          }
+        )
+
+      {:ok, _result, _, _, _} = Cantrip.cast(cantrip, "hello", trace_id: trace_id)
+
+      assert_received {^ref, [:cantrip, :redact, :hit], %{count: 1},
+                       %{entity_id: _, trace_id: ^trace_id}}
+    end
+
     test "emits :code :eval event when code is evaluated" do
       ref = attach([:cantrip, :code, :eval], "code-eval-1")
 

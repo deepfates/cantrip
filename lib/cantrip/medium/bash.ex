@@ -115,16 +115,20 @@ defmodule Cantrip.Medium.Bash do
   end
 
   defp execute_command(command, cwd, timeout) do
+    telemetry_context = Cantrip.Telemetry.current_context()
+
     task =
       Task.async(fn ->
-        try do
-          System.cmd("bash", ["-c", command],
-            cd: cwd,
-            stderr_to_stdout: true
-          )
-        rescue
-          e -> {"Error: #{Cantrip.SafeFormat.exception(e)}", 1}
-        end
+        with_telemetry_context(telemetry_context, fn ->
+          try do
+            System.cmd("bash", ["-c", command],
+              cd: cwd,
+              stderr_to_stdout: true
+            )
+          rescue
+            e -> {"Error: #{Cantrip.SafeFormat.exception(e)}", 1}
+          end
+        end)
       end)
 
     case Task.yield(task, timeout) || Task.shutdown(task) do
@@ -133,6 +137,13 @@ defmodule Cantrip.Medium.Bash do
       nil -> {"Error: Command timed out after #{div(timeout, 1000)}s", 124}
     end
   end
+
+  defp with_telemetry_context(%{entity_id: entity_id, trace_id: trace_id}, fun)
+       when is_function(fun, 0) do
+    Cantrip.Telemetry.with_context(entity_id, trace_id, fun)
+  end
+
+  defp with_telemetry_context(_context, fun) when is_function(fun, 0), do: fun.()
 
   defp truncate_output(output) do
     if String.length(output) > @max_output_chars do
