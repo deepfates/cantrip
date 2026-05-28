@@ -91,6 +91,7 @@ defmodule Cantrip.MixProject do
       files: [
         "lib",
         "notebooks",
+        ".env.example",
         ".formatter.exs",
         "mix.exs",
         "mix.lock",
