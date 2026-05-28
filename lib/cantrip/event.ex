@@ -24,6 +24,22 @@ defmodule Cantrip.Event do
   @type event :: {atom(), term()}
   @type enveloped_event :: {envelope(), event()}
 
+  @spec upcast(map()) :: map()
+  def upcast(%{version: 1} = envelope), do: envelope
+  def upcast(%{"version" => 1} = envelope), do: envelope
+
+  def upcast(%{version: version}) do
+    raise "unsupported cantrip event version: #{Cantrip.SafeFormat.inspect(version)}"
+  end
+
+  def upcast(%{"version" => version}) do
+    raise "unsupported cantrip event version: #{Cantrip.SafeFormat.inspect(version)}"
+  end
+
+  def upcast(%{}) do
+    raise "missing cantrip event version"
+  end
+
   @spec envelope(map(), event() | nil) :: envelope()
   def envelope(
         %{entity_id: entity_id, depth: depth, cantrip: %{circle: %{type: medium}}} = state,

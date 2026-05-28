@@ -600,6 +600,24 @@ defmodule CantripRuntimeBoundarySpikeTest do
   end
 
   describe "event envelope" do
+    test "upcasts current event envelope version as identity" do
+      envelope = %{version: 1, entity_id: "ent_1"}
+
+      assert Cantrip.Event.upcast(envelope) == envelope
+    end
+
+    test "rejects unsupported event envelope versions" do
+      assert_raise RuntimeError, ~r/unsupported cantrip event version: 999/, fn ->
+        Cantrip.Event.upcast(%{version: 999, entity_id: "ent_1"})
+      end
+    end
+
+    test "rejects unversioned event envelopes" do
+      assert_raise RuntimeError, ~r/missing cantrip event version/, fn ->
+        Cantrip.Event.upcast(%{entity_id: "ent_1"})
+      end
+    end
+
     test "wraps events with entity routing context" do
       state = %{
         entity_id: "ent_1",

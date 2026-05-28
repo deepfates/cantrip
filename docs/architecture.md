@@ -100,7 +100,10 @@ utterances, observations, child turns, metadata, and fork lineage.
 Backends:
 
 - memory for ephemeral tests and scratch sessions
-- JSONL for portable traces
+- JSONL for portable traces. The backend serializes appends through an
+  in-BEAM per-path lock, but it is still a single-writer file format across
+  OS processes. Use one writer per file; use Mnesia when multiple nodes need
+  shared durable state.
 - Mnesia for BEAM-native durable workspace state
 
 Folding is a view over prompt context. When the message history grows past

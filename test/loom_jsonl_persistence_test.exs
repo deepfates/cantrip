@@ -419,4 +419,34 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
     assert "cast" in gate_calls
     assert "read_file" in gate_calls
   end
+
+  test "serializes concurrent JSONL appends within one BEAM" do
+    path = tmp_path()
+    on_exit(fn -> File.rm(path) end)
+
+    loom = Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+
+    1..20
+    |> Task.async_stream(
+      fn i ->
+        Loom.append_event(loom, %{type: :runtime_note, index: i})
+      end,
+      max_concurrency: 8,
+      timeout: 5_000
+    )
+    |> Enum.each(fn
+      {:ok, %Loom{}} -> :ok
+      other -> flunk("unexpected append result: #{inspect(other)}")
+    end)
+
+    events = read_jsonl(path)
+
+    notes =
+      Enum.filter(events, fn
+        %{"type" => "event", "event" => %{"type" => %{"__a__" => "runtime_note"}}} -> true
+        _ -> false
+      end)
+
+    assert length(notes) == 20
+  end
 end

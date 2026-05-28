@@ -250,9 +250,13 @@ defmodule Cantrip.Loom.Storage.Jsonl do
   defp maybe_atomize_child_turns(_key, val), do: val
 
   defp append_jsonl(path, payload) do
-    ensure_header!(path)
-    line = Jason.encode!(jsonable(payload)) <> "\n"
-    File.write!(path, line, [:append])
+    lock = {__MODULE__, Path.expand(path)}
+
+    :global.trans(lock, fn ->
+      ensure_header!(path)
+      line = Jason.encode!(jsonable(payload)) <> "\n"
+      File.write!(path, line, [:append])
+    end)
   end
 
   defp ensure_header!(path) do
