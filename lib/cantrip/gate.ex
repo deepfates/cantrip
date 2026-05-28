@@ -11,7 +11,7 @@ defmodule Cantrip.Gate do
   capability surface itself.
   """
 
-  alias Cantrip.Gate.{CompileAndLoad, Mix, Spec}
+  alias Cantrip.Gate.{Args, CompileAndLoad, Mix, Spec}
   alias Cantrip.Gate.Path, as: GatePath
 
   @spec names(Cantrip.Circle.t()) :: [String.t()]
@@ -59,7 +59,10 @@ defmodule Cantrip.Gate do
         %{gate: gate_name, result: "unknown gate: #{gate_name}", is_error: true}
 
       {:ok, gate} ->
-        run_gate(gate, args, wards)
+        case Args.new(gate_name, args) do
+          {:ok, parsed_args} -> run_gate(gate, parsed_args, wards)
+          {:error, reason} -> %{gate: gate_name, result: reason, is_error: true}
+        end
         |> redact_observation()
         |> Map.put(:ephemeral, Map.get(gate, :ephemeral, false))
     end
@@ -85,10 +88,8 @@ defmodule Cantrip.Gate do
 
   defp redact_value(value), do: value
 
-  defp run_gate(%{name: "done"}, args, _wards) do
-    answer = Map.get(args, "answer", Map.get(args, :answer))
-
-    if is_nil(answer) do
+  defp run_gate(%{name: "done"}, %Args.Done{answer: answer}, _wards) do
+    if answer == nil do
       %{gate: "done", result: "missing required argument: answer", is_error: true}
     else
       result =
@@ -98,29 +99,11 @@ defmodule Cantrip.Gate do
     end
   end
 
-  defp run_gate(%{name: "echo"}, args, _wards) when is_binary(args) do
-    %{gate: "echo", result: args, is_error: false}
+  defp run_gate(%{name: "echo"}, %Args.Echo{text: text}, _wards) do
+    %{gate: "echo", result: text, is_error: false}
   end
 
-  defp run_gate(%{name: "echo"}, args, _wards) do
-    %{gate: "echo", result: Map.get(args, "text", Map.get(args, :text)), is_error: false}
-  end
-
-  defp run_gate(%{name: "read_file"} = gate, args, _wards) when is_binary(args) do
-    with {:ok, path} <- GatePath.validate(args, gate) do
-      case File.read(path) do
-        {:ok, content} ->
-          %{gate: "read_file", result: content, is_error: false}
-
-        {:error, reason} ->
-          %{gate: "read_file", result: Cantrip.SafeFormat.inspect(reason), is_error: true}
-      end
-    end
-  end
-
-  defp run_gate(%{name: "read_file"} = gate, args, _wards) do
-    path = Map.get(args, "path", Map.get(args, :path))
-
+  defp run_gate(%{name: "read_file"} = gate, %Args.ReadFile{path: path}, _wards) do
     with {:ok, path} <- GatePath.validate(path, gate) do
       case File.read(path) do
         {:ok, content} ->
@@ -132,26 +115,15 @@ defmodule Cantrip.Gate do
     end
   end
 
-  defp run_gate(%{name: "list_dir"} = gate, args, _wards) when is_binary(args) do
-    with {:ok, path} <- GatePath.validate(args, gate) do
-      list_dir_entries(path)
-    end
-  end
-
-  defp run_gate(%{name: "list_dir"} = gate, args, _wards) do
-    path = Map.get(args, "path", Map.get(args, :path))
-
+  defp run_gate(%{name: "list_dir"} = gate, %Args.ListDir{path: path}, _wards) do
     with {:ok, path} <- GatePath.validate(path, gate) do
       list_dir_entries(path)
     end
   end
 
-  defp run_gate(%{name: "search"} = gate, args, _wards) do
-    pattern = Map.get(args, "pattern", Map.get(args, :pattern))
-    path = Map.get(args, "path", Map.get(args, :path, "."))
-
+  defp run_gate(%{name: "search"} = gate, %Args.Search{pattern: pattern, path: path}, _wards) do
     cond do
-      is_nil(pattern) or pattern == "" ->
+      pattern == nil or pattern == "" ->
         %{gate: "search", result: "pattern is required", is_error: true}
 
       true ->
@@ -183,10 +155,10 @@ defmodule Cantrip.Gate do
     %{gate: name, result: value, is_error: false}
   end
 
-  defp run_gate(%{name: name, result: value}, _args, _wards),
+  defp run_gate(%{name: name, result: value}, %Args.Generic{}, _wards),
     do: %{gate: name, result: value, is_error: false}
 
-  defp run_gate(%{name: name}, _args, _wards),
+  defp run_gate(%{name: name}, %Args.Generic{}, _wards),
     do: %{gate: name, result: "ok", is_error: false}
 
   defp list_dir_entries(path) do

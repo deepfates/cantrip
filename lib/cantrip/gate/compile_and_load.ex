@@ -3,7 +3,9 @@ defmodule Cantrip.Gate.CompileAndLoad do
 
   @framework_root_module "Elixir.Cantrip"
 
-  @spec validate(map(), [map()]) ::
+  alias Cantrip.Gate.Args
+
+  @spec validate(Args.CompileAndLoad.t() | map(), [map()]) ::
           {:ok,
            %{
              module: module(),
@@ -12,13 +14,19 @@ defmodule Cantrip.Gate.CompileAndLoad do
              path: String.t() | nil
            }}
           | {:error, String.t()}
-  def validate(args, wards) do
-    module_name = Map.get(args, "module", Map.get(args, :module))
-    source = Map.get(args, "source", Map.get(args, :source))
-    path = Map.get(args, "path", Map.get(args, :path))
-    sha256 = Map.get(args, "sha256", Map.get(args, :sha256))
-    key_id = Map.get(args, "key_id", Map.get(args, :key_id))
-    signature = Map.get(args, "signature", Map.get(args, :signature))
+  def validate(args, wards) when not is_struct(args, Args.CompileAndLoad) do
+    with {:ok, args} <- Args.new("compile_and_load", args) do
+      validate(args, wards)
+    end
+  end
+
+  def validate(%Args.CompileAndLoad{} = args, wards) do
+    module_name = args.module
+    source = args.source
+    path = args.path
+    sha256 = args.sha256
+    key_id = args.key_id
+    signature = args.signature
 
     with :ok <- guard_compile_module(wards, module_name),
          :ok <- guard_compile_path(wards, path),
@@ -30,7 +38,11 @@ defmodule Cantrip.Gate.CompileAndLoad do
     end
   end
 
-  @spec execute(map(), [map()], map()) :: %{gate: String.t(), result: term(), is_error: boolean()}
+  @spec execute(Args.CompileAndLoad.t() | map(), [map()], map()) :: %{
+          gate: String.t(),
+          result: term(),
+          is_error: boolean()
+        }
   def execute(args, wards, gate) do
     with {:ok, %{module: module, source: source, path: path}} <- validate(args, wards),
          :ok <- compile(module, source, path, gate) do

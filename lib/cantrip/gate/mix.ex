@@ -6,18 +6,26 @@ defmodule Cantrip.Gate.Mix do
   @default_timeout_ms 60_000
   @default_max_output_bytes 50_000
 
-  @spec execute(map() | term(), list(map()), map()) :: map()
-  def execute(args, wards, gate) do
-    with {:ok, opts} <- normalize_args(args),
-         :ok <- validate_task_allowed(opts.task, wards),
-         {:ok, cwd} <- validate_cwd(opts.cwd, gate),
+  @spec execute(Cantrip.Gate.Args.Mix.t() | map() | String.t(), list(map()), map()) :: map()
+  def execute(args, wards, gate) when not is_struct(args, Cantrip.Gate.Args.Mix) do
+    with {:ok, args} <- Cantrip.Gate.Args.new("mix", args) do
+      execute(args, wards, gate)
+    end
+  end
+
+  def execute(%Cantrip.Gate.Args.Mix{} = opts, wards, gate) do
+    with {:ok, task} <- validate_task(opts.task),
+         {:ok, argv} <- validate_argv(opts.args),
+         {:ok, cwd_arg} <- validate_cwd_arg(opts.cwd),
+         :ok <- validate_task_allowed(task, wards),
+         {:ok, cwd} <- validate_cwd(cwd_arg, gate),
          {:ok, env} <- validate_env(opts.env),
          {:ok, mix_path} <- find_mix(gate) do
       timeout_ms = positive_ward(wards, :mix_timeout_ms, @default_timeout_ms)
       max_output_bytes = positive_ward(wards, :mix_max_output_bytes, @default_max_output_bytes)
 
       {result, timed_out?} =
-        run_mix(mix_path, opts.task, opts.args, cwd, env, timeout_ms, max_output_bytes)
+        run_mix(mix_path, task, argv, cwd, env, timeout_ms, max_output_bytes)
 
       result =
         result
@@ -33,25 +41,6 @@ defmodule Cantrip.Gate.Mix do
         %{observation | gate: "mix"}
     end
   end
-
-  defp normalize_args(args) when is_binary(args), do: normalize_args(%{"task" => args})
-
-  defp normalize_args(%{} = args) do
-    task = fetch(args, :task)
-    argv = fetch(args, :args) || []
-    cwd = fetch(args, :cwd) || "."
-    env = fetch(args, :env) || %{}
-
-    with {:ok, task} <- validate_task(task),
-         {:ok, argv} <- validate_argv(argv),
-         {:ok, cwd} <- validate_cwd_arg(cwd) do
-      {:ok, %{task: task, args: argv, cwd: cwd, env: env}}
-    end
-  end
-
-  defp normalize_args(_args), do: {:error, "mix gate args must be a map or task string"}
-
-  defp fetch(map, key), do: Map.get(map, key) || Map.get(map, Atom.to_string(key))
 
   defp validate_task(task) when is_binary(task) do
     task = String.trim(task)
