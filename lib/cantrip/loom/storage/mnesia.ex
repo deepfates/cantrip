@@ -61,7 +61,10 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     end
   end
 
-  # Mnesia preserves native Erlang terms so no tagging or atomize is needed.
+  # Mnesia preserves native Erlang terms, so there is no JSON-style upcaster in
+  # this backend today. Shape evolution should either be backward-compatible at
+  # the term level or introduce an explicit versioned envelope before changing
+  # persisted event fields.
   @impl true
   def load(%{table: table} = state) do
     case read_events(table, Map.get(state, :mnesia, :mnesia)) do

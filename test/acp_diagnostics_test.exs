@@ -108,7 +108,7 @@ defmodule Cantrip.ACP.DiagnosticsTest do
       assert second.token == "<redacted 2 chars>"
     end
 
-    test "redacts any key whose name contains a secret pattern (token, password, secret, authorization, cookie)" do
+    test "redacts any key whose name contains a secret pattern" do
       patterns = %{
         anthropic_api_key: "a",
         access_token: "b",
@@ -116,7 +116,9 @@ defmodule Cantrip.ACP.DiagnosticsTest do
         password: "d",
         client_secret: "e",
         authorization: "f",
-        session_cookie: "g"
+        session_cookie: "g",
+        bearer: "h",
+        private_key: "i"
       }
 
       out = Diagnostics.redact(patterns)

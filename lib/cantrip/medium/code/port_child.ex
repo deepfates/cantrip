@@ -104,6 +104,7 @@ defmodule Cantrip.Medium.Code.PortChild do
     :tool_call_id,
     :tool_calls,
     :tool_choice,
+    :trace_id,
     :tokens_cached,
     :tokens_completion,
     :tokens_prompt,
@@ -191,6 +192,12 @@ defmodule Cantrip.Medium.Code.PortChild do
   end
 
   defp eval(code, state, env, ref) do
+    with_child_telemetry_context(env, fn ->
+      do_eval(code, state, env, ref)
+    end)
+  end
+
+  defp do_eval(code, state, env, ref) do
     {captured_output, result} =
       capture_stdio(fn ->
         try do
@@ -226,6 +233,13 @@ defmodule Cantrip.Medium.Code.PortChild do
           captured_output}}
     end
   end
+
+  defp with_child_telemetry_context(%{entity_id: entity_id, trace_id: trace_id}, fun)
+       when is_binary(entity_id) and is_binary(trace_id) do
+    Cantrip.Telemetry.with_context(entity_id, trace_id, fun)
+  end
+
+  defp with_child_telemetry_context(_env, fun), do: fun.()
 
   defp eval_raw(code, state, env, ref) do
     binding = build_binding(state.binding, env, :raw)

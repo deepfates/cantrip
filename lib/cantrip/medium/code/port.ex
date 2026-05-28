@@ -28,6 +28,8 @@ defmodule Cantrip.Medium.Code.Port do
           code,
           %{
             gate_names: gate_names(runtime),
+            entity_id: Map.get(runtime, :entity_id),
+            trace_id: Map.get(runtime, :trace_id),
             loom: Map.get(runtime, :loom),
             folded_summary: Map.get(runtime, :folded_summary),
             evaluator: evaluator(runtime)

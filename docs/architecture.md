@@ -121,14 +121,14 @@ Any struct that holds credential-shaped fields — API keys, bearer tokens,
 authorization headers, signed cookies — must declare `@derive {Inspect, only:
 [<non-secret-fields>]}` (or `@derive {Inspect, except: [<secret-fields>]}`).
 This prevents accidental leak via default `inspect/1` in IEx sessions, error
-output, logger calls, or debug dumps. `Cantrip.SafeFormat` covers the runtime
-boundary error surfaces; the `@derive Inspect` convention covers the
+output, logger calls, or debug dumps. The safe formatting helpers cover the
+runtime boundary error surfaces; the `@derive Inspect` convention covers the
 construction-and-debug surface.
 
 Current durable structs do not hold credentials directly — `:llm_state` on the
 top-level `%Cantrip{}` is a plain map carrying provider state including
 `:api_key`, and downstream code is expected to either redact at the boundary
-via `Cantrip.SafeFormat` or to not log raw `:llm_state`. Future structs that
+via the safe formatting helpers or to not log raw `:llm_state`. Future structs that
 directly hold credentials must adopt the convention above.
 
 ## Process Inventory
@@ -138,16 +138,14 @@ shutdown semantics. Reference this section when adding a new process.
 
 | Process kind | Started by | Owner | Crash-restart | Shutdown |
 |---|---|---|---|---|
-| `Cantrip.EntityServer` (GenServer) | `Cantrip.cast/3`, `Cantrip.summon/1` via `DynamicSupervisor.start_child` | `Cantrip.EntitySupervisor` (DynamicSupervisor) | `:temporary` (no auto-restart; caller gets error) | default GenServer 5s; `terminate/2` sends `:stop` to runner |
+| `Cantrip.EntityServer` (GenServer) | `Cantrip.cast/3`, `Cantrip.summon/1` via `DynamicSupervisor.start_child` | entity dynamic supervisor | `:temporary` (no auto-restart; caller gets error) | default GenServer 5s; `terminate/2` sends `:stop` to runner |
 | Per-entity runner Task | `EntityServer.start_runner/0` (`lib/cantrip/entity_server.ex:240`) | `Cantrip.EntityTaskSupervisor` (Task.Supervisor) | `:temporary` (Task.Supervisor default) | `:brutal_kill` 5s on app shutdown; in-progress episodes interrupted |
 | Code-medium child BEAM | `Cantrip.Medium.Code.Port.start_child` (line 109) | not supervised; linked to eval context | N/A (process-level) | on eval timeout or parent crash: implicit exit via port boundary |
 | Port-child protocol loop | `spawn_link` in `port_child.ex:138` | linked to parent (child-side bootstrap) | N/A (linked) | parent exit propagates crash via link |
-| ACP EventBridge loop | bare `spawn` in `acp/event_bridge.ex:38` | monitor to owner only (no supervisor) | N/A (bare spawn — known gap; tracked under Pass 7 follow-up) | `:DOWN` from monitored owner OR explicit `:stop` message |
+| ACP EventBridge loop | `Task.Supervisor.start_child/2` in `acp/event_bridge.ex` | `Cantrip.ACP.EventBridgeSupervisor` | `:temporary` (Task.Supervisor default) | `:DOWN` from monitored owner OR explicit `:stop` message |
 | `Cantrip.cast_stream/2` task | `Task.async` (`lib/cantrip.ex:641`) | unlinked; caller drains via Stream | N/A (unlinked) | implicit when stream resource closes |
 | `Cantrip.cast_batch/2` children | `Task.async_stream` (`lib/cantrip.ex:510`) | Task.async_stream context; bounded by `max_concurrent_children` ward | N/A (bounded enumeration) | killed on `max_concurrency` overflow or timeout |
 | Code/Bash medium eval Tasks | `Task.async` in `medium/code.ex:163`, `medium/bash.ex:119` | unlinked; timeout-guarded by `code_eval_timeout_ms` / similar ward | N/A (unlinked) | `Task.yield` + `Task.shutdown(:brutal_kill)` on timeout |
 
 This inventory is the contract; any new long-lived or supervised process must
-extend this table. The `acp/event_bridge.ex:38` bare spawn is the one current
-gap against Pass 7 exit criteria ("No bare process spawning remains") —
-tracked for follow-up.
+extend this table.

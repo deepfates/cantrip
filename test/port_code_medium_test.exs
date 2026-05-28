@@ -54,6 +54,23 @@ defmodule PortCodeMediumTest do
     assert Enum.any?(observations, &(&1.gate == "done" and &1.result == "observed"))
   end
 
+  test "port child receives the parent telemetry context" do
+    trace_id = "port-trace-123"
+
+    code = """
+    %{entity_id: entity_id, trace_id: trace_id} = Cantrip.Telemetry.current_context()
+    done.({entity_id, trace_id})
+    """
+
+    llm = {FakeLLM, FakeLLM.new([%{code: code}])}
+    {:ok, cantrip} = port_cantrip(llm, sandbox: :port_unrestricted)
+
+    assert {:ok, {entity_id, ^trace_id}, _cantrip, _loom, _meta} =
+             Cantrip.cast(cantrip, "context", trace_id: trace_id)
+
+    assert is_binary(entity_id)
+  end
+
   test "child stdout is captured without corrupting the port protocol" do
     llm =
       {FakeLLM,

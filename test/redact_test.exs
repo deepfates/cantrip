@@ -26,6 +26,21 @@ defmodule Cantrip.RedactTest do
     end
   end
 
+  test "top-level Cantrip inspect output never prints LLM state secrets" do
+    text =
+      inspect(%Cantrip{
+        id: "demo",
+        llm_module: FakeLLM,
+        llm_state: %{api_key: "sk-test-parent-secret", model: "demo"},
+        child_llm: {FakeLLM, %{api_key: "sk-test-child-secret"}}
+      })
+
+    refute text =~ "llm_state"
+    refute text =~ "child_llm"
+    refute text =~ "sk-test-parent-secret"
+    refute text =~ "sk-test-child-secret"
+  end
+
   describe "scan/1 — well-known credential shapes" do
     test "redacts OpenAI/Anthropic sk-* keys" do
       assert Redact.scan(

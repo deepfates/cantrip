@@ -15,6 +15,7 @@ defmodule Cantrip.Application do
 
     children = [
       {Task.Supervisor, name: Cantrip.EntityTaskSupervisor},
+      {Task.Supervisor, name: Cantrip.ACP.EventBridgeSupervisor},
       Cantrip.EntitySupervisor
     ]
 

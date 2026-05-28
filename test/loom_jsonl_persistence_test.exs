@@ -83,6 +83,19 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
     assert [%{id: "turn_legacy", utterance: %{content: "legacy"}}] = loom.turns
   end
 
+  test "unsupported JSONL loom versions fail with a clear error" do
+    path = tmp_path()
+
+    File.write!(
+      path,
+      Jason.encode!(%{format: "cantrip-loom", version: 999}) <> "\n"
+    )
+
+    assert_raise RuntimeError, ~r/unsupported loom JSONL version: 999/, fn ->
+      Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+    end
+  end
+
   test "persists a turn whose observation contains a list of match maps (search-shape)" do
     path = tmp_path()
 

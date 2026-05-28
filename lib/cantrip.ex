@@ -28,6 +28,7 @@ defmodule Cantrip do
   alias Cantrip.{Identity, Circle, EntityServer, Loom, WardPolicy, Gate}
   alias Cantrip.Medium.Registry, as: MediumRegistry
 
+  @derive {Inspect, except: [:llm_state, :child_llm]}
   defstruct schema_version: 1,
             id: nil,
             llm_module: nil,
