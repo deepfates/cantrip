@@ -64,6 +64,35 @@ defmodule Cantrip.Medium.BashTest do
              end)
     end
 
+    test "bubblewrap mounts /dev for shell redirections" do
+      {_exe, args, _opts} =
+        Sandbox.command(:bubblewrap, "true", File.cwd!(), "/tmp/cantrip-session", [])
+
+      assert args
+             |> Enum.chunk_every(2, 1, :discard)
+             |> Enum.any?(fn
+               ["--dev", "/dev"] -> true
+               _ -> false
+             end)
+    end
+
+    test "bubblewrap denies network by default at the sandbox boundary" do
+      {_exe, args, _opts} =
+        Sandbox.command(:bubblewrap, "true", File.cwd!(), "/tmp/cantrip-session", [])
+
+      assert "--unshare-net" in args
+    end
+
+    test "seatbelt profile allows /dev/null writes for shell redirects" do
+      {_exe, ["-p", profile, "/bin/bash", "-c", "true"], _opts} =
+        Sandbox.command(:seatbelt, "true", File.cwd!(), "/tmp/cantrip-session", [])
+
+      assert profile =~ ~s[(allow file-write* (subpath "/dev/null"))]
+      refute profile =~ ~s[(allow file-write* (subpath "/dev/zero"))]
+      refute profile =~ ~s[(allow file-write* (subpath "/dev/random"))]
+      refute profile =~ ~s[(allow file-write* (subpath "/dev/urandom"))]
+    end
+
     defp runtime_with_circle(circle) do
       %{
         circle: circle,

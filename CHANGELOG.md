@@ -11,6 +11,15 @@
   rather than ambient process access. The `done` gate is exposed as
   `cantrip_done` because `done` is a shell keyword. Tests may opt into
   `medium_opts: %{sandbox: :passthrough}`; production cannot.
+- Bash sandbox verification now includes representative shell workloads
+  (`git`, `make`, `jq`, `/dev/null` redirects, and common
+  `find`/`sed`/`grep` pipelines). The workload suite is the support contract:
+  when a real shell workload should be supported, add it there so adapter
+  gaps fail in CI instead of surfacing in user sessions. Workload tests opt
+  into `%{bash_network: :on}` so GitHub-hosted Linux runners can exercise
+  bubblewrap shell behavior even when they cannot create bubblewrap's default
+  network-deny namespace; separate tests pin the default network-deny command
+  shape.
 
 ## 1.2.0
 

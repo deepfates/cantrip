@@ -244,7 +244,14 @@ Filesystem writes are denied except under `%{bash_writable_paths: [...]}`, and
 network is off unless `%{bash_network: :on}` is declared. Declared gates are
 projected as commands at the front of `PATH`: `read_file README.md`,
 `list_dir .`, `search pattern lib`, `mix test`, and `cantrip_done "answer"`
-for the `done` gate. `SUBMIT:` output still works for shell-only answers.
+for the `done` gate. `SUBMIT:` output still works for shell-only answers. The
+Bash sandbox is release-tested against representative local shell workloads
+(`git`, `make`, `jq`, redirects through `/dev/null`, and common
+`find`/`sed`/`grep` pipelines); that workload suite is the support contract
+for expanding the adapter configuration over time. The workload tests opt into
+`%{bash_network: :on}` so GitHub-hosted runners can execute bubblewrap even
+when they cannot create a network namespace; separate tests pin the default
+network-deny command shape.
 
 ## Gates
 

@@ -69,6 +69,17 @@ paths admitted by `%{bash_writable_paths: [...]}`. The medium fails closed when
 no sandbox adapter is available (`bubblewrap` on Linux, `sandbox-exec` on
 macOS, or an explicit deployment adapter later).
 
+The Bash adapter contract is empirical, not aspirational: CI exercises a
+representative local shell workload suite under the available OS sandbox. The
+suite covers `git`, `make`, `jq`, `/dev/null` redirects, and common
+`find`/`sed`/`grep` pipelines. The workload suite opts into
+`%{bash_network: :on}` because GitHub-hosted Linux runners can install
+bubblewrap but cannot reliably create the network namespace bubblewrap uses
+for default network denial. Separate tests pin the default network-deny command
+shape (`--unshare-net`) so adapter regressions still fail locally and in
+capable CI. New shell workload expectations should land as tests first so
+sandbox configuration gaps surface in CI instead of in user sessions.
+
 Bash gates are projected as commands in a per-turn directory placed at the
 front of `PATH`. A circle with `read_file` can run `read_file README.md`; a
 circle with `mix` can run `mix test test/foo_test.exs`. The shell command is

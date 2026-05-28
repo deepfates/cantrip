@@ -3,6 +3,8 @@ defmodule Cantrip.Medium.Bash.Sandbox do
 
   @type adapter :: :seatbelt | :bubblewrap | :passthrough
 
+  @writable_devices ~w(/dev/null)
+
   @spec detect(map()) :: {:ok, adapter()} | {:error, String.t()}
   def detect(opts \\ %{}) do
     case Map.get(opts, :sandbox) || Map.get(opts, "sandbox") do
@@ -74,12 +76,14 @@ defmodule Cantrip.Medium.Bash.Sandbox do
         session_dir,
         session_dir,
         "--dev",
-        "/dev",
-        "--proc",
-        "/proc",
-        "--chdir",
-        cwd
+        "/dev"
       ] ++
+        [
+          "--proc",
+          "/proc",
+          "--chdir",
+          cwd
+        ] ++
         writable_binds ++
         network_args ++
         [
@@ -120,7 +124,8 @@ defmodule Cantrip.Medium.Bash.Sandbox do
   end
 
   defp seatbelt_profile(cwd, session_dir) do
-    writable_paths = [realpath(session_dir) | configured_writable_paths(cwd)]
+    writable_paths =
+      [realpath(session_dir) | configured_writable_paths(cwd)] ++ @writable_devices
 
     network_rule =
       case Process.get(:cantrip_bash_network, :off) do
