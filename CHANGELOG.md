@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+**Breaking:**
+
+- Bash-medium cantrips now require an OS sandbox and fail closed when neither
+  `bubblewrap` nor `sandbox-exec` is available. Declared gates are projected
+  into the shell as PATH commands and dispatch back through the parent BEAM;
+  raw shell remains the medium, but gate authority now comes from the circle
+  rather than ambient process access. The `done` gate is exposed as
+  `cantrip_done` because `done` is a shell keyword. Tests may opt into
+  `medium_opts: %{sandbox: :passthrough}`; production cannot.
+
 ## 1.2.0
 
 Post-v1 feature completion pass. The two feature-roadmap items left after

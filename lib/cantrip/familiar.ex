@@ -90,7 +90,8 @@ defmodule Cantrip.Familiar do
 
       :bash          A shell. Runs commands. Right for filesystem
                      work, builds, anything where the natural
-                     surface is invocation. Returns via SUBMIT.
+                     surface is invocation. Returns via cantrip_done
+                     or SUBMIT.
 
   Two children, two different shapes:
 

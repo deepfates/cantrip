@@ -524,7 +524,12 @@ defmodule CantripTelemetryTest do
         Cantrip.new(
           llm: llm,
           identity: %{system_prompt: "test"},
-          circle: %{type: :bash, gates: [:done], wards: [%{max_turns: 10}]}
+          circle: %{
+            type: :bash,
+            gates: [:done],
+            wards: [%{max_turns: 10}],
+            medium_opts: %{sandbox: :passthrough}
+          }
         )
 
       {:ok, "ok", _, _, _} = Cantrip.cast(cantrip, "hello")

@@ -1427,9 +1427,17 @@ defmodule Cantrip do
         {:error, "cantrip must have at least one truncation ward"}
 
       true ->
-        Circle.validate_medium(circle)
+        with :ok <- Circle.validate_medium(circle),
+             :ok <- validate_medium_runtime(circle) do
+          :ok
+        end
     end
   end
+
+  defp validate_medium_runtime(%Circle{type: :bash} = circle),
+    do: Cantrip.Medium.Bash.validate_circle(circle)
+
+  defp validate_medium_runtime(_circle), do: :ok
 
   defp validate_retry(retry) do
     opts = retry |> Map.new() |> Keyword.new()

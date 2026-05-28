@@ -239,8 +239,12 @@ as strings, which keeps hot-loaded child code from forcing new atoms into the
 parent BEAM.
 
 **Bash.** The entity writes shell commands. Each command runs in a fresh
-subprocess from the configured cwd. Shell state does not persist; filesystem
-changes do. A command returns the final answer by printing `SUBMIT:`.
+OS-sandboxed subprocess from the configured cwd. Shell state does not persist.
+Filesystem writes are denied except under `%{bash_writable_paths: [...]}`, and
+network is off unless `%{bash_network: :on}` is declared. Declared gates are
+projected as commands at the front of `PATH`: `read_file README.md`,
+`list_dir .`, `search pattern lib`, `mix test`, and `cantrip_done "answer"`
+for the `done` gate. `SUBMIT:` output still works for shell-only answers.
 
 ## Gates
 

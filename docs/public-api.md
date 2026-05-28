@@ -150,8 +150,21 @@ circle: %{
 Bash medium:
 
 ```elixir
-circle: %{type: :bash, gates: [:done], wards: [%{max_turns: 5}]}
+circle: %{
+  type: :bash,
+  gates: [:done, :read_file],
+  wards: [
+    %{max_turns: 5},
+    %{bash_writable_paths: ["tmp/cantrip-output"]},
+    %{bash_network: :off}
+  ]
+}
 ```
+
+Bash requires an OS sandbox. Cantrip detects `bubblewrap` on Linux and
+`sandbox-exec` on macOS; if no sandbox is available, bash cantrips fail at
+construction rather than falling back to ambient shell authority. Tests can use
+`medium_opts: %{sandbox: :passthrough}`, but production cannot.
 
 Code-medium circles default to the port sandbox when no sandbox ward is
 present. `%{sandbox: :port}` makes that boundary explicit. It evaluates

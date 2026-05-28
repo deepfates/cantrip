@@ -638,7 +638,10 @@ defmodule Cantrip.EntityServer do
     %Cantrip.Runtime{
       circle: state.cantrip.circle,
       entity_id: state.entity_id,
-      trace_id: state.trace_id
+      trace_id: state.trace_id,
+      execute_gate: fn gate, args ->
+        execute_code_gate(state, gate, args)
+      end
     }
   end
 

@@ -75,10 +75,24 @@ defmodule Cantrip.ReadmeExamplesTest do
     llm = fake_llm([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])
 
     for medium <- [:conversation, :code, :bash] do
+      circle =
+        case medium do
+          :bash ->
+            %{
+              type: medium,
+              gates: [:done],
+              wards: [%{max_turns: 3}],
+              medium_opts: %{sandbox: :passthrough}
+            }
+
+          _ ->
+            %{type: medium, gates: [:done], wards: [%{max_turns: 3}]}
+        end
+
       assert {:ok, _cantrip} =
                Cantrip.new(
                  llm: llm,
-                 circle: %{type: medium, gates: [:done], wards: [%{max_turns: 3}]}
+                 circle: circle
                )
     end
   end

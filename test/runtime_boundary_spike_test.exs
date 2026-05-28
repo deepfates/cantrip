@@ -54,7 +54,7 @@ defmodule CantripRuntimeBoundarySpikeTest do
           type: :bash,
           gates: [:done],
           wards: [%{max_turns: 3}],
-          medium_opts: %{cwd: "/tmp", timeout_ms: 5_000}
+          medium_opts: %{cwd: "/tmp", timeout_ms: 5_000, sandbox: :passthrough}
         })
 
       presentation = Cantrip.Medium.Registry.present(circle)
@@ -117,7 +117,7 @@ defmodule CantripRuntimeBoundarySpikeTest do
           type: :bash,
           gates: [:done],
           wards: [%{max_turns: 3}],
-          medium_opts: %{cwd: File.cwd!()}
+          medium_opts: %{cwd: File.cwd!(), sandbox: :passthrough}
         })
 
       assert {:ok, _state, observations, "spiked", true} =
@@ -222,7 +222,13 @@ defmodule CantripRuntimeBoundarySpikeTest do
     end
 
     test "turn module classifies bash responses into command input" do
-      circle = Cantrip.Circle.new(%{type: :bash, gates: [:done], wards: [%{max_turns: 3}]})
+      circle =
+        Cantrip.Circle.new(%{
+          type: :bash,
+          gates: [:done],
+          wards: [%{max_turns: 3}],
+          medium_opts: %{sandbox: :passthrough}
+        })
 
       response =
         response(content: nil, tool_calls: [%{gate: "bash", args: %{command: "echo ok"}}])

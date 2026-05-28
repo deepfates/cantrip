@@ -63,8 +63,42 @@ variant of the code medium (see `docs/port-isolated-runtime.md` "Dune
 Variant"); entity prompts need to fit that surface. `sandbox: :unrestricted`
 uses the old host-BEAM evaluator for trusted local development.
 
-`Cantrip.Medium.Bash` executes one shell command per turn. Shell process state
-does not persist; filesystem effects do.
+`Cantrip.Medium.Bash` executes one shell command per turn inside an OS
+sandbox. Shell process state does not persist; filesystem effects do only for
+paths admitted by `%{bash_writable_paths: [...]}`. The medium fails closed when
+no sandbox adapter is available (`bubblewrap` on Linux, `sandbox-exec` on
+macOS, or an explicit deployment adapter later).
+
+Bash gates are projected as commands in a per-turn directory placed at the
+front of `PATH`. A circle with `read_file` can run `read_file README.md`; a
+circle with `mix` can run `mix test test/foo_test.exs`. The shell command is
+not the gate authority: wrappers call back to the parent BEAM, where the
+ordinary gate executor applies dependencies, wards, telemetry, and redaction.
+The `done` gate is exposed as `cantrip_done` because `done` is a shell keyword.
+`SUBMIT:` output remains supported for shell-only answers.
+
+The wrapper protocol is filesystem-based by design: a wrapper writes a
+per-call request directory, the parent runtime polls for ready calls, and the
+wrapper replays the host response to stdout/stderr. This keeps the protocol
+portable across Seatbelt and bubblewrap without socket mount policy, at the
+cost of a small polling latency floor. It is tuned for LLM-rate gate calls, not
+high-frequency shell RPC.
+
+Gate command names live at the front of `PATH`. If a gate name collides with a
+shell builtin or common command (`test`, `time`, `read`, etc.), the gate command
+wins when invoked as an external command; use a non-colliding gate name when the
+shell builtin must remain ergonomic.
+
+`medium_opts: %{sandbox: :passthrough}` exists only for tests. It is rejected
+outside `Mix.env() == :test` and is not a deployment fallback.
+
+Bash-specific wards:
+
+- `%{bash_writable_paths: [path, ...]}` allows writes under those paths.
+- `%{bash_network: :on}` enables network for adapters that support it;
+  default is network off.
+- `%{bash_timeout_ms: ms}` overrides the per-command timeout.
+- `%{bash_max_output_bytes: n}` bounds the shell observation output.
 
 ACP stdio embedding must start the `:cantrip` application before sessions
 create event bridges. `Cantrip.ACP.Server.run/1` does this for the packaged
