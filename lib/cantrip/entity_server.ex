@@ -17,8 +17,6 @@ defmodule Cantrip.EntityServer do
 
   use GenServer, restart: :temporary
 
-  @no_restore :__no_restore__
-
   defstruct cantrip: nil,
             entity_id: nil,
             messages: [],
@@ -220,7 +218,7 @@ defmodule Cantrip.EntityServer do
 
     running =
       %{ref: ref, from: from, kind: kind}
-      |> maybe_put_stream_restore(opts, state)
+      |> maybe_put_stream_restore(opts)
 
     {:noreply, %{state | running: running}}
   end
@@ -296,30 +294,27 @@ defmodule Cantrip.EntityServer do
 
   defp maybe_reply_runner_down(state, _reason), do: state
 
-  defp maybe_put_stream_restore(running, opts, state) do
-    if Keyword.has_key?(opts, :restore_stream_to) or Keyword.has_key?(opts, :restore_stream_barrier?) do
-      Map.merge(running, %{
-        restore_stream_to: Keyword.get(opts, :restore_stream_to, state.stream_to),
-        restore_stream_barrier?:
-          Keyword.get(opts, :restore_stream_barrier?, state.stream_barrier?)
-      })
-    else
-      Map.merge(running, %{
-        restore_stream_to: @no_restore,
-        restore_stream_barrier?: @no_restore
-      })
+  defp maybe_put_stream_restore(running, opts) do
+    case {Keyword.fetch(opts, :restore_stream_to), Keyword.fetch(opts, :restore_stream_barrier?)} do
+      {{:ok, restore_stream_to}, {:ok, restore_stream_barrier?}} ->
+        Map.merge(running, %{
+          restore_stream_to: restore_stream_to,
+          restore_stream_barrier?: restore_stream_barrier?
+        })
+
+      _ ->
+        running
     end
   end
 
   defp maybe_restore_stream_opts_from_running(
          %{
-           running: %{
-             restore_stream_to: restore_stream_to,
-             restore_stream_barrier?: restore_stream_barrier?
+          running: %{
+            restore_stream_to: restore_stream_to,
+            restore_stream_barrier?: restore_stream_barrier?
            }
          } = state
-       )
-       when restore_stream_to != @no_restore and restore_stream_barrier? != @no_restore do
+       ) do
     restore_stream_opts(state, restore_stream_to, restore_stream_barrier?)
   end
 

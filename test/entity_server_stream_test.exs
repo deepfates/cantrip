@@ -104,23 +104,23 @@ defmodule Cantrip.EntityServerStreamTest do
         )
 
       {:ok, pid} = Cantrip.summon(cantrip)
-      running = Task.async(fn -> Cantrip.send(pid, "slow", stream_to: test_pid) end)
+      send_task = Task.async(fn -> Cantrip.send(pid, "slow", stream_to: test_pid) end)
 
       assert_receive {:blocking_llm_started, _llm_pid, "slow"}, 200
 
       runner_pid = :sys.get_state(pid).runner.pid
       Process.exit(runner_pid, :kill)
 
-      assert {:error, reason, _cantrip} = Task.await(running, 500)
+      assert {:error, reason, _cantrip} = Task.await(send_task, 500)
       assert String.starts_with?(reason, "entity run failed:")
 
       assert_runner_restarted(pid, runner_pid)
       flush_mailbox()
 
-      next = Task.async(fn -> Cantrip.send(pid, "second") end)
+      second_task = Task.async(fn -> Cantrip.send(pid, "second") end)
       assert_receive {:blocking_llm_started, llm_pid, "second"}, 500
       send(llm_pid, {:release_blocking_llm, "second"})
-      assert {:ok, "released:second", _cantrip, _loom, _meta} = Task.await(next, 500)
+      assert {:ok, "released:second", _cantrip, _loom, _meta} = Task.await(second_task, 500)
 
       refute_received {:cantrip_event, _}
     end
@@ -249,6 +249,7 @@ defmodule Cantrip.EntityServerStreamTest do
   defp assert_runner_restarted(_entity_pid, _old_runner, 0),
     do: flunk("entity runner did not restart")
 
+  # Poll up to 200ms total (20 * 10ms) for the replacement runner.
   defp assert_runner_restarted(entity_pid, old_runner, attempts) do
     current_runner = :sys.get_state(entity_pid).runner.pid
 
