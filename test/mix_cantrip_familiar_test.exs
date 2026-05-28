@@ -180,5 +180,13 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
       name = Task.node_name_for_workspace("/tmp/whatever")
       assert name |> Atom.to_string() |> String.contains?("@")
     end
+
+    test "the name does not embed workspace path text in the atom" do
+      name = Task.node_name_for_workspace("/tmp/customer-secret-workspace")
+
+      refute name |> Atom.to_string() |> String.contains?("customer")
+      refute name |> Atom.to_string() |> String.contains?("secret")
+      refute name |> Atom.to_string() |> String.contains?("workspace")
+    end
   end
 end

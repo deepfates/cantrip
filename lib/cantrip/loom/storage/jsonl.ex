@@ -157,24 +157,25 @@ defmodule Cantrip.Loom.Storage.Jsonl do
     end)
   end
 
-  # The binding's keyword-list keys are structurally atoms by the
-  # Elixir keyword-list spec — they're the entity's variable names from
-  # a prior turn. Safe atom restoration via `String.to_existing_atom`
-  # leaves them as strings when a fresh BEAM doesn't already know the
-  # name (which is the normal case across sessions). In this bounded
-  # position we promote to atoms via `String.to_atom`: the values are
-  # the entity's own variable names, sourced from its own loom (not
-  # adversarial input), and an entity resuming needs them as atoms to
-  # `Keyword.get(binding, :name)` correctly.
+  # Code bindings must be a keyword list for Code.eval_* APIs, but the
+  # JSONL file is disk input. Restore only atoms that already exist in
+  # this VM; unknown names are dropped rather than creating atoms from
+  # replayed text.
   defp promote_binding_keys(list) when is_list(list) do
-    Enum.map(list, fn
-      {k, v} when is_atom(k) -> {k, v}
-      {k, v} when is_binary(k) -> {String.to_atom(k), v}
-      other -> other
+    Enum.flat_map(list, fn
+      {k, v} when is_atom(k) -> [{k, v}]
+      {k, v} when is_binary(k) -> existing_binding(k, v)
+      _ -> []
     end)
   end
 
   defp promote_binding_keys(other), do: other
+
+  defp existing_binding(key, value) do
+    [{String.to_existing_atom(key), value}]
+  rescue
+    ArgumentError -> []
+  end
 
   @utterance_atom_fields ~w(code content tool_calls)a
 

@@ -331,17 +331,15 @@ defmodule Cantrip.Familiar do
   defp sandbox_ward(other),
     do: raise(ArgumentError, "unsupported Familiar sandbox: #{inspect(other)}")
 
-  # Derive a stable Mnesia table name from the workspace root. The
-  # table name needs to be a valid Erlang atom — alphanumerics + a
-  # short hash of the full path so distinct workspaces with similar
-  # basenames don't collide. We use to_atom (not to_existing_atom)
-  # deliberately: each unique workspace produces one new atom, which
-  # is fine for the bounded set of Familiar deployments in a single
-  # BEAM. Using `:erlang.phash2` for the suffix keeps it short and
-  # deterministic.
+  # Mnesia table names are atoms, so derive a short fixed-shape name from
+  # a hash instead of embedding user-controlled path text in the atom.
   defp mnesia_table_for_root(root) when is_binary(root) do
-    suffix = :erlang.phash2(root) |> Integer.to_string()
-    base = root |> Path.basename() |> String.replace(~r/[^A-Za-z0-9_]/, "_")
-    String.to_atom("cantrip_familiar_" <> base <> "_" <> suffix)
+    String.to_atom("cantrip_familiar_" <> workspace_fingerprint(root))
+  end
+
+  defp workspace_fingerprint(root) do
+    :crypto.hash(:sha256, root)
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 16)
   end
 end

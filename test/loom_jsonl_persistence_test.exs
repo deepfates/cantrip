@@ -238,6 +238,45 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
     assert binding == [{:x, {:tuple_demo, "value"}}]
   end
 
+  test "code_state.binding drops unknown atom names from disk instead of creating atoms" do
+    path = tmp_path()
+    on_exit(fn -> File.rm(path) end)
+
+    unknown =
+      "cantrip_unknown_jsonl_binding_" <>
+        Integer.to_string(System.unique_integer([:positive]))
+
+    assert_raise ArgumentError, fn -> :erlang.binary_to_existing_atom(unknown) end
+
+    persisted = %{
+      type: "turn",
+      turn: %{
+        cantrip_id: "c1",
+        entity_id: "e1",
+        role: "turn",
+        utterance: %{code: "ok", content: nil},
+        observation: [],
+        gate_calls: [],
+        terminated: false,
+        code_state: %{
+          binding: [
+            %{"__t__" => [%{"__a__" => unknown}, 1]},
+            %{"__t__" => [%{"__a__" => "x"}, 2]}
+          ]
+        },
+        metadata: %{timestamp: DateTime.utc_now()}
+      }
+    }
+
+    File.write!(path, Jason.encode!(persisted) <> "\n")
+
+    loom = Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+    [restored] = loom.turns
+
+    assert restored.code_state.binding == [x: 2]
+    assert_raise ArgumentError, fn -> :erlang.binary_to_existing_atom(unknown) end
+  end
+
   test "round-trips a full executed turn including child_turns subtree (pattern 15/16 shape)" do
     path = tmp_path()
     on_exit(fn -> File.rm(path) end)

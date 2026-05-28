@@ -228,9 +228,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   """
   @spec node_name_for_workspace(String.t()) :: atom()
   def node_name_for_workspace(root) when is_binary(root) do
-    suffix = :erlang.phash2(root) |> Integer.to_string()
-    base = root |> Path.basename() |> String.replace(~r/[^A-Za-z0-9_-]/, "_")
-    String.to_atom("cantrip-familiar-" <> base <> "-" <> suffix <> "@127.0.0.1")
+    String.to_atom("cantrip-familiar-" <> workspace_fingerprint(root) <> "@127.0.0.1")
   end
 
   # Per-workspace cookie, persisted in `.cantrip/cookie` with mode 0600.
@@ -252,23 +250,43 @@ defmodule Mix.Tasks.Cantrip.Familiar do
 
     case File.read(cookie_path) do
       {:ok, existing} when byte_size(existing) > 0 ->
-        existing |> String.trim() |> String.to_atom()
+        existing
+        |> String.trim()
+        |> validate_or_regenerate_cookie(cookie_path)
 
       _ ->
-        cookie =
-          "cantrip_" <>
-            (:crypto.strong_rand_bytes(24) |> Base.encode16(case: :lower))
-
-        File.mkdir_p!(Path.dirname(cookie_path))
-        File.write!(cookie_path, cookie)
-        File.chmod(cookie_path, 0o600)
-        String.to_atom(cookie)
+        generate_cookie(cookie_path)
     end
   end
 
   defp random_cookie do
     suffix = :crypto.strong_rand_bytes(18) |> Base.encode16(case: :lower)
     String.to_atom("cantrip_" <> suffix)
+  end
+
+  defp validate_or_regenerate_cookie(cookie, cookie_path) do
+    if Regex.match?(~r/\Acantrip_[0-9a-f]{48}\z/, cookie) do
+      String.to_atom(cookie)
+    else
+      generate_cookie(cookie_path)
+    end
+  end
+
+  defp generate_cookie(cookie_path) do
+    cookie =
+      "cantrip_" <>
+        (:crypto.strong_rand_bytes(24) |> Base.encode16(case: :lower))
+
+    File.mkdir_p!(Path.dirname(cookie_path))
+    File.write!(cookie_path, cookie)
+    File.chmod(cookie_path, 0o600)
+    String.to_atom(cookie)
+  end
+
+  defp workspace_fingerprint(root) do
+    :crypto.hash(:sha256, root)
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 16)
   end
 
   defp announce_named_node do
