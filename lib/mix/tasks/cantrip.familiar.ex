@@ -117,7 +117,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   # don't crash the host runtime. ACP's stdio server should keep coming
   # up even when remsh attach is unavailable.
   defp start_diagnostic_node do
-    cookie = random_cookie()
+    cookie = Cantrip.Familiar.Cookie.random()
     name = :"familiar-#{System.pid()}@127.0.0.1"
 
     ensure_epmd_running()
@@ -160,7 +160,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
       :nonode@nohost ->
         ensure_epmd_running()
         name = node_name_for_workspace(workspace_root)
-        cookie = cookie_for_workspace(workspace_root)
+        cookie = Cantrip.Familiar.Cookie.for_workspace!(workspace_root)
 
         case :net_kernel.start([name, :longnames]) do
           {:ok, _} ->
@@ -235,58 +235,6 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   @spec node_name_for_workspace(String.t()) :: atom()
   def node_name_for_workspace(root) when is_binary(root) do
     String.to_atom("cantrip-familiar-" <> workspace_fingerprint(root) <> "@127.0.0.1")
-  end
-
-  # Per-workspace cookie, persisted in `.cantrip/cookie` with mode 0600.
-  #
-  # Earlier I derived this deterministically from the workspace path,
-  # but that means anyone with read access to the source (the salt is
-  # public) and knowledge or guesses of the workspace path can compute
-  # the cookie and connect via distributed Erlang. On a shared
-  # machine, that's a real privilege-escalation surface. A random
-  # cookie persisted with restrictive permissions:
-  #
-  #   * stays stable across launches (so `--diagnostics` `--remsh`
-  #     commands work idempotently between sessions)
-  #   * is per-workspace (no cross-workspace bleed)
-  #   * is unguessable from public information
-  #   * is gitignored as part of `.cantrip/`
-  defp cookie_for_workspace(root) do
-    cookie_path = Path.join([root, ".cantrip", "cookie"])
-
-    case File.read(cookie_path) do
-      {:ok, existing} when byte_size(existing) > 0 ->
-        existing
-        |> String.trim()
-        |> validate_or_regenerate_cookie(cookie_path)
-
-      _ ->
-        generate_cookie(cookie_path)
-    end
-  end
-
-  defp random_cookie do
-    suffix = :crypto.strong_rand_bytes(18) |> Base.encode16(case: :lower)
-    String.to_atom("cantrip_" <> suffix)
-  end
-
-  defp validate_or_regenerate_cookie(cookie, cookie_path) do
-    if Regex.match?(~r/\Acantrip_[0-9a-f]{48}\z/, cookie) do
-      String.to_atom(cookie)
-    else
-      generate_cookie(cookie_path)
-    end
-  end
-
-  defp generate_cookie(cookie_path) do
-    cookie =
-      "cantrip_" <>
-        (:crypto.strong_rand_bytes(24) |> Base.encode16(case: :lower))
-
-    File.mkdir_p!(Path.dirname(cookie_path))
-    File.write!(cookie_path, cookie)
-    File.chmod(cookie_path, 0o600)
-    String.to_atom(cookie)
   end
 
   defp workspace_fingerprint(root) do

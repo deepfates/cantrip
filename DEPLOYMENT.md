@@ -87,9 +87,9 @@ and compile requests cross the protocol explicitly. On timeout, the parent
 closes and kills the child OS process.
 
 Hot-loading with `evolve: true` also stays inside the child. The parent
-validates `compile_and_load` wards (namespace/path/hash/signer policy), then
-the child compiles and loads the allowed module in its own runtime, not in the
-framework VM.
+validates `compile_and_load` wards (exact module names, path, hash, and signer
+policy), then the child compiles and loads the allowed module in its own
+runtime, not in the framework VM.
 
 This is the default sandbox: Dune denies ambient `File.*`, `System.*`,
 `Process.*`, `spawn`, node, and similar calls, while the port boundary protects
@@ -187,6 +187,14 @@ Mnesia's table name is derived from the workspace root (a sanitized
 basename plus a short hash of the full path), so multiple summons
 against the same workspace converge on the same loom; distinct
 workspaces don't collide.
+
+Workspace-scoped Mnesia uses a named BEAM node. The launcher persists that
+node's distributed-Erlang cookie at `.cantrip/cookie` with mode `0600`. Cantrip
+generates cookies in the format `cantrip_<48 lowercase hex chars>` so it can
+reuse them without creating atoms from arbitrary file content. If the cookie
+file exists but does not match that format, startup fails and leaves the file
+unchanged. Delete `.cantrip/cookie` explicitly when you want Cantrip to rotate
+the workspace cookie.
 
 ## Wards: bounding the loop
 
