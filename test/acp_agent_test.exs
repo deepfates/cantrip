@@ -2,6 +2,7 @@ defmodule Cantrip.ACP.AgentHandlerTest do
   use ExUnit.Case, async: true
 
   alias Cantrip.ACP.AgentHandler
+  alias Cantrip.FakeLLM
 
   defmodule StubRuntime do
     @behaviour Cantrip.ACP.Runtime
@@ -123,6 +124,14 @@ defmodule Cantrip.ACP.AgentHandlerTest do
                :ets.lookup(table, {:last_answer, session_id})
     end
 
+    test "Familiar runtime propagates caller trace_id from session/new metadata" do
+      assert_acp_trace_id_propagates(:new_session)
+    end
+
+    test "Familiar runtime propagates caller trace_id from session/prompt metadata" do
+      assert_acp_trace_id_propagates(:prompt)
+    end
+
     test "authenticate returns ok" do
       table = AgentHandler.new(runtime: StubRuntime)
 
@@ -192,5 +201,84 @@ defmodule Cantrip.ACP.AgentHandlerTest do
     table = AgentHandler.new(runtime: StubRuntime)
     AgentHandler.handle_request(init_request(), table)
     table
+  end
+
+  defp assert_acp_trace_id_propagates(source) when source in [:new_session, :prompt] do
+    ref = attach_telemetry(Cantrip.Telemetry.events(), "acp-trace-correlation-#{source}")
+
+    trace_id = "acp-request-#{source}-#{System.unique_integer([:positive])}"
+    llm = {FakeLLM, FakeLLM.new([%{code: ~s|done.("traced")|}])}
+    table = AgentHandler.new(runtime: Cantrip.ACP.Runtime.Familiar)
+    AgentHandler.handle_request(init_request(), table)
+
+    new_session_meta =
+      case source do
+        :new_session -> %{"llm" => llm, "trace_id" => trace_id}
+        :prompt -> %{"llm" => llm}
+      end
+
+    prompt_meta =
+      case source do
+        :new_session -> nil
+        :prompt -> %{"trace_id" => trace_id}
+      end
+
+    {:ok, %ACP.NewSessionResponse{session_id: session_id}} =
+      AgentHandler.handle_request(
+        {:new_session, %ACP.NewSessionRequest{cwd: System.tmp_dir!(), meta: new_session_meta}},
+        table
+      )
+
+    assert {:ok, %ACP.PromptResponse{stop_reason: :end_turn}} =
+             AgentHandler.handle_request(
+               {:prompt,
+                %ACP.PromptRequest{
+                  session_id: session_id,
+                  meta: prompt_meta,
+                  prompt: [{:text, %ACP.TextContent{text: "return traced"}}]
+                }},
+               table
+             )
+
+    events = collect_telemetry(ref)
+
+    {_, _, %{entity_id: entity_id}} =
+      Enum.find(events, fn
+        {[:cantrip, :entity, :start], _, %{trace_id: ^trace_id}} -> true
+        _ -> false
+      end)
+
+    entity_events =
+      Enum.filter(events, fn {_event, _measurements, metadata} ->
+        Map.get(metadata, :entity_id) == entity_id
+      end)
+
+    assert Enum.any?(entity_events, &match?({[:cantrip, :entity, :start], _, _}, &1))
+    assert Enum.any?(entity_events, &match?({[:cantrip, :turn, :start], _, _}, &1))
+    assert Enum.any?(entity_events, &match?({[:cantrip, :entity, :stop], _, _}, &1))
+
+    assert Enum.all?(entity_events, fn {_event, _measurements, metadata} ->
+             Map.get(metadata, :trace_id) == trace_id
+           end)
+  end
+
+  defp attach_telemetry(event_names, handler_id) do
+    ref = make_ref()
+    :telemetry.attach_many(handler_id, event_names, &__MODULE__.handle_event/4, {ref, self()})
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+    ref
+  end
+
+  def handle_event(event, measurements, metadata, {ref, pid}) do
+    send(pid, {ref, event, measurements, metadata})
+  end
+
+  defp collect_telemetry(ref, acc \\ []) do
+    receive do
+      {^ref, event, measurements, metadata} ->
+        collect_telemetry(ref, [{event, measurements, metadata} | acc])
+    after
+      50 -> Enum.reverse(acc)
+    end
   end
 end

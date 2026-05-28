@@ -12,7 +12,9 @@ defmodule Cantrip.FamiliarBehaviorTest do
   behavior at that complexity tier has regressed.
   """
 
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
+  @moduletag :mnesia
+  @moduletag timeout: :timer.seconds(120)
 
   alias Cantrip.{Familiar, FakeLLM}
 
@@ -499,6 +501,7 @@ defmodule Cantrip.FamiliarBehaviorTest do
   # writes via Mnesia (not Memory), and a second Familiar against the
   # SAME root sees the prior turn rehydrated.
   describe "regression: Mnesia loom persists across summons (cross-session)" do
+    @tag :mnesia
     test "session 2 against the same root rehydrates session 1's turn" do
       llm =
         {FakeLLM,

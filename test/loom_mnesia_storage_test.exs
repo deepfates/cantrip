@@ -1,5 +1,6 @@
 defmodule Cantrip.LoomMnesiaStorageTest do
   use ExUnit.Case, async: false
+  @moduletag :mnesia
 
   alias Cantrip.FakeLLM
   alias Cantrip.Loom.Storage.Mnesia, as: MnesiaStorage

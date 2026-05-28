@@ -17,7 +17,8 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
   These tests pin the corrected policy.
   """
 
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
+  @moduletag :mnesia
   import Bitwise, only: [&&&: 2]
 
   alias Cantrip.FakeLLM
@@ -97,6 +98,7 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
   # via `--loom-path`, and otherwise lets `Familiar.new/1`'s Mnesia-
   # by-root default fire.
   describe "build_familiar/1: launcher storage policy" do
+    @tag :mnesia
     test "no --loom-path: workspace-scoped Mnesia (the documented default)" do
       llm = {FakeLLM, FakeLLM.new([%{code: ~s|done.("ok")|}])}
       tmp = Path.join(System.tmp_dir!(), "fam_launcher_#{System.unique_integer([:positive])}")
@@ -144,6 +146,7 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
       end
     end
 
+    @tag :mnesia
     test "root defaults to File.cwd!() when omitted" do
       llm = {FakeLLM, FakeLLM.new([%{code: ~s|done.("ok")|}])}
 

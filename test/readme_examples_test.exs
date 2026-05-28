@@ -4,7 +4,7 @@ defmodule Cantrip.ReadmeExamplesTest do
   # example in README/public-api.md is changed, mirror it here; if a runtime
   # constructor signature changes, the failure here is the signal that docs
   # need updating.
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Cantrip.FakeLLM
 
@@ -83,6 +83,7 @@ defmodule Cantrip.ReadmeExamplesTest do
     end
   end
 
+  @tag :mnesia
   test "README loom_storage shapes: :memory, :jsonl, :mnesia all accepted" do
     llm = fake_llm([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}])
     base = [llm: llm, circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 3}]}]

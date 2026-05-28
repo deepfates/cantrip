@@ -155,11 +155,33 @@ trace_id = "<root-uuid>"
 
 All events in this tree carry the same `trace_id`. To correlate to external
 systems (HTTP request IDs, job queue IDs, etc.), pass the external ID as
-`trace_id` when constructing the top-level cantrip:
+`trace_id` when running the top-level cantrip:
 
 ```elixir
 Cantrip.cast(cantrip, intent, trace_id: external_request_id)
 ```
+
+ACP requests can use the protocol metadata channel. Put a non-empty string in
+`_meta.trace_id` (or `_meta.cantrip_trace_id`) on `session/new` or
+`session/prompt`; the Familiar ACP runtime stores it on the session and passes
+it into `Cantrip.summon/3` or `Cantrip.send/3` so entity, turn, gate, usage,
+child, and code events carry the caller's external trace ID:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "method": "session/prompt",
+  "params": {
+    "sessionId": "sess_123",
+    "_meta": {"trace_id": "http-request-abc"},
+    "prompt": [{"type": "text", "text": "Inspect the failing test"}]
+  }
+}
+```
+
+When no external trace ID is supplied, Cantrip mints a fresh per-session entity
+trace ID.
 
 ---
 

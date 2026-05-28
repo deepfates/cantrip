@@ -74,4 +74,4 @@ jobs:
             echo "ANTHROPIC_API_KEY secret is required for live integration on main/release/tag pushes."
             exit 1
           fi
-          mix test test/live_anthropic_test.exs test/real_llm_integration_test.exs
+          mix test test/live_anthropic_test.exs test/real_llm_integration_test.exs test/familiar_eval_signal_test.exs

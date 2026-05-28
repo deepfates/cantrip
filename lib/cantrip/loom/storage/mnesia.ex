@@ -15,10 +15,13 @@ defmodule Cantrip.Loom.Storage.Mnesia do
       table = Map.get(opts, :table, default_table())
       mnesia = Map.get(opts, :mnesia, :mnesia)
 
-      with :ok <- ensure_mnesia_started(mnesia),
-           :ok <- ensure_table(table, mnesia) do
-        {:ok, %{table: table, mnesia: mnesia}}
-      else
+      case with_schema_lock(fn ->
+             with :ok <- ensure_mnesia_started(mnesia),
+                  :ok <- ensure_table(table, mnesia) do
+               {:ok, %{table: table, mnesia: mnesia}}
+             end
+           end) do
+        {:ok, state} -> {:ok, state}
         {:error, reason} -> {:error, Cantrip.SafeFormat.inspect(reason)}
       end
     end
@@ -200,6 +203,10 @@ defmodule Cantrip.Loom.Storage.Mnesia do
 
   defp call(mnesia, fun, args) do
     apply(mnesia, fun, args)
+  end
+
+  defp with_schema_lock(fun) when is_function(fun, 0) do
+    :global.trans({__MODULE__, :schema_setup}, fun, [node()])
   end
 
   defp storage_event(event) do

@@ -71,6 +71,13 @@ create event bridges. `Cantrip.ACP.Server.run/1` does this for the packaged
 entrypoint; custom embedders should either call `Application.ensure_all_started(:cantrip)`
 or supervise `Cantrip.ACP.EventBridgeSupervisor` themselves.
 
+ACP request metadata is also the production trace-correlation boundary. The
+handler accepts `_meta.trace_id` or `_meta.cantrip_trace_id` on `session/new`
+and `session/prompt`; the Familiar runtime carries that value into
+`Cantrip.summon/3` / `Cantrip.send/3` so telemetry emitted by the entity can be
+joined to an external request, job, or editor operation. Without that metadata,
+the entity mints its own trace ID.
+
 ## Composition
 
 Composition uses the public package API, not special delegation gates.

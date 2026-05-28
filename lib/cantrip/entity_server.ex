@@ -198,6 +198,7 @@ defmodule Cantrip.EntityServer do
     original_stream_barrier? = state.stream_barrier?
     call_stream_to = Keyword.get(opts, :stream_to, state.stream_to)
     call_stream_barrier? = Keyword.get(opts, :stream_barrier?, state.stream_barrier?)
+    trace_id = Keyword.get(opts, :trace_id, state.trace_id) |> Cantrip.Telemetry.trace_id()
 
     next_state = %{
       state
@@ -205,7 +206,8 @@ defmodule Cantrip.EntityServer do
         loom: next_loom,
         lazy: false,
         stream_to: call_stream_to,
-        stream_barrier?: call_stream_barrier?
+        stream_barrier?: call_stream_barrier?,
+        trace_id: trace_id
     }
 
     start_episode(next_state, from, :send_intent,

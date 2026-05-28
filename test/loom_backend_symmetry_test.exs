@@ -14,6 +14,7 @@ defmodule Cantrip.LoomBackendSymmetryTest do
   """
 
   use ExUnit.Case, async: false
+  @moduletag :mnesia
 
   alias Cantrip.Loom
 

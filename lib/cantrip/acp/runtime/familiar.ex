@@ -46,7 +46,8 @@ defmodule Cantrip.ACP.Runtime.Familiar do
 
         case Cantrip.Familiar.new(familiar_opts) do
           {:ok, cantrip} ->
-            {:ok, %{cantrip: cantrip, cwd: cwd, entity_pid: nil, streaming?: true}}
+            session = %{cantrip: cantrip, cwd: cwd, entity_pid: nil, streaming?: true}
+            {:ok, maybe_put_trace_id(session, Map.get(params, "trace_id"))}
 
           {:error, reason} ->
             {:error, reason}
@@ -103,8 +104,19 @@ defmodule Cantrip.ACP.Runtime.Familiar do
   # get inspected — never raise. Mirrors Cantrip.ACP.EventBridge.stringify/1.
   defp normalize_answer(answer), do: answer |> Cantrip.SafeFormat.inspect() |> String.trim()
 
-  defp stream_opts(%{stream_to: stream_to}) when is_pid(stream_to),
-    do: [stream_to: stream_to, stream_barrier?: true]
+  defp stream_opts(%{stream_to: stream_to} = session) when is_pid(stream_to),
+    do: put_trace_id_from_session([stream_to: stream_to, stream_barrier?: true], session)
 
-  defp stream_opts(_session), do: []
+  defp stream_opts(session), do: put_trace_id_from_session([], session)
+
+  defp put_trace_id_from_session(opts, %{trace_id: trace_id})
+       when is_binary(trace_id) and trace_id != "",
+       do: Keyword.put(opts, :trace_id, trace_id)
+
+  defp put_trace_id_from_session(opts, _session), do: opts
+
+  defp maybe_put_trace_id(session, trace_id) when is_binary(trace_id) and trace_id != "",
+    do: Map.put(session, :trace_id, trace_id)
+
+  defp maybe_put_trace_id(session, _trace_id), do: session
 end

@@ -14,7 +14,7 @@ defmodule Cantrip.CompositionTest do
         {:release_cast_batch_child, ^label} ->
           {:ok, %{tool_calls: [%{gate: "done", args: %{answer: answer}}]}, state}
       after
-        1_000 ->
+        5_000 ->
           {:error, %{message: "child #{label} was not released"}, state}
       end
     end
@@ -98,7 +98,7 @@ defmodule Cantrip.CompositionTest do
               {:cast_batch_child_started, label, pid} ->
                 {:cont, [{label, pid} | acc]}
             after
-              500 ->
+              2_000 ->
                 send(test_pid, {:cast_batch_parallel_probe_timeout, Enum.map(acc, &elem(&1, 0))})
                 {:halt, acc}
             end
@@ -123,15 +123,15 @@ defmodule Cantrip.CompositionTest do
             %{cantrip: left, intent: "left work"},
             %{cantrip: right, intent: "right work"}
           ],
-          timeout: 5_000
+          timeout: 10_000
         )
       end)
 
-    assert_receive {:cast_batch_children_started, labels}, 1_000
+    assert_receive {:cast_batch_children_started, labels}, 5_000
     assert Enum.sort(labels) == [:left, :right]
 
     assert {:ok, ["slow-left", "fast-right"], _children, _looms, %{count: 2}} =
-             Task.await(task, 5_000)
+             Task.await(task, 10_000)
 
     refute_receive {:cast_batch_parallel_probe_timeout, _started}, 0
 

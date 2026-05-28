@@ -120,7 +120,8 @@ defmodule Cantrip.MixProject do
       verify: [
         "format --check-formatted",
         "compile --warnings-as-errors",
-        "test",
+        "test --exclude mnesia",
+        "cmd mix test --only mnesia --max-cases 1",
         "credo --ignore refactor"
       ]
     ]
