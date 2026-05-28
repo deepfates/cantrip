@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+Nothing yet.
+
+## 1.3.0 - 2026-05-28
+
+Post-v1.2 stabilization release. This drains the hardening work that landed
+after `1.2.0` into a real source/package version, including the Bash sandbox
+boundary change, runtime and persistence fixes, API surface cleanup, package
+metadata fixes, and Familiar composition guidance.
+
 **Breaking:**
 
 - Bash-medium cantrips now require an OS sandbox and fail closed when neither
@@ -20,6 +29,60 @@
   bubblewrap shell behavior even when they cannot create bubblewrap's default
   network-deny namespace; separate tests pin the default network-deny command
   shape.
+
+**New:**
+
+- Familiar prompt/runtime evaluation now has a composition metric:
+  `child_medium_used` scores whether a child turn used the expected medium.
+  Turn metadata records `medium_type`, JSONL rehydration preserves it, and
+  the eval suite contrasts raw data-dump answers with code-gathering plus
+  conversation-child synthesis. Evidence: PR #90, issue #83.
+- Default Familiar guidance now explicitly teaches answer-shape selection:
+  gather and compose in code, then delegate speech-shaped synthesis,
+  explanation, review, naming, judgment, decision, or voice to a
+  conversation child. Explicit user requests for a child, medium, or batch
+  shape are treated as directives unless impossible. Evidence: PR #90,
+  issue #83.
+
+**Fixes:**
+
+- Bash sandbox support now has representative shell workload coverage for
+  `git`, `make`, `jq`, `/dev/null`, and common `find`/`sed`/`grep` pipelines,
+  including the GitHub Actions runner network-namespace constraint. Evidence:
+  PR #84, issue #82.
+- The Hex package now includes `.env.example`, matching the README quick
+  start. Package metadata tests assert README `cp` sources exist and ship in
+  the Hex file list. Evidence: PR #88, issue #85.
+- The documented public API surface now matches generated docs: internal
+  modules are hidden, `docs/public-api.md` names the supported surface, nested
+  modules are checked from application metadata, and ExDoc warnings are errors.
+  Evidence: PR #89, issue #87.
+- Provider and gate boundaries are typed more explicitly: LLM provider
+  responses flow through `%Cantrip.LLM.Response{}`, gate arguments are
+  normalized through per-gate DTOs, ACP `_meta` overrides are constrained, and
+  provider option/usage forwarding has regression coverage. Evidence: PRs
+  #57, #66, #76, and #77.
+- Durable loom and JSONL behavior is stricter: append semantics align between
+  in-memory and durable paths, JSONL writes are serialized, persisted
+  code-state bindings are compacted, event upcasting is versioned, and
+  truncation/medium metadata rehydrate as atom keys. Evidence: PRs #66, #70,
+  #71, #74, and #90.
+- Streaming and observability paths preserve context while staying bounded:
+  streaming emits real text deltas, ACP trace context is propagated, intent
+  telemetry is redacted, streaming delivery has backpressure, bridge delivery
+  uses bounded barriers, and early stream halt shuts down runner tasks.
+  Evidence: PRs #50, #58, and #75.
+- Child composition is more disciplined: pre-built child casts compose parent
+  wards, declaration-time child-spawn wards are enforced, and the default
+  Familiar can read files through its normal observation gates. Evidence: PRs
+  #72, #73, and #78.
+
+**CI / packaging:**
+
+- GitHub Actions checkout was updated for the Node 24 runner environment.
+  Evidence: PR #81.
+- The cleanup status ledger records the post-v1.2 hardening pass and the CI
+  gates that made it durable. Evidence: PR #80.
 
 ## 1.2.0
 

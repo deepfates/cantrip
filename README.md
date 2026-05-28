@@ -326,6 +326,6 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full posture.
 
 ## Package status
 
-This package is `1.2.0`. ACP support depends on
+This package is `1.3.0`. ACP support depends on
 `agent_client_protocol ~> 0.1.0` from Hex. The package surface is checked with
 `mix docs` and `mix hex.build`.
