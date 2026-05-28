@@ -4,6 +4,32 @@ defmodule ReqLLMAdapterTest do
   alias Cantrip.LLMs.ReqLLM, as: Adapter
   alias Cantrip.Circle
 
+  defmodule CapturingReqLLM do
+    def generate_text(model, context, opts) do
+      send(test_pid!(), {:generate_text, model, context, opts})
+
+      {:ok,
+       %ReqLLM.Response{
+         id: "resp_test",
+         model: model,
+         context: context,
+         message: nil,
+         usage: %{input_tokens: 3, output_tokens: 4},
+         finish_reason: :stop
+       }}
+    end
+
+    def stream_text(model, context, opts) do
+      send(test_pid!(), {:stream_text, model, context, opts})
+      {:error, :stream_stopped_after_capture}
+    end
+
+    defp test_pid! do
+      Process.get(:req_llm_adapter_test_pid) ||
+        raise "missing :req_llm_adapter_test_pid process dictionary entry"
+    end
+  end
+
   describe "module availability" do
     setup do
       Code.ensure_loaded?(Adapter)
@@ -99,6 +125,97 @@ defmodule ReqLLMAdapterTest do
       request = %{messages: [%{role: :user, content: "hi"}], tools: []}
 
       assert {:error, _error, _state} = Adapter.query(state, request)
+    end
+  end
+
+  describe "query/2 outbound ReqLLM options" do
+    setup do
+      Process.put(:req_llm_adapter_test_pid, self())
+      on_exit(fn -> Process.delete(:req_llm_adapter_test_pid) end)
+      :ok
+    end
+
+    test "forwards steering, sampling, timeout, and provider options to generate_text/3" do
+      state = %{
+        client: CapturingReqLLM,
+        model: "test:model",
+        temperature: 0.7,
+        max_tokens: 1024,
+        timeout_ms: 5_000,
+        base_url: "http://localhost:11434/v1",
+        api_key: "sk-test-key"
+      }
+
+      request = %{
+        messages: [%{role: :user, content: "call a tool"}],
+        tool_choice: "required",
+        tools: [
+          %{
+            name: "done",
+            description: "finish",
+            parameters: %{
+              type: "object",
+              properties: %{answer: %{type: "string"}},
+              required: ["answer"]
+            }
+          }
+        ]
+      }
+
+      assert {:ok, response, returned_state} = Adapter.query(state, request)
+
+      assert response.usage == %{prompt_tokens: 3, completion_tokens: 4, total_tokens: 7}
+      assert returned_state.client == CapturingReqLLM
+
+      assert_received {:generate_text, "test:model", %ReqLLM.Context{}, opts}
+
+      assert Keyword.fetch!(opts, :temperature) == 0.7
+      assert Keyword.fetch!(opts, :max_tokens) == 1024
+      assert Keyword.fetch!(opts, :receive_timeout) == 5_000
+      assert Keyword.fetch!(opts, :base_url) == "http://localhost:11434/v1"
+      assert Keyword.fetch!(opts, :api_key) == "sk-test-key"
+      assert Keyword.fetch!(opts, :tool_choice) == "required"
+
+      [tool] = Keyword.fetch!(opts, :tools)
+      assert tool.name == "done"
+    end
+
+    test "forwards options to stream_text/3 on the streaming path" do
+      state = %{
+        client: CapturingReqLLM,
+        model: "test:model",
+        stream: true,
+        max_tokens: 17,
+        timeout_ms: 5_000
+      }
+
+      request = %{
+        messages: [%{role: :user, content: "stream"}],
+        tool_choice: "required",
+        tools: [%{name: "done", parameters: %{type: "object", properties: %{}}}]
+      }
+
+      assert {:error, error, returned_state} = Adapter.query(state, request)
+      assert returned_state.stream == true
+      assert error.message =~ "stream_stopped_after_capture"
+
+      assert_received {:stream_text, "test:model", %ReqLLM.Context{}, opts}
+
+      assert Keyword.fetch!(opts, :max_tokens) == 17
+      assert Keyword.fetch!(opts, :receive_timeout) == 5_000
+      assert Keyword.fetch!(opts, :tool_choice) == "required"
+      assert [_tool] = Keyword.fetch!(opts, :tools)
+    end
+
+    test "reasoning models forward max_tokens as max_completion_tokens" do
+      state = %{client: CapturingReqLLM, model: "openai:o3-mini", max_tokens: 42}
+      request = %{messages: [%{role: :user, content: "hi"}], tools: []}
+
+      assert {:ok, _response, _state} = Adapter.query(state, request)
+      assert_received {:generate_text, "openai:o3-mini", %ReqLLM.Context{}, opts}
+
+      assert Keyword.fetch!(opts, :max_completion_tokens) == 42
+      refute Keyword.has_key?(opts, :max_tokens)
     end
   end
 

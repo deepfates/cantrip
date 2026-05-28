@@ -8,6 +8,7 @@ defmodule Cantrip.RealLLMIntegrationTest do
     if not RealLLMEnv.enabled?() do
       :ok
     else
+      ref = attach_usage_telemetry("real-llm-usage-total")
       token = "integration-ok-" <> Integer.to_string(System.unique_integer([:positive]))
 
       {:ok, llm} = Cantrip.LLM.from_env()
@@ -71,6 +72,31 @@ defmodule Cantrip.RealLLMIntegrationTest do
       assert Enum.any?(last_turn.observation || [], fn obs ->
                obs.gate == "done" and obs.result == token and not obs.is_error
              end)
+
+      assert_receive {^ref, [:cantrip, :usage], measurements, _metadata}, 1_000
+      assert measurements.prompt_tokens > 0
+      assert measurements.completion_tokens > 0
+
+      assert measurements.total_tokens ==
+               measurements.prompt_tokens + measurements.completion_tokens
     end
+  end
+
+  defp attach_usage_telemetry(handler_id) do
+    ref = make_ref()
+
+    :telemetry.attach(
+      handler_id,
+      [:cantrip, :usage],
+      &__MODULE__.handle_usage_event/4,
+      {ref, self()}
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+    ref
+  end
+
+  def handle_usage_event(event, measurements, metadata, {ref, pid}) do
+    send(pid, {ref, event, measurements, metadata})
   end
 end

@@ -41,6 +41,7 @@ defmodule Cantrip.LLMs.ReqLLM do
   def query(state, request) do
     state = normalize_state(state)
     model = state.model
+    client = state.client
     context = build_context(request)
     opts = build_opts(state, request)
     emit_event = Map.get(request, :emit_event)
@@ -49,9 +50,9 @@ defmodule Cantrip.LLMs.ReqLLM do
 
     result =
       if state.stream do
-        stream_query(model, context, opts, event_sink)
+        stream_query(client, model, context, opts, event_sink)
       else
-        sync_query(model, context, opts)
+        sync_query(client, model, context, opts)
       end
 
     case result do
@@ -68,8 +69,8 @@ defmodule Cantrip.LLMs.ReqLLM do
 
   # -- Sync path --
 
-  defp sync_query(model, context, opts) do
-    case ReqLLM.generate_text(model, context, opts) do
+  defp sync_query(client, model, context, opts) do
+    case client.generate_text(model, context, opts) do
       {:ok, %ReqLLM.Response{} = response} ->
         {:ok, normalize_response(response)}
 
@@ -87,8 +88,8 @@ defmodule Cantrip.LLMs.ReqLLM do
   # tool-using agents; the prior code consumed the stream via `tokens/1`
   # and then tried to read `tool_calls/1` from the now-depleted stream,
   # which silently dropped every tool call from streaming responses.
-  defp stream_query(model, context, opts, event_sink) do
-    case ReqLLM.stream_text(model, context, opts) do
+  defp stream_query(client, model, context, opts, event_sink) do
+    case client.stream_text(model, context, opts) do
       {:ok, %ReqLLM.StreamResponse{} = sr} ->
         on_result = fn chunk ->
           emit_stream_event(event_sink, {:text_delta, chunk})
@@ -169,6 +170,7 @@ defmodule Cantrip.LLMs.ReqLLM do
     opts = if state.timeout_ms, do: [{:receive_timeout, state.timeout_ms} | opts], else: opts
     opts = if state.base_url, do: [{:base_url, state.base_url} | opts], else: opts
     opts = if state.api_key, do: [{:api_key, state.api_key} | opts], else: opts
+    opts = maybe_put_tool_choice(opts, Map.get(request, :tool_choice))
 
     tool_specs = normalize_tools(tools)
 
@@ -178,6 +180,10 @@ defmodule Cantrip.LLMs.ReqLLM do
       opts
     end
   end
+
+  defp maybe_put_tool_choice(opts, nil), do: opts
+  defp maybe_put_tool_choice(opts, ""), do: opts
+  defp maybe_put_tool_choice(opts, choice), do: [{:tool_choice, choice} | opts]
 
   defp normalize_tools(tools) do
     Enum.map(tools, fn tool ->
@@ -248,17 +254,24 @@ defmodule Cantrip.LLMs.ReqLLM do
   defp maybe_put(map, _key, _value, false), do: map
 
   defp normalize_usage(usage) when is_map(usage) do
+    prompt_tokens =
+      Map.get(usage, :input_tokens) || Map.get(usage, "input_tokens") ||
+        Map.get(usage, :prompt_tokens) || Map.get(usage, "prompt_tokens") || 0
+
+    completion_tokens =
+      Map.get(usage, :output_tokens) || Map.get(usage, "output_tokens") ||
+        Map.get(usage, :completion_tokens) || Map.get(usage, "completion_tokens") || 0
+
     %{
-      prompt_tokens:
-        Map.get(usage, :input_tokens) || Map.get(usage, "input_tokens") ||
-          Map.get(usage, :prompt_tokens) || Map.get(usage, "prompt_tokens") || 0,
-      completion_tokens:
-        Map.get(usage, :output_tokens) || Map.get(usage, "output_tokens") ||
-          Map.get(usage, :completion_tokens) || Map.get(usage, "completion_tokens") || 0
+      prompt_tokens: prompt_tokens,
+      completion_tokens: completion_tokens,
+      total_tokens:
+        Map.get(usage, :total_tokens) || Map.get(usage, "total_tokens") ||
+          prompt_tokens + completion_tokens
     }
   end
 
-  defp normalize_usage(_), do: %{prompt_tokens: 0, completion_tokens: 0}
+  defp normalize_usage(_), do: %{prompt_tokens: 0, completion_tokens: 0, total_tokens: 0}
 
   # -- Error normalization --
 
@@ -307,6 +320,7 @@ defmodule Cantrip.LLMs.ReqLLM do
 
     %{
       model: Map.get(state, :model),
+      client: Map.get(state, :client, ReqLLM),
       stream: Map.get(state, :stream, false),
       temperature: Map.get(state, :temperature),
       max_tokens: Map.get(state, :max_tokens),

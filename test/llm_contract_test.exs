@@ -44,7 +44,7 @@ defmodule Cantrip.LLMContractTest do
              })
   end
 
-  test "LLM-5 forwards tool_choice in request" do
+  test "LLM-5 prepares tool_choice in the Cantrip request map" do
     llm =
       {FakeLLM,
        FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}],
