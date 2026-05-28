@@ -1,5 +1,9 @@
 defmodule Cantrip.Familiar do
   @moduledoc """
+  The Familiar is the packaged code-medium coordinator: a cantrip preassembled
+  with workspace observation gates, code-medium reasoning, durable loom storage,
+  and a system prompt that teaches composition and medium selection.
+
   Constructs a spec-conformant familiar — a persistent entity that orchestrates
   other cantrips through code medium.
 

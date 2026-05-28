@@ -1,5 +1,9 @@
 defmodule Cantrip.WardPolicy do
   @moduledoc """
+  Wards are the policy that bounds your loop. The runtime resolves them here:
+  numeric and boolean wards compose by tightening, while passthrough ward data
+  remains explicit policy for the gate or medium that enforces it.
+
   Pure ward resolution and inspection.
 
   Wards are policy data. This module is the Elixir-native home for resolving

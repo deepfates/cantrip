@@ -1,5 +1,8 @@
 defmodule Cantrip.ACP.Server do
   @moduledoc """
+  Run this to expose the Familiar to ACP-aware editors over stdio. The
+  `mix cantrip.familiar --acp` task calls into this server.
+
   Stdio ACP JSON-RPC server backed by f1729's agent_client_protocol library.
   """
 

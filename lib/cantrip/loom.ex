@@ -1,5 +1,9 @@
 defmodule Cantrip.Loom do
   @moduledoc """
+  The loom is the entity's autobiography. Every turn you and your children take
+  is recorded here; with durable storage, the loom persists across summonings
+  and prior turns are available as `loom.turns`.
+
   Append-only durable reality for an entity.
 
   The loom keeps the turn-shaped surface used by the runtime while also storing

@@ -1,5 +1,9 @@
 defmodule Cantrip.Familiar.Eval do
   @moduledoc """
+  When you change a prompt or a circle and want evidence, you run an eval. This
+  harness runs Familiar scenarios across seeds, scores each run against rubric
+  criteria, persists transcripts, and writes a JSON report.
+
   Multi-scenario, multi-seed evaluation harness for `Cantrip.Familiar`.
 
   Scenarios are trusted Elixir data, usually loaded from an `.exs` file or a

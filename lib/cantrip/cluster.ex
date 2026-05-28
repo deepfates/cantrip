@@ -1,5 +1,9 @@
 defmodule Cantrip.Cluster do
   @moduledoc """
+  When you want a Familiar's loom replicated across BEAM nodes, connect the
+  nodes with normal BEAM tooling first, then use these helpers to wire Mnesia
+  across them.
+
   Helpers for explicit BEAM-cluster setup.
 
   Cantrip does not perform cluster discovery. Operators still use the normal

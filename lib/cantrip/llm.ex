@@ -1,5 +1,9 @@
 defmodule Cantrip.LLM do
   @moduledoc """
+  Implement this behaviour to provide a model backend. The runtime calls
+  `query/2` with a normalized request and expects a normalized response or an
+  error tuple with updated provider state.
+
   LLM behaviour and contract validator.
   """
 

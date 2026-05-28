@@ -1,5 +1,14 @@
 defmodule Cantrip do
   @moduledoc """
+  When you call `Cantrip.new/1`, you are constructing a cantrip: a reusable
+  value that binds an LLM, an identity, and a circle. Cast it with
+  `Cantrip.cast/3` and one entity is summoned into the circle for one episode;
+  summon it with `Cantrip.summon/1` and the entity stays alive across many
+  sends. In the default port code sandbox, a code-medium inhabitant can use the
+  same `new`/`cast`/`cast_batch` calls to construct and run child cantrips;
+  Dune circles use injected host closures instead. The shape is shared by
+  humans and inhabitants, with sandbox-specific affordances.
+
   Public API for building and running Cantrip programs.
 
   A cantrip combines an LLM, an identity, a circle, optional loom storage,

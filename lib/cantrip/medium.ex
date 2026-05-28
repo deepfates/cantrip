@@ -1,5 +1,9 @@
 defmodule Cantrip.Medium do
   @moduledoc """
+  A medium determines the shape of thought inside the circle. Implement this
+  behaviour when conversation, code, and bash do not fit the natural surface of
+  the work.
+
   Behaviour for a circle medium.
 
   A medium owns the "inside" of a circle: how capabilities are presented to

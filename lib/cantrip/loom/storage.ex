@@ -1,5 +1,9 @@
 defmodule Cantrip.Loom.Storage do
   @moduledoc """
+  If you implement this behaviour, you are giving the loom a place to live.
+  Built-in backends are memory, JSONL, and Mnesia; `load/1` is the optional
+  rehydration callback that lets a summoning resume from a prior trajectory.
+
   Storage behavior for persisting loom events.
   """
 

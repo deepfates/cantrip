@@ -309,6 +309,8 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full posture.
 
 ## Where to go next
 
+- [`docs/spellbook.md`](./docs/spellbook.md) — the vocabulary and its
+  verifiable behavior
 - `notebooks/cantrip_demo.livemd` — the runnable grimoire, with rendered loom
   tables
 - [`docs/public-api.md`](./docs/public-api.md) — task-oriented API guide

@@ -1,5 +1,9 @@
 defmodule Cantrip.FakeLLM do
   @moduledoc """
+  Script deterministic LLM responses for tests and evals. Use this when you
+  need runtime evidence without provider calls; it tests shape, not behavioral
+  quality.
+
   Deterministic llm used in tests.
   """
 

@@ -1,5 +1,9 @@
 defmodule Cantrip.ACP.Diagnostics do
   @moduledoc """
+  Inspect live ACP sessions and bridges from a remsh attach during operations.
+  Use this when you need to see what a running stdio ACP session is doing
+  without restarting the host.
+
   Live introspection helpers for a running ACP server.
 
   Reach a running `mix cantrip.familiar --acp` BEAM via `--remsh` (the

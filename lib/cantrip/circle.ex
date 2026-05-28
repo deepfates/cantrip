@@ -1,5 +1,9 @@
 defmodule Cantrip.Circle do
   @moduledoc """
+  Your circle is the bounded place the entity is summoned into. It declares the
+  medium you think in, the gates you can call, and the wards that constrain
+  your loop; `Cantrip.new/1` validates that exactly one medium is declared.
+
   Runtime boundary for a cantrip entity.
 
   A circle declares the medium the entity thinks in, the gates it can call, and

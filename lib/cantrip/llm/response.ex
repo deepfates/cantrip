@@ -1,5 +1,10 @@
 defmodule Cantrip.LLM.Response do
   @moduledoc """
+  This is the response shape every LLM provider answer becomes before the
+  runtime reads it. If you implement `Cantrip.LLM`, prefer returning this shape;
+  raw provider maps are accepted only when they satisfy the same boundary
+  contract.
+
   Normalized provider response boundary object.
 
   LLM adapters may speak provider-specific data shapes internally, but the rest

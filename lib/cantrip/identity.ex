@@ -1,5 +1,8 @@
 defmodule Cantrip.Identity do
   @moduledoc """
+  Identity is who the entity is: the system prompt plus model-facing options.
+  It is bound when the cantrip is constructed and every summoning inherits it.
+
   Immutable identity configuration (identity + llm knobs).
   """
 
