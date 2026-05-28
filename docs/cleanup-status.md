@@ -20,9 +20,8 @@ baseline.
 
 **13 of 16 starting issues closed with proof. 4 new issues filed: #32 Pass 10
 versioning, #34 Pass 5 follow-up, #35 compile_and_load policy gaps, #36
-cookie overwrite. #34 is fixed locally pending issue close. 3 feature-roadmap
-issues labeled `feature` and kept open. 4 active cleanup issues remain (#11,
-#32, #35, #36).**
+cookie overwrite. #34 is closed with proof. 3 feature-roadmap issues labeled
+`feature` and kept open. 4 active cleanup issues remain (#11, #32, #35, #36).**
 
 The post-d12875c cold review caught two reward-hacking patterns: Pass 5 was
 marked "done" while ~30 boundary inspect/Exception.message bypass channels
@@ -53,7 +52,7 @@ holds — those are adjacent concerns, not a reopen.
 | 30 | Malformed-JSON tool-call args | **closed** | `args_raw`+`args_decode_error` plumbing; executor emits structured error. Evidence: `test/req_llm_adapter_test.exs:106+`, `:136+`. |
 | 31 | Mnesia create_schema error swallow | **closed** | `ensure_schema/0` propagates root cause. Evidence: `test/loom_storage_test.exs:20+`. |
 | 32 | Schema version for durable structs + JSONL | **open** | Filed post-Pass-0-scan. 8 defstructs lack version field; JSONL has no format header. Forward-prep, not active bug. |
-| 34 | Pass 5: complete SafeFormat coverage at remaining boundary channels | **ready-to-close** | Boundary `inspect(...)` / `Exception.message(...)` sites now route through `Cantrip.SafeFormat` across gates, code-medium observations/protocol frames, ACP replies, CLI output, loom storage, child-cast observations/events, and provider adapter errors. Evidence: `test/redact_test.exs` covers non-binary gate output, unrestricted code-medium exceptions, ACP wire stringification, ACP runtime provider errors, JSONL persistence fallback, and port-medium exceptions; source scan shows no remaining raw boundary bypasses outside a static prompt example. |
+| 34 | Pass 5: complete SafeFormat coverage at remaining boundary channels | **closed** | Boundary `inspect(...)` / `Exception.message(...)` sites now route through `Cantrip.SafeFormat` across gates, code-medium observations/protocol frames, ACP replies, CLI output, loom storage, child-cast observations/events, and provider adapter errors. Evidence: `test/redact_test.exs` covers non-binary gate output, unrestricted code-medium exceptions, ACP wire stringification, ACP runtime provider errors, JSONL persistence fallback, and port-medium exceptions; source scan shows no remaining raw boundary bypasses outside a static prompt example. Commit `4905898`. |
 | 35 | compile_and_load: reject framework module names + handle deprecated allow_compile_namespaces | **open** | Cold-review of `ca115b0` found two concerns: gate doesn't reject `Elixir.Cantrip.*` modules in allowlists, and `allow_compile_namespaces` is silently ignored (permission broadening relative to caller intent). Doc drift in `DEPLOYMENT.md:200`. |
 | 36 | Familiar cookie validation silently overwrites hand-edited cookies | **open** | Cold-review of `bc2bf01`. `validate_or_regenerate_cookie` silently regenerates non-matching cookies, breaking existing distributed connections without warning. Either log on overwrite or hard-fail and require explicit deletion. |
 
