@@ -116,6 +116,32 @@ testing process-kill behavior. It is not the Familiar default.
 `sandbox: :unrestricted` uses the legacy host-BEAM evaluator. It is for trusted
 local development only.
 
+## Dune Variant: Deliberately Restricted
+
+`sandbox: :dune` is a separate code-medium variant that evaluates LLM-emitted
+Elixir inside the host BEAM under Dune's language restrictions, without the
+port boundary. It exists for deployments that want in-process language
+restriction without paying for an external child BEAM.
+
+The Dune variant has a **deliberately different binding surface than the
+default port sandbox**. The port sandbox exposes `Cantrip.new`, `Cantrip.cast`,
+and `Cantrip.cast_batch` as proxied calls inside the child, plus the gate
+functions, plus common Elixir control flow. The Dune variant does not mirror
+the full public package surface and additionally restricts several language
+operations (`binding/0`, `try/1`, `Code.ensure_loaded?/1`, plus the
+cross-boundary capabilities all sandboxes block: `File.*`, `System.*`,
+`Process.*`, `spawn`, `Code.load_*`).
+
+This divergence is intentional: Dune is a security-language boundary
+mechanism. If your entity needs the full public API surface or in-medium
+introspection, use the default `sandbox: :port` boundary. If you specifically
+need in-process language restriction with a smaller binding surface, use
+`sandbox: :dune` and write circle/prompt content that fits that surface.
+
+Don't teach entities running under `sandbox: :dune` patterns that the port
+sandbox supports (e.g. `binding()`, try-rescue, `Code.ensure_loaded?`) — the
+prompt should match the medium variant in use.
+
 ## Remaining Deployment Responsibility
 
 The default port sandbox denies ambient language capabilities and protects the
