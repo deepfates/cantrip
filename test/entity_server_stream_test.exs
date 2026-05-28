@@ -3,6 +3,24 @@ defmodule Cantrip.EntityServerStreamTest do
 
   alias Cantrip.FakeLLM
 
+  defmodule BlockingLLM do
+    @behaviour Cantrip.LLM
+
+    @impl true
+    def query(%{test_pid: test_pid} = state, request) do
+      content = request.messages |> List.last() |> Map.fetch!(:content)
+      send(test_pid, {:blocking_llm_started, self(), content})
+
+      receive do
+        {:release_blocking_llm, ^content} ->
+          {:ok, %{tool_calls: [%{gate: "done", args: %{answer: "released:" <> content}}]}, state}
+      after
+        1_000 ->
+          {:error, %{message: "blocking llm was not released"}, state}
+      end
+    end
+  end
+
   describe "send/3 with stream_to for persistent entities" do
     test "send/3 with stream_to: self() delivers events to caller" do
       llm =
@@ -72,6 +90,38 @@ defmodule Cantrip.EntityServerStreamTest do
 
       # Second send WITHOUT stream_to — should not get events
       {:ok, "second", _, _, _} = Cantrip.send(pid, "second")
+      refute_received {:cantrip_event, _}
+    end
+
+    test "stream_to override does not leak if runner crashes mid-send" do
+      llm = {BlockingLLM, %{test_pid: self()}}
+      test_pid = self()
+
+      {:ok, cantrip} =
+        Cantrip.new(
+          llm: llm,
+          circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+        )
+
+      {:ok, pid} = Cantrip.summon(cantrip)
+      running = Task.async(fn -> Cantrip.send(pid, "slow", stream_to: test_pid) end)
+
+      assert_receive {:blocking_llm_started, _llm_pid, "slow"}, 200
+
+      runner_pid = :sys.get_state(pid).runner.pid
+      Process.exit(runner_pid, :kill)
+
+      assert {:error, reason, _cantrip} = Task.await(running, 500)
+      assert String.starts_with?(reason, "entity run failed:")
+
+      assert_runner_restarted(pid, runner_pid)
+      flush_mailbox()
+
+      next = Task.async(fn -> Cantrip.send(pid, "second") end)
+      assert_receive {:blocking_llm_started, llm_pid, "second"}, 500
+      send(llm_pid, {:release_blocking_llm, "second"})
+      assert {:ok, "released:second", _cantrip, _loom, _meta} = Task.await(next, 500)
+
       refute_received {:cantrip_event, _}
     end
   end
@@ -191,6 +241,22 @@ defmodule Cantrip.EntityServerStreamTest do
       {:cantrip_event, event} -> collect_cantrip_events([event | acc])
     after
       0 -> Enum.reverse(acc)
+    end
+  end
+
+  defp assert_runner_restarted(entity_pid, old_runner, attempts \\ 20)
+
+  defp assert_runner_restarted(_entity_pid, _old_runner, 0),
+    do: flunk("entity runner did not restart")
+
+  defp assert_runner_restarted(entity_pid, old_runner, attempts) do
+    current_runner = :sys.get_state(entity_pid).runner.pid
+
+    if is_pid(current_runner) and current_runner != old_runner do
+      :ok
+    else
+      Process.sleep(10)
+      assert_runner_restarted(entity_pid, old_runner, attempts - 1)
     end
   end
 end

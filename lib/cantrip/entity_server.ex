@@ -17,6 +17,8 @@ defmodule Cantrip.EntityServer do
 
   use GenServer, restart: :temporary
 
+  @no_restore :__no_restore__
+
   defstruct cantrip: nil,
             entity_id: nil,
             messages: [],
@@ -216,7 +218,11 @@ defmodule Cantrip.EntityServer do
       {:run_episode, ref, self(), %{state | running: nil}, Keyword.put(opts, :kind, kind)}
     )
 
-    {:noreply, %{state | running: %{ref: ref, from: from, kind: kind}}}
+    running =
+      %{ref: ref, from: from, kind: kind}
+      |> maybe_put_stream_restore(opts, state)
+
+    {:noreply, %{state | running: running}}
   end
 
   defp start_episode(%{running: nil} = state, _from, _kind, _opts),
@@ -283,10 +289,41 @@ defmodule Cantrip.EntityServer do
       {:error, "entity run failed: #{Cantrip.SafeFormat.inspect(reason)}", state.cantrip}
     )
 
-    %{state | running: nil}
+    state
+    |> maybe_restore_stream_opts_from_running()
+    |> Map.put(:running, nil)
   end
 
   defp maybe_reply_runner_down(state, _reason), do: state
+
+  defp maybe_put_stream_restore(running, opts, state) do
+    if Keyword.has_key?(opts, :restore_stream_to) or Keyword.has_key?(opts, :restore_stream_barrier?) do
+      Map.merge(running, %{
+        restore_stream_to: Keyword.get(opts, :restore_stream_to, state.stream_to),
+        restore_stream_barrier?:
+          Keyword.get(opts, :restore_stream_barrier?, state.stream_barrier?)
+      })
+    else
+      Map.merge(running, %{
+        restore_stream_to: @no_restore,
+        restore_stream_barrier?: @no_restore
+      })
+    end
+  end
+
+  defp maybe_restore_stream_opts_from_running(
+         %{
+           running: %{
+             restore_stream_to: restore_stream_to,
+             restore_stream_barrier?: restore_stream_barrier?
+           }
+         } = state
+       )
+       when restore_stream_to != @no_restore and restore_stream_barrier? != @no_restore do
+    restore_stream_opts(state, restore_stream_to, restore_stream_barrier?)
+  end
+
+  defp maybe_restore_stream_opts_from_running(state), do: state
 
   defp snapshot_runner_owned_state(
          %{cantrip: %{circle: %{type: type}}, code_state: code_state} = state
