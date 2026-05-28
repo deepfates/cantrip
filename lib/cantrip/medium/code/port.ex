@@ -65,6 +65,11 @@ defmodule Cantrip.Medium.Code.Port do
   end
 
   defp ensure_session(state, runtime) do
+    # Child boot is a startup budget, not the user's eval budget. Keep the old
+    # short-timeout behavior for eval itself while allowing larger deployment
+    # budgets to cover slow CI/container process startup.
+    init_timeout = max(5_000, WardPolicy.code_eval_timeout_ms(runtime.circle.wards))
+
     with {:ok, port} <- start_child(runtime) do
       session = %{port: port, os_pid: os_pid(port)}
       binding = Map.get(state, :binding, [])
@@ -95,7 +100,7 @@ defmodule Cantrip.Medium.Code.Port do
         {^port, {:exit_status, status}} ->
           {:error, "child exited during init with status #{status}"}
       after
-        5_000 ->
+        init_timeout ->
           close_session(session)
           {:error, "child init timed out"}
       end
