@@ -60,6 +60,8 @@ The same package primitives cover several distinct shapes:
 - **Familiar coordinator** — use the packaged codebase-facing entity when you
   want workspace gates, code-medium reasoning, durable memory, and delegation
   assembled for you.
+- **Familiar evals** — run curated prompt scenarios across multiple seeds,
+  score them with rubric criteria, and persist transcripts for review.
 - **Protocol surface** — expose the same runtime through library calls, Mix
   tasks, streaming events, or stdio ACP.
 
@@ -297,6 +299,8 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full posture.
 - `notebooks/cantrip_demo.livemd` — the runnable grimoire, with rendered loom
   tables
 - [`docs/public-api.md`](./docs/public-api.md) — task-oriented API guide
+- [`docs/eval-harness.md`](./docs/eval-harness.md) — multi-seed Familiar
+  scenario evaluation
 - [`docs/architecture.md`](./docs/architecture.md) — how the modules fit
 - [`DEPLOYMENT.md`](./DEPLOYMENT.md) — current deployment posture
 - [`docs/migration-v1.md`](./docs/migration-v1.md) — moving from pre-v1
