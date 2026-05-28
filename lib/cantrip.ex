@@ -95,27 +95,32 @@ defmodule Cantrip do
   @spec new(keyword() | map()) :: {:ok, t()} | {:error, String.t()}
   def new(attrs) do
     attrs = normalize_input_map(attrs)
-    attrs = normalize_node_attr(attrs)
-    remote_node = remote_node(attrs)
 
-    parent_context =
-      Map.get(attrs, :parent_context) || Map.get(attrs, "parent_context") ||
-        Process.get(:cantrip_parent_context)
+    with {:ok, attrs} <- normalize_node_attr(attrs) do
+      remote_node = remote_node(attrs)
 
-    case {remote_node, parent_context} do
-      {{:remote, node}, nil} -> remote_new(node, attrs)
-      {_local, nil} -> new_root(attrs)
-      {_node, parent_context} -> new_child(attrs, parent_context)
+      parent_context =
+        Map.get(attrs, :parent_context) || Map.get(attrs, "parent_context") ||
+          Process.get(:cantrip_parent_context)
+
+      case {remote_node, parent_context} do
+        {{:remote, node}, nil} -> remote_new(node, attrs)
+        {:local, nil} -> new_root(attrs)
+        {{:error, reason}, _parent_context} -> {:error, reason}
+        {_node, parent_context} -> new_child(attrs, parent_context)
+      end
     end
   end
 
   @doc false
   def __remote_new__(attrs) do
-    attrs
-    |> normalize_input_map()
-    |> normalize_node_attr()
-    |> drop_node_attr()
-    |> new_root()
+    attrs = normalize_input_map(attrs)
+
+    with {:ok, attrs} <- normalize_node_attr(attrs) do
+      attrs
+      |> drop_node_attr()
+      |> new_root()
+    end
   end
 
   @doc false
@@ -234,6 +239,7 @@ defmodule Cantrip do
 
       case remote_node(child_attrs) do
         {:remote, node} -> remote_new(node, child_attrs)
+        {:error, reason} -> {:error, reason}
         _local -> new_root(child_attrs)
       end
     end
@@ -1024,7 +1030,14 @@ defmodule Cantrip do
 
   defp rpc_call(node, module, function, args) do
     rpc = Application.get_env(:cantrip, :rpc_module, :rpc)
-    apply(rpc, :call, [node, module, function, args])
+    apply(rpc, :call, [node, module, function, args, rpc_timeout()])
+  end
+
+  defp rpc_timeout do
+    case Application.get_env(:cantrip, :rpc_timeout, 30_000) do
+      timeout when is_integer(timeout) and timeout > 0 -> timeout
+      _other -> 30_000
+    end
   end
 
   defp remote_node(%__MODULE__{node: nil}), do: :local
@@ -1036,37 +1049,50 @@ defmodule Cantrip do
       nil -> :local
       node when node == node() -> :local
       node when is_atom(node) -> {:remote, node}
-      _other -> :local
+      other -> {:error, unknown_node_error(other)}
     end
   end
 
   defp normalize_node_attr(attrs) when is_map(attrs) do
     case Map.fetch(attrs, :node) do
       {:ok, node} ->
-        Map.put(attrs, :node, normalize_node_value(node))
+        put_normalized_node(attrs, node)
 
       :error ->
         case Map.fetch(attrs, "node") do
-          {:ok, node} -> attrs |> Map.delete("node") |> Map.put(:node, normalize_node_value(node))
-          :error -> attrs
+          {:ok, node} -> attrs |> Map.delete("node") |> put_normalized_node(node)
+          :error -> {:ok, attrs}
         end
     end
   end
 
-  defp normalize_node_value(node) when is_atom(node), do: node
+  defp put_normalized_node(attrs, node) do
+    case normalize_node_value(node) do
+      {:ok, node} -> {:ok, Map.put(attrs, :node, node)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp normalize_node_value(node) when is_atom(node), do: {:ok, node}
 
   defp normalize_node_value(node) when is_binary(node) do
-    Enum.find([node() | Node.list()], fn known -> Atom.to_string(known) == node end) ||
-      existing_atom_or_original(node)
+    case Enum.find([node() | Node.list()], fn known -> Atom.to_string(known) == node end) do
+      nil -> existing_atom_or_error(node)
+      known -> {:ok, known}
+    end
   end
 
-  defp normalize_node_value(node), do: node
+  defp normalize_node_value(node), do: {:error, unknown_node_error(node)}
 
-  defp existing_atom_or_original(value) do
-    String.to_existing_atom(value)
+  defp existing_atom_or_error(value) do
+    {:ok, String.to_existing_atom(value)}
   rescue
-    ArgumentError -> value
+    ArgumentError -> {:error, unknown_node_error(value)}
   end
+
+  defp unknown_node_error(value),
+    do:
+      "unknown remote node #{Cantrip.SafeFormat.inspect(value)}; connect the node before using it"
 
   defp drop_node_attr(attrs) when is_map(attrs) do
     attrs

@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.2.0
+
+Post-v1 feature completion pass. The two feature-roadmap items left after
+the `1.1.0` hardening release are now shipped and closed with proof.
+
+**New:**
+
+- Added a Familiar eval harness for prompt/runtime regression work:
+  multi-scenario and multi-seed runs, fixture workspaces, persisted JSONL
+  transcripts, JSON reports, rubric criteria, optional judge scoring, and
+  `mix cantrip.eval` CI thresholds. Evidence: `test/familiar_eval_test.exs`,
+  `test/mix_cantrip_eval_test.exs`, `docs/eval-harness.md`, PR #38.
+- Added distributed Familiar support: root and child cantrips can target
+  named BEAM nodes through `:node`, remote casts preserve their node handle,
+  remote child observations are grafted into the parent loom, and
+  `Cantrip.Cluster` provides Mnesia extra-node/table-copy helpers for
+  replicated loom storage. Evidence: `test/distributed_cantrip_test.exs`,
+  `test/cluster_test.exs`, `docs/distributed-familiar.md`, PR #39.
+
+**Fixes before tag:**
+
+- Remote distributed calls now use bounded `:rpc.call/5` timeouts instead of
+  the distributed Erlang default of `:infinity`; unknown string node names fail
+  closed instead of silently falling back to local execution.
+- `Cantrip.Cluster.connect_mnesia/2` now preserves Mnesia schema timeout
+  details so operators can see which table failed to synchronize.
+
 ## 1.1.0
 
 Post-v1 hardening and cleanup pass. All cleanup issues from the v1 backlog
@@ -73,11 +100,6 @@ are closed with proof, including issues filed during the cleanup pass
   (subscription patterns, alert recommendations, trace correlation model);
   implementation of the 9-item event checklist tracked on #11.
 - `docs/cleanup-status.md` is the living tracker for the cleanup pass.
-
-**Feature roadmap, not cleanup blockers:**
-
-- #8 and #10 (eval harness, distributed Familiar) remain open and labeled
-  `feature`.
 
 ## 1.0.0
 

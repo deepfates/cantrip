@@ -67,7 +67,7 @@ defmodule Cantrip.Cluster do
   defp wait_for_schema(mnesia, _nodes, timeout) do
     case call(mnesia, :wait_for_tables, [[:schema], timeout]) do
       :ok -> :ok
-      {:timeout, _} = timeout -> {:error, timeout}
+      {:timeout, bad_tables} -> {:error, {:timeout, bad_tables}}
       {:error, reason} -> {:error, reason}
       other -> {:error, other}
     end

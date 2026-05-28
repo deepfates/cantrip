@@ -18,11 +18,11 @@ baseline.
 
 ## Headline
 
-**All active cleanup issues are closed with proof. 5 new issues filed during
-the pass: #32 Pass 10 versioning, #34 Pass 5 follow-up, #35 compile_and_load
-policy gaps, #36 cookie overwrite, and #37 live real-LLM prompt drift. #11,
-#32, #34, #35, #36, and #37 are closed with proof. #9 has also shipped as
-feature work. 2 feature-roadmap issues labeled `feature` remain open.**
+**All active cleanup issues and post-v1 feature-roadmap issues are closed
+with proof. 5 new issues filed during the pass: #32 Pass 10 versioning,
+#34 Pass 5 follow-up, #35 compile_and_load policy gaps, #36 cookie overwrite,
+and #37 live real-LLM prompt drift. #8, #9, #10, #11, #32, #34, #35, #36,
+and #37 have all shipped with regression tests and/or package docs.**
 
 The post-d12875c cold review caught two reward-hacking patterns: Pass 5 was
 marked "done" while ~30 boundary inspect/Exception.message bypass channels
@@ -39,7 +39,7 @@ holds — those are adjacent concerns, not a reopen.
 | 3 | Familiar isomorphic with host Cantrip API | **closed** | Port sandbox does proxy; Dune is deliberate restricted variant. Documented in `docs/port-isolated-runtime.md`. |
 | 8 | Eval harness for Familiar prompts | **closed** | Multi-scenario, multi-seed Familiar eval harness implemented with rubric and judge scoring, persisted transcripts, `mix cantrip.eval`, docs, and CI-usable thresholds. Evidence: `test/familiar_eval_test.exs`, `test/mix_cantrip_eval_test.exs`, `docs/eval-harness.md`, PR #38. |
 | 9 | First-class `mix` gate | **closed** | Built-in `mix` gate runs allowlisted tasks under a configured root with argv validation, timeout, bounded output, code-medium binding, Familiar wiring, and docs. Evidence: `test/mix_gate_test.exs`, `test/gate_spec_test.exs`, and `test/familiar_test.exs`. |
-| 10 | Distributed Familiar | **in progress** | This branch adds remote child cantrips via `:node` + `:rpc.call/4`, cluster helpers for Mnesia extra DB nodes/table copies, and docs in `docs/distributed-familiar.md`. |
+| 10 | Distributed Familiar | **closed** | Remote root and child cantrips can target named BEAM nodes via `:node`, remote child observations are grafted into the parent loom, and `Cantrip.Cluster` provides Mnesia extra-node/table-copy helpers. Evidence: `test/distributed_cantrip_test.exs`, `test/cluster_test.exs`, `docs/distributed-familiar.md`, PR #39. |
 | 11 | Telemetry coverage + observability runbook | **closed** | The runtime event registry is implemented and tested. Events now carry `trace_id`; root casts accept external trace IDs and child casts inherit them. Runtime emits entity/turn/gate/code/bash lifecycle events plus usage, redaction-hit, fold-trigger, ward-truncate, child start/stop, and compile_and_load events. Evidence: `test/telemetry_test.exs` covers the registry and every documented event family; redaction-hit coverage is also pinned by a boundary `read_file` test. Commits `f08c847`, `c0fcc65`. |
 | 12 | Dune sandbox over-restricts | **closed** | Dune is deliberate variant per #3 resolution. |
 | 20 | Sandbox roots for filesystem gates | **closed** | Shared path validation is used across all FS gates. Evidence: `test/gate_validation_test.exs:55-75`, `:99-133`. |
@@ -91,13 +91,13 @@ holds — those are adjacent concerns, not a reopen.
 
 ## What's Left
 
-No open cleanup-guide contract items remain in the codebase.
+No open cleanup-guide contract items remain in the codebase. The two
+feature-roadmap items that were deferred from the cleanup release (#8 eval
+harness and #10 distributed Familiar) have also shipped.
 
-Plus two feature-roadmap items (`feature` label) that intentionally aren't blocking the cleanup-done milestone: #8 and #10.
-
-The cleanup phase is done when final PR CI is green. At that point we can ship
-v1.1.0 from `feat/comprehensive-cleanup`; the open issue tracker should contain
-only the two intentionally-deferred feature items.
+The post-v1 cleanup and feature-completion phase is done when the release-prep
+PR CI is green. At that point we can tag `v1.2.0` from `main`; the open issue
+tracker should be empty.
 
 ---
 

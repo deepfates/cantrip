@@ -4,15 +4,20 @@ defmodule Cantrip.DistributedCantripTest do
   alias Cantrip.FakeLLM
 
   defmodule FakeRPC do
-    def call(node, module, function, args) do
-      send(Process.whereis(__MODULE__), {:rpc_call, node, module, function, args})
+    def call(node, module, function, args, timeout) do
+      send(Process.whereis(__MODULE__), {:rpc_call, node, module, function, args, timeout})
       apply(module, function, args)
     end
+  end
+
+  defmodule BadRPC do
+    def call(_node, _module, _function, _args, _timeout), do: {:badrpc, :timeout}
   end
 
   setup do
     Process.register(self(), FakeRPC)
     previous = Application.get_env(:cantrip, :rpc_module)
+    previous_timeout = Application.get_env(:cantrip, :rpc_timeout)
     Application.put_env(:cantrip, :rpc_module, FakeRPC)
 
     on_exit(fn ->
@@ -20,6 +25,12 @@ defmodule Cantrip.DistributedCantripTest do
         Application.put_env(:cantrip, :rpc_module, previous)
       else
         Application.delete_env(:cantrip, :rpc_module)
+      end
+
+      if previous_timeout do
+        Application.put_env(:cantrip, :rpc_timeout, previous_timeout)
+      else
+        Application.delete_env(:cantrip, :rpc_timeout)
       end
 
       if Process.whereis(FakeRPC) == self(), do: Process.unregister(FakeRPC)
@@ -40,8 +51,38 @@ defmodule Cantrip.DistributedCantripTest do
              )
 
     assert cantrip.node == remote
-    assert_receive {:rpc_call, ^remote, Cantrip, :__remote_new__, [attrs]}
+    assert_receive {:rpc_call, ^remote, Cantrip, :__remote_new__, [attrs], 30_000}
     refute Map.has_key?(attrs, :node)
+  end
+
+  test "remote calls use configured rpc timeout and surface badrpc timeout" do
+    remote = :"agents@127.0.0.1"
+    Application.put_env(:cantrip, :rpc_module, BadRPC)
+    Application.put_env(:cantrip, :rpc_timeout, 250)
+
+    assert {:error, message} =
+             Cantrip.new(
+               node: remote,
+               llm: {FakeLLM, FakeLLM.new([%{content: "hello"}])},
+               identity: %{system_prompt: "Answer directly."},
+               circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 1}]}
+             )
+
+    assert message =~ "failed to build cantrip"
+    assert message =~ ":timeout"
+  end
+
+  test "unknown string node fails closed instead of falling back to local execution" do
+    assert {:error, message} =
+             Cantrip.new(%{
+               "node" => "definitely-not-connected@127.0.0.1",
+               llm: {FakeLLM, FakeLLM.new([%{content: "hello"}])},
+               identity: %{system_prompt: "Answer directly."},
+               circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 1}]}
+             })
+
+    assert message =~ "unknown remote node"
+    assert message =~ "definitely-not-connected@127.0.0.1"
   end
 
   test "Cantrip.cast runs remote handles through rpc and preserves remote node on next handle" do
@@ -62,7 +103,7 @@ defmodule Cantrip.DistributedCantripTest do
     assert length(loom.turns) == 1
 
     assert_receive {:rpc_call, ^remote, Cantrip, :__remote_cast__,
-                    [_remote_cantrip, "say hello", _opts]}
+                    [_remote_cantrip, "say hello", _opts], 30_000}
   end
 
   test "remote child casts still graft child turns into the local parent observation" do
@@ -127,10 +168,10 @@ defmodule Cantrip.DistributedCantripTest do
 
     assert {:ok, "from remote", _next, loom, _meta} = Cantrip.cast(familiar, "delegate remotely")
 
-    assert_receive {:rpc_call, ^remote, Cantrip, :__remote_new__, [_attrs]}
+    assert_receive {:rpc_call, ^remote, Cantrip, :__remote_new__, [_attrs], 30_000}
 
     assert_receive {:rpc_call, ^remote, Cantrip, :__remote_cast__,
-                    [_remote_cantrip, "work", _opts]}
+                    [_remote_cantrip, "work", _opts], 30_000}
 
     assert Enum.any?(loom.turns, fn turn ->
              turn.cantrip_id != List.first(loom.turns).cantrip_id

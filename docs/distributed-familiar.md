@@ -56,7 +56,7 @@ with explicit node names and cookies so all nodes agree on identity.
 ## Remote Child Cantrips
 
 Child cantrip configs may include `:node`. When the node is remote,
-`Cantrip.new/1` builds the child on that node with `:rpc.call/4`, and
+`Cantrip.new/1` builds the child on that node with a bounded RPC call, and
 `Cantrip.cast/3` runs the episode on that node. Parent observations still
 receive the child result and loom turns, so the local Familiar's loom keeps the
 delegation trace.
@@ -89,3 +89,39 @@ done.(paragraph)
 Remote casts intentionally do not stream local process events across nodes in
 this first version. The request/response result and child loom are returned;
 fire-and-forget inter-entity messaging remains future work.
+
+Remote RPC calls use the application environment key `:rpc_timeout` under the
+`:cantrip` application and default to 30 seconds:
+
+```elixir
+Application.put_env(:cantrip, :rpc_timeout, 30_000)
+```
+
+Unknown string node names fail closed. A string node name is accepted only when
+it is already this node, already present in `Node.list/0`, or already exists as
+an atom in the VM. Connect the node before handing its string form through a
+serialized Familiar boundary.
+
+## Trust Boundary
+
+Every node in a distributed Erlang cluster is fully trusted. A connected peer
+with the Erlang cookie can execute code on the node and can bypass Cantrip
+wards by operating below the Cantrip API. Treat the cookie and network reach as
+the trust boundary; do not cluster Cantrip nodes across tenants or trust
+domains.
+
+## Failure Modes
+
+Cantrip bounds remote `Cantrip.new/1` and `Cantrip.cast/3` calls with
+`:rpc.call/5`, so a wedged peer returns an error instead of hanging the caller
+forever. Node-down, timeout, and remote exception failures are returned as
+ordinary `{:error, reason, next_cantrip}` or `{:error, reason}` shapes,
+depending on whether a reusable cantrip handle already exists.
+
+Mnesia replication still follows Mnesia's operational model. Network
+partitions can produce divergent `disc_copies`; recovery policy is an operator
+concern, not automatic conflict resolution inside Cantrip. For audit-trail
+looms, prefer a topology that avoids multi-writer partitions, monitor
+`Cantrip.Cluster.connect_mnesia/2` and `replicate_table/3` failures, and verify
+table health after reconnects before relying on the replicated loom as a
+canonical record.
