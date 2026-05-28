@@ -107,6 +107,11 @@ BEAM only. The parent framework VM is not modified. In the safe port evaluator,
 newly loaded modules are added to that child session's Dune allowlist, so the
 same turn can call the module after a successful `compile_and_load`.
 
+Namespace-based compile wards are deliberately unsupported. Use
+`allow_compile_modules` with exact module names; requests that include the
+deprecated `allow_compile_namespaces` ward fail loudly instead of silently
+granting or denying a different authority than the caller intended.
+
 ## Escape Hatches
 
 `sandbox: :port_unrestricted` keeps the child process and timeout cleanup but

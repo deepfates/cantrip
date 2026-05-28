@@ -159,6 +159,10 @@ Wards are maps. Common wards include:
 - `%{allow_compile_paths: paths}`
 - `%{allow_compile_signers: signers}`
 
+`compile_and_load` accepts exact module allowlists via `allow_compile_modules`.
+Deprecated `allow_compile_namespaces` wards are rejected loudly, and framework
+module names are not hot-loadable.
+
 Gate failures are observations. They are returned to the entity as data so the
 next turn can adapt.
 

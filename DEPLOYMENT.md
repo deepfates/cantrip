@@ -197,7 +197,7 @@ Default wards on the Familiar's circle:
 | `max_turns` | 20 | Cap on iterations per cast |
 | `max_depth` | 3 | Cap on recursive child spawning |
 | `code_eval_timeout_ms` | 120,000 (2 min) | Per-turn time bound |
-| `allow_compile_namespaces` | only when `evolve: true` | Hot-reload restricted to a sub-namespace |
+| `allow_compile_modules` | only when `evolve: true` | Hot-reload restricted to exact module names |
 
 Tune per deployment. Long-running workflows may want higher
 `max_turns`; cost-sensitive deployments may want lower
@@ -208,11 +208,12 @@ entity.
 ## Hot reload (self-modification)
 
 `compile_and_load` is opt-in for the Familiar. Pass `evolve: true` to include
-the gate and scope it to the `Cantrip.Hot.*` namespace. The entity can then
-write new Elixir modules into that subtree and hot-load them into its child
-BEAM session. It cannot redefine `Cantrip.Familiar`, `Cantrip.Gate`, or any
-other framework module in the parent runtime — the parent validates the
-namespace boundary before the child compiles.
+the gate and scope it to the exact modules listed in `allow_compile_modules`.
+The built-in Familiar configuration allows the `Cantrip.Hot.*` modules it
+declares for evolution; arbitrary namespace allowlists are no longer accepted.
+The entity can hot-load those allowed modules into its child BEAM session. It
+cannot redefine `Cantrip.Familiar`, `Cantrip.Gate`, or any other framework
+module — the parent rejects framework module names before the child compiles.
 
 This is the entity's evolutionary surface. Combined with the BEAM's
 hot-code-loading semantics (old version stays loaded for active

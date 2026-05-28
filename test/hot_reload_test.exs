@@ -17,6 +17,37 @@ defmodule Cantrip.HotReloadTest do
     assert obs.result =~ "requires allow_compile_modules"
   end
 
+  test "compile_and_load rejects framework module names even when explicitly allowed" do
+    module_name = "Elixir.Cantrip.Familiar"
+
+    obs =
+      Cantrip.Gate.CompileAndLoad.execute(
+        %{
+          module: module_name,
+          source: "defmodule Cantrip.Familiar do def compromised?, do: true end end"
+        },
+        [%{max_turns: 1}, %{allow_compile_modules: [module_name]}],
+        %{name: "compile_and_load"}
+      )
+
+    assert obs.is_error
+    assert obs.result =~ "framework module names cannot be hot-loaded"
+  end
+
+  test "compile_and_load rejects deprecated namespace allowlists loudly" do
+    module_name = "Elixir.MyApp.Plugin"
+
+    obs =
+      Cantrip.Gate.CompileAndLoad.execute(
+        %{module: module_name, source: "defmodule MyApp.Plugin do end"},
+        [%{max_turns: 1}, %{allow_compile_namespaces: ["Elixir.MyApp."]}],
+        %{name: "compile_and_load"}
+      )
+
+    assert obs.is_error
+    assert obs.result =~ "allow_compile_namespaces is no longer supported"
+  end
+
   test "hot-reload gate compiles and reloads allowed module" do
     module_name = "Elixir.Cantrip.HotReloadDemo"
     module = String.to_atom(module_name)
@@ -143,7 +174,7 @@ defmodule Cantrip.HotReloadTest do
     [turn] = loom.turns
     [obs | _] = turn.observation
     assert obs.is_error
-    assert obs.result =~ "module not allowed"
+    assert obs.result =~ "framework module names cannot be hot-loaded"
   end
 
   test "hot-reload gate rejects non-warded modules" do
