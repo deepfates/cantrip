@@ -18,7 +18,7 @@ baseline.
 
 ## Headline
 
-**All active cleanup issues are closed with proof. 4 new issues filed during
+**All active cleanup issues are closed with proof. 5 new issues filed during
 the pass: #32 Pass 10 versioning, #34 Pass 5 follow-up, #35 compile_and_load
 policy gaps, #36 cookie overwrite, and #37 live real-LLM prompt drift. #11,
 #32, #34, #35, #36, and #37 are closed with proof. #9 has also shipped as
@@ -85,7 +85,7 @@ holds — those are adjacent concerns, not a reopen.
 | 12 | Package / dependency boundaries | **done** | #3 closed (port surface proxies public API; Dune deliberate variant). |
 | 13 | Observability / context propagation | **done** | #11 closed: event registry + trace_id propagation via parent_context for cast_batch + ACP isolation work correctly. The port-child boundary now carries `entity_id`/`trace_id` in the eval environment, installs them with telemetry context before user code runs, and forwards child telemetry frames back to the parent BEAM for re-emission. Regression coverage asserts parent-originated and child-originated events share the same trace. |
 | 14 | Idiomatic / performance | **clean** | Final scan found regex only in appropriate redaction, user-search, cookie validation, submit-line extraction, whitespace normalization, and tests; no Ecto paths exist. Remaining branching is coordination/runtime logic rather than a cleanup blocker. |
-| 15 | Final verification / governance lock-in | **done-pending-final-ci** | `mix verify` green locally. CI now runs `scripts/check_cleanup_guide.sh` to prevent cleanup-guide regressions such as unbounded `String.to_atom`, unsafe `binary_to_term`, ambient env reads, and bare `spawn`. Final status depends on the PR check for the last pushed commit. |
+| 15 | Final verification / governance lock-in | **done** | `mix verify` green locally and GitHub PR `verify` green on the final head. CI runs `scripts/check_cleanup_guide.sh` to prevent cleanup-guide regressions such as unbounded `String.to_atom`, unsafe `binary_to_term`, ambient env reads, and bare `spawn`. |
 
 ---
 
