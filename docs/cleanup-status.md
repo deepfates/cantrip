@@ -72,20 +72,20 @@ holds — those are adjacent concerns, not a reopen.
 |---:|---|---|---|
 | 0 | Baseline & inventory | **done** | v1.0.0 baseline + Pass 0 ripgrep scans complete (Pass 4/6/8/10). |
 | 1 | Transformation safety | **done** | #27 AST rewrite shipped. No other regex-based source transforms in lib/. |
-| 2 | Boundary / DTO integrity | **done** | #22 + #25 + #30 all closed with proof. |
+| 2 | Boundary / DTO integrity | **partial** | #22 + #25 + #30 issue closures land the visible boundary work. Per-pass audit (`scratch/agent-comms/inbox/20260528T033046Z`) found four contract gaps still open: `@enforce_keys` missing on every durable struct (allows `%Cantrip{}` construction with all-nil fields, bypassing `Cantrip.new` validation); `validate_folding`/`validate_loom_storage` don't exist (only `validate_retry` uses NimbleOptions); no unknown-key rejection at any public constructor; `Loom.new` silently degrades to Memory backend on storage init failure (`lib/cantrip/loom.ex:81-92`). |
 | 3 | Atom safety | **done** | #21 closed; all paths bounded. |
 | 4 | Configuration / ambient authority | **clean** | Pass 0 scan: 5 hits, all in boot/config paths. No hot-path violations. |
 | 5 | Secret redaction & error sanitization | **done** | Safe boundary formatting now covers gate observations, code-medium observations/protocol frames, ACP replies, CLI output, loom storage, child-cast observations/events, and provider adapter errors. Evidence: `test/redact_test.exs` Pass 5 boundary formatting tests plus the source scan recorded in #34. |
 | 6 | Unsafe deserialization / runtime eval | **clean** | Pass 0 scan: all `binary_to_term` uses `[:safe]` flag; `Code.eval_quoted` only in sandboxed port child. `compile_and_load` gated by exact-module allowlist. |
-| 7 | OTP lifecycle / supervision | **done-for-tracked-issues** | #24 moved long-running entity episodes out of `handle_call/3` into a supervised, monitored per-entity runner. |
+| 7 | OTP lifecycle / supervision | **partial** | #24 runner refactor solid. Per-pass audit confirmed all `Task.async` sites have proper await/yield/shutdown discipline. One real gap remains: `lib/cantrip/acp/event_bridge.ex:38` bare `spawn` — violates Pass 7 exit criterion "No bare process spawning remains." Convert to `Task.Supervisor.start_child/2`. Process inventory now in `docs/architecture.md`. |
 | 8 | Mailbox / backpressure | **clean** | Pass 0 scan: 0 `GenServer.cast`, 0 `handle_info`, raw `send/` only within supervised public API + port-child protocol. |
 | 9 | GenServer functional-core cleanup | **done-for-tracked-issues** | #24 moved the main blocking workflow out of `EntityServer.handle_call/3` while keeping lifecycle and coordination in the GenServer. |
-| 10 | Serialization / protocol / versioning | **done** | #32 closed with proof. Durable structs and JSONL loom format are versioned; no-header JSONL files load as legacy v1. |
+| 10 | Serialization / protocol / versioning | **partial** | #32 covers JSONL version + durable-struct schema_version. Per-pass audit found two gaps: unsupported-version `raise` at `loom/storage/jsonl.ex:117` is untested; Mnesia backend has no version handling at all (relies on Erlang term backward compat, silent field loss possible on shape evolution). |
 | 11 | Persistence / state backend cleanup | **done** | #31 closed; Mnesia restart persistence verified. |
 | 12 | Package / dependency boundaries | **done** | #3 closed (port surface proxies public API; Dune deliberate variant). |
-| 13 | Observability / context propagation | **done** | #11 closed with proof. `docs/observability.md` and the runtime event registry are aligned and tested. |
+| 13 | Observability / context propagation | **partial** | #11 closed: event registry + trace_id propagation via parent_context for cast_batch + ACP isolation work correctly (audit-verified). One gap: port-child boundary breaks trace_id — request tuple at `lib/cantrip/medium/code/port.ex:25-34` omits trace_id, so port-child events sever the trace tree. Fix: add trace_id to port request + install via `with_context` in port_child. ~10 LOC. |
 | 14 | Idiomatic / performance | **clean** | Final scan found regex only in appropriate redaction, user-search, cookie validation, submit-line extraction, whitespace normalization, and tests; no Ecto paths exist. Remaining branching is coordination/runtime logic rather than a cleanup blocker. |
-| 15 | Final verification / governance lock-in | **done** | CI `verify` is green on PR #33; local `mix verify` passed after the last code changes; final docs/package warnings were cleaned up in the release documentation pass. |
+| 15 | Final verification / governance lock-in | **partial** | `mix verify` green + PR CI green ✓. The lock-in half — automated CI scans for cleanup-guide regression patterns (`fail_if_found 'String.to_atom'`, `binary_to_term` without `[:safe]`, etc.) — is NOT wired. Without these gates, the cleanup we just did can silently regress. Pass 15 prescribes this explicitly (guide lines 1463-1488). |
 
 ---
 
