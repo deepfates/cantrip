@@ -20,9 +20,9 @@ baseline.
 
 **13 of 16 starting issues closed with proof. 4 new issues filed: #32 Pass 10
 versioning, #34 Pass 5 follow-up, #35 compile_and_load policy gaps, #36
-cookie overwrite. #34, #35, and #36 are closed with proof. 3 feature-roadmap
-issues labeled `feature` and kept open. 2 active cleanup issues remain (#11,
-#32).**
+cookie overwrite. #11, #34, #35, and #36 are closed with proof. 3
+feature-roadmap issues labeled `feature` and kept open. 1 active cleanup issue
+remains (#32).**
 
 The post-d12875c cold review caught two reward-hacking patterns: Pass 5 was
 marked "done" while ~30 boundary inspect/Exception.message bypass channels
@@ -40,7 +40,7 @@ holds — those are adjacent concerns, not a reopen.
 | 8 | Eval harness for Familiar prompts | **open, `feature`** | Roadmap, not cleanup defect. |
 | 9 | First-class `mix` gate | **open, `feature`** | Roadmap, not cleanup defect. |
 | 10 | Distributed Familiar | **open, `feature`** | Roadmap, not cleanup defect. |
-| 11 | Telemetry coverage + observability runbook | **open** | Pass 13 work. Substantive design + impl scope. |
+| 11 | Telemetry coverage + observability runbook | **closed** | `Cantrip.Telemetry.events/0` is the runtime registry. Events now carry `trace_id`; root casts accept external trace IDs and child casts inherit them. Runtime emits entity/turn/gate/code/bash lifecycle events plus usage, redaction-hit, fold-trigger, ward-truncate, child start/stop, and compile_and_load events. Evidence: `test/telemetry_test.exs` covers the registry and every documented event family; redaction-hit coverage is also pinned by a boundary `read_file` test. Commits `f08c847`, `c0fcc65`. |
 | 12 | Dune sandbox over-restricts | **closed** | Dune is deliberate variant per #3 resolution. |
 | 20 | Sandbox roots for filesystem gates | **closed** | `Cantrip.Gate.Path.validate/2` shared across all FS gates. Evidence: `test/gate_validation_test.exs:55-75`, `:99-133`. |
 | 21 | Unbounded atom creation | **closed** | All paths bounded. Commits `d12875c`, `bc2bf01`, `80287b7`, `ca115b0`. |
@@ -82,7 +82,7 @@ holds — those are adjacent concerns, not a reopen.
 | 10 | Serialization / protocol / versioning | **issue-filed** | #32 captures the gap. Forward-prep work. |
 | 11 | Persistence / state backend cleanup | **done** | #31 closed; Mnesia restart persistence verified. |
 | 12 | Package / dependency boundaries | **done** | #3 closed (port surface proxies public API; Dune deliberate variant). |
-| 13 | Observability / context propagation | **issue-open** | #11 covers this entirely. |
+| 13 | Observability / context propagation | **done** | #11 closed with proof. `docs/observability.md` and `Cantrip.Telemetry.events/0` are aligned and tested. |
 | 14 | Idiomatic / performance | **not-needed-yet** | Late pass per guide; codebase is already idiomatic. |
 | 15 | Final verification / governance lock-in | **deferred** | Final pass after all earlier passes done. |
 
@@ -90,14 +90,13 @@ holds — those are adjacent concerns, not a reopen.
 
 ## What's Left
 
-Two open cleanup items, in priority order:
+One open cleanup item:
 
-1. **#11 telemetry coverage** — implementation against the contract in `docs/observability.md`. Trace_id propagation + 7 missing events + per-event regression tests. Codex lane.
-2. **#32 schema versioning** — forward-prep, not blocking anything. Add `schema_version: 1` to durable structs + JSONL header. Codex lane when scheduled.
+1. **#32 schema versioning** — forward-prep, not blocking anything. Add `schema_version: 1` to durable structs + JSONL header. Codex lane when scheduled.
 
 Plus three feature-roadmap items (`feature` label) that intentionally aren't blocking the cleanup-done milestone: #8, #9, #10.
 
-The cleanup phase reaches "done" when #11 and #32 land and `mix verify` stays green. Then we ship a v1.1.0 from `feat/comprehensive-cleanup` and the open issue tracker has only the three intentionally-deferred feature items.
+The cleanup phase reaches "done" when #32 lands and `mix verify` stays green. Then we ship a v1.1.0 from `feat/comprehensive-cleanup` and the open issue tracker has only the three intentionally-deferred feature items.
 
 ---
 
