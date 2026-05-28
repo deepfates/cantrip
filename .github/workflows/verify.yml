@@ -29,6 +29,9 @@ jobs:
       - name: Signer policy checks
         run: ./scripts/check_signer_policy.sh
 
+      - name: Cleanup guide regression checks
+        run: ./scripts/check_cleanup_guide.sh
+
       - name: Build docs
         run: mix docs
 
