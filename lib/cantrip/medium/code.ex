@@ -408,83 +408,51 @@ defmodule Cantrip.Medium.Code do
   end
 
   @doc false
-  # Transform bare gate calls like `done(x)` into `done.(x)` so LLMs
-  # don't need to remember Elixir's dot-call syntax for closures.
-  #
-  # Rules:
-  # - Don't transform inside strings (single or double quoted, heredocs)
-  # - Don't transform module-qualified calls: `Mod.done(`
-  # - Don't transform already-dotted calls: `done.(`
   def add_dot_calls(code, gate_names) when gate_names == [], do: code
 
   def add_dot_calls(code, gate_names) do
-    names_pattern = gate_names |> Enum.sort_by(&(-String.length(&1))) |> Enum.join("|")
-    regex = Regex.compile!("(?<![.\\w])(#{names_pattern})\\(")
+    gate_set = MapSet.new(gate_names)
 
-    code
-    |> split_string_segments()
-    |> Enum.map(fn
-      {:code, segment} -> Regex.replace(regex, segment, "\\1.(")
-      {:string, segment} -> segment
-    end)
-    |> Enum.join()
+    case Code.string_to_quoted(code) do
+      {:ok, quoted} ->
+        quoted
+        |> rewrite_gate_calls(gate_set)
+        |> Macro.to_string()
+
+      {:error, _reason} ->
+        code
+    end
   end
 
-  # Split code into alternating code/string segments
-  defp split_string_segments(code) do
-    split_segments(code, [], "", false, nil)
+  @definition_forms [:def, :defp, :defmacro, :defmacrop]
+
+  defp rewrite_gate_calls({form, meta, [head, body]}, gate_set)
+       when form in @definition_forms and is_list(body) do
+    {form, meta, [head, rewrite_gate_calls(body, gate_set)]}
   end
 
-  defp split_segments("", acc, current, in_string, _delim) do
-    type = if in_string, do: :string, else: :code
-    Enum.reverse([{type, current} | acc])
+  defp rewrite_gate_calls({name, meta, args}, gate_set) when is_atom(name) and is_list(args) do
+    args = Enum.map(args, &rewrite_gate_calls(&1, gate_set))
+
+    if MapSet.member?(gate_set, Atom.to_string(name)) do
+      {{:., meta, [{name, meta, nil}]}, meta, args}
+    else
+      {name, meta, args}
+    end
   end
 
-  # Heredoc double-quote open
-  defp split_segments(~s(""") <> rest, acc, current, false, nil) do
-    split_segments(rest, [{:code, current} | acc], ~s("""), true, :heredoc_double)
+  defp rewrite_gate_calls(list, gate_set) when is_list(list) do
+    Enum.map(list, &rewrite_gate_calls(&1, gate_set))
   end
 
-  defp split_segments(~s(""") <> rest, acc, current, true, :heredoc_double) do
-    split_segments(rest, [{:string, current <> ~s(""")} | acc], "", false, nil)
+  defp rewrite_gate_calls(tuple, gate_set) when is_tuple(tuple) do
+    tuple
+    |> Tuple.to_list()
+    |> Enum.map(&rewrite_gate_calls(&1, gate_set))
+    |> List.to_tuple()
   end
 
-  # Heredoc single-quote open
-  defp split_segments("'''" <> rest, acc, current, false, nil) do
-    split_segments(rest, [{:code, current} | acc], "'''", true, :heredoc_single)
-  end
-
-  defp split_segments("'''" <> rest, acc, current, true, :heredoc_single) do
-    split_segments(rest, [{:string, current <> "'''"} | acc], "", false, nil)
-  end
-
-  # Escaped chars inside strings
-  defp split_segments("\\" <> <<c::utf8>> <> rest, acc, current, true, delim) do
-    split_segments(rest, acc, current <> "\\" <> <<c::utf8>>, true, delim)
-  end
-
-  # Double-quote boundaries
-  defp split_segments("\"" <> rest, acc, current, false, nil) do
-    split_segments(rest, [{:code, current} | acc], "\"", true, :double)
-  end
-
-  defp split_segments("\"" <> rest, acc, current, true, :double) do
-    split_segments(rest, [{:string, current <> "\""} | acc], "", false, nil)
-  end
-
-  # Single-quote boundaries
-  defp split_segments("'" <> rest, acc, current, false, nil) do
-    split_segments(rest, [{:code, current} | acc], "'", true, :single)
-  end
-
-  defp split_segments("'" <> rest, acc, current, true, :single) do
-    split_segments(rest, [{:string, current <> "'"} | acc], "", false, nil)
-  end
-
-  # Any other character
-  defp split_segments(<<c::utf8>> <> rest, acc, current, in_string, delim) do
-    split_segments(rest, acc, current <> <<c::utf8>>, in_string, delim)
-  end
+  defp rewrite_gate_calls(other, _gate_set), do: other
 
   defp medium_intro_text do
     """

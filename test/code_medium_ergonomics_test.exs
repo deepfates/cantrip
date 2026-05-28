@@ -256,6 +256,18 @@ defmodule Cantrip.Medium.CodeErgonomicsTest do
       assert terminated
       assert result == "hello"
     end
+
+    test "parser-aware transform does not rewrite function definitions" do
+      transformed =
+        Cantrip.Medium.Code.add_dot_calls(
+          ~s[def done(value), do: {:local, value}\nresult = done("x")],
+          ["done"]
+        )
+
+      assert transformed =~ "def done(value)"
+      assert transformed =~ ~s|result = done.("x")|
+      refute transformed =~ "def done.(value)"
+    end
   end
 
   describe "compile_and_load bare-value args" do
