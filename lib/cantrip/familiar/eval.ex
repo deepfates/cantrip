@@ -458,7 +458,13 @@ defmodule Cantrip.Familiar.Eval do
     {score, %{}}
   end
 
-  defp criterion_score(_run, _criterion, _scenario, _opts), do: {0, %{error: "unknown criterion"}}
+  defp criterion_score(_run, criterion, _scenario, _opts) do
+    Logger.warning(
+      "Cantrip.Familiar.Eval: unknown rubric criterion #{inspect(criterion)} — scoring 0"
+    )
+
+    {0, %{error: "unknown criterion"}}
+  end
 
   defp judge_criterion(run, prompt, criterion, scenario, opts) do
     with {:ok, {module, state}} <- judge_llm(scenario, run.seed, opts),
@@ -606,6 +612,9 @@ defmodule Cantrip.Familiar.Eval do
   defp turns(_run, _opts), do: []
 
   defp turn_with_children(turn) do
+    # Cantrip.Loom.append_executed_turn/4 grafts child turns flat into
+    # `loom.turns`; this traversal is retained for rehydrated observations
+    # that still carry nested `:child_turns`.
     [turn | Enum.flat_map(child_turns(turn), &turn_with_children/1)]
   end
 
@@ -713,10 +722,15 @@ defmodule Cantrip.Familiar.Eval do
   defp jsonable(value) when is_list(value), do: Enum.map(value, &jsonable/1)
   defp jsonable(value) when is_function(value), do: "#Function<>"
   defp jsonable(value) when is_atom(value), do: Atom.to_string(value)
+
+  defp jsonable(value) when is_pid(value) or is_reference(value) or is_port(value),
+    do: %{"__inspect__" => inspect(value)}
+
   defp jsonable(value), do: value
 
   defp scenario_name(%{name: name}) when is_binary(name), do: name
   defp scenario_name(%{name: name}), do: to_string(name)
+  defp scenario_name(_), do: "unnamed"
 
   defp slug(value) do
     value
