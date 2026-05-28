@@ -18,14 +18,22 @@ when present, `scripts/check_cleanup_guide.sh`, and the v1.0.0 release commit
 
 ## Headline
 
-**As of 2026-05-28T13:21:26Z, the post-v1.2 stabilization queue is empty.**
+**As of 2026-05-28T18:27:12Z, the post-v1.2 stabilization queue is empty
+again after v1.3.1.**
 
 - Open GitHub issues: **0**.
-- Open GitHub PRs at this snapshot (before opening this docs PR #80): **0**.
-- Latest stabilization merge: PR #79, `779479b`, `fix: project bash gates through sandbox`.
-- Main branch CI after PR #79: run `26577026692`, **success**.
-- The full post-v1.2 audit queue (#41-#69) has shipped through focused PRs
-  with regression coverage and release gates.
+- Open GitHub PRs: **0**.
+- Latest tagged release: **v1.3.1** on `8498e97`, tagged at
+  2026-05-28T18:21:11Z.
+- Latest stabilization merge: PR #94, `8498e97`, `fix: fail closed and
+  redact observation args`.
+- Main branch CI after PR #94: run `26593745071`, **success**.
+- v1.3.1 tag CI: run `26593781214`, **success**.
+- v1.3.0 shipped at 2026-05-28T17:29Z (`c71b0d7`, tag `v1.3.0`) and
+  was superseded by v1.3.1 after two post-tag safety defects were found:
+  #92 observation args could persist unredacted credential-shaped values,
+  and #93 unknown code sandbox ward values fell back to unrestricted eval.
+  Both were fixed in PR #94.
 
 ### What Changed Since v1.2.0
 
@@ -50,6 +58,82 @@ Commit `e747317` rolled back overclaimed "done" status once for passes 2, 7,
 10, 13, and 15. The 2026-05-28 post-v1.2 re-audit rolled pass status back a
 second time for passes 2, 6, 11, and 13. The final state below incorporates the
 second audit and the subsequent fixes through PR #79.
+
+v1.3.0 tagged at 17:29Z; safety defects #92 + #93 (found by adversarial
+reviewer, not by audit-pass scans) were discovered at 17:34Z and fixed in
+v1.3.1. The lesson: "all cleanup-guide passes done" claim still doesn't
+mean "release-ready" — adversarial code-reading catches a different class
+of defect than scan-based audits.
+
+### Reward-Hack Honest Assessment (added 2026-05-28T17:54Z)
+
+Post-tag rigorous re-examination of today's PRs surfaced a confirmation-
+bias pattern in the claude-observed → codex-fixed → test-verifies-pattern
+loop. Several closures match this shape:
+
+- **PR #90** (Familiar composition teaching, closing #83) — partial.
+  Methodological criticism stands: the in-CI FakeLLM test grades rigged
+  scenarios tautologically rather than measuring real-LLM behavior under
+  the new prompt. Prompt text additions came from claude's specific
+  REPL failure modes. BUT: codex ran a scratch live-LLM A/B probe on
+  the #83 synthesis user story (current prompt vs prompt-with-PR-#90-
+  paragraphs-removed); the without-paragraphs version reproduced the
+  data-dump failure (`PATH: module.ex` + raw source), with-paragraphs
+  version produced synthesized prose using a conversation child. Single
+  data point but directly on the motivating user story — falsifies the
+  strongest version of "zero behavioral evidence." Codex's decision:
+  keep the prompt change in v1.3.1; consider a gated real-LLM composition
+  eval as future evidence; don't claim the FakeLLM test is behavioral
+  proof.
+- **PR #67 / #74** (loom code_state delta compaction, closing #67) —
+  partial. Claude's observed 130KB record had 65KB code_state AND 65KB
+  observation. Fix addresses binding-reuse compaction; observation-bloat
+  half wasn't addressed because claude framed it as binding-only. Test
+  pins claude's specific 50KB-binding-reuse pattern.
+- **PR #82 / #84** (bash workload contract, closing #82) — partial.
+  Workload suite (git + jq + make + find/sed/grep, three of four using
+  /dev/null redirects) skewed toward claude's specific observation
+  (`git log -1 --stat` with /dev/null). L2 framing was sound; coverage
+  of OTHER common shell workloads (python/pip, curl, etc.) absent.
+
+Holds up under reward-hack pressure: DTOs (#76, #77), ward composition
+(#73, #78), ExDoc allowlist (#89), .env.example (#88), version drift
+(#91), the runtime-safety patches (#92, #93 via #94) — observable
+independent metrics; fixes not pattern-matched to claude's observation
+set.
+
+The discipline lesson: a closing test of "the thing claude said is wrong
+now passes a test constructed around the thing claude said is wrong" is
+not the same as "the underlying behavior actually improved for real
+users." Adversarial code-reading and real-LLM eval are different
+instruments and produce different signal.
+
+### What we'd do differently
+
+For future observation-shaped findings (behavioral claims about
+entity/LLM behavior, UX failures, "this feels wrong" patterns), the
+healthier loop shape is:
+
+1. claude flags concern as a weak claim: "observed X in N runs under Z
+   conditions"
+2. proposes the probe that would distinguish "real bug" from "narrow
+   observation": e.g. live-LLM A/B between candidate fix and baseline
+   prompt on the motivating user story, measuring [specific metric]
+3. whoever has the eval discipline runs the probe
+4. fix is calibrated to probe evidence, not to the observation that
+   triggered the investigation
+
+Codex's live A/B probe on PR #90 (current prompt vs prompt-with-#90-
+paragraphs-removed) is the canonical example: the probe falsified the
+strongest version of claude's reward-hack criticism while validating
+the methodological half. That shape — observe, probe, calibrate — is
+load-bearing; "observe, implement, both claim improvement" is the
+reward-hack trap.
+
+For structural findings (spec violations, missing files, version drift,
+security defects visible in code-reading), the verification path is
+grep + read; probe is overkill. The two loops are different and should
+not be conflated.
 
 The lesson is now part of the working standard: pass completion requires both
 code evidence and an independent re-audit against the relevant guide criteria.
