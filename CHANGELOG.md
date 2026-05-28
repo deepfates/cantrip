@@ -2,10 +2,9 @@
 
 ## Unreleased
 
-Post-v1 hardening and cleanup pass. 13 issues closed from the v1 backlog
-(#3, #12, #20, #21, #22, #23, #24, #25, #26, #27, #30, #31) plus 3 issues
-filed and closed during the pass (#34, #35, #36). Cleanup-status tracker at
-[`docs/cleanup-status.md`](./docs/cleanup-status.md).
+Post-v1 hardening and cleanup pass. All cleanup issues from the v1 backlog
+are closed with proof, including issues filed during the cleanup pass
+(#32, #34, #35, #36). See the cleanup-status tracker for the full ledger.
 
 **Behavior change** worth flagging for downstream callers:
 
@@ -36,17 +35,16 @@ filed and closed during the pass (#34, #35, #36). Cleanup-status tracker at
   bindings use `String.to_existing_atom/1`; loom JSONL restoration uses
   existing atoms; Familiar table/node atoms use SHA-256 fingerprints.
 - All three filesystem gates (`read_file`, `list_dir`, `search`) now route
-  through `Cantrip.Gate.Path.validate/2` consistently — missing root fails
-  closed, path traversal fails closed.
-- `Cantrip.Medium.Code.add_dot_calls/2` now parses with
+  through shared path validation consistently: missing root fails closed,
+  path traversal fails closed.
+- Code-medium bare gate-call rewriting now parses with
   `Code.string_to_quoted/1` and rewrites local gate-call AST nodes rather
   than doing text-level rewrites. Strings, remote calls, already-dotted
   calls, and definition heads are no longer subject to surprising rewrites.
-- `Cantrip.SafeFormat` wraps all boundary error stringification (provider
-  errors, JSONL persistence fallbacks, port code-medium error surfaces,
-  gate observations, ACP wire stringification, CLI output). Credential-
-  shaped substrings are redacted before crossing entity, disk, or protocol
-  boundaries.
+- Safe boundary formatting wraps provider errors, JSONL persistence fallbacks,
+  port code-medium error surfaces, gate observations, ACP wire
+  stringification, and CLI output. Credential-shaped substrings are redacted
+  before crossing entity, disk, or protocol boundaries.
 - `req_llm` 1.12 preserves multiple system messages through both Anthropic
   and Gemini encoders; previously the v1.9 path could drop secondary
   system messages.
@@ -68,13 +66,10 @@ filed and closed during the pass (#34, #35, #36). Cleanup-status tracker at
   implementation of the 9-item event checklist tracked on #11.
 - `docs/cleanup-status.md` is the living tracker for the cleanup pass.
 
-**Deferred to next release:**
+**Feature roadmap, not cleanup blockers:**
 
-- #11 (telemetry implementation against the observability contract)
-- #32 (schema versioning on durable structs + JSONL format header)
-- Feature roadmap items #8, #9, #10 (eval harness, mix gate, distributed
-  Familiar) labeled `feature`, intentionally not blocking the cleanup
-  milestone.
+- #8, #9, #10 (eval harness, mix gate, distributed Familiar) remain open
+  and labeled `feature`.
 
 ## 1.0.0
 
@@ -93,17 +88,15 @@ test module.
   nothing. Switched to `ReqLLM.StreamResponse.process_stream/2`, the
   documented public API for streaming tool-using agents.
 - Fixed: persistent entities (`Cantrip.summon` + `Cantrip.send`) lost
-  every assistant turn across sends. The terminating branch of
-  `Cantrip.EntityServer.execute_turn/4` never folded the final assistant
-  message into `state.messages`. The next send appended a user message
-  to a history that still ended at the prior user message; the model saw
-  a stack of users with no record of its own answers and anchored on the
-  first prompt.
-- Fixed: `Cantrip.Folding.partition/1` only preserved one leading
-  `:system` message. `Cantrip.EntityServer.initial_messages/3` emits
-  two (identity + capability text). On fold, the capability text dropped
-  into the foldable body — over long sessions the entity would silently
-  lose its medium physics instructions.
+  every assistant turn across sends. The terminating branch of entity turn
+  execution never folded the final assistant message into `state.messages`.
+  The next send appended a user message to a history that still ended at the
+  prior user message; the model saw a stack of users with no record of its
+  own answers and anchored on the first prompt.
+- Fixed: folding only preserved one leading `:system` message even though
+  initial message construction can emit two (identity + capability text).
+  On fold, the capability text dropped into the foldable body — over long
+  sessions the entity would silently lose its medium physics instructions.
 - Upgraded `req_llm` from `~> 1.9` to `~> 1.12`. v1.12's
   `agentjido/req_llm@9d790fd` removes the offending `intersperse` between
   Anthropic system content blocks. With the upstream encoder fixed, the

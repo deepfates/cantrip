@@ -30,8 +30,8 @@ All events are emitted under the `[:cantrip, ...]` prefix.
 | `[:cantrip, :redact, :hit]` | `count` | `entity_id, trace_id` | `Redact.scan/1` when boundary redaction removes a credential |
 | `[:cantrip, :fold, :trigger]` | — | `entity_id, turn_number, trace_id` | `EntityServer.run_loop/1` when folding fires |
 | `[:cantrip, :ward, :truncate]` | — | `entity_id, ward, trace_id` | `EntityServer.run_loop/1` when a ward stops execution |
-| `[:cantrip, :child, :start]` | — | `entity_id, child_depth, trace_id` | `Cantrip.run_child_cast/4` before child cast |
-| `[:cantrip, :child, :stop]` | — | `entity_id, child_depth, outcome, trace_id` | `Cantrip.run_child_cast/4` after child cast |
+| `[:cantrip, :child, :start]` | — | `entity_id, child_depth, trace_id` | child-cast coordinator before child cast |
+| `[:cantrip, :child, :stop]` | — | `entity_id, child_depth, outcome, trace_id` | child-cast coordinator after child cast |
 | `[:cantrip, :compile_and_load]` | `duration` | `entity_id, module, outcome, trace_id` | `EntityServer.execute_compile_and_load/2` per hot-load attempt |
 
 `duration` measurements are `System.monotonic_time/0` deltas (native units —
@@ -44,8 +44,8 @@ convert with `System.convert_time_unit/3` at the subscriber).
   parent cantrip context through child cantrips so a full trace forms a tree
   rooted at the originating episode.
 - **No raw prompts, no LLM responses, no credentials, no provider response
-  bodies** appear in event metadata. The redaction discipline is enforced by
-  `Cantrip.SafeFormat` at every event-emission site that accepts a string.
+  bodies** appear in event metadata. Event-emission sites that accept strings
+  pass those values through the safe boundary-formatting layer.
 
 ---
 
@@ -171,13 +171,13 @@ Cantrip.cast(cantrip, intent, trace_id: external_request_id)
 - **Loom record contents.** The loom is the durable trace; subscribe to the
   loom directly via `Cantrip.Loom` API if you need turn-level data. Telemetry
   is for operational metrics, not data plane.
-- **Stack traces.** Errors arrive as observation strings (already redacted via
-  `Cantrip.SafeFormat`). Unredacted stack traces stay internal.
+- **Stack traces.** Errors arrive as already-redacted observation strings.
+  Unredacted stack traces stay internal.
 
 ---
 
 ## Event Registry In Code
 
-`Cantrip.Telemetry.events/0` returns the runtime registry used by tests and
-documentation review. New telemetry surfaces should be added there first, then
-pinned by a regression test and documented in the table above.
+The runtime event registry is used by tests and documentation review. New
+telemetry surfaces should be added there first, then pinned by a regression
+test and documented in the table above.
