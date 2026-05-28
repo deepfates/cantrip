@@ -59,7 +59,8 @@ medium dispatch, loom, folding, multi-send behavior, or anything else with a
 contract between the runtime and a real provider:
 
 ```bash
-RUN_REAL_LLM_TESTS=1 CANTRIP_LLM_PROVIDER=anthropic CANTRIP_MODEL=claude-haiku-4-5 \
+RUN_REAL_LLM_TESTS=1 CANTRIP_LLM_PROVIDER=anthropic ANTHROPIC_MODEL=claude-haiku-4-5 \
+  CANTRIP_TIMEOUT_MS=120000 \
   mix test test/live_anthropic_test.exs test/real_llm_integration_test.exs
 ```
 

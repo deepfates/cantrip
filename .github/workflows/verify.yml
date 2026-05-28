@@ -62,6 +62,8 @@ jobs:
           RUN_REAL_LLM_TESTS: '1'
           CANTRIP_LLM_PROVIDER: anthropic
           CANTRIP_MODEL: claude-haiku-4-5
+          ANTHROPIC_MODEL: claude-haiku-4-5
+          CANTRIP_TIMEOUT_MS: '120000'
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CANTRIP_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |

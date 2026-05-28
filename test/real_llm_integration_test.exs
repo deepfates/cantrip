@@ -21,6 +21,7 @@ defmodule Cantrip.RealLLMIntegrationTest do
             tool_choice: "required"
           },
           circle: %{
+            type: :conversation,
             gates: [
               %{
                 name: :done,

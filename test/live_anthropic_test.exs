@@ -35,7 +35,7 @@ defmodule LiveAnthropicTest do
         :ok
       else
         {:ok, llm} = Cantrip.LLM.from_env(%{stream: "false"})
-        assert {:ok, value, _, _, _} = drive_code_medium(llm)
+        value = assert_live_ok(drive_code_medium(llm))
 
         assert is_binary(value) and String.length(value) > 0,
                "expected a filename string from done, got: #{inspect(value)}"
@@ -47,7 +47,7 @@ defmodule LiveAnthropicTest do
         :ok
       else
         {:ok, llm} = Cantrip.LLM.from_env(%{stream: "true"})
-        assert {:ok, value, _, _, _} = drive_code_medium(llm)
+        value = assert_live_ok(drive_code_medium(llm))
 
         assert is_binary(value) and String.length(value) > 0,
                "streaming dropped the tool call — got prose or empty instead of a filename. " <>
@@ -77,7 +77,7 @@ defmodule LiveAnthropicTest do
             }
           )
 
-        assert {:ok, answer, _, _, _} = Cantrip.cast(cantrip, "Say hi in one short sentence.")
+        answer = assert_live_ok(Cantrip.cast(cantrip, "Say hi in one short sentence."))
 
         assert is_binary(answer) and String.length(answer) > 0,
                "conversation medium dropped the tool-call result: #{inspect(answer)}"
@@ -108,4 +108,12 @@ defmodule LiveAnthropicTest do
 
     Cantrip.cast(cantrip, "list one file in this repo and report its name")
   end
+
+  defp assert_live_ok({:ok, value, _cantrip, _loom, _meta}), do: value
+
+  defp assert_live_ok({:error, reason, _cantrip}) do
+    flunk("live cantrip failed: #{inspect(reason)}")
+  end
+
+  defp assert_live_ok(other), do: flunk("unexpected live result: #{inspect(other)}")
 end
