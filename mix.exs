@@ -4,7 +4,7 @@ defmodule Cantrip.MixProject do
   def project do
     [
       app: :cantrip,
-      version: "1.0.0",
+      version: "1.1.0",
       elixir: "~> 1.19",
       name: "Cantrip",
       description: description(),

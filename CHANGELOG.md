@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
 Post-v1 hardening and cleanup pass. All cleanup issues from the v1 backlog
 are closed with proof, including issues filed during the cleanup pass
-(#32, #34, #35, #36). See the cleanup-status tracker for the full ledger.
+(#32, #34, #35, #36, #37). See the cleanup-status tracker for the full ledger.
 
 **Behavior change** worth flagging for downstream callers:
 

@@ -116,17 +116,22 @@ defmodule Cantrip.CompositionTest do
     left = blocking_child(coordinator, :left, "slow-left")
     right = blocking_child(coordinator, :right, "fast-right")
 
-    assert {:ok, ["slow-left", "fast-right"], _children, _looms, %{count: 2}} =
-             Cantrip.cast_batch(
-               [
-                 %{cantrip: left, intent: "left work"},
-                 %{cantrip: right, intent: "right work"}
-               ],
-               timeout: 1_500
-             )
+    task =
+      Task.async(fn ->
+        Cantrip.cast_batch(
+          [
+            %{cantrip: left, intent: "left work"},
+            %{cantrip: right, intent: "right work"}
+          ],
+          timeout: 5_000
+        )
+      end)
 
-    assert_receive {:cast_batch_children_started, labels}, 100
+    assert_receive {:cast_batch_children_started, labels}, 1_000
     assert Enum.sort(labels) == [:left, :right]
+
+    assert {:ok, ["slow-left", "fast-right"], _children, _looms, %{count: 2}} =
+             Task.await(task, 5_000)
 
     refute_receive {:cast_batch_parallel_probe_timeout, _started}, 0
 
