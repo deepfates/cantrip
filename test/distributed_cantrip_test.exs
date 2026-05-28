@@ -14,6 +14,16 @@ defmodule Cantrip.DistributedCantripTest do
     def call(_node, _module, _function, _args, _timeout), do: {:badrpc, :timeout}
   end
 
+  defmodule SecretBadRPC do
+    def call(_node, _module, _function, _args, _timeout),
+      do: {:badrpc, %{api_key: "sk-secret1234567890"}}
+  end
+
+  defmodule InvalidSecretRPC do
+    def call(_node, _module, _function, _args, _timeout),
+      do: {:unexpected, %{token: "Bearer secret-token-12345"}}
+  end
+
   setup do
     Process.register(self(), FakeRPC)
     previous = Application.get_env(:cantrip, :rpc_module)
@@ -72,6 +82,23 @@ defmodule Cantrip.DistributedCantripTest do
     assert message =~ ":timeout"
   end
 
+  test "remote new errors redact secret-bearing rpc reasons" do
+    remote = :"agents@127.0.0.1"
+    Application.put_env(:cantrip, :rpc_module, SecretBadRPC)
+
+    assert {:error, message} =
+             Cantrip.new(
+               node: remote,
+               llm: {FakeLLM, FakeLLM.new([%{content: "hello"}])},
+               identity: %{system_prompt: "Answer directly."},
+               circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 1}]}
+             )
+
+    assert message =~ "failed to build cantrip"
+    assert message =~ "[REDACTED]"
+    refute message =~ "sk-secret1234567890"
+  end
+
   test "unknown string node fails closed instead of falling back to local execution" do
     assert {:error, message} =
              Cantrip.new(%{
@@ -104,6 +131,28 @@ defmodule Cantrip.DistributedCantripTest do
 
     assert_receive {:rpc_call, ^remote, Cantrip, :__remote_cast__,
                     [_remote_cantrip, "say hello", _opts], 30_000}
+  end
+
+  test "remote cast errors redact secret-bearing rpc responses" do
+    remote = :"agents@127.0.0.1"
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        llm: {FakeLLM, FakeLLM.new([%{content: "hello"}])},
+        identity: %{system_prompt: "Answer directly."},
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 1}]}
+      )
+
+    cantrip = %{cantrip | node: remote}
+
+    Application.put_env(:cantrip, :rpc_module, InvalidSecretRPC)
+
+    assert {:error, message, next} = Cantrip.cast(cantrip, "say hello")
+
+    assert next.node == remote
+    assert message =~ "invalid cast response"
+    assert message =~ "Bearer [REDACTED]"
+    refute message =~ "secret-token-12345"
   end
 
   test "remote child casts still graft child turns into the local parent observation" do

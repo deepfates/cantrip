@@ -982,10 +982,12 @@ defmodule Cantrip do
         {:error, reason}
 
       {:badrpc, reason} ->
-        {:error, "remote node #{node} failed to build cantrip: #{inspect(reason)}"}
+        {:error,
+         "remote node #{node} failed to build cantrip: #{Cantrip.SafeFormat.inspect(reason)}"}
 
       other ->
-        {:error, "remote node #{node} returned invalid cantrip response: #{inspect(other)}"}
+        {:error,
+         "remote node #{node} returned invalid cantrip response: #{Cantrip.SafeFormat.inspect(other)}"}
     end
   end
 
@@ -1007,11 +1009,13 @@ defmodule Cantrip do
         {:error, reason, next}
 
       {:badrpc, reason} ->
-        {:error, "remote node #{node} failed to cast cantrip: #{inspect(reason)}",
+        {:error,
+         "remote node #{node} failed to cast cantrip: #{Cantrip.SafeFormat.inspect(reason)}",
          %{cantrip | node: node}}
 
       other ->
-        {:error, "remote node #{node} returned invalid cast response: #{inspect(other)}",
+        {:error,
+         "remote node #{node} returned invalid cast response: #{Cantrip.SafeFormat.inspect(other)}",
          %{cantrip | node: node}}
     end
   end

@@ -16,6 +16,7 @@ defmodule Cantrip.Telemetry do
     [:cantrip, :ward, :truncate],
     [:cantrip, :child, :start],
     [:cantrip, :child, :stop],
+    [:cantrip, :loom, :persist_error],
     [:cantrip, :compile_and_load]
   ]
 

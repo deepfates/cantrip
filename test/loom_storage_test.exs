@@ -17,6 +17,25 @@ defmodule Cantrip.LoomStorageTest do
     def wait_for_tables(_tables, _timeout), do: :ok
   end
 
+  defmodule FailingStorage do
+    @behaviour Cantrip.Loom.Storage
+
+    @impl true
+    def init(_opts), do: {:ok, %{writes: 0}}
+
+    @impl true
+    def append_turn(_state, _turn), do: {:error, :disk_full}
+
+    @impl true
+    def annotate_reward(_state, _index, _reward), do: {:error, :disk_full}
+
+    @impl true
+    def append_event(_state, _event), do: {:error, :disk_full}
+
+    @impl true
+    def load(_state), do: {:ok, %{events: [], turns: [], intents: []}}
+  end
+
   test "mnesia init surfaces create_schema root cause" do
     assert {:error, ":schema_root_cause"} =
              Cantrip.Loom.Storage.Mnesia.init(table: :schema_failure, mnesia: MnesiaSchemaFailure)
@@ -132,6 +151,80 @@ defmodule Cantrip.LoomStorageTest do
            end)
   end
 
+  test "failed event persistence does not advance in-memory event log" do
+    loom = Cantrip.Loom.new(%{system_prompt: nil}, storage: {FailingStorage, []})
+
+    updated = Cantrip.Loom.append_event(loom, %{type: :runtime_note, message: "lost"})
+
+    assert updated.events == []
+    assert updated.storage_state == loom.storage_state
+  end
+
+  test "failed event persistence emits telemetry" do
+    ref = attach_telemetry([:cantrip, :loom, :persist_error], "loom-persist-error")
+    loom = Cantrip.Loom.new(%{system_prompt: nil}, storage: {FailingStorage, []})
+
+    _updated = Cantrip.Loom.append_event(loom, %{type: :runtime_note, message: "lost"})
+
+    assert_receive {^ref, [:cantrip, :loom, :persist_error], %{count: 1},
+                    %{
+                      storage_module: FailingStorage,
+                      event_type: :runtime_note,
+                      reason: ":disk_full",
+                      trace_id: trace_id
+                    }}
+
+    assert is_binary(trace_id)
+  end
+
+  test "failed turn persistence does not advance in-memory turn projection" do
+    loom = Cantrip.Loom.new(%{system_prompt: nil}, storage: {FailingStorage, []})
+
+    updated =
+      Cantrip.Loom.append_turn(loom, %{
+        cantrip_id: "c1",
+        entity_id: "e1",
+        role: "turn",
+        utterance: %{content: "hi"},
+        observation: [],
+        gate_calls: [],
+        terminated: true
+      })
+
+    assert updated.events == []
+    assert updated.turns == []
+  end
+
+  test "failed intent persistence does not advance in-memory intent projection" do
+    loom = Cantrip.Loom.new(%{system_prompt: nil}, storage: {FailingStorage, []})
+
+    updated = Cantrip.Loom.append_intent(loom, "hello")
+
+    assert updated.events == []
+    assert updated.intents == []
+  end
+
+  test "failed reward persistence does not mutate in-memory reward" do
+    loom =
+      %{system_prompt: nil}
+      |> Cantrip.Loom.new()
+      |> Cantrip.Loom.append_turn(%{
+        cantrip_id: "c1",
+        entity_id: "e1",
+        role: "turn",
+        utterance: %{content: "hi"},
+        observation: [],
+        gate_calls: [],
+        terminated: true
+      })
+
+    failing = %{loom | storage_module: FailingStorage, storage_state: %{writes: 0}}
+
+    assert {:error, ":disk_full"} = Cantrip.Loom.annotate_reward(failing, 0, 1.0)
+    assert hd(failing.turns).reward == nil
+    assert Enum.all?(failing.events, &(&1.type != :reward))
+  end
+
   defp tmp_jsonl_path do
     name = "cantrip_loom_" <> Integer.to_string(System.unique_integer([:positive])) <> ".jsonl"
     Path.join(System.tmp_dir!(), name)
@@ -144,5 +237,16 @@ defmodule Cantrip.LoomStorageTest do
     |> Enum.reject(&(&1 == ""))
     |> Enum.map(&Jason.decode!/1)
     |> Enum.reject(&match?(%{"format" => "cantrip-loom"}, &1))
+  end
+
+  defp attach_telemetry(event_name, handler_id) do
+    ref = make_ref()
+    :telemetry.attach(handler_id, event_name, &__MODULE__.handle_event/4, {ref, self()})
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+    ref
+  end
+
+  def handle_event(event, measurements, metadata, {ref, pid}) do
+    send(pid, {ref, event, measurements, metadata})
   end
 end

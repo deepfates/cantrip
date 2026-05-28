@@ -32,6 +32,7 @@ All events are emitted under the `[:cantrip, ...]` prefix.
 | `[:cantrip, :ward, :truncate]` | — | `entity_id, ward, trace_id` | `EntityServer.run_loop/1` when a ward stops execution |
 | `[:cantrip, :child, :start]` | — | `entity_id, child_depth, trace_id` | child-cast coordinator before child cast |
 | `[:cantrip, :child, :stop]` | — | `entity_id, child_depth, outcome, trace_id` | child-cast coordinator after child cast |
+| `[:cantrip, :loom, :persist_error]` | `count` | `storage_module, event_type, reason, trace_id` | `Loom.append_event/2` when the storage backend rejects a write |
 | `[:cantrip, :compile_and_load]` | `duration` | `entity_id, module, outcome, trace_id` | `EntityServer.execute_compile_and_load/2` per hot-load attempt |
 
 `duration` measurements are `System.monotonic_time/0` deltas (native units —

@@ -155,7 +155,14 @@ defmodule Cantrip.Loom do
 
   defp project_intents(_), do: []
 
-  def append_event(%__MODULE__{events: events, storage_module: module} = loom, attrs) do
+  def append_event(%__MODULE__{} = loom, attrs) do
+    case append_event_result(loom, attrs) do
+      {:ok, updated} -> updated
+      {:error, _reason} -> loom
+    end
+  end
+
+  defp append_event_result(%__MODULE__{events: events, storage_module: module} = loom, attrs) do
     event =
       Map.merge(
         %{
@@ -166,11 +173,13 @@ defmodule Cantrip.Loom do
         Map.new(attrs)
       )
 
-    loom = %{loom | events: events ++ [event]}
-
     case persist_event(module, loom.storage_state, event) do
-      {:ok, storage_state} -> %{loom | storage_state: storage_state}
-      {:error, _reason} -> loom
+      {:ok, storage_state} ->
+        {:ok, %{loom | events: events ++ [event], storage_state: storage_state}}
+
+      {:error, reason} ->
+        emit_persist_error(module, event, reason)
+        {:error, reason}
     end
   end
 
@@ -200,9 +209,10 @@ defmodule Cantrip.Loom do
         Map.new(attrs)
       )
 
-    loom
-    |> Map.put(:turns, turns ++ [turn])
-    |> append_event(%{type: :turn, turn: turn})
+    case append_event_result(loom, %{type: :turn, turn: turn}) do
+      {:ok, updated} -> %{updated | turns: turns ++ [turn]}
+      {:error, _reason} -> loom
+    end
   end
 
   @doc """
@@ -236,9 +246,10 @@ defmodule Cantrip.Loom do
       metadata: %{timestamp: DateTime.utc_now()}
     }
 
-    loom
-    |> Map.put(:intents, intents ++ [intent])
-    |> append_event(%{type: :intent, intent: intent})
+    case append_event_result(loom, %{type: :intent, intent: intent}) do
+      {:ok, updated} -> %{updated | intents: intents ++ [intent]}
+      {:error, _reason} -> loom
+    end
   end
 
   @doc """
@@ -378,9 +389,13 @@ defmodule Cantrip.Loom do
         {:error, "invalid turn index"}
 
       {:ok, turn} ->
-        updated = %{loom | turns: List.replace_at(turns, index, %{turn | reward: reward})}
+        case append_event_result(loom, %{type: :reward, index: index, reward: reward}) do
+          {:ok, updated} ->
+            {:ok, %{updated | turns: List.replace_at(turns, index, %{turn | reward: reward})}}
 
-        {:ok, append_event(updated, %{type: :reward, index: index, reward: reward})}
+          {:error, reason} ->
+            {:error, Cantrip.SafeFormat.inspect(reason)}
+        end
     end
   end
 
@@ -474,6 +489,31 @@ defmodule Cantrip.Loom do
 
       true ->
         {:ok, storage_state}
+    end
+  end
+
+  defp emit_persist_error(module, event, reason) do
+    metadata =
+      %{
+        storage_module: module,
+        event_type: event_type(event),
+        reason: Cantrip.SafeFormat.inspect(reason),
+        trace_id: Cantrip.Telemetry.trace_id(nil)
+      }
+      |> maybe_put_telemetry_context()
+
+    Cantrip.Telemetry.execute([:cantrip, :loom, :persist_error], %{count: 1}, metadata)
+  end
+
+  defp maybe_put_telemetry_context(metadata) do
+    case Cantrip.Telemetry.current_context() do
+      %{entity_id: entity_id, trace_id: trace_id} ->
+        metadata
+        |> Map.put(:entity_id, entity_id)
+        |> Map.put(:trace_id, trace_id)
+
+      nil ->
+        metadata
     end
   end
 
