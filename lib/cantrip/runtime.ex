@@ -1,7 +1,8 @@
 defmodule Cantrip.Runtime do
   @moduledoc false
 
-  defstruct circle: nil,
+  defstruct schema_version: 1,
+            circle: nil,
             loom: nil,
             entity_id: nil,
             trace_id: nil,

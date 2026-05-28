@@ -43,7 +43,8 @@ defmodule Cantrip.Loom do
 
   alias Cantrip.Loom.Storage.Memory
 
-  defstruct identity: nil,
+  defstruct schema_version: 1,
+            identity: nil,
             events: [],
             intents: [],
             turns: [],
@@ -52,6 +53,7 @@ defmodule Cantrip.Loom do
 
   @type t :: %__MODULE__{
           identity: term(),
+          schema_version: pos_integer(),
           events: [map()],
           intents: [map()],
           turns: [map()],

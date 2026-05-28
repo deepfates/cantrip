@@ -13,9 +13,10 @@ defmodule Cantrip.CLI.Renderer do
   `mix cantrip.familiar "task" > result.txt` to capture just the answer.
   """
 
-  defstruct turn: 0
+  defstruct schema_version: 1,
+            turn: 0
 
-  @type t :: %__MODULE__{turn: non_neg_integer()}
+  @type t :: %__MODULE__{schema_version: pos_integer(), turn: non_neg_integer()}
 
   @spec new() :: t()
   def new, do: %__MODULE__{}

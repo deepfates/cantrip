@@ -7,11 +7,17 @@ defmodule Cantrip.Circle do
   declare exactly one medium using `:type`, `:medium`, or `:circle_type`.
   """
 
-  defstruct gates: %{}, wards: [], type: :conversation, medium_sources: [], medium_opts: %{}
+  defstruct schema_version: 1,
+            gates: %{},
+            wards: [],
+            type: :conversation,
+            medium_sources: [],
+            medium_opts: %{}
 
   @type gate :: %{required(:name) => String.t(), optional(:parameters) => map()}
   @type t :: %__MODULE__{
           gates: %{String.t() => map()},
+          schema_version: pos_integer(),
           wards: list(map()),
           type: atom(),
           medium_opts: map()
@@ -36,6 +42,7 @@ defmodule Cantrip.Circle do
     medium_opts = fetch(attrs, :medium_opts, %{}) |> Map.new()
 
     %__MODULE__{
+      schema_version: fetch(attrs, :schema_version, 1),
       gates: gates,
       wards: wards,
       type: type,

@@ -6,9 +6,9 @@ defmodule Cantrip.CLI.JsonRenderer do
   `data`. Events arrive as {envelope, {type, data}}.
   """
 
-  defstruct []
+  defstruct schema_version: 1
 
-  @type t :: %__MODULE__{}
+  @type t :: %__MODULE__{schema_version: pos_integer()}
 
   @spec new() :: t()
   def new, do: %__MODULE__{}

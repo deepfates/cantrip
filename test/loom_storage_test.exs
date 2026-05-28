@@ -129,5 +129,6 @@ defmodule Cantrip.LoomStorageTest do
     |> Enum.map(&String.trim/1)
     |> Enum.reject(&(&1 == ""))
     |> Enum.map(&Jason.decode!/1)
+    |> Enum.reject(&match?(%{"format" => "cantrip-loom"}, &1))
   end
 end

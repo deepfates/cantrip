@@ -28,7 +28,8 @@ defmodule Cantrip do
   alias Cantrip.{Identity, Circle, EntityServer, Loom, WardPolicy, Gate}
   alias Cantrip.Medium.Registry, as: MediumRegistry
 
-  defstruct id: nil,
+  defstruct schema_version: 1,
+            id: nil,
             llm_module: nil,
             llm_state: nil,
             child_llm: nil,
@@ -40,6 +41,7 @@ defmodule Cantrip do
 
   @type t :: %__MODULE__{
           id: String.t(),
+          schema_version: pos_integer(),
           llm_module: module(),
           llm_state: term(),
           child_llm: {module(), term()} | nil,
@@ -99,6 +101,7 @@ defmodule Cantrip do
 
       {:ok,
        %__MODULE__{
+         schema_version: Map.get(attrs, :schema_version) || Map.get(attrs, "schema_version") || 1,
          id: "cantrip_" <> Integer.to_string(System.unique_integer([:positive])),
          llm_module: module,
          llm_state: state,

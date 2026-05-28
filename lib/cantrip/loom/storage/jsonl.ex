@@ -2,11 +2,14 @@ defmodule Cantrip.Loom.Storage.Jsonl do
   @moduledoc false
 
   @behaviour Cantrip.Loom.Storage
+  @format "cantrip-loom"
+  @version 1
 
   @impl true
   def init(path) when is_binary(path) do
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, "", [:append])
+    ensure_header!(path)
     {:ok, %{path: path}}
   rescue
     e -> {:error, Cantrip.SafeFormat.exception(e)}
@@ -50,12 +53,13 @@ defmodule Cantrip.Loom.Storage.Jsonl do
   def load(%{path: path}) do
     case File.read(path) do
       {:ok, raw} ->
+        {version, lines} = split_header(String.split(raw, "\n", trim: true))
+
         {events, turns} =
-          raw
-          |> String.split("\n", trim: true)
+          lines
           |> Enum.reduce({[], []}, fn line, {events_acc, turns_acc} ->
             case Jason.decode(line) do
-              {:ok, decoded} -> classify_loaded(decoded, events_acc, turns_acc)
+              {:ok, decoded} -> classify_loaded(upcast(version, decoded), events_acc, turns_acc)
               {:error, _} -> {events_acc, turns_acc}
             end
           end)
@@ -101,6 +105,23 @@ defmodule Cantrip.Loom.Storage.Jsonl do
   end
 
   defp classify_loaded(other, events, turns), do: {[from_jsonable(other) | events], turns}
+
+  defp split_header([]), do: {@version, []}
+
+  defp split_header([first | rest] = lines) do
+    case Jason.decode(first) do
+      {:ok, %{"format" => @format, "version" => @version}} ->
+        {@version, rest}
+
+      {:ok, %{"format" => @format, "version" => other}} ->
+        raise "unsupported loom JSONL version: #{other}"
+
+      _ ->
+        {@version, lines}
+    end
+  end
+
+  defp upcast(1, record), do: record
 
   # The runtime accesses turn fields by atom key (turn.utterance,
   # turn.observation, etc.). Convert the well-known field names back to
@@ -229,8 +250,23 @@ defmodule Cantrip.Loom.Storage.Jsonl do
   defp maybe_atomize_child_turns(_key, val), do: val
 
   defp append_jsonl(path, payload) do
+    ensure_header!(path)
     line = Jason.encode!(jsonable(payload)) <> "\n"
     File.write!(path, line, [:append])
+  end
+
+  defp ensure_header!(path) do
+    if empty_file?(path) do
+      File.write!(path, Jason.encode!(%{format: @format, version: @version}) <> "\n", [:append])
+    end
+  end
+
+  defp empty_file?(path) do
+    case File.stat(path) do
+      {:ok, %{size: 0}} -> true
+      {:error, :enoent} -> true
+      _ -> false
+    end
   end
 
   defp storage_event(event) do

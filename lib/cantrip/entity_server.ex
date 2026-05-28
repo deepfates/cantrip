@@ -17,7 +17,8 @@ defmodule Cantrip.EntityServer do
 
   use GenServer, restart: :temporary
 
-  defstruct cantrip: nil,
+  defstruct schema_version: 1,
+            cantrip: nil,
             entity_id: nil,
             trace_id: nil,
             messages: [],

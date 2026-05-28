@@ -35,6 +35,48 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
     |> File.read!()
     |> String.split("\n", trim: true)
     |> Enum.map(&Jason.decode!/1)
+    |> Enum.reject(&match?(%{"format" => "cantrip-loom"}, &1))
+  end
+
+  test "new JSONL loom files start with a format header" do
+    path = tmp_path()
+    loom = Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+    _loom = Loom.append_turn(loom, %{utterance: %{content: "hi"}, observation: []})
+
+    [header | _] =
+      path
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Enum.map(&Jason.decode!/1)
+
+    assert header == %{"format" => "cantrip-loom", "version" => 1}
+  end
+
+  test "legacy JSONL loom files without a header still load as version 1" do
+    path = tmp_path()
+
+    legacy_turn = %{
+      type: "turn",
+      turn: %{
+        id: "turn_legacy",
+        sequence: 1,
+        cantrip_id: "c1",
+        entity_id: "e1",
+        role: "turn",
+        utterance: %{content: "legacy"},
+        observation: [],
+        gate_calls: [],
+        terminated: false,
+        truncated: false,
+        metadata: %{}
+      }
+    }
+
+    File.write!(path, Jason.encode!(legacy_turn) <> "\n")
+
+    loom = Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+
+    assert [%{id: "turn_legacy", utterance: %{content: "legacy"}}] = loom.turns
   end
 
   test "persists a turn whose observation contains a list of match maps (search-shape)" do
