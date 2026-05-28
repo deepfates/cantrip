@@ -1,5 +1,81 @@
 # Changelog
 
+## Unreleased
+
+Post-v1 hardening and cleanup pass. 13 issues closed from the v1 backlog
+(#3, #12, #20, #21, #22, #23, #24, #25, #26, #27, #30, #31) plus 3 issues
+filed and closed during the pass (#34, #35, #36). Cleanup-status tracker at
+[`docs/cleanup-status.md`](./docs/cleanup-status.md).
+
+**Behavior change** worth flagging for downstream callers:
+
+- `compile_and_load` now requires an explicit `allow_compile_modules`
+  allowlist; previously an empty allowlist was permissive. Deprecated
+  `allow_compile_namespaces` wards fail loudly instead of being silently
+  ignored. `Elixir.Cantrip.*` module names are rejected from hot-load
+  allowlists (except the explicit `Elixir.Cantrip.Hot.*` namespace).
+
+**Fixes:**
+
+- `EntityServer` no longer runs entity episodes inside the GenServer
+  mailbox. Episodes execute in a supervised per-entity runner task and
+  reply via `GenServer.reply/2`. Concurrent `send/2` while an episode is
+  running returns busy immediately. Code-medium port ownership survives
+  across persistent sends. Crash-restore preserves stream context.
+- Malformed JSON in provider tool-call arguments now produces a structured
+  `is_error: true` observation rather than silently substituting `args: %{}`
+  and proceeding to (potentially) the wrong gate execution. Decode failure
+  carries `args_raw` + `args_decode_error` from adapter through the executor.
+- Mnesia `ensure_schema/0` now propagates non-`already_exists` errors as
+  root-cause `init/1` failures; previously the catch-all `:ok` clause
+  hid filesystem and permission errors.
+- Unknown medium types now fail validation with an explicit error and a
+  list of valid options rather than silently normalizing to `:conversation`.
+- All `String.to_atom/1` paths from external strings are now bounded:
+  parent-context normalization uses a bounded allowlist; code-medium gate
+  bindings use `String.to_existing_atom/1`; loom JSONL restoration uses
+  existing atoms; Familiar table/node atoms use SHA-256 fingerprints.
+- All three filesystem gates (`read_file`, `list_dir`, `search`) now route
+  through `Cantrip.Gate.Path.validate/2` consistently — missing root fails
+  closed, path traversal fails closed.
+- `Cantrip.Medium.Code.add_dot_calls/2` now parses with
+  `Code.string_to_quoted/1` and rewrites local gate-call AST nodes rather
+  than doing text-level rewrites. Strings, remote calls, already-dotted
+  calls, and definition heads are no longer subject to surprising rewrites.
+- `Cantrip.SafeFormat` wraps all boundary error stringification (provider
+  errors, JSONL persistence fallbacks, port code-medium error surfaces,
+  gate observations, ACP wire stringification, CLI output). Credential-
+  shaped substrings are redacted before crossing entity, disk, or protocol
+  boundaries.
+- `req_llm` 1.12 preserves multiple system messages through both Anthropic
+  and Gemini encoders; previously the v1.9 path could drop secondary
+  system messages.
+- Familiar workspace cookie now fails loudly on invalid existing cookies
+  rather than silently regenerating; existing distributed connections are
+  no longer at risk of being broken on a malformed-cookie restart.
+
+**New:**
+
+- `Cantrip.Familiar.new/1` documented Dune-variant divergence in
+  `docs/port-isolated-runtime.md`. `sandbox: :dune` is now explicitly a
+  smaller-surface in-process variant of the code medium with different
+  bindings — entity prompts need to match the variant in use.
+- `test/readme_examples_test.exs` pins the README/public-api quickstart
+  shapes; future drift between documented examples and the runtime
+  constructor signature fails CI.
+- `docs/observability.md` is the canonical telemetry event registry
+  (subscription patterns, alert recommendations, trace correlation model);
+  implementation of the 9-item event checklist tracked on #11.
+- `docs/cleanup-status.md` is the living tracker for the cleanup pass.
+
+**Deferred to next release:**
+
+- #11 (telemetry implementation against the observability contract)
+- #32 (schema versioning on durable structs + JSONL format header)
+- Feature roadmap items #8, #9, #10 (eval harness, mix gate, distributed
+  Familiar) labeled `feature`, intentionally not blocking the cleanup
+  milestone.
+
 ## 1.0.0
 
 The first stable release. The Elixir implementation is the canonical
