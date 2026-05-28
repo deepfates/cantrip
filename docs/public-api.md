@@ -138,8 +138,10 @@ Use `%{port_runner: [...]}` or `Cantrip.Familiar.new(port_runner: [...])` when
 you also want deployment-level OS/container controls. `sandbox:
 :port_unrestricted` keeps the child process but evaluates raw Elixir there.
 `sandbox: :dune` is available when in-process restrictions are the right
-tradeoff. `sandbox: :unrestricted` is the trusted host-BEAM evaluator escape
-hatch.
+tradeoff — it is a deliberately smaller-surface variant of the code medium
+(see `docs/port-isolated-runtime.md` "Dune Variant"); entity prompts need
+to match that surface. `sandbox: :unrestricted` is the trusted host-BEAM
+evaluator escape hatch.
 
 ## Configure Gates and Wards
 
