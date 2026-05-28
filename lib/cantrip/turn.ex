@@ -237,6 +237,7 @@ defmodule Cantrip.Turn do
       terminated: terminated?,
       truncated: false,
       metadata: %{
+        medium_type: context.medium_type,
         tokens_prompt: Map.get(usage_data, :prompt_tokens, 0),
         tokens_completion: Map.get(usage_data, :completion_tokens, 0),
         tokens_cached: Map.get(usage_data, :cached_tokens, 0),

@@ -30,9 +30,9 @@ defmodule Cantrip.Familiar.Eval do
       ]
 
   Rubric criteria can be data-driven (`:expected_result`, `:contains`,
-  `:terminated`, `:gate_used`, `:forbid_code_contains`), function-driven via
-  `:score`, or judge-driven via `:judge`. Function criteria receive the run map
-  and return a boolean or numeric score. Judge criteria use `:judge_llm`,
+  `:terminated`, `:gate_used`, `:child_medium_used`, `:forbid_code_contains`),
+  function-driven via `:score`, or judge-driven via `:judge`. Function criteria
+  receive the run map and return a boolean or numeric score. Judge criteria use `:judge_llm`,
   `:judge_llm_factory`, or the runner's `:judge_llm` option and expect a JSON
   object like `%{"score" => 4, "reason" => "..."}` or a bare numeric response.
   """
@@ -41,8 +41,8 @@ defmodule Cantrip.Familiar.Eval do
   require Logger
 
   @scenario_keys ~w(name prompt fixtures rubric llm llm_factory familiar_opts seeds judge_llm judge_llm_factory)a
-  @criterion_keys ~w(name max_score weight score expected_result contains terminated gate_used forbid_code_contains judge scope)a
-  @criterion_scoring_keys ~w(score expected_result contains terminated gate_used forbid_code_contains judge)a
+  @criterion_keys ~w(name max_score weight score expected_result contains terminated gate_used child_medium_used forbid_code_contains judge scope)a
+  @criterion_scoring_keys ~w(score expected_result contains terminated gate_used child_medium_used forbid_code_contains judge)a
 
   @type scenario :: map()
   @type run_result :: map()
@@ -428,7 +428,12 @@ defmodule Cantrip.Familiar.Eval do
     do: {Map.get(run, :result) == expected, %{}}
 
   defp criterion_score(run, %{contains: expected}, _scenario, _opts) do
-    score = run |> Map.get(:result) |> to_string() |> String.contains?(to_string(expected))
+    score =
+      run
+      |> Map.get(:result)
+      |> stringify()
+      |> String.contains?(to_string(expected))
+
     {score, %{}}
   end
 
@@ -441,6 +446,27 @@ defmodule Cantrip.Familiar.Eval do
       run
       |> observations(scope: Map.get(criterion, :scope, :any))
       |> Enum.any?(&(field(&1, :gate) == to_string(gate)))
+
+    {score, %{}}
+  end
+
+  defp criterion_score(run, %{child_medium_used: medium}, _scenario, _opts) do
+    parent_ids =
+      run
+      |> turns(scope: :parent)
+      |> Enum.map(&field(&1, :id))
+      |> MapSet.new()
+
+    score =
+      run
+      |> turns(scope: :any)
+      |> Enum.reject(&(field(&1, :id) in parent_ids))
+      |> Enum.any?(fn turn ->
+        turn
+        |> field(:metadata, %{})
+        |> field(:medium_type)
+        |> normalize_medium() == normalize_medium(medium)
+      end)
 
     {score, %{}}
   end
@@ -641,6 +667,13 @@ defmodule Cantrip.Familiar.Eval do
     do: Map.get(map, key, Map.get(map, to_string(key), default))
 
   defp field(_value, _key, default), do: default
+
+  defp normalize_medium(value) when is_atom(value), do: Atom.to_string(value)
+  defp normalize_medium(value) when is_binary(value), do: value
+  defp normalize_medium(value), do: to_string(value)
+
+  defp stringify(value) when is_binary(value), do: value
+  defp stringify(value), do: Cantrip.SafeFormat.inspect(value)
 
   defp build_report(runs, out_dir) do
     %{

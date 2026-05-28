@@ -80,6 +80,8 @@ Data-driven criteria are useful for deterministic behavior tests:
 - `expected_result: value` - the final result equals `value`
 - `contains: text` - the final result contains `text`
 - `gate_used: name` - any recorded observation used `name`
+- `child_medium_used: medium` - a child turn used the expected medium, such as
+  `:conversation`, `:code`, or `:bash`
 - `forbid_code_contains: text` - no recorded code turn contains `text`
 - `max_score: n` or `weight: n` - score weight for the criterion
 

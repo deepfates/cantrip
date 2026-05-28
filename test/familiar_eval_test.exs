@@ -160,6 +160,91 @@ defmodule Cantrip.FamiliarEvalTest do
     refute parent_only.passed
   end
 
+  test "conversation-child criterion distinguishes synthesis from data dumps" do
+    out_dir = tmp_dir("synthesis")
+
+    fixture = """
+    defmodule Cantrip.BashSandbox do
+      @moduledoc "Runs command workloads behind an explicit parent boundary."
+
+      def run(command), do: {:ok, command}
+    end
+    """
+
+    data_dump_code = """
+    source = read_file.(%{path: "module.ex"})
+    done.(%{path: "module.ex", source: source})
+    """
+
+    synthesis_code = """
+    source = read_file.(%{path: "module.ex"})
+    synth_llm = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([
+      %{
+        tool_calls: [
+          %{
+            id: "tc_done",
+            gate: "done",
+            args: %{answer: "The module explains a trust boundary around Bash command execution."}
+          }
+        ]
+      }
+    ])}
+    {:ok, synthesizer} = Cantrip.new(%{
+      llm: synth_llm,
+      identity: %{system_prompt: "Read the supplied source and answer in one explanatory sentence."},
+      circle: %{type: :conversation, gates: ["done"], wards: [%{max_turns: 2}]}
+    })
+    {:ok, answer, _synthesizer, _synth_loom, _meta} =
+      Cantrip.cast(synthesizer, "Synthesize this source for a user:\\n\\n" <> source)
+    done.(answer)
+    """
+
+    rubric = [
+      %{name: "used reader gate", gate_used: "read_file"},
+      %{name: "used conversation child", child_medium_used: :conversation, max_score: 2},
+      %{name: "returned synthesized prose", contains: "trust boundary", max_score: 2}
+    ]
+
+    scenarios = [
+      %{
+        name: "data-dump",
+        prompt: "Explain what module.ex is doing.",
+        fixtures: %{"module.ex" => fixture},
+        llm: {FakeLLM, FakeLLM.new([%{code: data_dump_code}])},
+        rubric: rubric
+      },
+      %{
+        name: "conversation-synthesis",
+        prompt: "Explain what module.ex is doing.",
+        fixtures: %{"module.ex" => fixture},
+        llm: {FakeLLM, FakeLLM.new([%{code: synthesis_code}])},
+        rubric: rubric
+      }
+    ]
+
+    assert {:ok, report} = Familiar.Eval.run(scenarios, out_dir: out_dir)
+
+    runs_by_name = Map.new(report.runs, &{&1.scenario, &1})
+    data_dump = Map.fetch!(runs_by_name, "data-dump")
+    synthesis = Map.fetch!(runs_by_name, "conversation-synthesis")
+
+    assert data_dump.score.percent < synthesis.score.percent
+    assert data_dump.score.percent == 0.2
+    assert synthesis.score.percent == 1.0
+
+    assert [
+             %{passed: true},
+             %{passed: false},
+             %{passed: false}
+           ] = data_dump.score.criteria
+
+    assert [
+             %{passed: true},
+             %{passed: true},
+             %{passed: true}
+           ] = synthesis.score.criteria
+  end
+
   test "judge criteria use the configured judge llm and record reasons" do
     out_dir = tmp_dir("judge")
 

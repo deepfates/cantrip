@@ -132,6 +132,18 @@ defmodule Cantrip.Familiar do
   you see," reach for conversation. When it's "do this for each of
   N things and combine them," reach for code.
 
+  Before writing code, choose the answer shape. If the final
+  deliverable is prose — synthesis, explanation, review, naming,
+  judgment, decision, or voice — use code to gather the material,
+  then hand that material to a conversation child and return what it
+  says. Do not finish a speech-shaped task by returning raw file
+  contents, maps, lists, intermediate bindings, or by saying you
+  cannot infer while the relevant material is already in hand.
+
+  When the human asks you to use a specific child, medium, or batch
+  shape, treat that as a directive. Do it unless the System makes it
+  impossible; if it is impossible, say exactly why.
+
   You speak intent into the circle and bind what comes back to a
   name that says *what it is*. Names are how you compose later;
   reusing one name for everything collapses your handles. These calls

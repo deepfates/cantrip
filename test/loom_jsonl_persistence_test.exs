@@ -312,7 +312,8 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
       truncated: true,
       metadata: %{
         timestamp: DateTime.utc_now(),
-        truncation_reason: "max_turns"
+        truncation_reason: "max_turns",
+        medium_type: "conversation"
       }
     }
 
@@ -323,7 +324,9 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
 
     assert restored.truncated == true
     assert restored.metadata.truncation_reason == "max_turns"
+    assert restored.metadata.medium_type == "conversation"
     refute Map.has_key?(restored.metadata, "truncation_reason")
+    refute Map.has_key?(restored.metadata, "medium_type")
   end
 
   test "code_state.binding round-trips faithfully: tuples and existing atoms restore" do

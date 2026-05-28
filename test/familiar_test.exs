@@ -131,6 +131,11 @@ defmodule Cantrip.FamiliarTest do
       assert prompt =~ "When your circle grants"
       assert prompt =~ "mix.(%{task: \"compile\"})"
       assert prompt =~ "do not assume arbitrary shell access"
+      assert prompt =~ "choose the answer shape"
+      assert prompt =~ "speech-shaped task"
+      assert prompt =~ "conversation child"
+      assert prompt =~ "raw file"
+      assert prompt =~ "specific child, medium, or batch"
     end
 
     test "respects custom max_turns" do
