@@ -65,9 +65,9 @@ defmodule Cantrip.ForkTest do
     assert length(forked_loom.turns) >= 2
 
     [invocation] = FakeLLM.invocations(forked_cantrip.llm_state)
-    text = invocation.messages |> Enum.map(&to_string(&1.content)) |> Enum.join(" ")
-    assert String.contains?(text, "A")
-    refute String.contains?(text, "B")
+    contents = Enum.map(invocation.messages, & &1.content)
+    assert "A" in contents
+    refute "B" in contents
   end
 
   test "fork message reconstruction includes tool_calls on assistant messages" do

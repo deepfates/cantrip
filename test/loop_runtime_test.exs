@@ -34,10 +34,14 @@ defmodule Cantrip.LoopRuntimeTest do
     {:ok, "ok", cantrip, _loom, _meta} = Cantrip.cast(cantrip, "my task")
     [invocation] = FakeLLM.invocations(cantrip.llm_state)
 
-    assert invocation.messages == [
+    assert [
              %{role: :system, content: "You are helpful"},
+             %{role: :system, content: capability_text},
              %{role: :user, content: "my task"}
-           ]
+           ] = invocation.messages
+
+    assert capability_text =~ "CONVERSATION MEDIUM"
+    assert capability_text =~ "`done`"
   end
 
   test "CANTRIP-2 reuses cantrip across independent casts" do
@@ -64,7 +68,7 @@ defmodule Cantrip.LoopRuntimeTest do
     assert hd(loom_1.turns).entity_id != hd(loom_2.turns).entity_id
   end
 
-  test "nil system_prompt is valid and emits no system message" do
+  test "nil system_prompt is valid and emits only medium capability system message" do
     llm =
       {FakeLLM,
        FakeLLM.new([%{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}],
@@ -80,7 +84,13 @@ defmodule Cantrip.LoopRuntimeTest do
 
     {:ok, "ok", cantrip, _loom, _meta} = Cantrip.cast(cantrip, "my task")
     [invocation] = FakeLLM.invocations(cantrip.llm_state)
-    assert [%{role: :user, content: "my task"}] = invocation.messages
+
+    assert [
+             %{role: :system, content: capability_text},
+             %{role: :user, content: "my task"}
+           ] = invocation.messages
+
+    assert capability_text =~ "CONVERSATION MEDIUM"
   end
 
   test "system prompt remains first on repeated llm invocations" do

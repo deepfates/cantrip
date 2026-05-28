@@ -10,8 +10,30 @@ defmodule Cantrip.Medium.Conversation do
     %{
       tools: tool_definitions(circle),
       tool_choice: nil,
-      capability_text: nil
+      capability_text: capability_text(circle)
     }
+  end
+
+  @spec capability_text(Cantrip.Circle.t()) :: String.t()
+  def capability_text(%Cantrip.Circle{} = circle) do
+    """
+    ### CONVERSATION MEDIUM
+    You think and answer in language. Act by calling the tools registered as
+    gates in this circle; the host runs those gates and returns observations as
+    tool results in your next turn. The provider receives the exact tool
+    schemas separately, so use this text as the grammar of the situation.
+
+    ### AVAILABLE GATES
+    #{gate_text(circle)}
+
+    ### ENDING
+    #{ending_text(circle)}
+
+    ### WARDS AND LOOM
+    #{ward_text(circle)}
+    Your turns and tool observations are appended to the loom. Across a single
+    cast, the loom is the durable record of what you tried and what came back.
+    """
   end
 
   @spec tool_definitions(Cantrip.Circle.t()) :: list(map())
@@ -63,6 +85,44 @@ defmodule Cantrip.Medium.Conversation do
 
     desc = Map.get(gate, :description) || Map.get(gate, "description") || spec.description
     if desc, do: Map.put(tool, :description, desc), else: tool
+  end
+
+  defp gate_text(%Cantrip.Circle{gates: gates}) when map_size(gates) == 0 do
+    "No gates are registered in this circle."
+  end
+
+  defp gate_text(%Cantrip.Circle{gates: gates}) do
+    gates
+    |> Enum.sort_by(fn {name, _gate} -> name end)
+    |> Enum.map(fn {name, gate} -> "- `#{name}`: #{gate_description(name, gate)}" end)
+    |> Enum.join("\n")
+  end
+
+  defp gate_description(name, gate) do
+    Map.get(gate, :teaching) ||
+      Map.get(gate, "teaching") ||
+      Map.get(gate, :description) ||
+      Map.get(gate, "description") ||
+      Gate.spec(name).description
+  end
+
+  defp ending_text(%Cantrip.Circle{gates: gates}) do
+    if Map.has_key?(gates, "done") do
+      """
+      Call the `done` tool when you have the answer to return. Its `answer`
+      argument is the value handed back to the caller, and the loom records the
+      path you took.
+      """
+    else
+      "No `done` gate is registered in this circle; continue until a gate observation or ward ends the cast."
+    end
+  end
+
+  defp ward_text(%Cantrip.Circle{wards: wards}) do
+    case Cantrip.WardPolicy.max_turns(wards) do
+      nil -> "The circle's wards bound this cast; watch observations and finish when done."
+      max_turns -> "This circle is bounded to at most #{max_turns} turns."
+    end
   end
 
   defp execute_gate(%{execute_gate: execute_gate}, _circle, gate, args)

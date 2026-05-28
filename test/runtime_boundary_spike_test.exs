@@ -19,9 +19,11 @@ defmodule CantripRuntimeBoundarySpikeTest do
 
       presentation = Cantrip.Medium.Registry.present(circle)
 
-      assert %{tools: tools, tool_choice: nil, capability_text: nil} = presentation
+      assert %{tools: tools, tool_choice: nil, capability_text: capability_text} = presentation
       assert Enum.any?(tools, &(&1.name == "done"))
       assert Enum.any?(tools, &(&1.name == "echo"))
+      assert capability_text =~ "CONVERSATION MEDIUM"
+      assert capability_text =~ "done"
     end
 
     test "conversation presentation orders tools deterministically by gate name" do

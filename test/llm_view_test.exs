@@ -93,8 +93,8 @@ defmodule Cantrip.LLMViewTest do
   end
 
   describe "medium presentation for conversation circles" do
-    test "returns tool definitions with no overrides" do
-      circle = Circle.new(type: :conversation, gates: [:done, :echo])
+    test "returns tool definitions and conversation capability text" do
+      circle = Circle.new(type: :conversation, gates: [:done, :echo], wards: [%{max_turns: 3}])
 
       presentation = MediumRegistry.present(circle)
       tools = presentation.tools
@@ -103,7 +103,28 @@ defmodule Cantrip.LLMViewTest do
       assert Enum.any?(tools, &(&1.name == "done"))
       assert Enum.any?(tools, &(&1.name == "echo"))
       assert presentation.tool_choice == nil
-      assert presentation.capability_text == nil
+      assert presentation.capability_text =~ "CONVERSATION MEDIUM"
+      assert presentation.capability_text =~ "Act by calling the tools"
+      assert presentation.capability_text =~ "`done`"
+      assert presentation.capability_text =~ "`echo`"
+      assert presentation.capability_text =~ "at most 3 turns"
+      assert presentation.capability_text =~ "loom"
+    end
+
+    test "conversation capability text includes custom gate teaching" do
+      circle =
+        Circle.new(
+          type: :conversation,
+          gates: [
+            :done,
+            %{name: "judge", teaching: "Judge the supplied options and return one."}
+          ]
+        )
+
+      capability_text = MediumRegistry.present(circle).capability_text
+
+      assert capability_text =~ "`judge`"
+      assert capability_text =~ "Judge the supplied options"
     end
   end
 
