@@ -5,15 +5,12 @@ defmodule Cantrip.LLM do
 
   @type request :: map()
 
-  @type response :: %{
-          optional(:content) => String.t() | nil,
-          optional(:tool_calls) => list(map()) | nil,
-          optional(:usage) => map(),
-          optional(:raw_response) => map()
-        }
+  alias Cantrip.LLM.Response
+
+  @type response :: Response.t()
 
   @callback query(state :: term(), request()) ::
-              {:ok, response(), term()} | {:error, term(), term()}
+              {:ok, response() | map(), term()} | {:error, term(), term()}
 
   @req_llm_prefixes %{
     "openai_compatible" => "openai",
@@ -143,14 +140,14 @@ defmodule Cantrip.LLM do
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @spec request(module(), term(), request()) ::
-          {:ok, map(), term()} | {:error, term(), term()}
+          {:ok, Response.t(), term()} | {:error, term(), term()}
   def request(module, state, req) do
     case module.query(state, req) do
       {:ok, response, next_state} ->
-        response = normalize(response)
-
-        case validate_response(response) do
-          :ok -> {:ok, response, next_state}
+        with {:ok, response} <- Response.new(response),
+             :ok <- validate_response(response) do
+          {:ok, response, next_state}
+        else
           {:error, reason} -> {:error, reason, next_state}
         end
 
@@ -159,59 +156,19 @@ defmodule Cantrip.LLM do
     end
   end
 
-  @spec validate_response(map()) :: :ok | {:error, String.t()}
-  def validate_response(response) do
-    content = Map.get(response, :content)
-    tool_calls = Map.get(response, :tool_calls)
-    tool_result = Map.get(response, :tool_result)
-
+  @spec validate_response(Response.t()) :: :ok | {:error, String.t()}
+  def validate_response(%Response{} = response) do
     cond do
-      not is_nil(tool_result) ->
-        {:error, "tool result without matching tool call"}
-
-      is_nil(content) and is_nil(tool_calls) ->
+      is_nil(response.content) and response.tool_calls == [] ->
         {:error, "llm returned neither content nor tool_calls"}
 
-      duplicate_tool_call_ids?(tool_calls || []) ->
+      duplicate_tool_call_ids?(response.tool_calls) ->
         {:error, "duplicate tool call ID"}
 
       true ->
         :ok
     end
   end
-
-  @spec normalize(map()) :: map()
-  def normalize(%{tool_calls: tool_calls} = response) when is_list(tool_calls), do: response
-
-  def normalize(%{raw_response: raw} = response) when is_map(raw) do
-    atom_choices = Map.get(raw, :choices)
-    string_choices = Map.get(raw, "choices")
-
-    cond do
-      is_list(atom_choices) and atom_choices != [] ->
-        choice = atom_choices |> List.first() |> Map.get(:message, %{})
-
-        %{
-          content: Map.get(choice, :content),
-          tool_calls: Map.get(choice, :tool_calls, []) || [],
-          usage: Map.get(raw, :usage, %{}) || %{}
-        }
-
-      is_list(string_choices) and string_choices != [] ->
-        choice = string_choices |> List.first() |> Map.get("message", %{})
-
-        %{
-          content: Map.get(choice, "content"),
-          tool_calls: Map.get(choice, "tool_calls", []) || [],
-          usage: Map.get(raw, "usage", %{}) || %{}
-        }
-
-      true ->
-        response
-    end
-  end
-
-  def normalize(response), do: response
 
   defp parse_int(nil, default), do: default
   defp parse_int("", default), do: default

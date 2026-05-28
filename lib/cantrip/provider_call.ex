@@ -17,7 +17,7 @@ defmodule Cantrip.ProviderCall do
         }
 
   @spec invoke(Cantrip.t(), map()) ::
-          {:ok, map(), Cantrip.t(), meta()} | {:error, term(), Cantrip.t(), meta()}
+          {:ok, LLM.Response.t(), Cantrip.t(), meta()} | {:error, term(), Cantrip.t(), meta()}
   def invoke(%Cantrip{} = cantrip, request) when is_map(request) do
     started_at = System.monotonic_time(:millisecond)
 
@@ -57,7 +57,7 @@ defmodule Cantrip.ProviderCall do
       attempts: attempts,
       duration_ms: elapsed_ms(started_at),
       stop_reason: stop_reason(response),
-      usage: Map.get(response, :usage, %{}) || %{}
+      usage: response.usage
     }
   end
 
@@ -70,10 +70,13 @@ defmodule Cantrip.ProviderCall do
     }
   end
 
-  defp stop_reason(%{stop_reason: reason}) when is_atom(reason), do: reason
-  defp stop_reason(%{tool_calls: calls}) when is_list(calls) and calls != [], do: :tool_calls
-  defp stop_reason(%{content: content}) when is_binary(content), do: :content
-  defp stop_reason(_response), do: :unknown
+  defp stop_reason(%LLM.Response{stop_reason: reason})
+       when is_atom(reason) and not is_nil(reason),
+       do: reason
+
+  defp stop_reason(%LLM.Response{tool_calls: calls}) when calls != [], do: :tool_calls
+  defp stop_reason(%LLM.Response{content: content}) when is_binary(content), do: :content
+  defp stop_reason(%LLM.Response{}), do: :unknown
 
   defp elapsed_ms(started_at) do
     max(System.monotonic_time(:millisecond) - started_at, 1)

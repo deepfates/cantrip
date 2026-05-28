@@ -3,6 +3,27 @@ defmodule Cantrip.LLMContractTest do
 
   alias Cantrip.FakeLLM
 
+  defmodule MissingUsageLLM do
+    @behaviour Cantrip.LLM
+
+    @impl true
+    def query(state, _request), do: {:ok, %{content: "hello", tool_calls: []}, state}
+  end
+
+  defmodule MissingContentLLM do
+    @behaviour Cantrip.LLM
+
+    @impl true
+    def query(state, _request), do: {:ok, %{tool_calls: [], usage: %{}}, state}
+  end
+
+  defmodule MissingToolCallsLLM do
+    @behaviour Cantrip.LLM
+
+    @impl true
+    def query(state, _request), do: {:ok, %{content: "hello", usage: %{}}, state}
+  end
+
   test "LLM-3 rejects empty llm response" do
     llm = {FakeLLM, FakeLLM.new([%{content: nil, tool_calls: nil}])}
 
@@ -114,5 +135,36 @@ defmodule Cantrip.LLMContractTest do
     assert response.content == "hello"
     assert response.tool_calls == []
     assert response.usage == %{prompt_tokens: 10, completion_tokens: 5}
+  end
+
+  test "LLM responses are normalized into enforced response DTOs at the boundary" do
+    llm = {FakeLLM, FakeLLM.new([%{content: "hello", tool_calls: [], usage: %{}}])}
+
+    {:ok, cantrip} =
+      Cantrip.new(
+        llm: llm,
+        circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]}
+      )
+
+    assert {:ok, %Cantrip.LLM.Response{} = response, _next_state} =
+             Cantrip.LLM.request(cantrip.llm_module, cantrip.llm_state, %{
+               messages: [],
+               tools: []
+             })
+
+    assert response.content == "hello"
+    assert response.tool_calls == []
+    assert response.usage == %{}
+  end
+
+  test "adapter responses missing required DTO fields fail at the LLM boundary" do
+    assert {:error, "llm response missing required usage", _state} =
+             Cantrip.LLM.request(MissingUsageLLM, %{}, %{messages: [], tools: []})
+
+    assert {:error, "llm response missing required content", _state} =
+             Cantrip.LLM.request(MissingContentLLM, %{}, %{messages: [], tools: []})
+
+    assert {:error, "llm response missing required tool_calls", _state} =
+             Cantrip.LLM.request(MissingToolCallsLLM, %{}, %{messages: [], tools: []})
   end
 end

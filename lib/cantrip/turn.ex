@@ -13,6 +13,7 @@ defmodule Cantrip.Turn do
   CLI, LiveView, or any future workbench.
   """
 
+  alias Cantrip.LLM.Response
   alias Cantrip.Medium.Registry, as: MediumRegistry
 
   @spec prepare_request(map()) :: map()
@@ -34,11 +35,11 @@ defmodule Cantrip.Turn do
     maybe_put_event_emitter(base, state)
   end
 
-  @spec classify_response(Cantrip.Circle.t(), map()) :: map()
-  def classify_response(%{type: :code}, response) when is_map(response) do
-    content = Map.get(response, :content)
-    tool_calls = Map.get(response, :tool_calls) || []
-    usage = Map.get(response, :usage, %{}) || %{}
+  @spec classify_response(Cantrip.Circle.t(), Response.t()) :: map()
+  def classify_response(%{type: :code}, %Response{} = response) do
+    content = response.content
+    tool_calls = response.tool_calls
+    usage = response.usage
     code = extract_code_from_tool_call(tool_calls, "elixir", "code")
 
     cond do
@@ -81,10 +82,10 @@ defmodule Cantrip.Turn do
     end
   end
 
-  def classify_response(%{type: :bash}, response) when is_map(response) do
-    content = Map.get(response, :content)
-    tool_calls = Map.get(response, :tool_calls) || []
-    usage = Map.get(response, :usage, %{}) || %{}
+  def classify_response(%{type: :bash}, %Response{} = response) do
+    content = response.content
+    tool_calls = response.tool_calls
+    usage = response.usage
     command = extract_code_from_tool_call(tool_calls, "bash", "command") || content || ""
     utterance = %{content: command, tool_calls: []}
 
@@ -99,10 +100,10 @@ defmodule Cantrip.Turn do
     }
   end
 
-  def classify_response(_circle, response) when is_map(response) do
-    content = Map.get(response, :content)
-    tool_calls = Map.get(response, :tool_calls) || []
-    usage = Map.get(response, :usage, %{}) || %{}
+  def classify_response(_circle, %Response{} = response) do
+    content = response.content
+    tool_calls = response.tool_calls
+    usage = response.usage
     utterance = %{content: content, tool_calls: tool_calls}
 
     %{

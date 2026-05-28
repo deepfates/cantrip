@@ -9,7 +9,13 @@ defmodule Cantrip.FamiliarEvalTest do
     @impl true
     def query(state, request) do
       send(state.test_pid, {:judge_request, request})
-      {:ok, %{content: ~s|{"score": 4, "reason": "concise prose"}|}, state}
+
+      {:ok,
+       %Cantrip.LLM.Response{
+         content: ~s|{"score": 4, "reason": "concise prose"}|,
+         tool_calls: [],
+         usage: %{}
+       }, state}
     end
   end
 

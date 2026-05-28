@@ -470,7 +470,7 @@ defmodule Cantrip.Familiar.Eval do
     with {:ok, {module, state}} <- judge_llm(scenario, run.seed, opts),
          request <- judge_request(run, prompt, criterion),
          {:ok, response, _next_state} <- Cantrip.LLM.request(module, state, request),
-         raw_response = Map.get(response, :content, ""),
+         raw_response = response.content || "",
          {:ok, score, reason} <- parse_judge_response(raw_response) do
       {score, %{judge_reason: reason, judge_raw_response: raw_response}}
     else

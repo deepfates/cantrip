@@ -72,9 +72,24 @@ defmodule Cantrip.FakeLLM do
     resp
     |> Map.delete(:code)
     |> Map.put_new(:tool_calls, [%{id: "tc_fake", gate: "elixir", args: %{"code" => code}}])
+    |> complete_response()
   end
 
-  defp normalize_response(resp), do: resp
+  defp normalize_response(resp), do: complete_response(resp)
+
+  defp complete_response(resp) do
+    resp
+    |> Map.put_new(:content, nil)
+    |> Map.put_new(:tool_calls, [])
+    |> Map.put_new(:usage, %{})
+    |> normalize_nil_fields()
+  end
+
+  defp normalize_nil_fields(resp) do
+    resp
+    |> Map.update!(:tool_calls, &(&1 || []))
+    |> Map.update!(:usage, &(&1 || %{}))
+  end
 
   defp maybe_record(%{record_inputs: false} = state, _request), do: state
 

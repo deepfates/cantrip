@@ -36,7 +36,12 @@ defmodule Cantrip.StreamingTest do
 
       receive do
         :release_blocking_llm ->
-          {:ok, %{tool_calls: [%{gate: "done", args: %{answer: "released"}}]}, state}
+          {:ok,
+           %Cantrip.LLM.Response{
+             content: nil,
+             tool_calls: [%{gate: "done", args: %{answer: "released"}}],
+             usage: %{}
+           }, state}
       after
         5_000 ->
           {:error, %{message: "blocking llm was not released"}, state}

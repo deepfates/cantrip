@@ -192,12 +192,13 @@ defmodule CantripRuntimeBoundarySpikeTest do
       circle =
         Cantrip.Circle.new(%{type: :conversation, gates: [:done], wards: [%{max_turns: 3}]})
 
-      response = %{content: "thinking", tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
+      response =
+        response(content: "thinking", tool_calls: [%{gate: "done", args: %{answer: "ok"}}])
 
       assert %{
                mode: :conversation,
-               input: ^response,
-               utterance: ^response,
+               input: %{content: "thinking", tool_calls: [%{gate: "done"}]},
+               utterance: %{content: "thinking", tool_calls: [%{gate: "done"}]},
                content: "thinking",
                tool_calls: [%{gate: "done"}]
              } = Cantrip.Turn.classify_response(circle, response)
@@ -206,10 +207,11 @@ defmodule CantripRuntimeBoundarySpikeTest do
     test "turn module classifies code responses into eval input and events" do
       circle = Cantrip.Circle.new(%{type: :code, gates: [:done], wards: [%{max_turns: 3}]})
 
-      response = %{
-        content: "I will compute it.",
-        tool_calls: [%{gate: "elixir", args: %{"code" => ~s[done.("ok")]}}]
-      }
+      response =
+        response(
+          content: "I will compute it.",
+          tool_calls: [%{gate: "elixir", args: %{"code" => ~s[done.("ok")]}}]
+        )
 
       assert %{
                mode: :code_eval,
@@ -222,7 +224,8 @@ defmodule CantripRuntimeBoundarySpikeTest do
     test "turn module classifies bash responses into command input" do
       circle = Cantrip.Circle.new(%{type: :bash, gates: [:done], wards: [%{max_turns: 3}]})
 
-      response = %{content: nil, tool_calls: [%{gate: "bash", args: %{command: "echo ok"}}]}
+      response =
+        response(content: nil, tool_calls: [%{gate: "bash", args: %{command: "echo ok"}}])
 
       assert %{
                mode: :bash_command,
@@ -240,9 +243,13 @@ defmodule CantripRuntimeBoundarySpikeTest do
         })
 
       classified =
-        Cantrip.Turn.classify_response(circle, %{
-          tool_calls: [%{id: "call_done", gate: "done", args: %{answer: "ok"}}]
-        })
+        Cantrip.Turn.classify_response(
+          circle,
+          response(
+            content: nil,
+            tool_calls: [%{id: "call_done", gate: "done", args: %{answer: "ok"}}]
+          )
+        )
 
       runtime = %{circle: circle, entity_id: "ent_turn"}
 
@@ -259,7 +266,7 @@ defmodule CantripRuntimeBoundarySpikeTest do
 
     test "turn module executes code contract errors without invoking a medium" do
       circle = Cantrip.Circle.new(%{type: :code, gates: [:done], wards: [%{max_turns: 3}]})
-      classified = Cantrip.Turn.classify_response(circle, %{content: "just prose"})
+      classified = Cantrip.Turn.classify_response(circle, response(content: "just prose"))
 
       assert {:ok,
               %{
@@ -755,5 +762,10 @@ defmodule CantripRuntimeBoundarySpikeTest do
 
       assert second > first
     end
+  end
+
+  defp response(attrs) do
+    defaults = %{content: nil, tool_calls: [], usage: %{}}
+    struct!(Cantrip.LLM.Response, Map.merge(defaults, Map.new(attrs)))
   end
 end

@@ -13,7 +13,12 @@ defmodule Cantrip.SummonTest do
 
       receive do
         {:release_blocking_llm, ^content} ->
-          {:ok, %{tool_calls: [%{gate: "done", args: %{answer: "released:" <> content}}]}, state}
+          {:ok,
+           %Cantrip.LLM.Response{
+             content: nil,
+             tool_calls: [%{gate: "done", args: %{answer: "released:" <> content}}],
+             usage: %{}
+           }, state}
       after
         1_000 ->
           {:error, %{message: "blocking llm was not released"}, state}

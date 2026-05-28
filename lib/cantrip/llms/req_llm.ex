@@ -31,6 +31,7 @@ defmodule Cantrip.LLMs.ReqLLM do
       {:ok, response, next_state} = Cantrip.LLMs.ReqLLM.query(state, request)
   """
 
+  alias Cantrip.LLM.Response
   alias Cantrip.LLMs.Helpers
 
   @behaviour Cantrip.LLM
@@ -205,7 +206,7 @@ defmodule Cantrip.LLMs.ReqLLM do
     tool_calls = ReqLLM.Response.tool_calls(response)
     usage = ReqLLM.Response.usage(response) || %{}
 
-    %{
+    %Response{
       content: if(is_nil(text) or text == "", do: nil, else: text),
       tool_calls: normalize_tool_calls(tool_calls),
       usage: normalize_usage(usage),

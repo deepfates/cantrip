@@ -12,7 +12,12 @@ defmodule Cantrip.CompositionTest do
 
       receive do
         {:release_cast_batch_child, ^label} ->
-          {:ok, %{tool_calls: [%{gate: "done", args: %{answer: answer}}]}, state}
+          {:ok,
+           %Cantrip.LLM.Response{
+             content: nil,
+             tool_calls: [%{gate: "done", args: %{answer: answer}}],
+             usage: %{}
+           }, state}
       after
         5_000 ->
           {:error, %{message: "child #{label} was not released"}, state}

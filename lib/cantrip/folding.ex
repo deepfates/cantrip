@@ -108,7 +108,7 @@ defmodule Cantrip.Folding do
       ]
     }
 
-    case cantrip.llm_module.query(cantrip.llm_state, request) do
+    case Cantrip.LLM.request(cantrip.llm_module, cantrip.llm_state, request) do
       {:ok, %{content: text}, _state} when is_binary(text) and text != "" ->
         text
 
