@@ -17,6 +17,12 @@ mix cantrip.eval evals/familiar --out tmp/evals/current --seeds 5
 - a `.json` file for data-only scenarios
 - a directory containing `.exs` and `.json` scenario files
 
+`.exs` scenarios are code, not data. The loader evaluates them with
+`Code.eval_file/1`, which is useful for deterministic LLM factories and custom
+rubric functions, but it has the same trust posture as running any other
+Elixir script. Only run `.exs` scenarios you wrote or audited. Use `.json`
+when you need a data-only format.
+
 The output directory contains:
 
 - `report.json` - aggregate and per-run scores
@@ -77,6 +83,10 @@ Data-driven criteria are useful for deterministic behavior tests:
 - `forbid_code_contains: text` - no recorded code turn contains `text`
 - `max_score: n` or `weight: n` - score weight for the criterion
 
+Criteria that inspect turns default to `scope: :any`, which includes child
+turns grafted into the parent loom. Use `scope: :parent` when the criterion
+must apply only to the parent Familiar's own turns.
+
 Function criteria let scenario authors encode local checks without changing the
 harness:
 
@@ -95,7 +105,8 @@ harness:
 Judge criteria use an LLM to score qualitative behavior. Provide `:judge` on
 the criterion and either `:judge_llm`, `:judge_llm_factory`, or runner-level
 judge options. The judge should return JSON with `score` and `reason`, or a
-bare numeric score.
+bare numeric score. The raw judge response is stored in the criterion details
+inside `report.json` so scoring can be audited later.
 
 ```elixir
 %{

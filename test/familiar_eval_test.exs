@@ -96,6 +96,64 @@ defmodule Cantrip.FamiliarEvalTest do
     assert Enum.map(scenarios, & &1.name) == ["a", "b"]
   end
 
+  test "rubric typos fail at load time instead of silently lowering scores" do
+    dir = tmp_dir("rubric")
+    scenario_path = Path.join(dir, "bad.exs")
+
+    File.write!(scenario_path, """
+    [
+      %{
+        name: "bad-rubric",
+        prompt: "hi",
+        llm: {Cantrip.FakeLLM, Cantrip.FakeLLM.new([])},
+        rubric: [%{name: "typo", containz: "hello"}]
+      }
+    ]
+    """)
+
+    assert {:error, reason} = Familiar.Eval.load_file(scenario_path)
+    assert reason =~ "unknown keys"
+    assert reason =~ "containz"
+  end
+
+  test "gate criteria can be scoped to parent turns only" do
+    out_dir = tmp_dir("scope")
+
+    child_code = """
+    _text = read_file.(%{path: "note.txt"})
+    done.("read")
+    """
+
+    parent_code = """
+    child_llm = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: #{inspect(child_code)}}])}
+    {:ok, reader} = Cantrip.new(%{
+      llm: child_llm,
+      identity: %{system_prompt: "Read note.txt."},
+      circle: %{type: :code, gates: ["read_file", "done"], wards: [%{max_turns: 2}]}
+    })
+    {:ok, result, _reader, _child_loom, _meta} = Cantrip.cast(reader, "Read note.txt")
+    done.(result)
+    """
+
+    scenario = %{
+      name: "scope",
+      prompt: "delegate",
+      fixtures: %{"note.txt" => "alpha\n"},
+      llm: {FakeLLM, FakeLLM.new([%{code: parent_code}])},
+      rubric: [
+        %{name: "child read visible by default", gate_used: "read_file"},
+        %{name: "parent did not read", gate_used: "read_file", scope: :parent}
+      ]
+    }
+
+    assert {:ok, report} = Familiar.Eval.run([scenario], out_dir: out_dir)
+    [run] = report.runs
+    [child_visible, parent_only] = run.score.criteria
+
+    assert child_visible.passed
+    refute parent_only.passed
+  end
+
   test "judge criteria use the configured judge llm and record reasons" do
     out_dir = tmp_dir("judge")
 

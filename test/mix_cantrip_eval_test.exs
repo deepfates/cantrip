@@ -3,6 +3,7 @@ defmodule Mix.Tasks.CantripEvalTest do
 
   import ExUnit.CaptureIO
 
+  alias Cantrip.Familiar.Eval.CLI
   alias Mix.Tasks.Cantrip.Eval, as: EvalTask
 
   defp tmp_dir(tag) do
@@ -18,10 +19,10 @@ defmodule Mix.Tasks.CantripEvalTest do
   end
 
   test "parse_args accepts count and explicit seed forms" do
-    assert {:ok, "evals", opts} = EvalTask.parse_args(["evals", "--seeds", "3"])
+    assert {:ok, "evals", opts} = CLI.parse_args(["evals", "--seeds", "3"])
     assert Keyword.fetch!(opts, :run_opts)[:seeds] == 3
 
-    assert {:ok, "evals", opts} = EvalTask.parse_args(["evals", "--seeds", "5,9,13"])
+    assert {:ok, "evals", opts} = CLI.parse_args(["evals", "--seeds", "5,9,13"])
     assert Keyword.fetch!(opts, :run_opts)[:seeds] == [5, 9, 13]
   end
 

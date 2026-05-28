@@ -38,6 +38,11 @@ defmodule Cantrip.Familiar.Eval do
   """
 
   alias Cantrip.Familiar
+  require Logger
+
+  @scenario_keys ~w(name prompt fixtures rubric llm llm_factory familiar_opts seeds judge_llm judge_llm_factory)a
+  @criterion_keys ~w(name max_score weight score expected_result contains terminated gate_used forbid_code_contains judge scope)a
+  @criterion_scoring_keys ~w(score expected_result contains terminated gate_used forbid_code_contains judge)a
 
   @type scenario :: map()
   @type run_result :: map()
@@ -78,6 +83,10 @@ defmodule Cantrip.Familiar.Eval do
   def load_file(path) when is_binary(path) do
     case Path.extname(path) do
       ".exs" ->
+        Logger.warning(
+          "loading trusted Elixir eval scenarios from #{path}; only run .exs scenarios you wrote or audited"
+        )
+
         {value, _binding} = Code.eval_file(path)
         normalize_loaded_scenarios(value)
 
@@ -165,14 +174,27 @@ defmodule Cantrip.Familiar.Eval do
   defp normalize_scenario(scenario) when is_map(scenario) do
     scenario
     |> atomize_known_keys()
-    |> Map.update(:rubric, [], &Enum.map(&1, fn c -> atomize_known_keys(c) end))
+    |> validate_keys!(@scenario_keys, "scenario")
+    |> Map.update(:rubric, [], &normalize_rubric!/1)
     |> Map.update(:fixtures, %{}, &normalize_fixtures/1)
   end
 
+  defp normalize_rubric!(criteria) when is_list(criteria) do
+    Enum.map(criteria, fn criterion ->
+      criterion
+      |> atomize_known_keys()
+      |> validate_keys!(@criterion_keys, "rubric criterion")
+      |> normalize_scope!()
+      |> validate_criterion!()
+    end)
+  end
+
+  defp normalize_rubric!(other) do
+    raise ArgumentError, "rubric must be a list, got #{Cantrip.SafeFormat.inspect(other)}"
+  end
+
   defp atomize_known_keys(map) when is_map(map) do
-    known =
-      ~w(name prompt fixtures rubric llm llm_factory familiar_opts seeds max_score score expected_result contains terminated gate_used forbid_code_contains weight)a ++
-        ~w(judge judge_llm judge_llm_factory)a
+    known = @scenario_keys ++ @criterion_keys
 
     Map.new(map, fn
       {key, value} when is_binary(key) ->
@@ -185,6 +207,54 @@ defmodule Cantrip.Familiar.Eval do
         pair
     end)
   end
+
+  defp validate_keys!(map, allowed, label) do
+    unknown =
+      map
+      |> Map.keys()
+      |> Enum.reject(&(&1 in allowed))
+
+    case unknown do
+      [] ->
+        map
+
+      keys ->
+        raise ArgumentError,
+              "#{label} has unknown keys: #{Enum.map_join(keys, ", ", &Cantrip.SafeFormat.inspect/1)}"
+    end
+  end
+
+  defp validate_criterion!(criterion) do
+    present = Enum.filter(@criterion_scoring_keys, &Map.has_key?(criterion, &1))
+
+    case present do
+      [] ->
+        raise ArgumentError,
+              "rubric criterion #{criterion_name(criterion)} must include one scoring key"
+
+      [_one] ->
+        criterion
+
+      keys ->
+        raise ArgumentError,
+              "rubric criterion #{criterion_name(criterion)} has multiple scoring keys: #{Enum.join(keys, ", ")}"
+    end
+  end
+
+  defp normalize_scope!(%{scope: scope} = criterion) when scope in [:any, "any"],
+    do: Map.put(criterion, :scope, :any)
+
+  defp normalize_scope!(%{scope: scope} = criterion) when scope in [:parent, "parent"],
+    do: Map.put(criterion, :scope, :parent)
+
+  defp normalize_scope!(%{scope: scope}) do
+    raise ArgumentError, "rubric criterion scope must be :any or :parent, got #{inspect(scope)}"
+  end
+
+  defp normalize_scope!(criterion), do: criterion
+
+  defp criterion_name(criterion),
+    do: Cantrip.SafeFormat.inspect(Map.get(criterion, :name, "criterion"))
 
   defp normalize_fixtures(fixtures) when is_map(fixtures), do: fixtures
   defp normalize_fixtures(nil), do: %{}
@@ -366,18 +436,18 @@ defmodule Cantrip.Familiar.Eval do
     {get_in(run, [:meta, :terminated]) == expected, %{}}
   end
 
-  defp criterion_score(run, %{gate_used: gate}, _scenario, _opts) do
+  defp criterion_score(run, %{gate_used: gate} = criterion, _scenario, _opts) do
     score =
       run
-      |> observations()
+      |> observations(scope: Map.get(criterion, :scope, :any))
       |> Enum.any?(&(field(&1, :gate) == to_string(gate)))
 
     {score, %{}}
   end
 
-  defp criterion_score(run, %{forbid_code_contains: text}, _scenario, _opts) do
+  defp criterion_score(run, %{forbid_code_contains: text} = criterion, _scenario, _opts) do
     score =
-      not Enum.any?(turns(run), fn turn ->
+      not Enum.any?(turns(run, scope: Map.get(criterion, :scope, :any)), fn turn ->
         turn
         |> field(:utterance, %{})
         |> field(:code, "")
@@ -394,8 +464,9 @@ defmodule Cantrip.Familiar.Eval do
     with {:ok, {module, state}} <- judge_llm(scenario, run.seed, opts),
          request <- judge_request(run, prompt, criterion),
          {:ok, response, _next_state} <- Cantrip.LLM.request(module, state, request),
-         {:ok, score, reason} <- parse_judge_response(Map.get(response, :content, "")) do
-      {score, %{judge_reason: reason}}
+         raw_response = Map.get(response, :content, ""),
+         {:ok, score, reason} <- parse_judge_response(raw_response) do
+      {score, %{judge_reason: reason, judge_raw_response: raw_response}}
     else
       {:error, reason} ->
         {0, %{judge_error: Cantrip.SafeFormat.inspect(reason)}}
@@ -505,23 +576,43 @@ defmodule Cantrip.Familiar.Eval do
     end
   end
 
-  defp observations(run) do
+  defp observations(run, opts) do
     run
-    |> turns()
+    |> turns(opts)
     |> Enum.flat_map(&field(&1, :observation, []))
   end
 
-  defp turns(%{loom: %{turns: turns}}), do: Enum.flat_map(turns, &turn_with_children/1)
-  defp turns(_run), do: []
+  defp turns(run, opts \\ [])
+
+  defp turns(%{loom: %{turns: turns}}, scope: :parent) do
+    parent_cantrip_ids =
+      turns
+      |> Enum.filter(&(is_nil(field(&1, :parent_id)) and not is_nil(field(&1, :cantrip_id))))
+      |> Enum.map(&field(&1, :cantrip_id))
+      |> MapSet.new()
+
+    child_ids =
+      turns
+      |> Enum.flat_map(&child_turns/1)
+      |> Enum.map(&field(&1, :id))
+      |> MapSet.new()
+
+    Enum.filter(turns, fn turn ->
+      field(turn, :cantrip_id) in parent_cantrip_ids and field(turn, :id) not in child_ids
+    end)
+  end
+
+  defp turns(%{loom: %{turns: turns}}, _opts), do: Enum.flat_map(turns, &turn_with_children/1)
+  defp turns(_run, _opts), do: []
 
   defp turn_with_children(turn) do
-    children =
-      turn
-      |> field(:observation, [])
-      |> Enum.flat_map(fn observation -> field(observation, :child_turns, []) end)
-      |> Enum.flat_map(&turn_with_children/1)
+    [turn | Enum.flat_map(child_turns(turn), &turn_with_children/1)]
+  end
 
-    [turn | children]
+  defp child_turns(turn) do
+    turn
+    |> field(:observation, [])
+    |> Enum.flat_map(fn observation -> field(observation, :child_turns, []) end)
   end
 
   defp normalize_score(true, max_score), do: max_score
