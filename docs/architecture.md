@@ -58,8 +58,10 @@ it evaluates Dune-restricted Elixir in a child BEAM process, equivalent to
 `sandbox: :port`. Add `%{port_runner: [...]}` to put that child under
 deployment-level OS/container controls. `sandbox: :port_unrestricted` keeps
 the child process but evaluates raw Elixir there. `sandbox: :dune` routes
-through the in-process Dune evaluator. `sandbox: :unrestricted` uses the old
-host-BEAM evaluator for trusted local development.
+through the in-process Dune evaluator — a deliberately smaller-surface
+variant of the code medium (see `docs/port-isolated-runtime.md` "Dune
+Variant"); entity prompts need to fit that surface. `sandbox: :unrestricted`
+uses the old host-BEAM evaluator for trusted local development.
 
 `Cantrip.Medium.Bash` executes one shell command per turn. Shell process state
 does not persist; filesystem effects do.
@@ -105,8 +107,9 @@ The controls are explicit and scoped:
 - `port_runner` lets deployments put the child process inside an OS/container
   sandbox
 - optional Dune routes code evaluation through an in-VM restricted evaluator
-- compile/load wards scope hot-loaded modules, paths, hashes, signers, and
-  namespaces
+- compile/load wards scope hot-loaded modules (exact `allow_compile_modules`
+  list), paths, hashes, and signers; framework modules under `Elixir.Cantrip.*`
+  (except `Elixir.Cantrip.Hot.*`) are rejected even when explicitly allowlisted
 
 The default port sandbox protects the host BEAM and denies ambient language
 capabilities. Deployment-level OS controls remain useful defense in depth for
