@@ -24,10 +24,14 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
   alias Cantrip.Loom
 
   defp tmp_path do
-    Path.join(
-      System.tmp_dir!(),
-      "loom_jsonl_#{System.unique_integer([:positive])}.jsonl"
-    )
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "loom_jsonl_#{System.unique_integer([:positive, :monotonic])}.jsonl"
+      )
+
+    File.rm(path)
+    path
   end
 
   defp read_jsonl(path) do

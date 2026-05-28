@@ -20,9 +20,9 @@ baseline.
 
 **All active cleanup issues are closed with proof. 4 new issues filed during
 the pass: #32 Pass 10 versioning, #34 Pass 5 follow-up, #35 compile_and_load
-policy gaps, #36 cookie overwrite. #11, #32, #34, #35, and #36 are closed
-with proof. #9 has also shipped as feature work. 2 feature-roadmap issues
-labeled `feature` remain open.**
+policy gaps, #36 cookie overwrite, and #37 live real-LLM prompt drift. #11,
+#32, #34, #35, #36, and #37 are closed with proof. #9 has also shipped as
+feature work. 2 feature-roadmap issues labeled `feature` remain open.**
 
 The post-d12875c cold review caught two reward-hacking patterns: Pass 5 was
 marked "done" while ~30 boundary inspect/Exception.message bypass channels
@@ -56,6 +56,7 @@ holds — those are adjacent concerns, not a reopen.
 | 34 | Pass 5: complete boundary redaction coverage | **closed** | Boundary `inspect(...)` / `Exception.message(...)` sites now route through safe formatting across gates, code-medium observations/protocol frames, ACP replies, CLI output, loom storage, child-cast observations/events, and provider adapter errors. Evidence: `test/redact_test.exs` covers non-binary gate output, unrestricted code-medium exceptions, ACP wire stringification, ACP runtime provider errors, JSONL persistence fallback, and port-medium exceptions; source scan shows no remaining raw boundary bypasses outside a static prompt example. Commit `4905898`. |
 | 35 | compile_and_load: reject framework module names + handle deprecated allow_compile_namespaces | **closed** | `compile_and_load` now rejects attempts to hot-load modules shipped by the `:cantrip` application even when explicitly allowlisted, and deprecated `allow_compile_namespaces` wards fail loudly. Docs now describe exact `allow_compile_modules` semantics. Evidence: `test/hot_reload_test.exs` covers both policy gaps; focused tests and `mix verify` passed after rebase. Commit `7423ff0`. |
 | 36 | Familiar cookie validation silently overwrites hand-edited cookies | **closed** | Workspace cookie policy now fails loud on invalid existing cookies and leaves the file unchanged. Evidence: `test/mix_cantrip_familiar_test.exs` covers generation with mode `0600`, reuse of valid existing cookies, and fail-loud/no-overwrite behavior for invalid hand-edited cookies. Commit `e013e85`. |
+| 37 | real_llm_integration_test loops on echo without calling done | **closed** | Live integration prompt/tool descriptions now define a strict two-step echo→done contract. Evidence: `RUN_REAL_LLM_TESTS=1` live runs passed twice against `claude-haiku-4-5` and once against `claude-sonnet-4-5`; `mix verify` passed after the change. |
 
 **Status legend:**
 - `closed` — issue closed on GitHub with proof comment citing evidence

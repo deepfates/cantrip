@@ -51,6 +51,9 @@ are closed with proof, including issues filed during the cleanup pass
 - Familiar workspace cookie now fails loudly on invalid existing cookies
   rather than silently regenerating; existing distributed connections are
   no longer at risk of being broken on a malformed-cookie restart.
+- The live real-LLM echo/done integration prompt now gives a stricter
+  two-step tool contract and descriptions so current Anthropic models
+  terminate with `done` instead of looping on `echo`.
 
 **New:**
 
