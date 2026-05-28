@@ -37,9 +37,9 @@ holds — those are adjacent concerns, not a reopen.
 | # | Title | Status | Evidence / Next Step |
 |---:|---|---|---|
 | 3 | Familiar isomorphic with host Cantrip API | **closed** | Port sandbox does proxy; Dune is deliberate restricted variant. Documented in `docs/port-isolated-runtime.md`. |
-| 8 | Eval harness for Familiar prompts | **open, `feature`** | Roadmap, not cleanup defect. |
+| 8 | Eval harness for Familiar prompts | **closed** | Multi-scenario, multi-seed Familiar eval harness implemented with rubric and judge scoring, persisted transcripts, `mix cantrip.eval`, docs, and CI-usable thresholds. Evidence: `test/familiar_eval_test.exs`, `test/mix_cantrip_eval_test.exs`, `docs/eval-harness.md`, PR #38. |
 | 9 | First-class `mix` gate | **closed** | Built-in `mix` gate runs allowlisted tasks under a configured root with argv validation, timeout, bounded output, code-medium binding, Familiar wiring, and docs. Evidence: `test/mix_gate_test.exs`, `test/gate_spec_test.exs`, and `test/familiar_test.exs`. |
-| 10 | Distributed Familiar | **open, `feature`** | Roadmap, not cleanup defect. |
+| 10 | Distributed Familiar | **in progress** | This branch adds remote child cantrips via `:node` + `:rpc.call/4`, cluster helpers for Mnesia extra DB nodes/table copies, and docs in `docs/distributed-familiar.md`. |
 | 11 | Telemetry coverage + observability runbook | **closed** | The runtime event registry is implemented and tested. Events now carry `trace_id`; root casts accept external trace IDs and child casts inherit them. Runtime emits entity/turn/gate/code/bash lifecycle events plus usage, redaction-hit, fold-trigger, ward-truncate, child start/stop, and compile_and_load events. Evidence: `test/telemetry_test.exs` covers the registry and every documented event family; redaction-hit coverage is also pinned by a boundary `read_file` test. Commits `f08c847`, `c0fcc65`. |
 | 12 | Dune sandbox over-restricts | **closed** | Dune is deliberate variant per #3 resolution. |
 | 20 | Sandbox roots for filesystem gates | **closed** | Shared path validation is used across all FS gates. Evidence: `test/gate_validation_test.exs:55-75`, `:99-133`. |
