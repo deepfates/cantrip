@@ -1,111 +1,157 @@
 # Post-v1 Cleanup Status
 
-Living tracker for the post-v1 hardening/cleanup pass. Updated by codex
-and claude on every substantive commit so anyone — codex, claude, the
-board (user) — can see at-a-glance state without reading scratch.
+Living tracker for the post-v1 hardening and cleanup pass. Updated when the
+issue queue or cleanup-pass state changes so the repo has a durable record that
+does not require reading scratch notes.
 
-**Working standard:** "Solve, not administratively close." An issue leaves
-the open set only when the underlying concern is gone and the repo contains
-evidence (passing regression test pinning the desired behavior, or a doc/
-contract change).
+**Working standard:** solve, do not administratively close. An issue leaves the
+open set only when the underlying concern is gone and the repo contains
+evidence: a regression test, a release gate, or a deliberate public contract
+change.
 
-**Sources:** the open GitHub issue tracker, the local
-`comprehensive_elixir_codebase_cleanup_guide.md` operational reference
-(currently untracked), and the v1.0.0 release commit `9638ea2` as the
-baseline.
+**Sources:** GitHub issues and PRs (authoritative), the optional local
+untracked `comprehensive_elixir_codebase_cleanup_guide.md` operator reference
+when present, `scripts/check_cleanup_guide.sh`, and the v1.0.0 release commit
+`9638ea2` as the cleanup baseline.
 
 ---
 
 ## Headline
 
-**All active cleanup issues and post-v1 feature-roadmap issues are closed
-with proof. 5 new issues filed during the pass: #32 Pass 10 versioning,
-#34 Pass 5 follow-up, #35 compile_and_load policy gaps, #36 cookie overwrite,
-and #37 live real-LLM prompt drift. #8, #9, #10, #11, #32, #34, #35, #36,
-and #37 have all shipped with regression tests and/or package docs.**
+**As of 2026-05-28T13:21:26Z, the post-v1.2 stabilization queue is empty.**
 
-The post-d12875c cold review caught two reward-hacking patterns: Pass 5 was
-marked "done" while ~30 boundary inspect/Exception.message bypass channels
-remained (#34); the #21 closure claimed module-redefinition safety beyond
-what was actually implemented (#35). The atom-safety claim from #21 still
-holds — those are adjacent concerns, not a reopen.
+- Open GitHub issues: **0**.
+- Open GitHub PRs at this snapshot (before opening this docs PR #80): **0**.
+- Latest stabilization merge: PR #79, `779479b`, `fix: project bash gates through sandbox`.
+- Main branch CI after PR #79: run `26577026692`, **success**.
+- The full post-v1.2 audit queue (#41-#69) has shipped through focused PRs
+  with regression coverage and release gates.
+
+### What Changed Since v1.2.0
+
+- **Pass 2 / boundary DTOs:** #48, #49, #52, #53, and #54 closed through PRs
+  #66, #73, #76, and #77.
+- **Pass 5 / redaction:** #63 closed through PR #70.
+- **Pass 6 / runtime eval:** #43 closed through PR #79. Bash now projects gates
+  into a sandboxed subprocess instead of presenting raw shell access as if it
+  satisfied `A = M union G - W`.
+- **Pass 7 and 8 / lifecycle and backpressure:** #60, #61, and #62 closed
+  through PR #75.
+- **Pass 10 and 11 / versioning and persistence:** #64, #65, and #67 closed
+  through PRs #70, #71, and #74.
+- **Pass 13 / observability:** #41, #42, #44, #45, #46, #47, #51, #55, #56,
+  and #59 closed through PRs #50, #57, and #58.
+- **Responsible recursion ward extension:** #69 closed through PR #78.
+- **Default Familiar ergonomics:** #68 closed through PR #72.
+
+### Rollback History
+
+Commit `e747317` rolled back overclaimed "done" status once for passes 2, 7,
+10, 13, and 15. The 2026-05-28 post-v1.2 re-audit rolled pass status back a
+second time for passes 2, 6, 11, and 13. The final state below incorporates the
+second audit and the subsequent fixes through PR #79.
+
+The lesson is now part of the working standard: pass completion requires both
+code evidence and an independent re-audit against the relevant guide criteria.
 
 ---
 
-## Per-Issue Status
+## Post-v1.2 Stabilization Issues
 
-| # | Title | Status | Evidence / Next Step |
-|---:|---|---|---|
-| 3 | Familiar isomorphic with host Cantrip API | **closed** | Port sandbox does proxy; Dune is deliberate restricted variant. Documented in `docs/port-isolated-runtime.md`. |
-| 8 | Eval harness for Familiar prompts | **closed** | Multi-scenario, multi-seed Familiar eval harness implemented with rubric and judge scoring, persisted transcripts, `mix cantrip.eval`, docs, and CI-usable thresholds. Evidence: `test/familiar_eval_test.exs`, `test/mix_cantrip_eval_test.exs`, `docs/eval-harness.md`, PR #38. |
-| 9 | First-class `mix` gate | **closed** | Built-in `mix` gate runs allowlisted tasks under a configured root with argv validation, timeout, bounded output, code-medium binding, Familiar wiring, and docs. Evidence: `test/mix_gate_test.exs`, `test/gate_spec_test.exs`, and `test/familiar_test.exs`. |
-| 10 | Distributed Familiar | **closed** | Remote root and child cantrips can target named BEAM nodes via `:node`, remote child observations are grafted into the parent loom, and `Cantrip.Cluster` provides Mnesia extra-node/table-copy helpers. Evidence: `test/distributed_cantrip_test.exs`, `test/cluster_test.exs`, `docs/distributed-familiar.md`, PR #39. |
-| 11 | Telemetry coverage + observability runbook | **closed** | The runtime event registry is implemented and tested. Events now carry `trace_id`; root casts accept external trace IDs and child casts inherit them. Runtime emits entity/turn/gate/code/bash lifecycle events plus usage, redaction-hit, fold-trigger, ward-truncate, child start/stop, and compile_and_load events. Evidence: `test/telemetry_test.exs` covers the registry and every documented event family; redaction-hit coverage is also pinned by a boundary `read_file` test. Commits `f08c847`, `c0fcc65`. |
-| 12 | Dune sandbox over-restricts | **closed** | Dune is deliberate variant per #3 resolution. |
-| 20 | Sandbox roots for filesystem gates | **closed** | Shared path validation is used across all FS gates. Evidence: `test/gate_validation_test.exs:55-75`, `:99-133`. |
-| 21 | Unbounded atom creation | **closed** | All paths bounded. Commits `d12875c`, `bc2bf01`, `80287b7`, `ca115b0`. |
-| 22 | Reject unknown medium types | **closed** | `validate_known_medium/1` + bounded codomain. Evidence: `test/divergence_fixes_test.exs:110`. |
-| 23 | cast_batch parallel contract | **closed** | `Task.async_stream/3` unconditional. Evidence: `test/composition_test.exs:37`, `test/readme_examples_test.exs:46+`. |
-| 24 | Long-running runs in blocking GenServer.call | **closed** | Entity episodes now run in a monitored per-entity runner and reply via `GenServer.reply/2`; concurrent sends are rejected immediately while provider work continues, and code-medium port ownership survives across persistent sends. Evidence: `test/summon_test.exs` blocks provider work, proves a second `send/2` returns busy without waiting, then releases the original episode; the code-state test also asserts the same live port session survives a follow-up send. Commit `3ba8917`. |
-| 25 | Multi-system messages Anthropic/Gemini | **closed** | Evidence: `test/req_llm_adapter_test.exs:177` (Anthropic), `:195` (Gemini). |
-| 26 | README example drift | **closed** | Pinned by `test/readme_examples_test.exs`. Commit `05363e6`. |
-| 27 | Parser-aware code-medium rewriting | **closed** | `add_dot_calls/2` now AST-based. Evidence: `test/code_medium_ergonomics_test.exs`. Commit `1d4e718`. |
-| 30 | Malformed-JSON tool-call args | **closed** | `args_raw`+`args_decode_error` plumbing; executor emits structured error. Evidence: `test/req_llm_adapter_test.exs:106+`, `:136+`. |
-| 31 | Mnesia create_schema error swallow | **closed** | `ensure_schema/0` propagates root cause. Evidence: `test/loom_storage_test.exs:20+`. |
-| 32 | Schema version for durable structs + JSONL | **closed** | Durable/runtime structs now carry `schema_version: 1`; new JSONL loom files start with `{"format":"cantrip-loom","version":1}`; loader treats no-header files as legacy v1. Evidence: `test/schema_version_test.exs` covers struct versions; `test/loom_jsonl_persistence_test.exs` covers header creation and legacy no-header loading. Commit `d53b944`. |
-| 34 | Pass 5: complete boundary redaction coverage | **closed** | Boundary `inspect(...)` / `Exception.message(...)` sites now route through safe formatting across gates, code-medium observations/protocol frames, ACP replies, CLI output, loom storage, child-cast observations/events, and provider adapter errors. Evidence: `test/redact_test.exs` covers non-binary gate output, unrestricted code-medium exceptions, ACP wire stringification, ACP runtime provider errors, JSONL persistence fallback, and port-medium exceptions; source scan shows no remaining raw boundary bypasses outside a static prompt example. Commit `4905898`. |
-| 35 | compile_and_load: reject framework module names + handle deprecated allow_compile_namespaces | **closed** | `compile_and_load` now rejects attempts to hot-load modules shipped by the `:cantrip` application even when explicitly allowlisted, and deprecated `allow_compile_namespaces` wards fail loudly. Docs now describe exact `allow_compile_modules` semantics. Evidence: `test/hot_reload_test.exs` covers both policy gaps; focused tests and `mix verify` passed after rebase. Commit `7423ff0`. |
-| 36 | Familiar cookie validation silently overwrites hand-edited cookies | **closed** | Workspace cookie policy now fails loud on invalid existing cookies and leaves the file unchanged. Evidence: `test/mix_cantrip_familiar_test.exs` covers generation with mode `0600`, reuse of valid existing cookies, and fail-loud/no-overwrite behavior for invalid hand-edited cookies. Commit `e013e85`. |
-| 37 | real_llm_integration_test loops on echo without calling done | **closed** | Live integration prompt/tool descriptions now define a strict two-step echo→done contract. Evidence: `RUN_REAL_LLM_TESTS=1` live runs passed twice against `claude-haiku-4-5` and once against `claude-sonnet-4-5`; `mix verify` passed after the change. |
-
-**Status legend:**
-- `closed` — issue closed on GitHub with proof comment citing evidence
-- `open, design-phase` — substantive defect, needs design before implementation
-- `open, feature` — roadmap item, intentionally not in cleanup scope
-- `open` — active cleanup work
+| Issue | Status | Evidence |
+|---:|---|---|
+| #41 | closed | PR #50 adds eval proof-of-purpose coverage. |
+| #42 | closed | PR #50 propagates ACP trace context into entity events. |
+| #43 | closed | PR #79 projects Bash gates through sandboxed commands and documents the new boundary. |
+| #44 | closed | PR #57 forwards `tool_choice` into ReqLLM calls. |
+| #45 | closed | PR #57 normalizes provider usage including `total_tokens`. |
+| #46 | closed | PR #57 strengthens option-forwarding tests against the provider call seam. |
+| #47 | closed | PR #58 exercises the real streaming `:text_delta` path. |
+| #48 | closed | PR #73 composes parent wards for pre-built child casts. |
+| #49 | closed | PR #66 preserves JSONL `truncation_reason` metadata. |
+| #51 | closed | PR #58 removes raw-intent telemetry leakage and supersedes the original framing with #59. |
+| #52 | closed | PR #66 constrains ACP `_meta` overrides. |
+| #53 | closed | PR #76 introduces `%Cantrip.LLM.Response{}` at the provider boundary. |
+| #54 | closed | PR #77 introduces per-gate args DTOs. |
+| #55 | closed | PR #58 includes trace IDs in streaming envelopes. |
+| #56 | closed | PR #58 preserves telemetry/redaction context across unrestricted eval tasks. |
+| #59 | closed | PR #58 reinstates redacted `intent` telemetry. |
+| #60 | closed | PR #75 adds streaming backpressure. |
+| #61 | closed | PR #75 bounds ACP event bridge delivery through barrier sends. |
+| #62 | closed | PR #75 shuts down cast-stream tasks on early halt and refreshes process inventory docs. |
+| #63 | closed | PR #70 routes cross-node RPC errors through safe formatting. |
+| #64 | closed | PR #70 aligns in-memory and durable loom append semantics. |
+| #65 | closed | PR #71 adds event upcast behavior and serializes JSONL appends. |
+| #67 | closed | PR #74 compacts persisted code-state bindings. |
+| #68 | closed | PR #72 exposes `read_file` to the default Familiar. |
+| #69 | closed | PR #78 adds declaration-time child-spawn wards. |
 
 ---
 
 ## Per-Cleanup-Pass Status
 
-| Pass | Topic | Status | Notes |
+| Pass | Topic | Status | Current Evidence |
 |---:|---|---|---|
-| 0 | Baseline & inventory | **done** | v1.0.0 baseline + Pass 0 ripgrep scans complete (Pass 4/6/8/10). |
-| 1 | Transformation safety | **done** | #27 AST rewrite shipped. No other regex-based source transforms in lib/. |
-| 2 | Boundary / DTO integrity | **done** | #22 + #25 + #30 issue closures land the visible boundary work. Public root construction now rejects unknown top-level options, validates `:folding` and `:loom_storage` through NimbleOptions-backed schemas, refuses malformed explicit loom storage instead of falling back to Memory, and uses conservative `@enforce_keys` on core runtime structs. Focused boundary tests cover unknown options, bad folding config, bad loom storage config, malformed direct `Loom.new/2` storage, and schema-version struct construction. |
-| 3 | Atom safety | **done** | #21 closed; all known production atom-creation paths are structurally bounded. Property coverage now probes untrusted string inputs across parent-context normalization, gate names, compile-and-load validation, and unknown top-level options while asserting the atom table does not grow. |
-| 4 | Configuration / ambient authority | **clean** | Pass 0 scan: 5 hits, all in boot/config paths. No hot-path violations. |
-| 5 | Secret redaction & error sanitization | **done** | Safe boundary formatting now covers gate observations, code-medium observations/protocol frames, ACP replies, CLI output, loom storage, child-cast observations/events, provider adapter errors, and default inspect output for `%Cantrip{}` LLM state. Diagnostic secret-key detection is centralized in one internal helper. |
-| 6 | Unsafe deserialization / runtime eval | **clean** | Pass 0 scan: all `binary_to_term` uses `[:safe]` flag; `Code.eval_quoted` only in sandboxed port child. `compile_and_load` gated by exact-module allowlist. |
-| 7 | OTP lifecycle / supervision | **done** | #24 runner refactor solid. Per-pass audit confirmed all `Task.async` sites have proper await/yield/shutdown discipline. ACP EventBridge now runs under `Cantrip.ACP.EventBridgeSupervisor` instead of bare `spawn`; the embedded stdio server starts the application before sessions can create bridges. Process inventory lives in `docs/architecture.md`. |
-| 8 | Mailbox / backpressure | **clean** | Pass 0 scan: 0 `GenServer.cast`, 0 `handle_info`, raw `send/` only within supervised public API + port-child protocol. |
-| 9 | GenServer functional-core cleanup | **done-for-tracked-issues** | #24 moved the main blocking workflow out of `EntityServer.handle_call/3` while keeping lifecycle and coordination in the GenServer. |
-| 10 | Serialization / protocol / versioning | **done** | #32 covers JSONL version + durable-struct schema_version. JSONL legacy no-header and unsupported-version paths are tested. Mnesia now writes explicit version envelopes, still reads legacy raw maps, and fails closed on unsupported envelope versions. |
-| 11 | Persistence / state backend cleanup | **done** | #31 closed; Mnesia restart persistence verified. |
-| 12 | Package / dependency boundaries | **done** | #3 closed (port surface proxies public API; Dune deliberate variant). |
-| 13 | Observability / context propagation | **done** | #11 closed: event registry + trace_id propagation via parent_context for cast_batch + ACP isolation work correctly. The port-child boundary now carries `entity_id`/`trace_id` in the eval environment, installs them with telemetry context before user code runs, and forwards child telemetry frames back to the parent BEAM for re-emission. Regression coverage asserts parent-originated and child-originated events share the same trace. |
-| 14 | Idiomatic / performance | **clean** | Final scan found regex only in appropriate redaction, user-search, cookie validation, submit-line extraction, whitespace normalization, and tests; no Ecto paths exist. Remaining branching is coordination/runtime logic rather than a cleanup blocker. |
-| 15 | Final verification / governance lock-in | **done** | `mix verify` green locally and GitHub PR `verify` green on the final head. CI runs `scripts/check_cleanup_guide.sh` to prevent cleanup-guide regressions such as unbounded `String.to_atom`, unsafe `binary_to_term`, ambient env reads, and bare `spawn`. |
+| 0 | Baseline and inventory | **done** | v1.0.0 baseline identified; cleanup-guide scans are codified in `scripts/check_cleanup_guide.sh`. |
+| 1 | Transformation safety | **done** | #27 replaced string-based code-medium rewriting with AST-aware handling. |
+| 2 | Boundary / DTO integrity | **done** | Post-v1.2 gaps #48, #49, #52, #53, and #54 are closed. LLM responses and gate args now have explicit DTOs. |
+| 3 | Atom safety | **done** | #21 closed; cleanup gate prevents new unbounded `String.to_atom` paths in production code. |
+| 4 | Configuration / ambient authority | **clean** | Cleanup gate rejects hot-path `System.get_env` / `System.put_env`; PR #79 removed the Bash PATH regression caught by CI. |
+| 5 | Secret redaction and error sanitization | **done** | #34 and #63 closed; boundary error formatting routes through safe formatting and redaction paths. |
+| 6 | Unsafe deserialization / runtime eval | **done** | #43 closed by PR #79. Remaining runtime-eval exceptions are explicit, documented boundaries: port-child sandbox eval, the trusted unrestricted code medium, and compile-and-load allowlisted hot loading. |
+| 7 | OTP lifecycle / supervision | **done** | #24 and #62 closed; entity work runs outside blocking GenServer calls and early stream halt shuts down runner tasks. |
+| 8 | Mailbox / backpressure | **done** | #60 and #61 closed; streaming and ACP bridge delivery use bounded barrier behavior by default. |
+| 9 | GenServer functional-core cleanup | **done** | `EntityServer` delegates runtime work to focused modules and supervised runner tasks. No open issue tracks hidden state or blocking callback work. |
+| 10 | Serialization / protocol / versioning | **done** | #32 and #65 closed; durable structs and JSONL carry versioning/upcast behavior. |
+| 11 | Persistence / state backend cleanup | **done** | #31, #64, #65, and #67 closed; loom append and JSONL write semantics are tested and documented. |
+| 12 | Package / dependency boundaries | **done** | #3 and #12 closed; port medium proxies the public API while Dune remains a deliberate restricted variant. |
+| 13 | Observability / context propagation | **done** | #41, #42, #44, #45, #46, #47, #51, #55, #56, and #59 closed; telemetry, streaming envelopes, and provider options preserve the intended context. |
+| 14 | Idiomatic / performance | **clean** | No open cleanup issue remains in this pass. Existing regex and process-dictionary uses are bounded, documented patterns. |
+| 15 | Final verification / governance lock-in | **done** | PR #79 and main push CI are green; CI runs `scripts/check_cleanup_guide.sh` to keep the high-risk cleanup invariants durable. |
+
+---
+
+## Release Gates
+
+The final post-v1.2 stabilization head is `779479b`.
+
+Authoritative gates:
+
+- PR #79 `verify`: success.
+- Main push run `26577026692`: success.
+- Open GitHub issues after merge: `[]`.
+- Open GitHub PRs after merge (before opening this docs PR #80): `[]`.
+
+Local gates run on the final PR #79 head before merge:
+
+- `mix test test/bash_medium_test.exs test/readme_examples_test.exs`
+- `scripts/check_cleanup_guide.sh`
+- `mix format --check-formatted` on changed Bash files
+- `mix verify`
+- `mix docs`
+- `mix hex.build`
 
 ---
 
 ## What's Left
 
-No open cleanup-guide contract items remain in the codebase. The two
-feature-roadmap items that were deferred from the cleanup release (#8 eval
-harness and #10 distributed Familiar) have also shipped.
+No release-blocking correctness, design, test, or documentation issue is
+currently known in the GitHub tracker or the cleanup-guide ledger.
 
-The post-v1 cleanup and feature-completion phase is done when the release-prep
-PR CI is green. At that point we can tag `v1.2.0` from `main`; the open issue
-tracker should be empty.
+This does not mean the project is finished forever. It means the active
+post-v1.2 stabilization queue has reached the requested stable empty state.
+Future findings should be opened as new issues and worked through the same
+solve-first PR loop.
 
 ---
 
-## Working agreements
+## Working Agreements
 
-- Every substantive commit gets a cold-reviewer-agent pass (claude lane).
-- Every "close" cites a regression test or doc change in the comment.
-- One cleanup-guide pass per commit going forward.
-- `mix verify` green before commit, always.
-- This file updates on commit (whoever ships, updates).
-- GitHub ownership lives with claude (filing/closing/labeling); codex flags via scratch when an action is needed.
+- Every substantive change gets focused regression coverage or an explicit
+  non-issue rationale.
+- Cleanup-guide-sensitive commits run `scripts/check_cleanup_guide.sh`.
+- Release candidates run `mix verify`, `mix docs`, and `mix hex.build`.
+- PR comments should record review findings and the exact verification that
+  supports merge readiness.
+- GitHub issue closure follows the merge that actually removes the underlying
+  concern.
