@@ -27,6 +27,7 @@ All events are emitted under the `[:cantrip, ...]` prefix.
 | `[:cantrip, :code, :eval]` | `duration` | `entity_id, trace_id` | `Medium.Code` per LLM-emitted Elixir evaluation |
 | `[:cantrip, :bash, :eval]` | `duration` | `entity_id, trace_id` | `Medium.Bash` per shell command |
 | `[:cantrip, :usage]` | `prompt_tokens, completion_tokens, total_tokens` | `entity_id, turn_number, trace_id` | `EntityServer.run_loop/1` after provider response |
+| `[:cantrip, :redact, :hit]` | `count` | `entity_id, trace_id` | `Redact.scan/1` when boundary redaction removes a credential |
 | `[:cantrip, :fold, :trigger]` | — | `entity_id, turn_number, trace_id` | `EntityServer.run_loop/1` when folding fires |
 | `[:cantrip, :ward, :truncate]` | — | `entity_id, ward, trace_id` | `EntityServer.run_loop/1` when a ward stops execution |
 | `[:cantrip, :child, :start]` | — | `entity_id, child_depth, trace_id` | `Cantrip.run_child_cast/4` before child cast |
@@ -85,6 +86,8 @@ Recommended subscriptions for production deployments:
   volume per `entity_id`.
 - **`[:cantrip, :ward, :truncate]`** → counter per `ward` to see which guard
   is stopping work.
+- **`[:cantrip, :redact, :hit]`** → counter of credential-shaped content
+  removed from entity/model-visible boundaries.
 - **`[:cantrip, :child, :start]` / `[:cantrip, :child, :stop]`** → counters
   and outcome tags for delegation fanout.
 - **`[:cantrip, :code, :eval]`** and **`[:cantrip, :bash, :eval]`** →
@@ -127,6 +130,7 @@ Prometheus, Datadog, and other backends have equivalent
 | `cantrip.turn.stop.duration` p95 | > 60s | Long turns suggest provider slowness, runaway code-medium evaluation, or hung gate |
 | `cantrip.entity.stop.reason` = `:truncated` | > 10% over 1 hour | High truncation rate = `max_turns` ward set too low for the workload |
 | `cantrip.ward.truncate.count` | sudden increase by `ward` | A runtime guard is stopping work more often than expected |
+| `cantrip.redact.hit.count` | any unexpected sustained rate | User data or files contain credential-shaped content reaching observation boundaries |
 | `cantrip.code.eval.duration` p95 | > 30s | Long code-medium evaluations suggest sandbox starvation or hung port |
 
 ---

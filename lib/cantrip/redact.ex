@@ -54,10 +54,31 @@ defmodule Cantrip.Redact do
   """
   @spec scan(term()) :: term()
   def scan(value) when is_binary(value) do
-    Enum.reduce(@patterns, value, fn {pattern, replacement}, acc ->
-      Regex.replace(pattern, acc, replacement)
-    end)
+    redacted =
+      Enum.reduce(@patterns, value, fn {pattern, replacement}, acc ->
+        Regex.replace(pattern, acc, replacement)
+      end)
+
+    if redacted != value do
+      emit_redaction_hit()
+    end
+
+    redacted
   end
 
   def scan(value), do: value
+
+  defp emit_redaction_hit do
+    case Cantrip.Telemetry.current_context() do
+      %{entity_id: entity_id, trace_id: trace_id} ->
+        Cantrip.Telemetry.execute(
+          [:cantrip, :redact, :hit],
+          %{count: 1},
+          %{entity_id: entity_id, trace_id: trace_id}
+        )
+
+      nil ->
+        :ok
+    end
+  end
 end

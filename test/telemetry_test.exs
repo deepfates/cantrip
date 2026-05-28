@@ -118,6 +118,7 @@ defmodule CantripTelemetryTest do
                [:cantrip, :code, :eval],
                [:cantrip, :bash, :eval],
                [:cantrip, :usage],
+               [:cantrip, :redact, :hit],
                [:cantrip, :fold, :trigger],
                [:cantrip, :ward, :truncate],
                [:cantrip, :child, :start],
@@ -240,6 +241,41 @@ defmodule CantripTelemetryTest do
       assert_received {^ref, [:cantrip, :usage],
                        %{prompt_tokens: 11, completion_tokens: 7, total_tokens: 18},
                        %{entity_id: _, trace_id: _, turn_number: 1}}
+    end
+
+    test "emits :redact :hit when boundary redaction removes a credential" do
+      ref = attach([:cantrip, :redact, :hit], "redact-hit")
+      tmp = Path.join(System.tmp_dir!(), "telemetry_redact_#{System.unique_integer([:positive])}")
+
+      try do
+        File.mkdir_p!(tmp)
+        File.write!(Path.join(tmp, ".env"), "OPENAI_API_KEY=sk-proj-abcdefghijklmnop")
+
+        llm =
+          {FakeLLM,
+           FakeLLM.new([
+             %{tool_calls: [%{gate: "read_file", args: %{path: ".env"}}]},
+             %{tool_calls: [%{gate: "done", args: %{answer: "ok"}}]}
+           ])}
+
+        {:ok, cantrip} =
+          Cantrip.new(
+            llm: llm,
+            identity: %{system_prompt: "test"},
+            circle: %{
+              type: :conversation,
+              gates: [%{name: "read_file", dependencies: %{root: tmp}}, %{name: "done"}],
+              wards: [%{max_turns: 10}]
+            }
+          )
+
+        {:ok, "ok", _, _, _} = Cantrip.cast(cantrip, "hello")
+
+        assert_received {^ref, [:cantrip, :redact, :hit], %{count: 1},
+                         %{entity_id: _, trace_id: _}}
+      after
+        File.rm_rf!(tmp)
+      end
     end
 
     test "emits :ward :truncate when max_turns stops execution" do

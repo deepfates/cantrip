@@ -11,6 +11,7 @@ defmodule Cantrip.Telemetry do
     [:cantrip, :code, :eval],
     [:cantrip, :bash, :eval],
     [:cantrip, :usage],
+    [:cantrip, :redact, :hit],
     [:cantrip, :fold, :trigger],
     [:cantrip, :ward, :truncate],
     [:cantrip, :child, :start],
@@ -33,6 +34,34 @@ defmodule Cantrip.Telemetry do
   def trace_id(id) when is_binary(id) and byte_size(id) > 0, do: id
   def trace_id(_), do: mint_trace_id()
 
+  @doc false
+  @spec with_context(String.t(), String.t(), (-> term())) :: term()
+  def with_context(entity_id, trace_id, fun)
+      when is_binary(entity_id) and is_binary(trace_id) and is_function(fun, 0) do
+    previous_entity_id = Process.get(:cantrip_entity_id)
+    previous_trace_id = Process.get(:cantrip_trace_id)
+    Process.put(:cantrip_entity_id, entity_id)
+    Process.put(:cantrip_trace_id, trace_id)
+
+    try do
+      fun.()
+    after
+      restore_process_value(:cantrip_entity_id, previous_entity_id)
+      restore_process_value(:cantrip_trace_id, previous_trace_id)
+    end
+  end
+
+  @doc false
+  @spec current_context() :: %{entity_id: String.t(), trace_id: String.t()} | nil
+  def current_context do
+    with entity_id when is_binary(entity_id) <- Process.get(:cantrip_entity_id),
+         trace_id when is_binary(trace_id) <- Process.get(:cantrip_trace_id) do
+      %{entity_id: entity_id, trace_id: trace_id}
+    else
+      _ -> nil
+    end
+  end
+
   defp mint_trace_id do
     bytes = :crypto.strong_rand_bytes(16)
 
@@ -41,4 +70,7 @@ defmodule Cantrip.Telemetry do
 
     Enum.map_join([a, b, c, d, e], "-", &Base.encode16(&1, case: :lower))
   end
+
+  defp restore_process_value(key, nil), do: Process.delete(key)
+  defp restore_process_value(key, value), do: Process.put(key, value)
 end

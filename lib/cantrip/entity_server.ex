@@ -256,7 +256,7 @@ defmodule Cantrip.EntityServer do
   defp run_episode(state, opts) do
     stop? = Keyword.fetch!(opts, :stop?)
 
-    case run_loop(state) do
+    case Cantrip.Telemetry.with_context(state.entity_id, state.trace_id, fn -> run_loop(state) end) do
       {:error, reason, final_state} ->
         emit_entity_stop(final_state, :error)
         await_stream_barrier(final_state)
