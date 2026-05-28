@@ -194,7 +194,8 @@ defmodule Cantrip.LLMs.ReqLLM do
 
   # -- Response normalization --
 
-  defp normalize_response(%ReqLLM.Response{} = response) do
+  @doc false
+  def normalize_response(%ReqLLM.Response{} = response) do
     text = ReqLLM.Response.text(response)
     tool_calls = ReqLLM.Response.tool_calls(response)
     usage = ReqLLM.Response.usage(response) || %{}
@@ -214,30 +215,38 @@ defmodule Cantrip.LLMs.ReqLLM do
 
       args_raw = func[:arguments] || func["arguments"] || %{}
 
-      args =
-        cond do
-          is_map(args_raw) ->
-            args_raw
+      {args, decode_error} = normalize_tool_args(args_raw)
 
-          is_binary(args_raw) ->
-            case Jason.decode(args_raw) do
-              {:ok, map} when is_map(map) -> map
-              _ -> %{}
-            end
-
-          true ->
-            %{}
-        end
-
-      %{
-        id: tc_map[:id] || tc_map["id"],
-        gate: func[:name] || func["name"],
-        args: args
-      }
+      %{}
+      |> Map.put(:id, tc_map[:id] || tc_map["id"])
+      |> Map.put(:gate, func[:name] || func["name"])
+      |> Map.put(:args, args)
+      |> maybe_put(:args_raw, args_raw, is_binary(args_raw))
+      |> maybe_put(:args_decode_error, decode_error, not is_nil(decode_error))
     end)
   end
 
   defp normalize_tool_calls(_), do: []
+
+  defp normalize_tool_args(args_raw) when is_map(args_raw), do: {args_raw, nil}
+
+  defp normalize_tool_args(args_raw) when is_binary(args_raw) do
+    case Jason.decode(args_raw) do
+      {:ok, map} when is_map(map) ->
+        {map, nil}
+
+      {:ok, _other} ->
+        {%{}, "tool-call arguments JSON must decode to an object"}
+
+      {:error, error} ->
+        {%{}, Exception.message(error)}
+    end
+  end
+
+  defp normalize_tool_args(_args_raw), do: {%{}, nil}
+
+  defp maybe_put(map, key, value, true), do: Map.put(map, key, value)
+  defp maybe_put(map, _key, _value, false), do: map
 
   defp normalize_usage(usage) when is_map(usage) do
     %{

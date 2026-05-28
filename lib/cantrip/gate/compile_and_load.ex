@@ -57,10 +57,17 @@ defmodule Cantrip.Gate.CompileAndLoad do
       |> Enum.uniq()
 
     cond do
-      allow_exact == [] and allow_namespaces == [] -> :ok
-      module_name in allow_exact -> :ok
-      Enum.any?(allow_namespaces, &String.starts_with?(module_name, &1)) -> :ok
-      true -> {:error, "module not allowed: #{module_name}"}
+      allow_exact == [] and allow_namespaces == [] ->
+        {:error, "compile_and_load requires allow_compile_modules or allow_compile_namespaces"}
+
+      module_name in allow_exact ->
+        :ok
+
+      Enum.any?(allow_namespaces, &String.starts_with?(module_name, &1)) ->
+        :ok
+
+      true ->
+        {:error, "module not allowed: #{module_name}"}
     end
   end
 

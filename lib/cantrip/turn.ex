@@ -421,11 +421,11 @@ defmodule Cantrip.Turn do
   defp stringify_tool_result(result), do: inspect(result)
 
   defp extract_code_from_tool_call([%{gate: gate, args: args} | _], gate, key) do
-    Map.get(args, key) || Map.get(args, String.to_atom(key))
+    Map.get(args, key) || Map.get(args, string_key(key)) || Map.get(args, existing_atom_key(key))
   end
 
   defp extract_code_from_tool_call([%{"gate" => gate, "args" => args} | _], gate, key) do
-    Map.get(args, key) || Map.get(args, String.to_atom(key))
+    Map.get(args, key) || Map.get(args, string_key(key)) || Map.get(args, existing_atom_key(key))
   end
 
   defp extract_code_from_tool_call([_ | rest], gate, key) do
@@ -433,6 +433,17 @@ defmodule Cantrip.Turn do
   end
 
   defp extract_code_from_tool_call([], _gate, _key), do: nil
+
+  defp string_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp string_key(key), do: to_string(key)
+
+  defp existing_atom_key(key) when is_atom(key), do: key
+
+  defp existing_atom_key(key) do
+    String.to_existing_atom(to_string(key))
+  rescue
+    ArgumentError -> nil
+  end
 
   # Folding lives in `Cantrip.Folding`. We trigger on approximate prompt size
   # against the cantrip's threshold; `trigger_after_turns` also remains

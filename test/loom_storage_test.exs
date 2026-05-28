@@ -3,6 +3,30 @@ defmodule Cantrip.LoomStorageTest do
 
   alias Cantrip.FakeLLM
 
+  defmodule MnesiaSchemaFailure do
+    def system_info(:is_running), do: :no
+    def create_schema([_node]), do: {:error, :schema_root_cause}
+    def start, do: raise("start should not run after create_schema failure")
+  end
+
+  defmodule MnesiaAlreadyExists do
+    def system_info(:is_running), do: :no
+    def create_schema([node]), do: {:error, {:already_exists, node}}
+    def start, do: :ok
+    def create_table(_table, _opts), do: {:atomic, :ok}
+    def wait_for_tables(_tables, _timeout), do: :ok
+  end
+
+  test "mnesia init surfaces create_schema root cause" do
+    assert {:error, ":schema_root_cause"} =
+             Cantrip.Loom.Storage.Mnesia.init(table: :schema_failure, mnesia: MnesiaSchemaFailure)
+  end
+
+  test "mnesia init still accepts already_exists create_schema variants" do
+    assert {:ok, %{table: :schema_exists, mnesia: MnesiaAlreadyExists}} =
+             Cantrip.Loom.Storage.Mnesia.init(table: :schema_exists, mnesia: MnesiaAlreadyExists)
+  end
+
   test "loom writes generic events to jsonl storage and rehydrates them faithfully" do
     path = tmp_jsonl_path()
     File.rm(path)

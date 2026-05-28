@@ -13,6 +13,8 @@ defmodule Cantrip.Medium.Code.PortChild do
     :folded_summary
   ]
 
+  @builtin_gate_atoms ~w(done echo read_file list_dir search compile_and_load)a
+
   @wire_safe_atoms [
     Cantrip.FakeLLM,
     Cantrip.LLMs.ReqLLM,
@@ -328,25 +330,29 @@ defmodule Cantrip.Medium.Code.PortChild do
 
     binding =
       Enum.reduce(gate_names, user_binding, fn gate_name, acc ->
-        binding_name = String.to_atom(gate_name)
+        case gate_binding_name(gate_name) do
+          {:ok, binding_name} ->
+            gate_fun =
+              cond do
+                gate_name == "done" ->
+                  done_fun(evaluator)
 
-        gate_fun =
-          cond do
-            gate_name == "done" ->
-              done_fun(evaluator)
+                gate_name == "compile_and_load" ->
+                  fn opts -> compile_and_load(normalize_args(opts)) end
 
-            gate_name == "compile_and_load" ->
-              fn opts -> compile_and_load(normalize_args(opts)) end
-
-            true ->
-              fn opts ->
-                args = normalize_args(opts)
-                observation = call_gate(gate_name, args)
-                observation.result
+                true ->
+                  fn opts ->
+                    args = normalize_args(opts)
+                    observation = call_gate(gate_name, args)
+                    observation.result
+                  end
               end
-          end
 
-        Keyword.put(acc, binding_name, gate_fun)
+            Keyword.put(acc, binding_name, gate_fun)
+
+          _ ->
+            acc
+        end
       end)
 
     binding =
@@ -640,9 +646,28 @@ defmodule Cantrip.Medium.Code.PortChild do
     binding
     |> Enum.flat_map(fn
       {key, value} when is_atom(key) -> [{key, value}]
-      {key, value} when is_binary(key) -> [{String.to_atom(key), value}]
+      {key, value} when is_binary(key) -> existing_binding(key, value)
       _ -> []
     end)
+  end
+
+  defp gate_binding_name(name) when is_atom(name), do: {:ok, name}
+
+  defp gate_binding_name(name) when is_binary(name) do
+    case Enum.find(@builtin_gate_atoms, &(Atom.to_string(&1) == name)) do
+      nil -> {:ok, String.to_existing_atom(name)}
+      atom -> {:ok, atom}
+    end
+  rescue
+    ArgumentError -> :error
+  end
+
+  defp gate_binding_name(_), do: :error
+
+  defp existing_binding(key, value) do
+    [{String.to_existing_atom(key), value}]
+  rescue
+    ArgumentError -> []
   end
 
   defp externalize_term(%Cantrip{id: id}), do: id

@@ -18,6 +18,8 @@ defmodule Cantrip.Medium.Code do
     :folded_summary
   ]
 
+  @builtin_gate_atoms ~w(done echo read_file list_dir search compile_and_load)a
+
   @type runtime :: %{
           required(:circle) => Circle.t(),
           optional(:execute_gate) => (String.t(), map() -> map()),
@@ -358,32 +360,45 @@ defmodule Cantrip.Medium.Code do
         runtime.circle
         |> Gate.names()
         |> Enum.reduce(binding, fn gate_name, acc ->
-          binding_name = String.to_atom(gate_name)
+          case gate_binding_name(gate_name) do
+            {:ok, binding_name} when binding_name not in @reserved_bindings ->
+              gate_fun = fn opts ->
+                # In code medium, models may pass bare values (strings, numbers)
+                # rather than maps. Normalize maps/lists but pass bare values through
+                # so gate handlers can interpret them directly.
+                args =
+                  cond do
+                    is_map(opts) -> opts
+                    is_list(opts) -> Map.new(opts)
+                    true -> opts
+                  end
 
-          if binding_name in @reserved_bindings do
-            acc
-          else
-            gate_fun = fn opts ->
-              # In code medium, models may pass bare values (strings, numbers)
-              # rather than maps. Normalize maps/lists but pass bare values through
-              # so gate handlers can interpret them directly.
-              args =
-                cond do
-                  is_map(opts) -> opts
-                  is_list(opts) -> Map.new(opts)
-                  true -> opts
-                end
+                observation = execute_gate.(gate_name, args) |> Map.put(:args, args)
+                push_observation(runtime.observation_collector, observation)
+                observation.result
+              end
 
-              observation = execute_gate.(gate_name, args) |> Map.put(:args, args)
-              push_observation(runtime.observation_collector, observation)
-              observation.result
-            end
+              Keyword.put(acc, binding_name, gate_fun)
 
-            Keyword.put(acc, binding_name, gate_fun)
+            _ ->
+              acc
           end
         end)
     end
   end
+
+  defp gate_binding_name(name) when is_atom(name), do: {:ok, name}
+
+  defp gate_binding_name(name) when is_binary(name) do
+    case Enum.find(@builtin_gate_atoms, &(Atom.to_string(&1) == name)) do
+      nil -> {:ok, String.to_existing_atom(name)}
+      atom -> {:ok, atom}
+    end
+  rescue
+    ArgumentError -> :error
+  end
+
+  defp gate_binding_name(_), do: :error
 
   # Extract gate function names from bindings (all function-valued bindings)
   defp extract_gate_names(binding) do

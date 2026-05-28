@@ -817,7 +817,23 @@ defmodule Cantrip do
 
   defp normalize_parent_context(%{} = context) do
     Map.new(context, fn {k, v} ->
-      key = if is_atom(k), do: k, else: String.to_atom(to_string(k))
+      key =
+        case k do
+          atom when is_atom(atom) -> atom
+          "parent_cantrip" -> :parent_cantrip
+          "depth" -> :depth
+          "child_llm" -> :child_llm
+          "cancel_on_parent" -> :cancel_on_parent
+          "stream_to" -> :stream_to
+          "stream_barrier?" -> :stream_barrier?
+          "entity_state" -> :entity_state
+          "child_llm_ref" -> :child_llm_ref
+          "remember_child_llm?" -> :remember_child_llm?
+          "observation_collector" -> :observation_collector
+          "record_parent_observation?" -> :record_parent_observation?
+          other -> other
+        end
+
       {key, v}
     end)
   end

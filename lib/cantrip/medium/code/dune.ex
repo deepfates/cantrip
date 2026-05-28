@@ -37,6 +37,8 @@ defmodule Cantrip.Medium.Code.Dune do
     :loom
   ]
 
+  @builtin_gate_atoms ~w(done echo read_file list_dir search compile_and_load)a
+
   @type runtime :: Cantrip.Medium.Code.runtime()
   @type state :: %{optional(:binding) => keyword(), optional(:dune_session) => Dune.Session.t()}
 
@@ -225,33 +227,46 @@ defmodule Cantrip.Medium.Code.Dune do
     circle
     |> Gate.names()
     |> Enum.reduce(bindings, fn gate_name, acc ->
-      binding_name = String.to_atom(gate_name)
+      case gate_binding_name(gate_name) do
+        {:ok, binding_name} when binding_name not in @reserved_bindings ->
+          gate_fun = fn opts ->
+            # Match unrestricted code medium's behavior: bare values
+            # (binaries, numbers) pass through to the gate handler,
+            # which has its own clauses for handling them. Mapping
+            # binaries to `%{}` here strips path arguments that the
+            # entity expected the gate to validate.
+            args =
+              cond do
+                is_map(opts) -> opts
+                is_list(opts) -> Map.new(opts)
+                true -> opts
+              end
 
-      if binding_name in @reserved_bindings do
-        acc
-      else
-        gate_fun = fn opts ->
-          # Match unrestricted code medium's behavior: bare values
-          # (binaries, numbers) pass through to the gate handler,
-          # which has its own clauses for handling them. Mapping
-          # binaries to `%{}` here strips path arguments that the
-          # entity expected the gate to validate.
-          args =
-            cond do
-              is_map(opts) -> opts
-              is_list(opts) -> Map.new(opts)
-              true -> opts
-            end
+            observation = execute_gate.(gate_name, args)
+            push_agent_observation(agent, observation)
+            observation.result
+          end
 
-          observation = execute_gate.(gate_name, args)
-          push_agent_observation(agent, observation)
-          observation.result
-        end
+          Keyword.put(acc, binding_name, gate_fun)
 
-        Keyword.put(acc, binding_name, gate_fun)
+        _ ->
+          acc
       end
     end)
   end
+
+  defp gate_binding_name(name) when is_atom(name), do: {:ok, name}
+
+  defp gate_binding_name(name) when is_binary(name) do
+    case Enum.find(@builtin_gate_atoms, &(Atom.to_string(&1) == name)) do
+      nil -> {:ok, String.to_existing_atom(name)}
+      atom -> {:ok, atom}
+    end
+  rescue
+    ArgumentError -> :error
+  end
+
+  defp gate_binding_name(_), do: :error
 
   defp push_agent_observation(agent, observation) do
     Agent.update(agent, fn state ->

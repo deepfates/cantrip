@@ -3,6 +3,20 @@ defmodule Cantrip.HotReloadTest do
 
   alias Cantrip.FakeLLM
 
+  test "compile_and_load requires an explicit module allowlist" do
+    module_name = "Elixir.Cantrip.HotReloadNoAllow"
+
+    obs =
+      Cantrip.Gate.CompileAndLoad.execute(
+        %{module: module_name, source: "defmodule Cantrip.HotReloadNoAllow do end"},
+        [%{max_turns: 1}],
+        %{name: "compile_and_load"}
+      )
+
+    assert obs.is_error
+    assert obs.result =~ "requires allow_compile_modules or allow_compile_namespaces"
+  end
+
   test "hot-reload gate compiles and reloads allowed module" do
     module_name = "Elixir.Cantrip.HotReloadDemo"
     module = String.to_atom(module_name)

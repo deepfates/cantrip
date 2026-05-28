@@ -23,12 +23,25 @@ defmodule Cantrip.Gate.Executor do
         tool_call_id = call[:id] || call["id"] || mint_tool_call_id()
         gate = call[:gate] || call["gate"]
         args = call[:args] || call["args"] || %{}
+        args_decode_error = call[:args_decode_error] || call["args_decode_error"]
+        args_raw = call[:args_raw] || call["args_raw"]
 
         emit_gate_start(entity_id, gate)
         gate_start = System.monotonic_time()
 
         observation =
-          execute_gate.(circle, gate, args)
+          case args_decode_error do
+            error when is_binary(error) ->
+              %{
+                gate: gate,
+                result: malformed_args_message(error),
+                is_error: true
+              }
+              |> maybe_put(:args_raw, args_raw, is_binary(args_raw))
+
+            _ ->
+              execute_gate.(circle, gate, args)
+          end
           |> Map.put(:tool_call_id, tool_call_id)
           |> Map.put(:args, args)
 
@@ -72,4 +85,11 @@ defmodule Cantrip.Gate.Executor do
   defp mint_tool_call_id do
     "call_" <> Integer.to_string(System.unique_integer([:positive]))
   end
+
+  defp malformed_args_message(error) do
+    "malformed tool-call arguments: #{error}"
+  end
+
+  defp maybe_put(map, key, value, true), do: Map.put(map, key, value)
+  defp maybe_put(map, _key, _value, false), do: map
 end

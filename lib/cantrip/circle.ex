@@ -57,17 +57,33 @@ defmodule Cantrip.Circle do
       [] ->
         {:error, "circle must declare a medium"}
 
-      [{_source, _value}] ->
-        :ok
+      [{_source, value}] ->
+        validate_known_medium(value)
 
       sources ->
         values = sources |> Enum.map(fn {_s, v} -> normalize_type(v) end) |> Enum.uniq()
 
-        if length(values) == 1 do
-          :ok
-        else
-          {:error, "circle must declare exactly one medium"}
+        cond do
+          length(values) != 1 ->
+            {:error, "circle must declare exactly one medium"}
+
+          true ->
+            [{_source, value} | _] = sources
+            validate_known_medium(value)
         end
+    end
+  end
+
+  defp validate_known_medium(value) do
+    case normalize_type(value) do
+      type when type in [:conversation, :code, :bash] ->
+        :ok
+
+      invalid ->
+        valid = "conversation, code, bash"
+
+        {:error,
+         "unknown medium #{inspect(invalid)} from #{inspect(value)}; valid mediums: #{valid}"}
     end
   end
 
@@ -99,11 +115,13 @@ defmodule Cantrip.Circle do
     |> Map.new(fn gate -> {gate.name, gate} end)
   end
 
+  defp normalize_type(:conversation), do: :conversation
+  defp normalize_type("conversation"), do: :conversation
   defp normalize_type(:code), do: :code
   defp normalize_type("code"), do: :code
   defp normalize_type(:bash), do: :bash
   defp normalize_type("bash"), do: :bash
-  defp normalize_type(_), do: :conversation
+  defp normalize_type(other), do: other
 
   defp canonical_gate_name(name), do: name
 end
