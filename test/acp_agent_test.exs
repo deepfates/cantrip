@@ -8,7 +8,11 @@ defmodule Cantrip.ACP.AgentHandlerTest do
     @behaviour Cantrip.ACP.Runtime
 
     @impl true
-    def new_session(%{"cwd" => cwd}) do
+    def new_session(%{"cwd" => cwd} = params) do
+      if capture_pid = Process.get(:acp_capture_pid) do
+        send(capture_pid, {:new_session_params, params})
+      end
+
       {:ok, %{cwd: cwd, calls: []}}
     end
 
@@ -16,6 +20,24 @@ defmodule Cantrip.ACP.AgentHandlerTest do
     def prompt(session, text) do
       {:ok, "echo:" <> text, %{session | calls: session.calls ++ [text]}}
     end
+  end
+
+  defmodule FamiliarRuntimeFromProcess do
+    @behaviour Cantrip.ACP.Runtime
+
+    @impl true
+    def new_session(params) do
+      params =
+        case Process.get(:acp_test_llm) do
+          nil -> params
+          llm -> Map.put(params, "llm", llm)
+        end
+
+      Cantrip.ACP.Runtime.Familiar.new_session(params)
+    end
+
+    @impl true
+    def prompt(session, text), do: Cantrip.ACP.Runtime.Familiar.prompt(session, text)
   end
 
   defp init_request do
@@ -132,6 +154,36 @@ defmodule Cantrip.ACP.AgentHandlerTest do
       assert_acp_trace_id_propagates(:prompt)
     end
 
+    test "new_session strips ACP _meta runtime overrides before calling runtime" do
+      table = initialized_table()
+      Process.put(:acp_capture_pid, self())
+      on_exit(fn -> Process.delete(:acp_capture_pid) end)
+
+      assert {:ok, %ACP.NewSessionResponse{}} =
+               AgentHandler.handle_request(
+                 {:new_session,
+                  %ACP.NewSessionRequest{
+                    cwd: "/tmp",
+                    meta: %{
+                      "trace_id" => "trace-acp-boundary",
+                      "llm" => {:unsafe, :override},
+                      "loom_path" => "/tmp/hostile.jsonl",
+                      "max_turns" => 1,
+                      "unknown" => "ignored"
+                    }
+                  }},
+                 table
+               )
+
+      assert_receive {:new_session_params,
+                      %{"cwd" => "/tmp", "trace_id" => "trace-acp-boundary"} = params}
+
+      refute Map.has_key?(params, "llm")
+      refute Map.has_key?(params, "loom_path")
+      refute Map.has_key?(params, "max_turns")
+      refute Map.has_key?(params, "unknown")
+    end
+
     test "authenticate returns ok" do
       table = AgentHandler.new(runtime: StubRuntime)
 
@@ -208,13 +260,16 @@ defmodule Cantrip.ACP.AgentHandlerTest do
 
     trace_id = "acp-request-#{source}-#{System.unique_integer([:positive])}"
     llm = {FakeLLM, FakeLLM.new([%{code: ~s|done.("traced")|}])}
-    table = AgentHandler.new(runtime: Cantrip.ACP.Runtime.Familiar)
+    Process.put(:acp_test_llm, llm)
+    on_exit(fn -> Process.delete(:acp_test_llm) end)
+
+    table = AgentHandler.new(runtime: FamiliarRuntimeFromProcess)
     AgentHandler.handle_request(init_request(), table)
 
     new_session_meta =
       case source do
-        :new_session -> %{"llm" => llm, "trace_id" => trace_id}
-        :prompt -> %{"llm" => llm}
+        :new_session -> %{"trace_id" => trace_id}
+        :prompt -> nil
       end
 
     prompt_meta =

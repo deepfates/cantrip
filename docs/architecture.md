@@ -76,7 +76,10 @@ handler accepts `_meta.trace_id` or `_meta.cantrip_trace_id` on `session/new`
 and `session/prompt`; the Familiar runtime carries that value into
 `Cantrip.summon/3` / `Cantrip.send/3` so telemetry emitted by the entity can be
 joined to an external request, job, or editor operation. Without that metadata,
-the entity mints its own trace ID.
+the entity mints its own trace ID. `_meta` is not a Familiar configuration
+channel: LLM selection, loom paths, turn budgets, and other runtime controls
+come from server/runtime configuration, not from editor-supplied request
+metadata.
 
 ## Composition
 

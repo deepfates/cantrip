@@ -91,9 +91,8 @@ defmodule Cantrip.ACP.AgentHandler do
       {:error, %ACP.Error{code: -32_602, message: "cwd must be an absolute path"}}
     else
       runtime = :ets.lookup_element(table, :runtime, 2)
-      params = %{"cwd" => cwd}
-      params = if req.meta, do: Map.merge(params, req.meta), else: params
-      params = maybe_put_trace_id(params, req.meta)
+      meta = Cantrip.ACP.SessionMeta.parse(req.meta)
+      params = Map.merge(%{"cwd" => cwd}, Cantrip.ACP.SessionMeta.to_session_params(meta))
 
       case runtime.new_session(params) do
         {:ok, session} ->
@@ -118,10 +117,11 @@ defmodule Cantrip.ACP.AgentHandler do
 
   defp dispatch({:prompt, %ACP.PromptRequest{} = req}, table) do
     session_id = req.session_id || infer_session_id(table)
+    meta = Cantrip.ACP.SessionMeta.parse(req.meta)
 
     case :ets.lookup(table, {:session, session_id}) do
       [{{:session, ^session_id}, session}] ->
-        session = maybe_put_session_trace_id(session, trace_id_from_meta(req.meta))
+        session = maybe_put_session_trace_id(session, Cantrip.ACP.SessionMeta.trace_id(meta))
         dispatch_prompt(table, session_id, session, req.prompt)
 
       [] ->
@@ -269,28 +269,10 @@ defmodule Cantrip.ACP.AgentHandler do
   defp extract_text(text) when is_binary(text) and text != "", do: {:ok, text}
   defp extract_text(_), do: {:error, :bad_prompt}
 
-  defp maybe_put_trace_id(params, meta) do
-    case trace_id_from_meta(meta) do
-      nil -> params
-      trace_id -> Map.put(params, "trace_id", trace_id)
-    end
-  end
-
   defp maybe_put_session_trace_id(session, nil), do: session
 
   defp maybe_put_session_trace_id(session, trace_id) when is_map(session),
     do: Map.put(session, :trace_id, trace_id)
 
   defp maybe_put_session_trace_id(session, _trace_id), do: session
-
-  defp trace_id_from_meta(meta) when is_map(meta) do
-    Enum.find_value(["trace_id", "cantrip_trace_id", "traceId", "cantripTraceId"], fn key ->
-      case Map.get(meta, key) do
-        value when is_binary(value) and value != "" -> value
-        _ -> nil
-      end
-    end)
-  end
-
-  defp trace_id_from_meta(_meta), do: nil
 end

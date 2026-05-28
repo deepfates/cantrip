@@ -213,7 +213,7 @@ defmodule Cantrip.Loom.Storage.Jsonl do
   end
 
   @metadata_atom_fields ~w(timestamp duration_ms tokens_prompt tokens_completion
-                           tokens_cached continuation)a
+                           tokens_cached continuation truncation_reason)a
 
   defp atomize_metadata(m) do
     Enum.reduce(@metadata_atom_fields, %{}, fn key, acc ->

@@ -26,7 +26,11 @@ defmodule Cantrip.ACP.AgentHandlerStreamingTest do
     @behaviour Cantrip.ACP.Runtime
 
     @impl true
-    def new_session(%{"cwd" => cwd, "fake_llm" => llm_state}) do
+    def new_session(%{"cwd" => cwd}) do
+      llm_state =
+        Process.get(:acp_streaming_test_llm) ||
+          raise "missing :acp_streaming_test_llm process test fixture"
+
       {:ok,
        %{
          cwd: cwd,
@@ -141,13 +145,11 @@ defmodule Cantrip.ACP.AgentHandlerStreamingTest do
         %{content: "Done."}
       ])
 
+    put_fake_llm(llm)
+
     {:ok, %ACP.NewSessionResponse{session_id: sid}} =
       AgentHandler.handle_request(
-        {:new_session,
-         %ACP.NewSessionRequest{
-           cwd: "/tmp",
-           meta: %{"fake_llm" => llm}
-         }},
+        {:new_session, %ACP.NewSessionRequest{cwd: "/tmp"}},
         table
       )
 
@@ -196,9 +198,11 @@ defmodule Cantrip.ACP.AgentHandlerStreamingTest do
         %{content: "All done."}
       ])
 
+    put_fake_llm(llm)
+
     {:ok, %ACP.NewSessionResponse{session_id: sid}} =
       AgentHandler.handle_request(
-        {:new_session, %ACP.NewSessionRequest{cwd: "/tmp", meta: %{"fake_llm" => llm}}},
+        {:new_session, %ACP.NewSessionRequest{cwd: "/tmp"}},
         table
       )
 
@@ -252,9 +256,11 @@ defmodule Cantrip.ACP.AgentHandlerStreamingTest do
         shared: true
       )
 
+    put_fake_llm(llm)
+
     {:ok, %ACP.NewSessionResponse{session_id: sid}} =
       AgentHandler.handle_request(
-        {:new_session, %ACP.NewSessionRequest{cwd: "/tmp", meta: %{"fake_llm" => llm}}},
+        {:new_session, %ACP.NewSessionRequest{cwd: "/tmp"}},
         table
       )
 
@@ -384,6 +390,11 @@ defmodule Cantrip.ACP.AgentHandlerStreamingTest do
   end
 
   # ---- helpers ----
+
+  defp put_fake_llm(llm) do
+    Process.put(:acp_streaming_test_llm, llm)
+    on_exit(fn -> Process.delete(:acp_streaming_test_llm) end)
+  end
 
   defp lookup_bridge(table, session_id) do
     case :ets.lookup(table, {:bridge, session_id}) do

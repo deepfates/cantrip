@@ -394,6 +394,24 @@ defmodule Cantrip.FamiliarTest do
   end
 
   describe "ACP runtime (Familiar)" do
+    defmodule FamiliarRuntimeFromProcess do
+      @behaviour Cantrip.ACP.Runtime
+
+      @impl true
+      def new_session(params) do
+        params =
+          case Process.get(:acp_test_llm) do
+            nil -> params
+            llm -> Map.put(params, "llm", llm)
+          end
+
+        Cantrip.ACP.Runtime.Familiar.new_session(params)
+      end
+
+      @impl true
+      def prompt(session, text), do: Cantrip.ACP.Runtime.Familiar.prompt(session, text)
+    end
+
     test "new_session returns a session with familiar gates" do
       llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
 
@@ -426,7 +444,11 @@ defmodule Cantrip.FamiliarTest do
     test "ACP AgentHandler works with familiar runtime" do
       alias Cantrip.ACP.AgentHandler
 
-      table = AgentHandler.new(runtime: Cantrip.ACP.Runtime.Familiar)
+      llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
+      Process.put(:acp_test_llm, llm)
+      on_exit(fn -> Process.delete(:acp_test_llm) end)
+
+      table = AgentHandler.new(runtime: FamiliarRuntimeFromProcess)
 
       # Initialize
       assert {:ok, %ACP.InitializeResponse{protocol_version: 1}} =
@@ -440,15 +462,11 @@ defmodule Cantrip.FamiliarTest do
                  table
                )
 
-      llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
-
-      # Create session with injected LLM via meta
       assert {:ok, %ACP.NewSessionResponse{session_id: session_id}} =
                AgentHandler.handle_request(
                  {:new_session,
                   %ACP.NewSessionRequest{
-                    cwd: System.tmp_dir!(),
-                    meta: %{"llm" => llm}
+                    cwd: System.tmp_dir!()
                   }},
                  table
                )

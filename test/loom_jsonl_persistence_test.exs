@@ -254,6 +254,37 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
              Map.get(restored, "gate_calls") == ["done"]
   end
 
+  test "loading a JSONL loom preserves truncation metadata as atom keys" do
+    path = tmp_path()
+    on_exit(fn -> File.rm(path) end)
+
+    loom_1 = Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+
+    turn = %{
+      cantrip_id: "c1",
+      entity_id: "e1",
+      role: "turn",
+      utterance: %{code: "continue", content: nil},
+      observation: [],
+      gate_calls: [],
+      terminated: false,
+      truncated: true,
+      metadata: %{
+        timestamp: DateTime.utc_now(),
+        truncation_reason: "max_turns"
+      }
+    }
+
+    _loom_1 = Loom.append_turn(loom_1, turn)
+
+    loom_2 = Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+    [restored] = loom_2.turns
+
+    assert restored.truncated == true
+    assert restored.metadata.truncation_reason == "max_turns"
+    refute Map.has_key?(restored.metadata, "truncation_reason")
+  end
+
   test "code_state.binding round-trips faithfully: tuples and existing atoms restore" do
     # Bindings persist as live Elixir terms across the JSONL boundary.
     # An entity resuming from a prior session reads its prior variables

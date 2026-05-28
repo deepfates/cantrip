@@ -166,7 +166,9 @@ ACP requests can use the protocol metadata channel. Put a non-empty string in
 `_meta.trace_id` (or `_meta.cantrip_trace_id`) on `session/new` or
 `session/prompt`; the Familiar ACP runtime stores it on the session and passes
 it into `Cantrip.summon/3` or `Cantrip.send/3` so entity, turn, gate, usage,
-child, and code events carry the caller's external trace ID:
+child, and code events carry the caller's external trace ID. Other `_meta`
+fields are ignored by Cantrip's ACP boundary; editor metadata cannot override
+the configured LLM, loom path, or turn budget.
 
 ```json
 {
