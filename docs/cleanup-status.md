@@ -21,7 +21,8 @@ baseline.
 **All active cleanup issues are closed with proof. 4 new issues filed during
 the pass: #32 Pass 10 versioning, #34 Pass 5 follow-up, #35 compile_and_load
 policy gaps, #36 cookie overwrite. #11, #32, #34, #35, and #36 are closed
-with proof. 3 feature-roadmap issues labeled `feature` remain open.**
+with proof. #9 has also shipped as feature work. 2 feature-roadmap issues
+labeled `feature` remain open.**
 
 The post-d12875c cold review caught two reward-hacking patterns: Pass 5 was
 marked "done" while ~30 boundary inspect/Exception.message bypass channels
@@ -37,7 +38,7 @@ holds — those are adjacent concerns, not a reopen.
 |---:|---|---|---|
 | 3 | Familiar isomorphic with host Cantrip API | **closed** | Port sandbox does proxy; Dune is deliberate restricted variant. Documented in `docs/port-isolated-runtime.md`. |
 | 8 | Eval harness for Familiar prompts | **open, `feature`** | Roadmap, not cleanup defect. |
-| 9 | First-class `mix` gate | **open, `feature`** | Roadmap, not cleanup defect. |
+| 9 | First-class `mix` gate | **closed** | Built-in `mix` gate runs allowlisted tasks under a configured root with argv validation, timeout, bounded output, code-medium binding, Familiar wiring, and docs. Evidence: `test/mix_gate_test.exs`, `test/gate_spec_test.exs`, and `test/familiar_test.exs`. |
 | 10 | Distributed Familiar | **open, `feature`** | Roadmap, not cleanup defect. |
 | 11 | Telemetry coverage + observability runbook | **closed** | The runtime event registry is implemented and tested. Events now carry `trace_id`; root casts accept external trace IDs and child casts inherit them. Runtime emits entity/turn/gate/code/bash lifecycle events plus usage, redaction-hit, fold-trigger, ward-truncate, child start/stop, and compile_and_load events. Evidence: `test/telemetry_test.exs` covers the registry and every documented event family; redaction-hit coverage is also pinned by a boundary `read_file` test. Commits `f08c847`, `c0fcc65`. |
 | 12 | Dune sandbox over-restricts | **closed** | Dune is deliberate variant per #3 resolution. |
@@ -91,11 +92,11 @@ holds — those are adjacent concerns, not a reopen.
 
 No open cleanup items remain.
 
-Plus three feature-roadmap items (`feature` label) that intentionally aren't blocking the cleanup-done milestone: #8, #9, #10.
+Plus two feature-roadmap items (`feature` label) that intentionally aren't blocking the cleanup-done milestone: #8 and #10.
 
 The cleanup phase is done when final PR CI is green. At that point we can ship
 v1.1.0 from `feat/comprehensive-cleanup`; the open issue tracker should contain
-only the three intentionally-deferred feature items.
+only the two intentionally-deferred feature items.
 
 ---
 

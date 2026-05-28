@@ -249,6 +249,7 @@ observations the entity reads as data:
 - `list_dir(%{path})` — list a directory under `:root`
 - `search(%{pattern, path})` — regex search returning `%{path, line, text}`
   matches
+- `mix(%{task, args})` — run an allowlisted Mix task under `:root`
 - `compile_and_load(%{module, source})` — compile and hot-load a module
   (opt-in via `evolve: true` on the Familiar)
 

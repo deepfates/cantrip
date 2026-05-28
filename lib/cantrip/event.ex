@@ -152,6 +152,7 @@ defmodule Cantrip.Event do
   defp gate_kind("list_dir"), do: :read
   defp gate_kind("search"), do: :search
   defp gate_kind("compile_and_load"), do: :edit
+  defp gate_kind("mix"), do: :execute
   defp gate_kind(_), do: :execute
 
   defp args_summary("read_file", args) when is_binary(args), do: args
@@ -159,5 +160,6 @@ defmodule Cantrip.Event do
   defp args_summary("list_dir", args) when is_binary(args), do: args
   defp args_summary("list_dir", %{} = a), do: Map.get(a, "path", Map.get(a, :path))
   defp args_summary("search", %{} = a), do: Map.get(a, "pattern", Map.get(a, :pattern))
+  defp args_summary("mix", %{} = a), do: Map.get(a, "task", Map.get(a, :task))
   defp args_summary(_, _), do: nil
 end

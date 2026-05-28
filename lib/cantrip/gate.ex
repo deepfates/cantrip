@@ -4,14 +4,14 @@ defmodule Cantrip.Gate do
 
   A circle declares which gates an entity may use. This module contains the
   concrete built-in effects for those gates: `done`, `echo`, filesystem reads,
-  search, and guarded compile/load.
+  search, scoped Mix tasks, and guarded compile/load.
 
   Ordering, tool-call ids, telemetry, and the `done` control-flow convention
   live in `Cantrip.Gate.Executor`; this module is deliberately closer to the
   capability surface itself.
   """
 
-  alias Cantrip.Gate.{CompileAndLoad, Spec}
+  alias Cantrip.Gate.{CompileAndLoad, Mix, Spec}
   alias Cantrip.Gate.Path, as: GatePath
 
   @spec names(Cantrip.Circle.t()) :: [String.t()]
@@ -168,6 +168,10 @@ defmodule Cantrip.Gate do
 
   defp run_gate(%{name: "compile_and_load"} = gate, args, wards) do
     CompileAndLoad.execute(args, wards, gate)
+  end
+
+  defp run_gate(%{name: "mix"} = gate, args, wards) do
+    Mix.execute(args, wards, gate)
   end
 
   defp run_gate(%{behavior: :throw, error: msg, name: name}, _args, _wards) do

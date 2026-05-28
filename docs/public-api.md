@@ -145,14 +145,17 @@ evaluator escape hatch.
 
 ## Configure Gates and Wards
 
-Built-in gates are `done`, `echo`, `read_file`, `list_dir`, `search`, and
-`compile_and_load`. Filesystem gates require root dependencies in production
-contexts; the Familiar wires these from its `:root` option. The Familiar only
-includes `compile_and_load` when constructed with `evolve: true`.
+Built-in gates are `done`, `echo`, `read_file`, `list_dir`, `search`, `mix`,
+and `compile_and_load`. Filesystem and Mix gates require root dependencies in
+production contexts; the Familiar wires these from its `:root` option. The
+Familiar only includes `compile_and_load` when constructed with `evolve: true`.
 
 Wards are maps. Common wards include:
 
 - `%{max_turns: n}`
+- `%{allow_mix_tasks: ["compile", "test"]}`
+- `%{mix_timeout_ms: 60_000}`
+- `%{max_output_bytes: 50_000}`
 - `%{max_depth: n}`
 - `%{port_runner: [executable, arg1, ...]}`
 - `%{max_concurrent_children: n}`

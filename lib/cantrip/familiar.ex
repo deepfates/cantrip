@@ -9,6 +9,7 @@ defmodule Cantrip.Familiar do
 
   Gates:
   - Navigation: list_dir, search (read-only filesystem; delegate reading to children)
+  - Verification: mix (allowlisted Mix tasks under the workspace root)
   - Orchestration: the public Cantrip package API (`Cantrip.new`, `Cantrip.cast`, `Cantrip.cast_batch`)
   - Control: done (terminate with answer)
 
@@ -259,6 +260,16 @@ defmodule Cantrip.Familiar do
       })
     ]
 
+    mix_gates =
+      if root,
+        do: [
+          Map.merge(base_gate, %{
+            name: "mix",
+            description: "run allowlisted Mix tasks in this workspace; opts must include :task"
+          })
+        ],
+        else: []
+
     # Self-modification capacity: the Familiar can hot-load one fixed
     # scratch module at runtime. Keeping the module name exact avoids
     # unbounded atom creation from generated module names.
@@ -271,7 +282,7 @@ defmodule Cantrip.Familiar do
       %{name: "done"}
     ]
 
-    gates = control_gates ++ observation_gates ++ evolution_gates
+    gates = control_gates ++ observation_gates ++ mix_gates ++ evolution_gates
 
     attrs = %{
       llm: llm,
@@ -286,6 +297,11 @@ defmodule Cantrip.Familiar do
           [
             %{max_turns: max_turns},
             %{max_depth: 3},
+            %{
+              allow_mix_tasks: ["compile", "test", "format"],
+              mix_timeout_ms: 60_000,
+              max_output_bytes: 50_000
+            },
             # Casts to child cantrips run synchronously inside the eval —
             # each child involves an LLM round-trip. The default 30s isn't
             # enough for any non-trivial cast_batch.

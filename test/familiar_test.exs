@@ -376,6 +376,7 @@ defmodule Cantrip.FamiliarTest do
       assert "done" in gate_names
       assert "list_dir" in gate_names
       assert "search" in gate_names
+      assert "mix" in gate_names
       refute "read_file" in gate_names
     end
 

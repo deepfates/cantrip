@@ -54,6 +54,9 @@ are closed with proof, including issues filed during the cleanup pass
 
 **New:**
 
+- Added a first-class `mix` gate for Familiars attached to Elixir workspaces.
+  It runs allowlisted Mix tasks under the configured root with argv as data,
+  bounded output, timeout handling, and structured observations.
 - `Cantrip.Familiar.new/1` documented Dune-variant divergence in
   `docs/port-isolated-runtime.md`. `sandbox: :dune` is now explicitly a
   smaller-surface in-process variant of the code medium with different
@@ -68,8 +71,8 @@ are closed with proof, including issues filed during the cleanup pass
 
 **Feature roadmap, not cleanup blockers:**
 
-- #8, #9, #10 (eval harness, mix gate, distributed Familiar) remain open
-  and labeled `feature`.
+- #8 and #10 (eval harness, distributed Familiar) remain open and labeled
+  `feature`.
 
 ## 1.0.0
 

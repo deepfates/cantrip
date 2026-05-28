@@ -37,7 +37,7 @@ defmodule Cantrip.Medium.Code.Dune do
     :loom
   ]
 
-  @builtin_gate_atoms ~w(done echo read_file list_dir search compile_and_load)a
+  @builtin_gate_atoms ~w(done echo read_file list_dir search compile_and_load mix)a
 
   @type runtime :: Cantrip.Medium.Code.runtime()
   @type state :: %{optional(:binding) => keyword(), optional(:dune_session) => Dune.Session.t()}

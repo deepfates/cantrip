@@ -18,7 +18,7 @@ defmodule Cantrip.Medium.Code do
     :folded_summary
   ]
 
-  @builtin_gate_atoms ~w(done echo read_file list_dir search compile_and_load)a
+  @builtin_gate_atoms ~w(done echo read_file list_dir search compile_and_load mix)a
 
   @type runtime :: %{
           required(:circle) => Circle.t(),

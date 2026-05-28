@@ -110,6 +110,37 @@ defmodule Cantrip.Gate.Spec do
     }
   end
 
+  def get("mix") do
+    %{
+      description:
+        "mix.(%{task: task, args: []}) - run an allowlisted Mix task under the configured workspace root",
+      parameters: %{
+        type: "object",
+        properties: %{
+          task: %{type: "string", description: "Mix task name, such as test or compile"},
+          args: %{
+            type: "array",
+            items: %{type: "string"},
+            description: "argv strings passed to the Mix task"
+          },
+          cwd: %{
+            type: "string",
+            description: "working directory relative to the configured root; defaults to ."
+          },
+          env: %{
+            type: "object",
+            additionalProperties: %{type: "string"},
+            description: "extra environment variables for the Mix process"
+          }
+        },
+        required: ["task"]
+      },
+      depends_required: [:root],
+      kind: :execute,
+      args_summary_key: :task
+    }
+  end
+
   def get(_other) do
     %{
       description: "invoke this gate",
@@ -184,6 +215,16 @@ defmodule Cantrip.Gate.Spec do
     The loom records what you tried; supervision and BEAM hot-code-loading
     semantics let the runtime continue with the previous version if the new
     code fails.
+    """
+  end
+
+  def teaching("mix") do
+    """
+    `mix.(%{task: "test", args: ["test/some_test.exs"]})` runs an allowlisted
+    Mix task inside the workspace root. Use it for project-native verification:
+    compile, format checks, or focused tests. The result is a map with
+    `exit_status`, `stdout`, `stderr`, and `duration_ms`; non-zero status and
+    timeout return as error observations.
     """
   end
 
