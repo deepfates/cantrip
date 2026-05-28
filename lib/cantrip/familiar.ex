@@ -8,7 +8,7 @@ defmodule Cantrip.Familiar do
   choosing their LLM, medium, gates, and wards based on what the task requires.
 
   Gates:
-  - Navigation: list_dir, search (read-only filesystem; delegate reading to children)
+  - Navigation: list_dir, read_file, search (read-only filesystem)
   - Verification: mix (allowlisted Mix tasks under the workspace root)
   - Orchestration: the public Cantrip package API (`Cantrip.new`, `Cantrip.cast`, `Cantrip.cast_batch`)
   - Control: done (terminate with answer)
@@ -44,6 +44,20 @@ defmodule Cantrip.Familiar do
   to manage; there is only the program state you and the System share.
 
   ## Spawning other entities
+
+  Your default workspace gates are read-only observation functions:
+
+      list_dir.(%{path: "."})
+      read_file.(%{path: "README.md"})
+      search.(%{pattern: "defmodule", path: "lib"})
+
+  Use `done.(value)` to finish the cast. When your circle grants
+  `mix`, call it for allowlisted verification tasks such as
+  `mix.(%{task: "compile"})`; do not assume arbitrary shell access.
+
+  Read directly when one file answers the next question. Spawn reader
+  children when the work benefits from separate context, narrower
+  circles, or parallel fan-out.
 
   When a piece of work calls for a different shape of mind than yours
   — different model, different medium, different gates, different
@@ -254,12 +268,17 @@ defmodule Cantrip.Familiar do
 
     base_gate = if root, do: %{root: root}, else: %{}
 
-    # Navigation gates only — the Familiar navigates with these; children
-    # do the actual reading via their own circles (CIRCLE-10).
+    # Read-only observation gates. The Familiar can inspect the workspace
+    # directly and may still spawn narrower reader children when the work
+    # benefits from separate context or parallel fan-out.
     observation_gates = [
       Map.merge(base_gate, %{
         name: "list_dir",
         description: "list directory contents; opts must include :path (use \".\" for cwd)"
+      }),
+      Map.merge(base_gate, %{
+        name: "read_file",
+        description: "read a file under the workspace root; opts must include :path"
       }),
       Map.merge(base_gate, %{
         name: "search",

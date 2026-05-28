@@ -27,16 +27,16 @@ defmodule Cantrip.FamiliarTest do
       assert Cantrip.WardPolicy.get(cantrip.circle.wards, :port_runner) == ["/usr/bin/env"]
     end
 
-    test "includes navigation gates: list_dir, search (not read_file)" do
+    test "includes navigation gates: list_dir, read_file, search" do
       llm = {FakeLLM, FakeLLM.new([])}
       {:ok, cantrip} = Familiar.new(llm: llm)
 
       gate_names = Map.keys(cantrip.circle.gates)
       assert "done" in gate_names
       assert "list_dir" in gate_names
+      assert "read_file" in gate_names
       assert "search" in gate_names
       refute "mix" in gate_names
-      refute "read_file" in gate_names
       refute "compile_and_load" in gate_names
     end
 
@@ -125,6 +125,12 @@ defmodule Cantrip.FamiliarTest do
       assert prompt =~ ~r/wards?/
       assert prompt =~ "loom"
       assert prompt =~ "active inference loop"
+      assert prompt =~ "list_dir.(%{path: \".\"})"
+      assert prompt =~ "read_file.(%{path: \"README.md\"})"
+      assert prompt =~ "search.(%{pattern: \"defmodule\", path: \"lib\"})"
+      assert prompt =~ "When your circle grants"
+      assert prompt =~ "mix.(%{task: \"compile\"})"
+      assert prompt =~ "do not assume arbitrary shell access"
     end
 
     test "respects custom max_turns" do
@@ -202,6 +208,56 @@ defmodule Cantrip.FamiliarTest do
       assert result =~ "defmodule"
     after
       File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_sr_*"))
+    end
+
+    test "default rooted Familiar can read a file via code" do
+      tmp_dir = Path.join(System.tmp_dir!(), "familiar_rf_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
+      File.write!(Path.join(tmp_dir, "note.txt"), "direct observation")
+
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s[text = read_file.(%{path: "note.txt"})\ndone.(text)]}
+         ])}
+
+      {:ok, cantrip} = Familiar.new(llm: llm, root: tmp_dir)
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "read note")
+      assert result == "direct observation"
+    after
+      File.rm_rf!(Path.join(System.tmp_dir!(), "familiar_rf_*"))
+    end
+
+    test "default rooted Familiar read_file rejects traversal outside root" do
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "familiar_rf_root_#{System.unique_integer([:positive])}")
+
+      outside_path =
+        Path.join(System.tmp_dir!(), "familiar_rf_outside_#{System.unique_integer([:positive])}")
+
+      Process.put(:familiar_rf_root_tmp, tmp_dir)
+      Process.put(:familiar_rf_root_outside, outside_path)
+
+      File.mkdir_p!(tmp_dir)
+      File.write!(outside_path, "outside secret")
+
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{
+             code:
+               ~s[result = read_file.(%{path: "../#{Path.basename(outside_path)}"})\ndone.(result)]
+           }
+         ])}
+
+      {:ok, cantrip} = Familiar.new(llm: llm, root: tmp_dir)
+      {:ok, result, _c, _loom, _meta} = Cantrip.cast(cantrip, "escape read_file root")
+
+      assert result =~ "outside sandbox root"
+      refute result =~ "outside secret"
+    after
+      if tmp_dir = Process.get(:familiar_rf_root_tmp), do: File.rm_rf!(tmp_dir)
+      if outside_path = Process.get(:familiar_rf_root_outside), do: File.rm(outside_path)
     end
   end
 
@@ -424,9 +480,9 @@ defmodule Cantrip.FamiliarTest do
       gate_names = Map.keys(session.cantrip.circle.gates)
       assert "done" in gate_names
       assert "list_dir" in gate_names
+      assert "read_file" in gate_names
       assert "search" in gate_names
       assert "mix" in gate_names
-      refute "read_file" in gate_names
     end
 
     test "new_session includes familiar system prompt" do
@@ -439,6 +495,21 @@ defmodule Cantrip.FamiliarTest do
         })
 
       assert session.cantrip.identity.system_prompt =~ "Familiar"
+    end
+
+    test "new_session does not append imperative first-turn list_dir instruction" do
+      llm = {FakeLLM, FakeLLM.new([])}
+      cwd = System.tmp_dir!()
+
+      {:ok, session} =
+        Cantrip.ACP.Runtime.Familiar.new_session(%{
+          "cwd" => cwd,
+          "llm" => llm
+        })
+
+      prompt = session.cantrip.identity.system_prompt
+      assert prompt =~ "You are attached to the codebase at: #{cwd}"
+      refute prompt =~ "Start by listing the directory to orient yourself"
     end
 
     test "ACP AgentHandler works with familiar runtime" do
