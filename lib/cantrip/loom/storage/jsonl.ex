@@ -80,7 +80,12 @@ defmodule Cantrip.Loom.Storage.Jsonl do
     # entity resuming sees the same values an entity within the writing
     # session would have seen.
     restored = from_jsonable(raw_turn)
-    turn = atomize_turn(restored)
+
+    turn =
+      restored
+      |> atomize_turn()
+      |> Cantrip.Loom.CodeStateDelta.expand_turn(List.first(turns))
+
     {[%{type: :turn, turn: turn} | events], [turn | turns]}
   end
 
@@ -160,6 +165,9 @@ defmodule Cantrip.Loom.Storage.Jsonl do
   defp atomize_observation_shapes(_key, val), do: val
 
   @code_state_atom_fields ~w(binding next_medium_state)a
+
+  defp atomize_code_state(%{"__cantrip_code_state__" => _} = cs), do: cs
+  defp atomize_code_state(%{__cantrip_code_state__: _} = cs), do: cs
 
   defp atomize_code_state(cs) do
     Enum.reduce(@code_state_atom_fields, %{}, fn key, acc ->

@@ -86,7 +86,11 @@ defmodule Cantrip.Loom.Storage.Mnesia do
 
         cond do
           type in [:turn, "turn"] ->
-            turn = Map.get(event, :turn) || Map.get(event, "turn")
+            turn =
+              event
+              |> Map.get(:turn, Map.get(event, "turn"))
+              |> Cantrip.Loom.CodeStateDelta.expand_turn(List.first(trns_acc))
+
             {[%{type: :turn, turn: turn} | evts_acc], [turn | trns_acc]}
 
           type in [:reward, "reward"] ->

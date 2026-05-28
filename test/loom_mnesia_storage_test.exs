@@ -71,6 +71,63 @@ defmodule Cantrip.LoomMnesiaStorageTest do
     end
   end
 
+  test "mnesia stores compact code_state deltas and loads full code_state" do
+    if Code.ensure_loaded?(:mnesia) do
+      table = :"cantrip_loom_delta_#{System.unique_integer([:positive])}"
+
+      try do
+        large = String.duplicate("x", 50_000)
+        loom = Cantrip.Loom.new(%{identity: "test"}, storage: {:mnesia, %{table: table}})
+
+        turn_1 = %{
+          cantrip_id: "c1",
+          entity_id: "e1",
+          role: "turn",
+          utterance: %{code: "blob = read_file.(...)", content: nil},
+          observation: [],
+          gate_calls: [],
+          terminated: false,
+          code_state: %{binding: [{:blob, large}]},
+          metadata: %{timestamp: DateTime.utc_now()}
+        }
+
+        turn_2 = %{
+          turn_1
+          | utterance: %{code: "note = :ok", content: nil},
+            code_state: %{binding: [{:blob, large}, {:note, "small"}]}
+        }
+
+        _loom =
+          loom
+          |> Cantrip.Loom.append_turn(turn_1)
+          |> Cantrip.Loom.append_turn(turn_2)
+
+        {:atomic, rows} = :mnesia.transaction(fn -> :mnesia.match_object({table, :_, :_}) end)
+
+        [_, {^table, _key, {:cantrip_loom_event, 1, %{type: "turn", turn: stored_2}}}] =
+          Enum.sort_by(rows, fn {_table, key, _event} -> key end)
+
+        assert stored_2.code_state.__cantrip_code_state__ ==
+                 Cantrip.Loom.CodeStateDelta.marker()
+
+        refute inspect(stored_2) =~ large
+
+        {:ok, state} = MnesiaStorage.init(table: table)
+        assert {:ok, %{turns: [_restored_1, restored_2]}} = MnesiaStorage.load(state)
+        assert restored_2.code_state.binding[:blob] == large
+        assert restored_2.code_state.binding[:note] == "small"
+      after
+        try do
+          :mnesia.delete_table(table)
+        rescue
+          _ -> :ok
+        end
+      end
+    else
+      assert true
+    end
+  end
+
   test "mnesia rejects unsupported loom versions" do
     if Code.ensure_loaded?(:mnesia) do
       table = :"cantrip_loom_bad_version_#{System.unique_integer([:positive])}"

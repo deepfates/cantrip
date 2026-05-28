@@ -173,7 +173,9 @@ defmodule Cantrip.Loom do
         Map.new(attrs)
       )
 
-    case persist_event(module, loom.storage_state, event) do
+    persisted_event = compact_event_for_storage(loom, event)
+
+    case persist_event(module, loom.storage_state, persisted_event) do
       {:ok, storage_state} ->
         {:ok, %{loom | events: events ++ [event], storage_state: storage_state}}
 
@@ -182,6 +184,13 @@ defmodule Cantrip.Loom do
         {:error, reason}
     end
   end
+
+  defp compact_event_for_storage(%__MODULE__{turns: turns}, %{type: :turn, turn: turn} = event) do
+    previous_turn = List.last(turns)
+    %{event | turn: Cantrip.Loom.CodeStateDelta.compact_turn(turn, previous_turn)}
+  end
+
+  defp compact_event_for_storage(_loom, event), do: event
 
   def append_turn(%__MODULE__{turns: turns} = loom, attrs) do
     id = "turn_" <> Integer.to_string(System.unique_integer([:positive]))

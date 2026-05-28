@@ -118,6 +118,14 @@ turns N..M]` marker in the LLM's input. The original turns remain in the
 loom unchanged — folding shrinks what the model sees on the next call, not
 what was recorded. Configure with the `:folding` option on `Cantrip.new/1`.
 
+Code-medium `code_state` is kept full in memory so fork/replay can restore the
+latest sandbox bindings cheaply. Durable storage writes binding-level deltas
+after the first snapshot: unchanged bindings are referenced by key order, while
+new or changed bindings are written once in the turn that changed them. JSONL
+and Mnesia loaders expand those deltas back into full `code_state` maps before
+returning `loom.turns`, so callers keep the same in-memory API without paying
+O(turns x cumulative_binding_size) storage growth.
+
 ## Safety Posture
 
 The controls are explicit and scoped:

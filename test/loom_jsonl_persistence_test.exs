@@ -187,6 +187,47 @@ defmodule Cantrip.LoomJsonlPersistenceTest do
     assert opaque["__inspect__"] =~ "#Function"
   end
 
+  test "stores code_state binding deltas while rehydrating full state" do
+    path = tmp_path()
+    on_exit(fn -> File.rm(path) end)
+
+    large = String.duplicate("x", 50_000)
+    loom = Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+
+    turn_1 = %{
+      cantrip_id: "c1",
+      entity_id: "e1",
+      role: "turn",
+      utterance: %{code: "blob = read_file.(...)", content: nil},
+      observation: [],
+      gate_calls: [],
+      terminated: false,
+      code_state: %{binding: [{:blob, large}]},
+      metadata: %{timestamp: DateTime.utc_now()}
+    }
+
+    turn_2 = %{
+      turn_1
+      | utterance: %{code: "note = :ok", content: nil},
+        code_state: %{binding: [{:blob, large}, {:note, "small"}]}
+    }
+
+    loom = Loom.append_turn(loom, turn_1)
+    _loom = Loom.append_turn(loom, turn_2)
+
+    [raw_1, raw_2] = read_jsonl(path)
+    assert raw_1["turn"]["code_state"]["binding"]
+    assert raw_2["turn"]["code_state"]["__cantrip_code_state__"]
+    refute Jason.encode!(raw_2) =~ large
+
+    restored = Loom.new(%{identity: "test"}, storage: {:jsonl, path})
+    [restored_1, restored_2] = restored.turns
+
+    assert restored_1.code_state.binding[:blob] == large
+    assert restored_2.code_state.binding[:blob] == large
+    assert restored_2.code_state.binding[:note] == "small"
+  end
+
   test "persists a turn whose observation result is a tuple (Elixir-native, not JSON-native)" do
     path = tmp_path()
     on_exit(fn -> File.rm(path) end)
