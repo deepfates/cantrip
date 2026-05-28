@@ -38,4 +38,62 @@ defmodule Cantrip.LoomMnesiaStorageTest do
       assert true
     end
   end
+
+  test "mnesia stores versioned envelopes and still reads legacy maps" do
+    if Code.ensure_loaded?(:mnesia) do
+      table = :"cantrip_loom_version_#{System.unique_integer([:positive])}"
+
+      try do
+        {:ok, state} = MnesiaStorage.init(table: table)
+        turn = %{cantrip_id: "c1", entity_id: "e1", utterance: %{content: "hi"}, observation: []}
+
+        assert {:ok, _state} = MnesiaStorage.append_turn(state, turn)
+
+        {:atomic, rows} = :mnesia.transaction(fn -> :mnesia.match_object({table, :_, :_}) end)
+        assert [{^table, _key, {:cantrip_loom_event, 1, %{type: "turn"}}}] = rows
+
+        legacy = %{type: "turn", turn: %{sequence: 2, utterance: %{content: "legacy"}}}
+        {:atomic, :ok} = :mnesia.transaction(fn -> :mnesia.write({table, 999_999, legacy}) end)
+
+        assert {:ok, %{turns: turns}} = MnesiaStorage.load(state)
+        assert Enum.any?(turns, &(&1[:utterance][:content] == "hi"))
+        assert Enum.any?(turns, &(&1[:utterance][:content] == "legacy"))
+      after
+        try do
+          :mnesia.delete_table(table)
+        rescue
+          _ -> :ok
+        end
+      end
+    else
+      assert true
+    end
+  end
+
+  test "mnesia rejects unsupported loom versions" do
+    if Code.ensure_loaded?(:mnesia) do
+      table = :"cantrip_loom_bad_version_#{System.unique_integer([:positive])}"
+
+      try do
+        {:ok, state} = MnesiaStorage.init(table: table)
+
+        {:atomic, :ok} =
+          :mnesia.transaction(fn ->
+            :mnesia.write({table, 1, {:cantrip_loom_event, 999, %{type: "event"}}})
+          end)
+
+        assert_raise RuntimeError, ~r/unsupported loom Mnesia version: 999/, fn ->
+          MnesiaStorage.load(state)
+        end
+      after
+        try do
+          :mnesia.delete_table(table)
+        rescue
+          _ -> :ok
+        end
+      end
+    else
+      assert true
+    end
+  end
 end

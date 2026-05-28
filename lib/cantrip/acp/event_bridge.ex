@@ -34,7 +34,6 @@ defmodule Cantrip.ACP.EventBridge do
   def start(conn, session_id, opts \\ []) do
     notify_fn = Keyword.get(opts, :notify_fn, default_notify_fn(conn))
     monitor_pid = monitor_target(conn) || Keyword.get(opts, :owner, self())
-    ensure_supervisor_started()
 
     {:ok, pid} =
       Task.Supervisor.start_child(Cantrip.ACP.EventBridgeSupervisor, fn ->
@@ -43,19 +42,6 @@ defmodule Cantrip.ACP.EventBridge do
       end)
 
     pid
-  end
-
-  defp ensure_supervisor_started do
-    case Process.whereis(Cantrip.ACP.EventBridgeSupervisor) do
-      nil ->
-        case Task.Supervisor.start_link(name: Cantrip.ACP.EventBridgeSupervisor) do
-          {:ok, _pid} -> :ok
-          {:error, {:already_started, _pid}} -> :ok
-        end
-
-      _pid ->
-        :ok
-    end
   end
 
   @doc """

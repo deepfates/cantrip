@@ -66,6 +66,11 @@ uses the old host-BEAM evaluator for trusted local development.
 `Cantrip.Medium.Bash` executes one shell command per turn. Shell process state
 does not persist; filesystem effects do.
 
+ACP stdio embedding must start the `:cantrip` application before sessions
+create event bridges. `Cantrip.ACP.Server.run/1` does this for the packaged
+entrypoint; custom embedders should either call `Application.ensure_all_started(:cantrip)`
+or supervise `Cantrip.ACP.EventBridgeSupervisor` themselves.
+
 ## Composition
 
 Composition uses the public package API, not special delegation gates.
@@ -104,6 +109,8 @@ The controls are explicit and scoped:
 - loop wards bound turns, depth, timeouts, and selected policies
 - Dune-in-port evaluation denies ambient filesystem/system/process authority
   and keeps LLM-written Elixir out of the host BEAM
+- child-BEAM telemetry events are forwarded over the port protocol and
+  re-emitted by the parent with the same trace context
 - `port_runner` lets deployments put the child process inside an OS/container
   sandbox
 - optional Dune routes code evaluation through an in-VM restricted evaluator

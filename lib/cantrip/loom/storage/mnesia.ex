@@ -4,6 +4,8 @@ defmodule Cantrip.Loom.Storage.Mnesia do
   @behaviour Cantrip.Loom.Storage
   import Cantrip.LLMs.Helpers, only: [normalize_opts: 1]
 
+  @version 1
+
   @impl true
   def init(opts) do
     if not available?() do
@@ -61,10 +63,6 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     end
   end
 
-  # Mnesia preserves native Erlang terms, so there is no JSON-style upcaster in
-  # this backend today. Shape evolution should either be backward-compatible at
-  # the term level or introduce an explicit versioned envelope before changing
-  # persisted event fields.
   @impl true
   def load(%{table: table} = state) do
     case read_events(table, Map.get(state, :mnesia, :mnesia)) do
@@ -79,7 +77,8 @@ defmodule Cantrip.Loom.Storage.Mnesia do
 
   defp classify_native(events) do
     {evts, trns} =
-      Enum.reduce(events, {[], []}, fn event, {evts_acc, trns_acc} ->
+      Enum.reduce(events, {[], []}, fn stored_event, {evts_acc, trns_acc} ->
+        event = upcast!(stored_event)
         type = Map.get(event, :type) || Map.get(event, "type")
 
         cond do
@@ -204,6 +203,12 @@ defmodule Cantrip.Loom.Storage.Mnesia do
   end
 
   defp storage_event(event) do
+    {:cantrip_loom_event, @version, normalize_event(event)}
+  end
+
+  defp event_type(event), do: Map.get(event, :type) || Map.get(event, "type")
+
+  defp normalize_event(event) do
     case event_type(event) do
       :turn ->
         %{type: "turn", turn: Map.fetch!(event, :turn)}
@@ -228,5 +233,12 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     end
   end
 
-  defp event_type(event), do: Map.get(event, :type) || Map.get(event, "type")
+  defp upcast!({:cantrip_loom_event, @version, event}), do: event
+
+  defp upcast!({:cantrip_loom_event, version, _event}) do
+    raise "unsupported loom Mnesia version: #{version}"
+  end
+
+  # Legacy v1 records before the version envelope stored the event map directly.
+  defp upcast!(event) when is_map(event), do: event
 end

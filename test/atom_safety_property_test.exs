@@ -20,7 +20,7 @@ defmodule Cantrip.AtomSafetyPropertyTest do
   end
 
   property "untrusted boundary strings do not grow the atom table", %{parent: parent} do
-    check all(suffix <- string(:alphanumeric, min_length: 8, max_length: 24), max_runs: 50) do
+    check all(suffix <- string(:alphanumeric, min_length: 8, max_length: 24), max_runs: 200) do
       unknown = "cantrip_unknown_prop_" <> suffix
       module_name = "Elixir.Cantrip.UnknownProp" <> suffix
 
@@ -30,6 +30,13 @@ defmodule Cantrip.AtomSafetyPropertyTest do
       before_count = :erlang.system_info(:atom_count)
 
       _ = Cantrip.Circle.new(type: :conversation, gates: [unknown])
+
+      _ =
+        Cantrip.Circle.new(%{
+          "type" => "conversation",
+          "gates" => [unknown],
+          "wards" => [%{unknown => 1}]
+        })
 
       parent_context =
         parent

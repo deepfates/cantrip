@@ -83,6 +83,8 @@ defmodule Cantrip.ACP.AgentStdioTest do
       def prompt(session, text), do: {:ok, "echo:" <> text, %{session | n: session.n + 1}}
     end
 
+    {:ok, _apps} = Application.ensure_all_started(:cantrip)
+
     table = Cantrip.ACP.AgentHandler.new(runtime: StubRuntime)
     gl = Process.group_leader()
 

@@ -78,6 +78,7 @@ defmodule Cantrip.Medium.Code.PortChild do
     :port,
     :port_unrestricted,
     :prompt_tokens,
+    :redact,
     :record_inputs,
     :record_parent_observation?,
     :require_done_tool,
@@ -236,10 +237,33 @@ defmodule Cantrip.Medium.Code.PortChild do
 
   defp with_child_telemetry_context(%{entity_id: entity_id, trace_id: trace_id}, fun)
        when is_binary(entity_id) and is_binary(trace_id) do
-    Cantrip.Telemetry.with_context(entity_id, trace_id, fun)
+    handler_id = {__MODULE__, :telemetry_forwarder, self(), make_ref()}
+    {:ok, _apps} = Application.ensure_all_started(:telemetry)
+
+    :ok =
+      :telemetry.attach_many(
+        handler_id,
+        Cantrip.Telemetry.events(),
+        &__MODULE__.forward_telemetry/4,
+        nil
+      )
+
+    try do
+      Cantrip.Telemetry.with_context(entity_id, trace_id, fun)
+    after
+      :telemetry.detach(handler_id)
+    end
   end
 
   defp with_child_telemetry_context(_env, fun), do: fun.()
+
+  @doc false
+  def forward_telemetry(event, measurements, metadata, _config) do
+    write_frame(
+      {:telemetry, externalize_term(event), externalize_term(measurements),
+       externalize_term(metadata)}
+    )
+  end
 
   defp eval_raw(code, state, env, ref) do
     binding = build_binding(state.binding, env, :raw)

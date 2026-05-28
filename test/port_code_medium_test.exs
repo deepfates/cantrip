@@ -71,6 +71,40 @@ defmodule PortCodeMediumTest do
     assert is_binary(entity_id)
   end
 
+  test "parent and port-child telemetry events share the same trace id" do
+    trace_id = "port-boundary-trace-#{System.unique_integer([:positive])}"
+    test_pid = self()
+    handler_id = "port-boundary-trace-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach_many(
+      handler_id,
+      [[:cantrip, :entity, :start], [:cantrip, :code, :eval], [:cantrip, :redact, :hit]],
+      &__MODULE__.handle_trace_event/4,
+      test_pid
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    code = """
+    Cantrip.Redact.scan("OPENAI_API_KEY=sk-proj-portchild-secret-token")
+    done.("ok")
+    """
+
+    llm = {FakeLLM, FakeLLM.new([%{code: code}])}
+    {:ok, cantrip} = port_cantrip(llm, sandbox: :port_unrestricted)
+
+    assert {:ok, "ok", _cantrip, _loom, _meta} =
+             Cantrip.cast(cantrip, "telemetry", trace_id: trace_id)
+
+    assert_received {:telemetry_event, [:cantrip, :entity, :start], ^trace_id}
+    assert_received {:telemetry_event, [:cantrip, :code, :eval], ^trace_id}
+    assert_received {:telemetry_event, [:cantrip, :redact, :hit], ^trace_id}
+  end
+
+  def handle_trace_event(event, _measurements, metadata, test_pid) do
+    send(test_pid, {:telemetry_event, event, metadata[:trace_id]})
+  end
+
   test "child stdout is captured without corrupting the port protocol" do
     llm =
       {FakeLLM,

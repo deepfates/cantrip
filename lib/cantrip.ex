@@ -69,7 +69,7 @@ defmodule Cantrip do
     loom_storage: [type: {:custom, __MODULE__, :validate_loom_storage_option, []}],
     retry: [type: :any, default: %{}],
     folding: [type: :any, default: %{}],
-    schema_version: [type: :pos_integer, default: 1],
+    schema_version: [type: {:in, [1]}, default: 1],
     parent_context: [type: :any]
   ]
 

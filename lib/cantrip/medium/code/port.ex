@@ -188,6 +188,10 @@ defmodule Cantrip.Medium.Code.Port do
             observation = with_tool_call_id(observation)
             await_eval(session, ref, runtime, state, observations ++ [observation], timeout)
 
+          {:ok, {:telemetry, event, measurements, metadata}} ->
+            emit_child_telemetry(event, measurements, metadata)
+            await_eval(session, ref, runtime, state, observations, timeout)
+
           {:ok, {:api_call, call_ref, function, args}} ->
             function = normalize_api_function(function)
             {reply, state, api_observations} = execute_api_call(function, args, runtime, state)
@@ -451,6 +455,25 @@ defmodule Cantrip.Medium.Code.Port do
   end
 
   defp append_stdio(obs, _captured), do: obs
+
+  defp emit_child_telemetry(event, measurements, metadata)
+       when is_list(event) and is_map(metadata) do
+    event = Enum.map(event, &normalize_existing_atom/1)
+
+    if event in Cantrip.Telemetry.events() do
+      Cantrip.Telemetry.execute(event, Map.new(measurements || %{}), metadata)
+    end
+  end
+
+  defp emit_child_telemetry(_event, _measurements, _metadata), do: :ok
+
+  defp normalize_existing_atom(atom) when is_atom(atom), do: atom
+
+  defp normalize_existing_atom(value) do
+    String.to_existing_atom(to_string(value))
+  rescue
+    ArgumentError -> value
+  end
 
   defp with_tool_call_id(observation) do
     Map.put_new_lazy(observation, :tool_call_id, fn ->

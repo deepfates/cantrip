@@ -68,6 +68,19 @@ defmodule Cantrip.ConfigTest do
     assert msg =~ "threshold_tokens"
   end
 
+  test "schema_version is pinned to the supported version" do
+    llm = {FakeLLM, FakeLLM.new([%{content: "hello"}])}
+
+    assert {:error, msg} =
+             Cantrip.new(
+               llm: llm,
+               circle: %{type: :conversation, gates: [:done], wards: [%{max_turns: 10}]},
+               schema_version: 99
+             )
+
+    assert msg =~ "schema_version"
+  end
+
   test "loom_storage options are validated at construction" do
     llm = {FakeLLM, FakeLLM.new([%{content: "hello"}])}
 
