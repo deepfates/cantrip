@@ -91,7 +91,10 @@ defmodule Cantrip.Medium.Bash do
 
     """
     ### SHELL PHYSICS (bash)
-    1. Each command runs in a fresh subprocess (cwd: #{cwd}). Shell state (variables, cd) resets between commands. Filesystem changes persist.
+    1. Each command runs in a fresh subprocess (cwd: #{cwd}). Shell state
+       (variables, cd) resets between commands. Filesystem writes persist
+       across turns only for paths admitted by a `%{bash_writable_paths: [...]}`
+       ward; default config denies writes.
     2. Declared gates are available as commands on PATH. Call `cantrip_done "answer"` to return your final answer. `SUBMIT:` output also works for shell-only answers.
     3. stdout and stderr are combined (truncated at #{@max_output_chars} chars).
     4. Commands time out after #{timeout_s}s. Max command length: #{@max_command_length} chars.

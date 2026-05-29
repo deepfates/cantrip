@@ -253,7 +253,7 @@ defmodule Cantrip.Familiar do
     loom_path = Keyword.get(opts, :loom_path)
     root = Keyword.get(opts, :root)
     port_runner = Keyword.get(opts, :port_runner)
-    sandbox = Keyword.get(opts, :sandbox, default_sandbox(port_runner))
+    sandbox = Keyword.get(opts, :sandbox) || default_sandbox(port_runner)
     evolve? = Keyword.get(opts, :evolve, false)
     run_tests? = Keyword.get(opts, :run_tests, false)
     allow_mix_tasks = Keyword.get(opts, :allow_mix_tasks, default_mix_tasks(run_tests?))

@@ -28,6 +28,14 @@ defmodule Cantrip.FamiliarTest do
       assert Cantrip.WardPolicy.get(cantrip.circle.wards, :port_runner) == ["/usr/bin/env"]
     end
 
+    test "explicit sandbox nil with port_runner still selects and configures the port sandbox" do
+      llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
+
+      {:ok, cantrip} = Familiar.new(llm: llm, sandbox: nil, port_runner: ["/usr/bin/env"])
+      assert Cantrip.WardPolicy.sandbox(cantrip.circle.wards) == :port
+      assert Cantrip.WardPolicy.get(cantrip.circle.wards, :port_runner) == ["/usr/bin/env"]
+    end
+
     test "includes navigation gates: list_dir, read_file, search" do
       llm = {FakeLLM, FakeLLM.new([])}
       {:ok, cantrip} = Familiar.new(llm: llm)

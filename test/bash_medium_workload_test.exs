@@ -2,8 +2,21 @@ defmodule Cantrip.Medium.BashWorkloadTest do
   use ExUnit.Case, async: false
 
   alias Cantrip.Medium.Bash
+  alias Cantrip.Medium.Bash.Sandbox
 
   @workload_tools ~w(git jq make)
+
+  defp default_runtime(cwd, wards \\ []) do
+    circle =
+      Cantrip.Circle.new(%{
+        type: :bash,
+        gates: [:done],
+        wards: [%{max_turns: 5}, %{bash_timeout_ms: 15_000} | wards],
+        medium_opts: %{cwd: cwd, timeout_ms: 15_000}
+      })
+
+    %{circle: circle}
+  end
 
   defp runtime(adapter, cwd) do
     circle =
@@ -103,6 +116,43 @@ defmodule Cantrip.Medium.BashWorkloadTest do
   if System.find_executable("sandbox-exec") do
     test "seatbelt sandbox supports representative shell workloads" do
       assert_workloads(:seatbelt)
+    end
+  end
+
+  if match?({:ok, _adapter}, Sandbox.detect(%{})) do
+    test "default sandbox denies writes unless bash_writable_paths admits them" do
+      root =
+        System.tmp_dir!()
+        |> Path.join("cantrip-bash-write-policy-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(root)
+      on_exit(fn -> File.rm_rf(root) end)
+
+      denied_path = Path.join(root, "denied.txt")
+
+      {_state, [denied], _result, terminated?} =
+        Bash.eval("printf denied > denied.txt", %{}, default_runtime(root))
+
+      refute terminated?
+      assert denied.is_error
+      refute File.exists?(denied_path)
+
+      allowed_runtime = default_runtime(root, [%{bash_writable_paths: [root]}])
+      allowed_path = Path.join(root, "allowed.txt")
+
+      {_state, [write_obs], _result, terminated?} =
+        Bash.eval("printf allowed > allowed.txt", %{}, allowed_runtime)
+
+      refute terminated?
+      refute write_obs.is_error
+      assert File.read!(allowed_path) == "allowed"
+
+      {_state, [read_obs], _result, terminated?} =
+        Bash.eval("cat allowed.txt", %{}, allowed_runtime)
+
+      refute terminated?
+      refute read_obs.is_error
+      assert read_obs.result == "allowed"
     end
   end
 end

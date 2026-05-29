@@ -235,8 +235,9 @@ prompt teaches. Use `sandbox: :port_unrestricted` only when you explicitly
 want raw Elixir in the child process, `sandbox: :dune` when you want
 in-process language restriction with a deliberately smaller binding surface
 (see [docs/port-isolated-runtime.md](./docs/port-isolated-runtime.md) for the
-divergence — entity prompts need to match the variant in use), or `sandbox:
-:unrestricted` for trusted local development in the host BEAM.
+divergence — entity prompts need to match the variant in use). For trusted
+local development in the host BEAM, the explicit form is
+`sandbox: :unrestricted`.
 Child-origin atoms outside Cantrip's wire vocabulary cross the port boundary
 as strings, which keeps hot-loaded child code from forcing new atoms into the
 parent BEAM.
