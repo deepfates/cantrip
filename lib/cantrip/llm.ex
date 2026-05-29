@@ -108,7 +108,7 @@ defmodule Cantrip.LLM do
   defp env(opts, key, env_key, default \\ nil) do
     case fetch_option(opts, key) do
       {:ok, value} -> value
-      :error -> System.get_env(env_key) || default
+      :error -> trim_env(System.get_env(env_key)) || default
     end
   end
 
@@ -131,13 +131,19 @@ defmodule Cantrip.LLM do
 
   defp env_first(keys) do
     Enum.find_value(keys, fn key ->
-      case System.get_env(key) do
+      case trim_env(System.get_env(key)) do
         nil -> nil
         "" -> nil
         val -> val
       end
     end)
   end
+
+  # Env-provided secrets (especially CI-injected ones) frequently carry a
+  # trailing newline. An untrimmed value smuggled into an HTTP header like
+  # `x-api-key` is rejected as a non-printable character, so normalize here.
+  defp trim_env(nil), do: nil
+  defp trim_env(value) when is_binary(value), do: String.trim(value)
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, _key, ""), do: map

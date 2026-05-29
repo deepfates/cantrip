@@ -98,6 +98,24 @@ defmodule Cantrip.RealLLMConfigTest do
     assert state.api_key == "sk-test"
   end
 
+  test "LLM.from_env trims whitespace from env-provided secrets" do
+    anthropic_model = System.get_env("ANTHROPIC_MODEL")
+    anthropic_api_key = System.get_env("ANTHROPIC_API_KEY")
+
+    on_exit(fn ->
+      restore_env("ANTHROPIC_MODEL", anthropic_model)
+      restore_env("ANTHROPIC_API_KEY", anthropic_api_key)
+    end)
+
+    System.put_env("CANTRIP_LLM_PROVIDER", "anthropic")
+    System.put_env("ANTHROPIC_MODEL", "  claude-test  \n")
+    System.put_env("ANTHROPIC_API_KEY", "sk-ant-secret\n")
+
+    assert {:ok, {_module, state}} = Cantrip.LLM.from_env()
+    assert state.model == "anthropic:claude-test"
+    assert state.api_key == "sk-ant-secret"
+  end
+
   defp restore_env(key, nil), do: System.delete_env(key)
 
   defp restore_env(key, value) do
