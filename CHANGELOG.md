@@ -48,10 +48,9 @@ Calibration release for the v1.3.2 Elixir cutover.
 
 **Verification:**
 
-- The v1.3.2 inhabitant-affordance audit is committed as
-  `docs/inhabitant-affordance-audit-v1.3.2.md`; all v1.3.3 fix issues it
-  spawned (#115-#120) are closed with code, docs, tests, or narrowed public
-  contracts.
+- The v1.3.2 inhabitant-affordance audit spawned fix issues #115-#120; all are
+  closed with code, docs, tests, or narrowed public contracts. The issues,
+  PRs, and changelog now carry the durable record.
 - `mix verify`, `mix docs`, and PR CI passed on the final v1.3.3 batch.
 - Open GitHub issues after the calibration queue are only explicitly deferred
   future-work issues #108-#112.
