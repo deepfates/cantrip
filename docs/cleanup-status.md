@@ -18,22 +18,26 @@ when present, `scripts/check_cleanup_guide.sh`, and the v1.0.0 release commit
 
 ## Headline
 
-**As of 2026-05-28T18:27:12Z, the post-v1.2 stabilization queue is empty
-again after v1.3.1.**
+**As of 2026-05-28T23:57:47Z, the post-v1.2 stabilization queue remains
+empty after v1.3.2.**
 
 - Open GitHub issues: **0**.
 - Open GitHub PRs: **0**.
-- Latest tagged release: **v1.3.1** on `8498e97`, tagged at
-  2026-05-28T18:21:11Z.
-- Latest stabilization merge: PR #94, `8498e97`, `fix: fail closed and
-  redact observation args`.
-- Main branch CI after PR #94: run `26593745071`, **success**.
-- v1.3.1 tag CI: run `26593781214`, **success**.
+- Latest tagged release: **v1.3.2** on `a3666dc`, tagged at
+  2026-05-28T23:57:47Z.
+- Latest stabilization merge: PR #106, `a3666dc`, `chore: prepare v1.3.2
+  release`.
+- v1.3.2 package verification: fresh extracted Hex tar dogfood, stable
+  real-LLM suite, `mix verify`, `mix docs`, and `mix hex.build`.
 - v1.3.0 shipped at 2026-05-28T17:29Z (`c71b0d7`, tag `v1.3.0`) and
   was superseded by v1.3.1 after two post-tag safety defects were found:
   #92 observation args could persist unredacted credential-shaped values,
   and #93 unknown code sandbox ward values fell back to unrestricted eval.
   Both were fixed in PR #94.
+- v1.3.2 superseded v1.3.1 as the package-coherence release: README,
+  Spellbook, ExDoc, public module voice, Familiar orientation, generated docs,
+  and Hex package contents now describe the Elixir package as the canonical
+  project.
 
 ### What Changed Since v1.2.0
 
@@ -191,26 +195,32 @@ code evidence and an independent re-audit against the relevant guide criteria.
 | 12 | Package / dependency boundaries | **done** | #3 and #12 closed; port medium proxies the public API while Dune remains a deliberate restricted variant. |
 | 13 | Observability / context propagation | **done** | #41, #42, #44, #45, #46, #47, #51, #55, #56, and #59 closed; telemetry, streaming envelopes, and provider options preserve the intended context. |
 | 14 | Idiomatic / performance | **clean** | No open cleanup issue remains in this pass. Existing regex and process-dictionary uses are bounded, documented patterns. |
-| 15 | Final verification / governance lock-in | **done** | PR #79 and main push CI are green; CI runs `scripts/check_cleanup_guide.sh` to keep the high-risk cleanup invariants durable. |
+| 15 | Final verification / governance lock-in | **done** | v1.3.2 verification is current; CI runs `scripts/check_cleanup_guide.sh` to keep the high-risk cleanup invariants durable. |
 
 ---
 
 ## Release Gates
 
-The final post-v1.2 stabilization head is `779479b`.
+The current post-v1.2 stabilization and package-coherence release head is
+`a3666dc`.
 
 Authoritative gates:
 
-- PR #79 `verify`: success.
-- Main push run `26577026692`: success.
-- Open GitHub issues after merge: `[]`.
-- Open GitHub PRs after merge (before opening this docs PR #80): `[]`.
+- Open GitHub issues after v1.3.2: `[]`.
+- Open GitHub PRs after v1.3.2: `[]`.
+- PR #106 `verify`: success. Its `live` job was skipped because pull requests
+  run unit/package verification only.
+- v1.3.2 tag verification: success.
 
-Local gates run on the final PR #79 head before merge:
+Local gates run before the v1.3.2 release:
 
-- `mix test test/bash_medium_test.exs test/readme_examples_test.exs`
-- `scripts/check_cleanup_guide.sh`
-- `mix format --check-formatted` on changed Bash files
+- Fresh extracted Hex tar dogfood outside the repo with live LLM
+  configuration:
+  - `mix deps.get`
+  - `mix cantrip.cast "explain what a cantrip is"`
+  - `mix cantrip.familiar "summarize the loom storage modules"`
+- `RUN_REAL_LLM_TESTS=1` stable live/real integration suite: 20 tests,
+  0 failures.
 - `mix verify`
 - `mix docs`
 - `mix hex.build`
