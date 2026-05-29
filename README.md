@@ -332,14 +332,6 @@ and point your editor's ACP client at it. See
 [`docs/acp-editor.md`](./docs/acp-editor.md) for a worked editor mount with
 configuration, smoke-test, and troubleshooting.
 
-**Phoenix-app AI feature embed.** You want to add an AI capability to a
-controller, LiveView, or Oban job in an existing Phoenix app. Call
-`Cantrip.new/1` and `Cantrip.cast/3` (or `cast_stream/2` for LiveView) from
-your own module — there's no separate server to run. No worked example yet
-(coming in a follow-up to v1.3.3). The shape: persist the loom in Mnesia keyed
-by your business identifier (conversation_id, user_id), build a fresh cantrip
-per request, let cantrip's supervision tree handle the entity processes.
-
 **Research / evaluation substrate.** You want to run prompt scenarios across
 seeds, score with rubric judges, and diff transcripts for regression work.
 Use `Cantrip.Familiar.Eval` and the eval harness. See
@@ -347,29 +339,6 @@ Use `Cantrip.Familiar.Eval` and the eval harness. See
 [`evals/familiar/v1.3.3.exs`](./evals/familiar/v1.3.3.exs) for a curated
 5-scenario starter suite covering gate-use, composition, synthesis quality
 (judge-graded), forbidden-pattern, and cross-summoning memory.
-
-**Interactive art / persistent characters.** You want to summon an entity with
-a defined personality, streaming response, and a loom that persists across
-sessions. No worked example yet — assemble from primitives: `Cantrip.new` with
-a conversation medium and your identity prompt, `Cantrip.summon/1` for the
-supervised process, `Cantrip.send/3` per turn with `stream_to:` for token
-streaming, and `{:mnesia, ...}` loom storage for persistence.
-
-**Multi-tenant hosting service.** You want to run cantrips as a service for
-other people's entities. No preassembly yet (a future `Cantrip.Hosted`). Build
-from primitives: `%{sandbox: :port}` or `:dune` per circle, distributed Mnesia
-for the shared loom, and signer-key hot-load policy if you accept
-operator-supplied modules. See
-[`docs/distributed-familiar.md`](./docs/distributed-familiar.md),
-[`DEPLOYMENT.md`](./DEPLOYMENT.md), and
-[`docs/signer-key-runbook.md`](./docs/signer-key-runbook.md).
-
-**Multi-agent coordination / research.** You want parent-decomposes /
-children-execute / parent-synthesizes patterns. The composition primitives
-(`cast_batch/2`, child cantrip construction inside the code medium, loom
-grafting) support this today. Full peer-dialogue / Council patterns are
-deferred. No worked example yet — start from the "Fan Out to Child Cantrips"
-section above and from [`docs/architecture.md`](./docs/architecture.md).
 
 ### Reference docs
 
