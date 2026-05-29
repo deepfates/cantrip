@@ -10,20 +10,21 @@ defmodule Cantrip.FamiliarTest do
       {:ok, cantrip} = Familiar.new(llm: llm)
       assert %Cantrip{} = cantrip
       assert cantrip.circle.type == :code
-      assert Cantrip.WardPolicy.sandbox(cantrip.circle.wards) == :port
-    end
-
-    test "unrestricted sandbox option is an explicit escape hatch" do
-      llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
-
-      {:ok, cantrip} = Familiar.new(llm: llm, sandbox: :unrestricted)
       assert Cantrip.WardPolicy.sandbox(cantrip.circle.wards) == :unrestricted
     end
 
-    test "port runner option is carried as a ward for the code medium" do
+    test "port sandbox remains an explicit hosting option" do
+      llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
+
+      {:ok, cantrip} = Familiar.new(llm: llm, sandbox: :port)
+      assert Cantrip.WardPolicy.sandbox(cantrip.circle.wards) == :port
+    end
+
+    test "port runner option selects and configures the port sandbox" do
       llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("ok")]}])}
 
       {:ok, cantrip} = Familiar.new(llm: llm, port_runner: ["/usr/bin/env"])
+      assert Cantrip.WardPolicy.sandbox(cantrip.circle.wards) == :port
       assert Cantrip.WardPolicy.get(cantrip.circle.wards, :port_runner) == ["/usr/bin/env"]
     end
 

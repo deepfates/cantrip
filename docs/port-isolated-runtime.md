@@ -49,6 +49,11 @@ runner before that command. This is optional defense in depth for deployments
 that also want mount, network, CPU, memory, or user controls around the child
 process.
 
+The Familiar's ordinary default is `sandbox: :unrestricted` for trusted
+operator-local work. Passing `port_runner: [...]` to `Cantrip.Familiar.new/1`
+without an explicit sandbox selects `sandbox: :port` so the runner is actually
+used.
+
 Cantrip tests that the configured runner is used. Cantrip does not verify the
 security properties of an arbitrary runner; that belongs to the deployment.
 

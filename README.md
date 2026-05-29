@@ -224,16 +224,19 @@ data = read_file.(path: "metrics.txt")
 done.("Read #{byte_size(data)} bytes")
 ```
 
-Code-medium cantrips use the safe port boundary by default: LLM-written Elixir
-is evaluated by Dune inside a child BEAM process, while gates, child cantrip
-API calls, stdio, and hot-loading are resolved through explicit parent/child
-protocol messages. Use `%{sandbox: :port}` when you want that default boundary
-to be explicit in a circle. Use `sandbox: :port_unrestricted` only when you
-explicitly want raw Elixir in the child process, `sandbox: :dune` when you
-want in-process language restriction with a deliberately smaller binding
-surface (see [docs/port-isolated-runtime.md](./docs/port-isolated-runtime.md)
-for the divergence — entity prompts need to match the variant in use), or
-`sandbox: :unrestricted` only for trusted local development in the host BEAM.
+Plain code-medium cantrips use the safe port boundary by default: LLM-written
+Elixir is evaluated by Dune inside a child BEAM process, while gates, child
+cantrip API calls, stdio, and hot-loading are resolved through explicit
+parent/child protocol messages. Use `%{sandbox: :port}` when you want that
+default boundary to be explicit in a circle. The Familiar defaults to
+`sandbox: :unrestricted` for trusted operator-local coding work so native
+Elixir affordances such as `binding/0` and `Code.fetch_docs/1` match what its
+prompt teaches. Use `sandbox: :port_unrestricted` only when you explicitly
+want raw Elixir in the child process, `sandbox: :dune` when you want
+in-process language restriction with a deliberately smaller binding surface
+(see [docs/port-isolated-runtime.md](./docs/port-isolated-runtime.md) for the
+divergence — entity prompts need to match the variant in use), or `sandbox:
+:unrestricted` for trusted local development in the host BEAM.
 Child-origin atoms outside Cantrip's wire vocabulary cross the port boundary
 as strings, which keeps hot-loaded child code from forcing new atoms into the
 parent BEAM.
@@ -293,18 +296,20 @@ Mnesia directory. See [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## Safety
 
-The default code-medium boundary is two-layered. Dune denies ambient `File.*`,
-`System.*`, `Process.*`, `spawn`, and similar capabilities inside the child;
-the port boundary keeps LLM-written code, hot-loaded modules, and spawned child
-work out of the host BEAM. Gate calls, hot-load validation, child cantrip
-construction, casting, loom grafting, telemetry, and provider access stay in
-the parent runtime. Timeouts close and kill the child process.
+Plain code-medium circles default to the two-layer port boundary. Dune denies
+ambient `File.*`, `System.*`, `Process.*`, `spawn`, and similar capabilities
+inside the child; the port boundary keeps LLM-written code, hot-loaded
+modules, and spawned child work out of the host BEAM. Gate calls, hot-load
+validation, child cantrip construction, casting, loom grafting, telemetry, and
+provider access stay in the parent runtime. Timeouts close and kill the child
+process.
 
-This is a real default sandbox for the code medium, not merely documentation.
-For stricter operating-system policy — filesystem mounts, network egress,
-CPU/memory quotas, and user isolation — add `:port_runner` or run the host in a
-constrained container. The raw child-BEAM evaluator is `sandbox:
-:port_unrestricted`; the old host-BEAM evaluator is `sandbox: :unrestricted`.
+The Familiar default is the trusted host-BEAM evaluator because its audience is
+operator-local. For stricter operating-system policy — filesystem mounts,
+network egress, CPU/memory quotas, and user isolation — use
+`sandbox: :port` with `:port_runner` or run the host in a constrained
+container. The raw child-BEAM evaluator is `sandbox: :port_unrestricted`; the
+host-BEAM evaluator is `sandbox: :unrestricted`.
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full posture.
 
 ## Where to go next
