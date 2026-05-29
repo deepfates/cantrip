@@ -196,22 +196,25 @@ Bash requires an OS sandbox. Cantrip detects `bubblewrap` on Linux and
 construction rather than falling back to ambient shell authority. Tests can use
 `medium_opts: %{sandbox: :passthrough}`, but production cannot.
 
-Code-medium circles default to the port sandbox when no sandbox ward is
+Plain code-medium circles default to the port sandbox when no sandbox ward is
 present. `%{sandbox: :port}` makes that boundary explicit. It evaluates
 Dune-restricted Elixir in a child BEAM process while gates, child cantrip API
-calls, stdio, and hot-loading are resolved through the parent runtime. The
-Familiar uses this boundary by default. Child-origin atoms that are not part of
-Cantrip's wire vocabulary cross this boundary as strings, so hot-loaded child
-code cannot force new atoms into the parent BEAM.
+calls, stdio, and hot-loading are resolved through the parent runtime.
+Child-origin atoms that are not part of Cantrip's wire vocabulary cross this
+boundary as strings, so hot-loaded child code cannot force new atoms into the
+parent BEAM.
 
-Use `%{port_runner: [...]}` or `Cantrip.Familiar.new(port_runner: [...])` when
-you also want deployment-level OS/container controls. `sandbox:
-:port_unrestricted` keeps the child process but evaluates raw Elixir there.
-`sandbox: :dune` is available when in-process restrictions are the right
-tradeoff — it is a deliberately smaller-surface variant of the code medium
-(see `docs/port-isolated-runtime.md` "Dune Variant"); entity prompts need
-to match that surface. `sandbox: :unrestricted` is the trusted host-BEAM
-evaluator escape hatch.
+The Familiar is different: `Cantrip.Familiar.new/1` defaults to
+`sandbox: :unrestricted` for trusted operator-local coding work so its prompt's
+native introspection affordances (`binding/0`, `Code.fetch_docs/1`) are true.
+Use `Cantrip.Familiar.new(sandbox: :port, port_runner: [...])` when you also
+want deployment-level OS/container controls; passing `port_runner: [...]`
+without an explicit sandbox selects `:port` so the runner is used.
+`sandbox: :port_unrestricted` keeps the child process but evaluates raw Elixir
+there. `sandbox: :dune` is available when in-process restrictions are the
+right tradeoff — it is a deliberately smaller-surface variant of the code
+medium (see `docs/port-isolated-runtime.md` "Dune Variant"); entity prompts
+need to match that surface.
 
 ## Configure Gates and Wards
 

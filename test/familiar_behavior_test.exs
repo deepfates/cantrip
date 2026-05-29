@@ -548,6 +548,26 @@ defmodule Cantrip.FamiliarBehaviorTest do
   end
 
   describe "regression: loom is reachable as a binding (LOOM-11)" do
+    test "default Familiar supports the introspection affordances taught in its prompt" do
+      llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{code: ~s|done.(match?({:docs_v1, _, _, _, _, _, _}, Code.fetch_docs(Cantrip)))|},
+           %{
+             code: ~S"""
+             x = 1
+             done.(binding() |> Keyword.has_key?(:x))
+             """
+           }
+         ])}
+
+      {:ok, cantrip} = Familiar.new(llm: llm)
+
+      assert Cantrip.WardPolicy.sandbox(cantrip.circle.wards) == :unrestricted
+      assert {:ok, true, next, _loom, _meta} = Cantrip.cast(cantrip, "inspect Cantrip docs")
+      assert {:ok, true, _next, _loom, _meta} = Cantrip.cast(next, "inspect binding")
+    end
+
     test "default Familiar's code medium exposes `loom` and `loom.turns` to the entity" do
       llm =
         {FakeLLM,

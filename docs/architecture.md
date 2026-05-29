@@ -26,9 +26,9 @@ A = M union G - W
 
 The medium determines the shape of thought. Gates expose host capabilities.
 Wards bound runtime behavior. The loom is the durable tree left behind by the
-entity's turns. The Familiar's default code medium runs Dune-restricted Elixir
-in a child BEAM, with gates and child cantrip API calls resolved by the parent
-runtime.
+entity's turns. The Familiar's default code medium runs trusted Elixir in the
+host BEAM for operator-local coding work, while plain code-medium circles
+without a sandbox ward default to the port boundary.
 
 ## Runtime Loop
 
@@ -53,15 +53,15 @@ They are returned to the loop as data instead of crashing the process.
 
 The conversation medium projects gates as provider tool definitions.
 
-The code medium evaluates Elixir with persistent bindings. By default,
-it evaluates Dune-restricted Elixir in a child BEAM process, equivalent to
-`sandbox: :port`. Add `%{port_runner: [...]}` to put that child under
+The code medium evaluates Elixir with persistent bindings. Plain code-medium
+circles default to Dune-restricted Elixir in a child BEAM process, equivalent
+to `sandbox: :port`. Add `%{port_runner: [...]}` to put that child under
 deployment-level OS/container controls. `sandbox: :port_unrestricted` keeps
 the child process but evaluates raw Elixir there. `sandbox: :dune` routes
-through the in-process Dune evaluator — a deliberately smaller-surface
-variant of the code medium (see `docs/port-isolated-runtime.md` "Dune
-Variant"); entity prompts need to fit that surface. `sandbox: :unrestricted`
-uses the old host-BEAM evaluator for trusted local development.
+through the in-process Dune evaluator — a deliberately smaller-surface variant
+of the code medium (see `docs/port-isolated-runtime.md` "Dune Variant");
+entity prompts need to fit that surface. `sandbox: :unrestricted` is the
+trusted host-BEAM evaluator, and it is the Familiar default.
 
 The bash medium executes one shell command per turn inside an OS
 sandbox. Shell process state does not persist; filesystem effects do only for

@@ -233,14 +233,17 @@ defmodule Cantrip.Familiar do
       (default: `["compile", "format"]`, plus `"test"` when `:run_tests`
       is true)
     * `:system_prompt` — override the default system prompt (optional)
-    * `:sandbox` — `:port` (default) runs Familiar code through Dune in a
-      child BEAM process and resolves gates / child cantrip API calls through
-      the parent runtime. `:dune` uses the in-process Dune evaluator.
+    * `:sandbox` — `:unrestricted` (default) runs Familiar code in the host
+      BEAM for trusted operator-local work, so native Elixir affordances such
+      as `binding/0` and `Code.fetch_docs/1` match the Familiar prompt.
+      `:port` runs code through Dune in a child BEAM process and resolves
+      gates / child cantrip API calls through the parent runtime. `:dune`
+      uses the in-process Dune evaluator.
       `:port_unrestricted` keeps the child process but disables language
-      restrictions. `:unrestricted` restores the old host-BEAM evaluator for
-      trusted local development.
+      restrictions.
     * `:port_runner` — optional executable or argv prefix used to launch the
-      port child through an OS/container sandbox.
+      port child through an OS/container sandbox. When supplied without an
+      explicit `:sandbox`, the Familiar selects `:port` so the runner is used.
   """
   @spec new(keyword()) :: {:ok, Cantrip.t()} | {:error, String.t()}
   def new(opts) when is_list(opts) do
@@ -249,8 +252,8 @@ defmodule Cantrip.Familiar do
     max_turns = Keyword.get(opts, :max_turns, @default_max_turns)
     loom_path = Keyword.get(opts, :loom_path)
     root = Keyword.get(opts, :root)
-    sandbox = Keyword.get(opts, :sandbox, :port)
     port_runner = Keyword.get(opts, :port_runner)
+    sandbox = Keyword.get(opts, :sandbox, default_sandbox(port_runner))
     evolve? = Keyword.get(opts, :evolve, false)
     run_tests? = Keyword.get(opts, :run_tests, false)
     allow_mix_tasks = Keyword.get(opts, :allow_mix_tasks, default_mix_tasks(run_tests?))
@@ -385,7 +388,7 @@ defmodule Cantrip.Familiar do
   defp sandbox_ward(:dune), do: [%{sandbox: :dune}]
   defp sandbox_ward(:port_unrestricted), do: [%{sandbox: :port_unrestricted}]
   defp sandbox_ward(:unrestricted), do: [%{sandbox: :unrestricted}]
-  defp sandbox_ward(nil), do: [%{sandbox: :port}]
+  defp sandbox_ward(nil), do: [%{sandbox: :unrestricted}]
   defp sandbox_ward("port"), do: sandbox_ward(:port)
   defp sandbox_ward("dune"), do: sandbox_ward(:dune)
   defp sandbox_ward("port_unrestricted"), do: sandbox_ward(:port_unrestricted)
@@ -393,6 +396,9 @@ defmodule Cantrip.Familiar do
 
   defp sandbox_ward(other),
     do: raise(ArgumentError, "unsupported Familiar sandbox: #{Cantrip.SafeFormat.inspect(other)}")
+
+  defp default_sandbox(nil), do: :unrestricted
+  defp default_sandbox(_port_runner), do: :port
 
   defp default_mix_tasks(true), do: ["compile", "format", "test"]
   defp default_mix_tasks(false), do: ["compile", "format"]

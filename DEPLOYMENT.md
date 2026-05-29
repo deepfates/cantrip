@@ -5,35 +5,43 @@ spawns other entities at runtime, persists its loom across summons,
 and can hot-load new code into its own runtime. This document is about running
 it responsibly in production.
 
-The Familiar's default code medium is a safe port evaluator: LLM-written
-Elixir is evaluated by Dune inside a child BEAM process while the parent BEAM
-owns gates, child cantrip orchestration, loom grafting, telemetry, provider
-access, and hot-load policy.
+The Familiar's default code medium is trusted and operator-local:
+LLM-written Elixir runs in the host BEAM with ordinary Elixir affordances.
+That makes the prompt's native introspection guidance true: `binding/0`,
+`Code.fetch_docs/1`, direct variable reference, `loom.turns`, and public
+Cantrip API calls all work in the environment the Familiar inhabits.
+
+Use the port or Dune sandboxes deliberately for hosted or multi-tenant
+audiences. In those modes, LLM-written Elixir is evaluated under a narrower
+surface while the parent BEAM owns gates, child cantrip orchestration, loom
+grafting, telemetry, provider access, and hot-load policy.
 
 ## The runtime shape
 
 The parent runtime lives in the application BEAM: cantrip framework, loom
 storage, LLM client, gates, telemetry, and Familiar entry point (ACP or
-single-shot CLI). The entity's code-medium Elixir runs in a child BEAM reached
-through an Erlang port.
+single-shot CLI). By default, the Familiar's code-medium Elixir also runs in
+that BEAM. This is the local coding-companion posture: the operator summoned
+the entity into their own workspace and can kill the BEAM/process if needed.
 
-That split is the v1 boundary. The entity gets Elixir as its medium, but Dune
-denies ambient filesystem/system/process authority and boundary crossings are
+When you choose `sandbox: :port`, the entity's code-medium Elixir instead
+runs in a child BEAM reached through an Erlang port. Dune denies ambient
+filesystem/system/process authority and boundary crossings are
 parent-mediated: gates are RPC handles, `Cantrip.new/1`, `Cantrip.cast/2`, and
 `Cantrip.cast_batch/1` are proxied to the parent, and `compile_and_load` is
 validated by the parent before compiling inside the child runtime.
 
 ## Safety Posture
 
-The default controls are structural at the BEAM boundary:
+The default controls are structural at the Cantrip runtime boundary:
 
 - gate validation controls parent-mediated gate calls
 - redaction controls observations before they return to the entity/model
 - wards bound loop structure and selected runtime policies
-- Dune-in-port evaluation denies ambient language capabilities and keeps
-  LLM-written Elixir out of the host BEAM
-- optional deployment isolation controls the child/host operating-system
-  process boundary
+- the operator-local host process is the trust boundary for the default
+  Familiar
+- optional `:port`, `:dune`, and deployment isolation modes narrow the
+  language or process boundary for hosted/multi-tenant use cases
 
 ### 1. Gate root validation
 
@@ -78,30 +86,51 @@ reads `.env` because it's inside the configured root), the credential
 *bodies* are replaced with `[REDACTED]` before the entity (and the
 human watching) ever sees them.
 
-### 3. Port isolation and process cleanup
+### 3. Trusted local evaluator
 
-The Familiar defaults to `%{sandbox: :port}`. The child BEAM is launched
-through an Erlang port with a length-prefixed Erlang-term protocol. The parent
-sends eval requests; the child evaluates them through Dune; gate/API/stdout
-and compile requests cross the protocol explicitly. On timeout, the parent
-closes and kills the child OS process.
+The Familiar defaults to `%{sandbox: :unrestricted}`. LLM-written Elixir runs
+in the host BEAM because the Familiar is an operator-local coding companion:
+it is summoned into a workspace by the person responsible for that process.
+This default matches the Familiar's prompt and code-medium teaching. Native
+Elixir affordances such as `binding/0`, `try/rescue`, `Code.fetch_docs/1`,
+ordinary module calls, and direct access to persistent code bindings are
+available.
+
+The runtime still enforces Cantrip-level constraints: gate root validation,
+redaction, loop wards, child-depth and child-ward composition, Mix allowlists,
+hot-load allowlists, and eval timeouts. These are runtime controls, not a
+language sandbox.
+
+Use this default only where the operator is willing to let the Familiar run
+Elixir in the same trust domain as the host process. If you need LLM-written
+Elixir to be unable to call ambient host APIs, choose an alternate evaluator
+below.
+
+### 4. Port isolation and process cleanup
+
+With `sandbox: :port`, the child BEAM is launched through an Erlang port with
+a length-prefixed Erlang-term protocol. The parent sends eval requests; the
+child evaluates them through Dune; gate/API/stdout and compile requests cross
+the protocol explicitly. On timeout, the parent closes and kills the child OS
+process.
 
 Hot-loading with `evolve: true` also stays inside the child. The parent
 validates `compile_and_load` wards (exact module names, path, hash, and signer
 policy), then the child compiles and loads the allowed module in its own
 runtime, not in the framework VM.
 
-This is the default sandbox: Dune denies ambient `File.*`, `System.*`,
-`Process.*`, `spawn`, node, and similar calls, while the port boundary protects
-the host BEAM.
+This sandbox denies ambient `File.*`, `System.*`, `Process.*`, `spawn`, node,
+and similar calls, while the port boundary protects the host BEAM. It is the
+right starting point for hosted or multi-tenant preassemblies whose prompts
+are written for the narrower Dune surface.
 
-### 4. Child process containment
+### 5. Child process containment
 
-The child BEAM process still runs somewhere. The default evaluator denies
-ambient language access to filesystem/system/process capabilities, but
-operating-system isolation controls what the child process could reach if a
-bug, dependency issue, NIF, VM issue, or explicit `:port_unrestricted` escape
-hatch is introduced.
+The child BEAM process still runs somewhere when you choose a port sandbox.
+The port evaluator denies ambient language access to filesystem/system/process
+capabilities, but operating-system isolation controls what the child process
+could reach if a bug, dependency issue, NIF, VM issue, or explicit
+`:port_unrestricted` escape hatch is introduced.
 
 For production, configure a child runner:
 
@@ -109,6 +138,7 @@ For production, configure a child runner:
 Cantrip.Familiar.new(
   llm: llm,
   root: "/srv/workspace",
+  sandbox: :port,
   port_runner: ["/usr/local/bin/cantrip-child-sandbox"]
 )
 ```
@@ -119,6 +149,9 @@ sandbox-exec, firejail, nsjail, or whatever your platform standardizes on.
 Mount only the directories the Familiar should reach, drop OS capabilities the
 process doesn't need, set CPU/memory limits, and disable network egress unless
 the child genuinely needs it.
+
+Passing `:port_runner` without an explicit `:sandbox` also selects `:port`,
+so existing runner-based deployments keep using the child process boundary.
 
 If your deployment already runs the entire Cantrip host inside an equally
 constrained container, a separate `:port_runner` may be redundant. The
@@ -134,12 +167,11 @@ These two layers compose: redaction handles credentials wherever they
 land; deployment isolation handles file paths that shouldn't be
 reachable at all.
 
-### 5. Alternate evaluators
+### 6. Alternate evaluators
 
 `Cantrip.Familiar.new/1` accepts `sandbox: :dune`. This routes the code medium
 through the in-process Dune evaluator, which restricts language-level
-`File.*`, `System.*`, `Process.*`, `spawn`, and `Code.*` (loading)
-calls.
+`File.*`, `System.*`, `Process.*`, `spawn`, and `Code.*` calls.
 
 Cost: Dune also restricts some in-medium operations (`binding/0`,
 `try/1`, `Code.ensure_loaded?/1`). The Familiar's prompt teaches
@@ -151,8 +183,8 @@ and "errors land as observations the next turn sees."
 Use `:dune` deliberately when you want in-process restriction without the child
 BEAM boundary. `sandbox: :port_unrestricted` keeps the child process but
 evaluates raw Elixir there; it is for trusted experiments and process cleanup
-tests. `sandbox: :unrestricted` restores the old host-BEAM evaluator for
-trusted local development only.
+tests. `sandbox: :unrestricted` is the default trusted host-BEAM evaluator for
+operator-local Familiars.
 
 ## Loom backends
 
@@ -219,15 +251,15 @@ entity.
 the gate and scope it to the exact modules listed in `allow_compile_modules`.
 The built-in Familiar configuration allows the `Cantrip.Hot.*` modules it
 declares for evolution; arbitrary namespace allowlists are no longer accepted.
-The entity can hot-load those allowed modules into its child BEAM session. It
-cannot redefine `Cantrip.Familiar`, the gate runtime, or any other framework
-module — the parent rejects framework module names before the child compiles.
+The entity can hot-load those allowed modules into its current evaluator
+session. It cannot redefine `Cantrip.Familiar`, the gate runtime, or any other
+framework module — the parent rejects framework module names before compiling.
 
 This is the entity's evolutionary surface. Combined with the BEAM's
-hot-code-loading semantics (old version stays loaded for active
-processes; new version takes over for new calls) and port-session restart on
-timeout/crash, the Familiar can try a change and roll back by losing only the
-child runtime session.
+hot-code-loading semantics (old version stays loaded for active processes;
+new version takes over for new calls), the Familiar can try a scoped change.
+When running under a port sandbox, port-session restart on timeout/crash also
+discards the child runtime session.
 
 Deployments that don't want hot reload should leave `evolve` unset. Custom
 circles built with `Cantrip.new/1` can still opt into `compile_and_load`
@@ -257,8 +289,10 @@ Plus:
 
 Optional:
 
-- `sandbox: :dune` if the BEAM is shared with untrusted tenants.
-- `sandbox: :unrestricted` only for trusted local development.
+- `sandbox: :port` plus `port_runner: [...]` for hosted or multi-tenant
+  deployments that need a child process boundary.
+- `sandbox: :dune` if the BEAM is shared with untrusted tenants and the
+  prompt/capability text is written for Dune's narrower surface.
 - `evolve: true` only when hot-load self-extension is part of the deployment.
 - Mnesia replication across cluster nodes if you're running
   distributed.
