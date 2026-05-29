@@ -18,17 +18,17 @@ when present, `scripts/check_cleanup_guide.sh`, and the v1.0.0 release commit
 
 ## Headline
 
-**As of 2026-05-28T23:57:47Z, the post-v1.2 stabilization queue remains
-empty after v1.3.2.**
+**As of 2026-05-29T03:22:00Z, the v1.3.3 calibration queue is empty after
+v1.3.3.**
 
-- Open GitHub issues: **0**.
+- Open GitHub issues in the v1.3.3 release queue: **0**.
 - Open GitHub PRs: **0**.
-- Latest tagged release: **v1.3.2** on `a3666dc`, tagged at
-  2026-05-28T23:57:47Z.
-- Latest stabilization merge: PR #106, `a3666dc`, `chore: prepare v1.3.2
-  release`.
-- v1.3.2 package verification: fresh extracted Hex tar dogfood, stable
-  real-LLM suite, `mix verify`, `mix docs`, and `mix hex.build`.
+- Latest release: **v1.3.3** on this release commit, tagged after the release
+  gates below.
+- Latest stabilization merge: PR #125, `2359f5d`, `docs: tighten v1.3.3
+  familiar guidance`.
+- v1.3.3 package verification: PR CI, local `mix verify`, local `mix docs`,
+  and local `mix hex.build` passed at the release head.
 - v1.3.0 shipped at 2026-05-28T17:29Z (`c71b0d7`, tag `v1.3.0`) and
   was superseded by v1.3.1 after two post-tag safety defects were found:
   #92 observation args could persist unredacted credential-shaped values,
@@ -38,6 +38,10 @@ empty after v1.3.2.**
   Spellbook, ExDoc, public module voice, Familiar orientation, generated docs,
   and Hex package contents now describe the Elixir package as the canonical
   project.
+- v1.3.3 calibrates that package surface against the inhabitant-affordance
+  audit: Familiar sandbox defaults, Bash capability wording, code-medium
+  guidance, `cast_batch` concurrency language, Mnesia rehydration evidence,
+  folding rituals, ACP editor docs, and eval starter scenarios are current.
 
 ### What Changed Since v1.2.0
 
@@ -195,32 +199,26 @@ code evidence and an independent re-audit against the relevant guide criteria.
 | 12 | Package / dependency boundaries | **done** | #3 and #12 closed; port medium proxies the public API while Dune remains a deliberate restricted variant. |
 | 13 | Observability / context propagation | **done** | #41, #42, #44, #45, #46, #47, #51, #55, #56, and #59 closed; telemetry, streaming envelopes, and provider options preserve the intended context. |
 | 14 | Idiomatic / performance | **clean** | No open cleanup issue remains in this pass. Existing regex and process-dictionary uses are bounded, documented patterns. |
-| 15 | Final verification / governance lock-in | **done** | v1.3.2 verification is current; CI runs `scripts/check_cleanup_guide.sh` to keep the high-risk cleanup invariants durable. |
+| 15 | Final verification / governance lock-in | **done** | v1.3.3 calibration verification is current; CI runs `scripts/check_cleanup_guide.sh` to keep the high-risk cleanup invariants durable. |
 
 ---
 
 ## Release Gates
 
-The current post-v1.2 stabilization and package-coherence release head is
-`a3666dc`.
+The current post-v1.2 stabilization and package-coherence release head is this
+release commit.
 
 Authoritative gates:
 
-- Open GitHub issues after v1.3.2: `[]`.
-- Open GitHub PRs after v1.3.2: `[]`.
-- PR #106 `verify`: success. Its `live` job was skipped because pull requests
+- Open GitHub issues in the v1.3.3 release queue: `[]`.
+- Open GitHub PRs after v1.3.3 calibration: `[]`.
+- PR #125 `verify`: success. Its `live` job was skipped because pull requests
   run unit/package verification only.
-- v1.3.2 tag verification: success.
+- v1.3.3 tag verification: release tag created after these gates.
 
-Local gates run before the v1.3.2 release:
+Local gates run before the v1.3.3 release:
 
-- Fresh extracted Hex tar dogfood outside the repo with live LLM
-  configuration:
-  - `mix deps.get`
-  - `mix cantrip.cast "explain what a cantrip is"`
-  - `mix cantrip.familiar "summarize the loom storage modules"`
-- `RUN_REAL_LLM_TESTS=1` stable live/real integration suite: 20 tests,
-  0 failures.
+- `mix test test/package_metadata_test.exs test/readme_examples_test.exs`
 - `mix verify`
 - `mix docs`
 - `mix hex.build`

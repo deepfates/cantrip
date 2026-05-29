@@ -4,6 +4,58 @@
 
 Nothing yet.
 
+## 1.3.3 - 2026-05-29
+
+Calibration release for the v1.3.2 Elixir cutover.
+
+**New:**
+
+- Added a multi-audience README path map covering the operator-local
+  Familiar, ACP editor mounting, Phoenix embeds, eval/research work,
+  persistent characters, hosted service shapes, and multi-agent coordination.
+  Evidence: PR #125.
+- Added `docs/acp-editor.md`, a worked guide for mounting the Familiar as an
+  ACP agent in editors, including Zed configuration, standalone JSON-RPC
+  smoke testing, diagnostics, and honest read-only scope. Evidence: PR #125.
+- Added `evals/familiar/v1.3.3.exs`, a curated starter suite for Familiar eval
+  work covering gate use, composition, synthesis quality, forbidden-pattern
+  checks, and loom recall. Evidence: PR #125.
+- Added a real-LLM Mnesia rehydration smoke test for the production Familiar
+  path: summon against a workspace root, record a turn, stop the process,
+  summon fresh against the same root-derived Mnesia table, and assert the
+  entity sees prior turns through `loom.turns`. Evidence: PR #124, issue #120.
+
+**Changed:**
+
+- The Familiar now defaults to the host-BEAM unrestricted evaluator for its
+  operator-local audience, while `sandbox: :port` remains available for
+  child-BEAM isolation. Explicit `sandbox: nil` with a `port_runner` still
+  selects the port path. Evidence: PRs #121 and #123, issue #115.
+- Bash medium capability text now distinguishes shell state from filesystem
+  side effects instead of overstating persistence. Evidence: PR #123,
+  issue #117.
+- Code-medium inhabitant guidance now describes the exact top-level binding
+  contract for `defmodule`: gate functions, `loom`, `folded_summary`, and
+  prior-turn variables are top-level bindings that module bodies cannot see.
+  Evidence: PR #125, issue #116.
+- `Cantrip.cast_batch` guidance now says children start concurrently, bounded
+  by `max_concurrent_children`, and results are returned in request order
+  instead of making an unconditional "parallel" claim. Evidence: PR #125,
+  issue #118.
+- The Spellbook loom ritual now verifies JSONL persistence, production
+  Familiar Mnesia rehydration, and folding as prompt projection over an
+  append-only loom. Evidence: PRs #124 and #125, issues #119 and #120.
+
+**Verification:**
+
+- The v1.3.2 inhabitant-affordance audit is committed as
+  `docs/inhabitant-affordance-audit-v1.3.2.md`; all v1.3.3 fix issues it
+  spawned (#115-#120) are closed with code, docs, tests, or narrowed public
+  contracts.
+- `mix verify`, `mix docs`, and PR CI passed on the final v1.3.3 batch.
+- Open GitHub issues after the calibration queue are only explicitly deferred
+  future-work issues #108-#112.
+
 ## 1.3.2 - 2026-05-28
 
 Package-coherence release for the Elixir cutover.
