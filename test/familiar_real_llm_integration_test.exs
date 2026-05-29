@@ -212,6 +212,71 @@ defmodule Cantrip.FamiliarRealLLMIntegrationTest do
     end
   end
 
+  @tag :mnesia
+  test "fresh Familiar summon can see prior Mnesia loom turns with a real LLM", %{dir: dir} do
+    if not RealLLMEnv.enabled?() do
+      :ok
+    else
+      {:ok, llm} = Cantrip.LLM.from_env()
+
+      system_prompt =
+        Cantrip.Familiar.default_system_prompt() <>
+          """
+
+          You are running a release smoke test. For every prompt in this test,
+          write Elixir that computes `prior_turn_count = length(loom.turns)` and
+          immediately calls `done.(%{prior_turn_count: prior_turn_count})`.
+          Do not call list_dir, read_file, search, mix, or child cantrips.
+          """
+
+      {:ok, first} =
+        Cantrip.Familiar.new(
+          llm: llm,
+          root: dir,
+          max_turns: 3,
+          system_prompt: system_prompt
+        )
+
+      assert match?({:mnesia, _}, first.loom_storage)
+
+      {:mnesia, mnesia_opts} = first.loom_storage
+      table = mnesia_table!(mnesia_opts)
+
+      try do
+        {:ok, pid} = Cantrip.summon(first)
+
+        try do
+          {:ok, _result, _next, _loom, meta} = Cantrip.send(pid, "Record the first turn.")
+          assert meta.terminated
+        after
+          Process.exit(pid, :normal)
+        end
+
+        {:ok, second} =
+          Cantrip.Familiar.new(
+            llm: llm,
+            root: dir,
+            max_turns: 3,
+            system_prompt: system_prompt
+          )
+
+        assert second.loom_storage == first.loom_storage
+
+        {:ok, pid} = Cantrip.summon(second)
+
+        try do
+          {:ok, result, _next, _loom, meta} = Cantrip.send(pid, "Report prior_turn_count.")
+          assert meta.terminated
+          assert prior_turn_count(result) >= 1
+        after
+          Process.exit(pid, :normal)
+        end
+      after
+        delete_mnesia_table(table)
+      end
+    end
+  end
+
   test "delegated reads survive when LLM omits the path arg" do
     # Original trace failure mode: the child's LLM forgot to pass `path`
     # to read_file. Pre-fix that produced a function_clause crash that
@@ -255,4 +320,13 @@ defmodule Cantrip.FamiliarRealLLMIntegrationTest do
   defp prior_turn_count(%{prior_turn_count: count}) when is_integer(count), do: count
   defp prior_turn_count(%{"prior_turn_count" => count}) when is_integer(count), do: count
   defp prior_turn_count(other), do: flunk("expected prior_turn_count map, got: #{inspect(other)}")
+
+  defp mnesia_table!(opts) when is_map(opts), do: Map.fetch!(opts, :table)
+  defp mnesia_table!(opts) when is_list(opts), do: Keyword.fetch!(opts, :table)
+
+  defp delete_mnesia_table(table) do
+    if Code.ensure_loaded?(:mnesia) and :mnesia.system_info(:is_running) == :yes do
+      :mnesia.delete_table(table)
+    end
+  end
 end

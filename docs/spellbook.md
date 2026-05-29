@@ -104,7 +104,9 @@ turn, restoring sandbox bindings to the fork point.
 *Verify it.* Cast against a cantrip with `loom_storage: {:jsonl,
 "tmp/loom.jsonl"}`; the file contains one line per event. Summon the same
 cantrip against the same loom path; the previous turns appear in `loom.turns` of
-the next cast.
+the next cast. For the production Familiar path, construct it with the same
+workspace `root` twice; the root-derived Mnesia table is reused, and the second
+summoning sees the first summoning's turns through `loom.turns`.
 
 ## Entity
 
