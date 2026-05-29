@@ -253,7 +253,7 @@ defmodule Cantrip.FamiliarBehaviorTest do
     # CIRCLE-5 / COMP-8: when a child fails, the failure surfaces on the
     # parent's observation channel — the parent must be able to act on
     # it rather than crash. This test pins the SPEC behavior under the
-    # production posture (Dune sandbox): the failure shows up as an
+    # production posture (default port sandbox): the failure shows up as an
     # `is_error: true` observation in the parent's loom, and the parent
     # continues to the next turn (rather than the loop dying).
     #
@@ -473,13 +473,14 @@ defmodule Cantrip.FamiliarBehaviorTest do
   # =====================================================================
   #
   # Real-Zed-trace failure mode (May 2026): user asked "welcome back. do
-  # you see your loom" and the Familiar (under the previous default of
-  # `sandbox: :dune`) tried to probe with `binding/0`, `try/1`, and
-  # `Code.ensure_loaded?/1` — all Dune-restricted — and never got to
-  # just reference `loom`. The fix has two parts:
+  # you see your loom" and the Familiar (under the old Dune-default path)
+  # tried to probe with `binding/0`, `try/1`, and `Code.ensure_loaded?/1` —
+  # all Dune-restricted — and never got to just reference `loom`. The fix
+  # has two parts:
   #
-  #   1. The default Familiar uses unrestricted code medium, so
-  #      `binding/0` / `try/1` work natively.
+  #   1. The default Familiar now uses the port sandbox, which supports the
+  #      practical introspection shape entities were reaching for while still
+  #      keeping evaluation out of the host BEAM.
   #   2. The `:loom` binding is present in the eval scope in both code
   #      mediums (LOOM-11), so the entity can reference it directly.
   #
