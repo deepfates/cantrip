@@ -1,0 +1,34 @@
+defmodule Cantrip.Identity do
+  @moduledoc """
+  Identity is who the entity is: the system prompt plus model-facing options.
+  It is bound when the cantrip is constructed and every summoning inherits it.
+
+  Immutable identity configuration (identity + llm knobs).
+  """
+
+  defstruct schema_version: 1,
+            system_prompt: nil,
+            temperature: nil,
+            tool_choice: nil
+
+  @type t :: %__MODULE__{
+          system_prompt: String.t() | nil,
+          schema_version: pos_integer(),
+          temperature: number() | nil,
+          tool_choice: String.t() | nil
+        }
+
+  @spec new(keyword() | map()) :: t()
+  def new(attrs \\ %{}) do
+    attrs = Map.new(attrs)
+
+    %__MODULE__{
+      schema_version: fetch(attrs, :schema_version) || 1,
+      system_prompt: fetch(attrs, :system_prompt),
+      temperature: fetch(attrs, :temperature),
+      tool_choice: fetch(attrs, :tool_choice)
+    }
+  end
+
+  defp fetch(map, key), do: Map.get(map, key) || Map.get(map, Atom.to_string(key))
+end

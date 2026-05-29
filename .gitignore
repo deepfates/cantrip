@@ -1,7 +1,7 @@
 .env
 .DS_Store
 .cantrip/
-.claude/
+.claude*/
 .clj-kondo/
 .lsp/
 _investigation/
@@ -9,22 +9,19 @@ _review/
 SPEC.md.bak
 .uv-cache
 .venv_check
-# TypeScript
-node_modules/
-dist/
-*.tsbuildinfo
-# Python
-__pycache__/
-*.pyc
-.venv/
-# Clojure
-.cpcache/
-target/
-classes/
 # Elixir
 _build/
 deps/
 *.beam
+/cover/
+/doc/
+/tmp/
+*.ez
+cantrip-*.tar
+/cantrip
+Mnesia.*/
 # Editors
 *.swp
 *~
+erl_crash.dump
+scratch/
