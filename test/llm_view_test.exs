@@ -29,6 +29,7 @@ defmodule Cantrip.LLMViewTest do
       assert capability_text =~ "persistent sandbox"
       assert capability_text =~ "Cantrip.new/1"
       assert capability_text =~ "Cantrip.cast/2"
+      assert capability_text =~ "module bodies cannot see those bindings"
     end
 
     test "Dune capability text does not teach unrestricted package calls" do
@@ -69,6 +70,8 @@ defmodule Cantrip.LLMViewTest do
       assert capability_text =~ "done.(answer)"
       assert capability_text =~ "echo.(opts)"
       assert capability_text =~ "Cantrip.cast_batch/1"
+      assert capability_text =~ "max_concurrent_children"
+      assert capability_text =~ "results are returned in request order"
     end
 
     test "custom gate teaching overrides built-in descriptions" do

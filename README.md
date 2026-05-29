@@ -235,9 +235,8 @@ prompt teaches. Use `sandbox: :port_unrestricted` only when you explicitly
 want raw Elixir in the child process, `sandbox: :dune` when you want
 in-process language restriction with a deliberately smaller binding surface
 (see [docs/port-isolated-runtime.md](./docs/port-isolated-runtime.md) for the
-divergence — entity prompts need to match the variant in use). For trusted
-local development in the host BEAM, the explicit form is
-`sandbox: :unrestricted`.
+divergence — entity prompts need to match the variant in use), or `sandbox:
+:unrestricted` for trusted local development in the host BEAM.
 Child-origin atoms outside Cantrip's wire vocabulary cross the port boundary
 as strings, which keeps hot-loaded child code from forcing new atoms into the
 parent BEAM.
@@ -313,19 +312,72 @@ container. The raw child-BEAM evaluator is `sandbox: :port_unrestricted`; the
 host-BEAM evaluator is `sandbox: :unrestricted`.
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full posture.
 
-## Where to go next
+## Paths by audience
+
+Cantrip's primitives are polymorphic on purpose. The Familiar is the one
+preassembly we ship today; other audiences assemble cantrips from the same
+`Cantrip.new` / `cast` / `summon` / `cast_batch` surface. Pick the entry that
+matches your use case.
+
+**Operator-local coding companion.** You want an Elixir-native coding agent in
+your own workspace, with a durable loom keyed to that workspace. Run
+`mix cantrip.familiar` (REPL) or `mix cantrip.familiar "your intent"`
+(single-shot). The Familiar is the preassembly: code medium, scoped workspace
+gates, delegation, and Mnesia loom out of the box. See
+[`docs/public-api.md`](./docs/public-api.md) for the underlying surface.
+
+**Editor companion via ACP.** You want the Familiar mounted inside Zed,
+JetBrains, Toad, or another ACP-aware editor. Run `mix cantrip.familiar --acp`
+and point your editor's ACP client at it. See
+[`docs/acp-editor.md`](./docs/acp-editor.md) for a worked editor mount with
+configuration, smoke-test, and troubleshooting.
+
+**Phoenix-app AI feature embed.** You want to add an AI capability to a
+controller, LiveView, or Oban job in an existing Phoenix app. Call
+`Cantrip.new/1` and `Cantrip.cast/3` (or `cast_stream/2` for LiveView) from
+your own module — there's no separate server to run. No worked example yet
+(coming in a follow-up to v1.3.3). The shape: persist the loom in Mnesia keyed
+by your business identifier (conversation_id, user_id), build a fresh cantrip
+per request, let cantrip's supervision tree handle the entity processes.
+
+**Research / evaluation substrate.** You want to run prompt scenarios across
+seeds, score with rubric judges, and diff transcripts for regression work.
+Use `Cantrip.Familiar.Eval` and the eval harness. See
+[`docs/eval-harness.md`](./docs/eval-harness.md) for the harness, and
+[`evals/familiar/v1.3.3.exs`](./evals/familiar/v1.3.3.exs) for a curated
+5-scenario starter suite covering gate-use, composition, synthesis quality
+(judge-graded), forbidden-pattern, and cross-summoning memory.
+
+**Interactive art / persistent characters.** You want to summon an entity with
+a defined personality, streaming response, and a loom that persists across
+sessions. No worked example yet — assemble from primitives: `Cantrip.new` with
+a conversation medium and your identity prompt, `Cantrip.summon/1` for the
+supervised process, `Cantrip.send/3` per turn with `stream_to:` for token
+streaming, and `{:mnesia, ...}` loom storage for persistence.
+
+**Multi-tenant hosting service.** You want to run cantrips as a service for
+other people's entities. No preassembly yet (a future `Cantrip.Hosted`). Build
+from primitives: `%{sandbox: :port}` or `:dune` per circle, distributed Mnesia
+for the shared loom, and signer-key hot-load policy if you accept
+operator-supplied modules. See
+[`docs/distributed-familiar.md`](./docs/distributed-familiar.md),
+[`DEPLOYMENT.md`](./DEPLOYMENT.md), and
+[`docs/signer-key-runbook.md`](./docs/signer-key-runbook.md).
+
+**Multi-agent coordination / research.** You want parent-decomposes /
+children-execute / parent-synthesizes patterns. The composition primitives
+(`cast_batch/2`, child cantrip construction inside the code medium, loom
+grafting) support this today. Full peer-dialogue / Council patterns are
+deferred. No worked example yet — start from the "Fan Out to Child Cantrips"
+section above and from [`docs/architecture.md`](./docs/architecture.md).
+
+### Reference docs
 
 - [`docs/spellbook.md`](./docs/spellbook.md) — the vocabulary and its
   verifiable behavior
-- `notebooks/cantrip_demo.livemd` — the runnable grimoire, with rendered loom
+- `notebooks/cantrip_demo.livemd` — runnable grimoire with rendered loom
   tables
-- [`docs/public-api.md`](./docs/public-api.md) — task-oriented API guide
-- [`docs/distributed-familiar.md`](./docs/distributed-familiar.md) —
-  replicated Mnesia and remote child cantrips
-- [`docs/eval-harness.md`](./docs/eval-harness.md) — multi-seed Familiar
-  scenario evaluation
 - [`docs/architecture.md`](./docs/architecture.md) — how the modules fit
-- [`DEPLOYMENT.md`](./DEPLOYMENT.md) — current deployment posture
 - [`docs/port-isolated-runtime.md`](./docs/port-isolated-runtime.md) — the
   port-isolated code-medium boundary
 - [Cantrip bibliography](https://deepfates.com/cantrip-bibliography) — the

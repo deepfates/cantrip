@@ -510,10 +510,10 @@ defmodule Cantrip.Medium.Code do
     Respond ONLY with the elixir tool containing valid Elixir code.
     Do not write prose or markdown.
 
-    CRITICAL: NEVER use defmodule. Module definitions create a new scope
-    where host function bindings are invisible, causing "undefined variable"
-    errors. Write all code at the top level as a script. Use anonymous
-    functions if you need helpers:
+    CRITICAL: Do not use defmodule for turn code. Gate functions, `loom`,
+    `folded_summary`, and variables from prior turns are top-level bindings;
+    module bodies cannot see those bindings. Write code at the top level as a
+    script. Use anonymous functions if you need helpers:
 
         summarize = fn text -> String.split(text, "\\n") |> length() end
         result = summarize.(data)
@@ -605,7 +605,8 @@ defmodule Cantrip.Medium.Code do
       you genuinely need multi-line.
     - Pipe into `then(fn v -> ... end)`, not into `(fn v -> ... end).()`.
     - Each `Cantrip.cast` is an LLM round-trip. For more than a couple, use
-      `Cantrip.cast_batch` so children run in parallel.
+      `Cantrip.cast_batch`; children start concurrently, bounded by the
+      `max_concurrent_children` ward, and results are returned in request order.
     """
   end
 
@@ -658,7 +659,7 @@ defmodule Cantrip.Medium.Code do
         Public package API (ordinary module calls, not closure bindings):
         - Cantrip.new(config) constructs a child cantrip and returns {:ok, child} or {:error, reason}
         - Cantrip.cast(child, intent) casts one child and returns {:ok, value, next_child, child_loom, meta} or {:error, reason, next_child}
-        - Cantrip.cast_batch(items) casts children concurrently and returns {:ok, values, next_children, child_looms, meta} or {:error, reason}
+        - Cantrip.cast_batch(items) casts children concurrently, bounded by max_concurrent_children, and returns {:ok, values, next_children, child_looms, meta} or {:error, reason}
         Parent-to-child casts are depth-bounded and run with wards composed from the parent and child circles.
         """
     end

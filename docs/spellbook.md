@@ -106,7 +106,11 @@ turn, restoring sandbox bindings to the fork point.
 cantrip against the same loom path; the previous turns appear in `loom.turns` of
 the next cast. For the production Familiar path, construct it with the same
 workspace `root` twice; the root-derived Mnesia table is reused, and the second
-summoning sees the first summoning's turns through `loom.turns`.
+summoning sees the first summoning's turns through `loom.turns`. To verify
+folding, set a very low folding threshold and take enough turns to trigger it.
+The following turn can inspect `folded_summary` for the compressed view and
+`loom.turns` for the complete append-only record; folding changes the prompt
+projection, not the loom.
 
 ## Entity
 
