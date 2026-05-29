@@ -296,7 +296,15 @@ defmodule Cantrip.Medium.Bash do
     [
       {"PATH", session.bin_dir <> ":" <> @default_shell_path},
       {"CANTRIP_BASH_CALLS_DIR", session.calls_dir},
-      {"CANTRIP_BASH_RESPONSES_DIR", session.responses_dir}
+      {"CANTRIP_BASH_RESPONSES_DIR", session.responses_dir},
+      # The sandbox makes the session dir writable but denies writes elsewhere.
+      # Bash needs a writable temp dir for heredocs (`<<EOF`), process
+      # substitution, and other temp-file operations; the OS default ($TMPDIR
+      # on macOS, /tmp on Linux) is read-only inside the sandbox. Point TMPDIR
+      # at the writable session dir so those operations work without widening
+      # the sandbox. Without this, `cat <<'EOF'` fails with
+      # "cannot create temp file for here document: Operation not permitted".
+      {"TMPDIR", session.dir}
     ]
   end
 

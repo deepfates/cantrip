@@ -194,6 +194,14 @@ defmodule Cantrip.EntityServer do
       | messages: next_messages,
         loom: next_loom,
         lazy: false,
+        # Reset the per-episode turn counter for each new intent. `max_turns`
+        # bounds the work for one intent, not the lifetime of a summoned
+        # entity. Without this reset a persistent entity (REPL / ACP session)
+        # accumulates turns across every send and bricks the whole session
+        # once the cumulative count crosses max_turns — every later intent
+        # truncates immediately. Continuity (messages, loom, code_state)
+        # still persists; only the turn budget refreshes.
+        turns: 0,
         stream_to: call_stream_to,
         stream_barrier?: call_stream_barrier?,
         trace_id: trace_id
