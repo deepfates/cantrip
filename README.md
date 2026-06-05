@@ -1,9 +1,13 @@
-# Cantrip
+# 📜 Cantrip 
+
+> "The cantrips have been spoken. The patterns of force are aligned. Now it is up to your machine."
+> >
+> — Gargoyles: Reawakening (1995)
 
 A spellbook for summoning entities from language. Disguised as an Elixir
-agent runtime.
+agent runtime. Or is it the other way around?
 
-Putting language in a loop can make it come alive. You say words, the words
+Putting language in a loop makes it come alive. You say words, the words
 change the room, the room changes you, you say different words. We call it
 chanting, and it is one of the oldest tools of magic.
 
