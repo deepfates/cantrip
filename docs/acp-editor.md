@@ -85,7 +85,7 @@ workspace Zed launches the agent from.
   "agent_servers": {
     "Cantrip Familiar": {
       "type": "custom",
-      "command": "/absolute/path/to/grimoire/scripts/familiar-acp.sh",
+      "command": "/absolute/path/to/cantrip/scripts/familiar-acp.sh",
       "args": [],
       "env": {
         "CANTRIP_LLM_PROVIDER": "openai_compatible",

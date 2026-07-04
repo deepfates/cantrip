@@ -14,8 +14,8 @@ defmodule Cantrip.MixProject do
       aliases: aliases(),
       deps: deps(),
       package: package(),
-      source_url: "https://github.com/deepfates/grimoire",
-      homepage_url: "https://github.com/deepfates/grimoire",
+      source_url: "https://github.com/deepfates/cantrip",
+      homepage_url: "https://github.com/deepfates/cantrip",
       docs: [
         main: "Cantrip",
         warnings_as_errors: true,
@@ -87,7 +87,7 @@ defmodule Cantrip.MixProject do
     [
       licenses: ["MIT"],
       links: %{
-        "GitHub" => "https://github.com/deepfates/grimoire"
+        "GitHub" => "https://github.com/deepfates/cantrip"
       },
       files: [
         "lib",
