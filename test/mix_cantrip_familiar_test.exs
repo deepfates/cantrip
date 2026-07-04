@@ -158,6 +158,36 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
     end
   end
 
+  describe "Mnesia persistence across OS process restarts" do
+    @tag :mnesia_restart
+    test "workspace-stable familiar node rehydrates turns after a clean BEAM restart" do
+      root =
+        Path.join(
+          System.tmp_dir!(),
+          "fam_mnesia_restart_#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(root)
+
+      node_name =
+        root
+        |> Task.node_name_for_workspace()
+        |> Atom.to_string()
+
+      short_name = node_name |> String.split("@") |> List.first()
+
+      on_exit(fn ->
+        cleanup_epmd_name(short_name)
+        File.rm_rf!(root)
+      end)
+
+      cleanup_epmd_name(short_name)
+
+      assert_child_beam!(root, node_name, :write)
+      assert_child_beam!(root, node_name, :read)
+    end
+  end
+
   # =====================================================================
   # Workspace-stable identity for the BEAM node
   # =====================================================================
@@ -246,5 +276,98 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
         File.rm_rf!(tmp)
       end
     end
+  end
+
+  defp assert_child_beam!(root, node_name, mode) when mode in [:write, :read] do
+    script = child_beam_script(root, mode)
+
+    {output, status} =
+      System.cmd(
+        "elixir",
+        ["--name", node_name, "-S", "mix", "run", "-e", script],
+        cd: File.cwd!(),
+        env: [{"MIX_ENV", "test"}],
+        stderr_to_stdout: true
+      )
+
+    assert status == 0,
+           "child BEAM #{mode} phase failed with status #{status}\n\n#{output}"
+
+    assert output =~ "cantrip_mnesia_restart_#{mode}_ok",
+           "child BEAM #{mode} phase did not report success\n\n#{output}"
+  end
+
+  defp child_beam_script(root, mode) do
+    mode_text = Atom.to_string(mode)
+
+    """
+    root = #{inspect(root)}
+    mode = #{inspect(mode_text)}
+    sentinel = "cantrip_mnesia_restart_sentinel"
+    mnesia_dir = Path.join([root, ".cantrip", "mnesia"])
+    File.mkdir_p!(mnesia_dir)
+    Application.put_env(:mnesia, :dir, String.to_charlist(mnesia_dir))
+
+    cookie = Cantrip.Familiar.Cookie.for_workspace!(root)
+    :erlang.set_cookie(node(), cookie)
+
+    expected_node = Mix.Tasks.Cantrip.Familiar.node_name_for_workspace(root)
+
+    unless node() == expected_node do
+      raise "expected node " <> inspect(expected_node) <> ", got " <> inspect(node())
+    end
+
+    llm = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: ~s|done.("cantrip_mnesia_restart_sentinel")|}])}
+    {:ok, cantrip} = Mix.Tasks.Cantrip.Familiar.build_familiar(llm: llm, root: root)
+
+    unless match?({:mnesia, _}, cantrip.loom_storage) do
+      raise "expected Mnesia loom storage, got " <> inspect(cantrip.loom_storage)
+    end
+
+    case mode do
+      "write" ->
+        {:ok, _result, _next_cantrip, loom, _meta} = Cantrip.cast(cantrip, "write persisted sentinel")
+
+        unless loom.storage_module == Cantrip.Loom.Storage.Mnesia do
+          raise "write phase used " <> inspect(loom.storage_module) <> " instead of Mnesia"
+        end
+
+        unless Enum.any?(loom.turns, &(inspect(&1) =~ sentinel)) do
+          raise "write phase did not append sentinel turn; turns=" <> inspect(loom.turns)
+        end
+
+      "read" ->
+        {:ok, pid} = Cantrip.summon(cantrip)
+        state = :sys.get_state(pid)
+        GenServer.stop(pid)
+
+        unless state.loom.storage_module == Cantrip.Loom.Storage.Mnesia do
+          raise "read phase used " <> inspect(state.loom.storage_module) <> " instead of Mnesia"
+        end
+
+        unless Enum.any?(state.loom.turns, &(inspect(&1) =~ sentinel)) do
+          raise "read phase did not rehydrate sentinel turn; turns=" <> inspect(state.loom.turns)
+        end
+    end
+
+    try do
+      if Code.ensure_loaded?(:mnesia) and :mnesia.system_info(:is_running) == :yes do
+        :stopped = :mnesia.stop()
+      end
+    catch
+      _, _ -> :ok
+    end
+
+    IO.puts("cantrip_mnesia_restart_#{mode}_ok")
+    """
+  end
+
+  defp cleanup_epmd_name(nil), do: :ok
+
+  defp cleanup_epmd_name(name) do
+    System.cmd("epmd", ["-stop", name], stderr_to_stdout: true)
+    :ok
+  rescue
+    _ -> :ok
   end
 end
