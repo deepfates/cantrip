@@ -188,6 +188,65 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
     end
   end
 
+  describe "Mnesia workspace environment" do
+    test "places Mnesia data and core dumps under .cantrip with bounded log thresholds" do
+      root = "/tmp/cantrip-mnesia-env"
+      env = Task.mnesia_env_for_workspace(root)
+
+      assert env[:dir] == String.to_charlist(Path.join([root, ".cantrip", "mnesia"]))
+
+      assert env[:core_dir] ==
+               String.to_charlist(Path.join([root, ".cantrip", "mnesia", "cores"]))
+
+      assert env[:auto_repair] == true
+      assert env[:dc_dump_limit] == 16
+      assert env[:dump_log_write_threshold] == 100
+      assert env[:dump_log_time_threshold] == 30_000
+    end
+
+    @tag :mnesia
+    test "configure_mnesia_workspace! applies workspace env before Mnesia starts" do
+      preserve_mnesia_env(fn ->
+        root = tmp_root("fam_mnesia_env_apply")
+
+        try do
+          assert :ok = Task.configure_mnesia_workspace!(root)
+          env = Task.mnesia_env_for_workspace(root)
+
+          for {key, value} <- env do
+            assert Application.get_env(:mnesia, key) == value
+          end
+
+          assert File.dir?(to_string(env[:dir]))
+          assert File.dir?(to_string(env[:core_dir]))
+        after
+          File.rm_rf!(root)
+        end
+      end)
+    end
+
+    @tag :mnesia
+    test "configure_mnesia_workspace! fails if Mnesia is already running elsewhere" do
+      preserve_mnesia_env(fn ->
+        first = tmp_root("fam_mnesia_env_first")
+        second = tmp_root("fam_mnesia_env_second")
+
+        try do
+          assert :ok = Task.configure_mnesia_workspace!(first)
+          :ok = ensure_mnesia_started()
+
+          assert_raise RuntimeError, ~r/Mnesia is already running/, fn ->
+            Task.configure_mnesia_workspace!(second)
+          end
+        after
+          stop_mnesia()
+          File.rm_rf!(first)
+          File.rm_rf!(second)
+        end
+      end)
+    end
+  end
+
   # =====================================================================
   # Workspace-stable identity for the BEAM node
   # =====================================================================
@@ -304,9 +363,7 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
     root = #{inspect(root)}
     mode = #{inspect(mode_text)}
     sentinel = "cantrip_mnesia_restart_sentinel"
-    mnesia_dir = Path.join([root, ".cantrip", "mnesia"])
-    File.mkdir_p!(mnesia_dir)
-    Application.put_env(:mnesia, :dir, String.to_charlist(mnesia_dir))
+    Mix.Tasks.Cantrip.Familiar.configure_mnesia_workspace!(root)
 
     cookie = Cantrip.Familiar.Cookie.for_workspace!(root)
     :erlang.set_cookie(node(), cookie)
@@ -360,6 +417,60 @@ defmodule Mix.Tasks.Cantrip.FamiliarTest do
 
     IO.puts("cantrip_mnesia_restart_#{mode}_ok")
     """
+  end
+
+  defp preserve_mnesia_env(fun) do
+    keys = [
+      :dir,
+      :core_dir,
+      :auto_repair,
+      :dc_dump_limit,
+      :dump_log_write_threshold,
+      :dump_log_time_threshold
+    ]
+
+    old_env = Map.new(keys, &{&1, Application.fetch_env(:mnesia, &1)})
+
+    try do
+      stop_mnesia()
+      fun.()
+    after
+      stop_mnesia()
+
+      for key <- keys do
+        case Map.fetch!(old_env, key) do
+          {:ok, value} -> Application.put_env(:mnesia, key, value)
+          :error -> Application.delete_env(:mnesia, key)
+        end
+      end
+    end
+  end
+
+  defp ensure_mnesia_started do
+    case :mnesia.create_schema([node()]) do
+      :ok -> :ok
+      {:error, {_kind, {:already_exists, _node}}} -> :ok
+      {:error, {:already_exists, _node}} -> :ok
+    end
+
+    case :mnesia.start() do
+      :ok -> :ok
+      {:error, {:already_started, :mnesia}} -> :ok
+    end
+  end
+
+  defp stop_mnesia do
+    if Code.ensure_loaded?(:mnesia) and :mnesia.system_info(:is_running) == :yes do
+      :stopped = :mnesia.stop()
+    end
+  rescue
+    _ -> :ok
+  catch
+    :exit, _ -> :ok
+  end
+
+  defp tmp_root(prefix) do
+    Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")
   end
 
   defp cleanup_epmd_name(nil), do: :ok
