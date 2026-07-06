@@ -47,11 +47,12 @@ jobs:
   # Live integration tests against a real provider. Several real bugs in v1
   # prep (streaming tool calls dropped, multi-send losing assistant history)
   # shipped past unit tests because the mocks didn't match real provider
-  # behavior. This costs API tokens, so PRs run unit verification only; main,
-  # release branch, and tag pushes must have the Anthropic secret configured.
+  # behavior. Runs on PRs as well as main/release/tag pushes: every PR here
+  # is a same-repo branch (secrets available, no fork risk), the suite costs
+  # about a minute of Haiku, and a gate belongs before the merge, not after.
+  # The Anthropic secret must be configured; the job hard-fails without it.
   live:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
 
     steps:
       - name: Checkout

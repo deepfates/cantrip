@@ -84,4 +84,97 @@ defmodule Cantrip.LoomBackendSymmetryTest do
              "#{inspect(module)} does not implement load/1"
     end
   end
+
+  test "Mnesia backend names corrupt transaction logs instead of surfacing generic init causes" do
+    with_mnesia_dir("loom_mnesia_corrupt", fn dir ->
+      File.write!(Path.join(dir, "LATEST.LOG"), "not an erlang disk log\n")
+
+      error =
+        assert_raise RuntimeError, fn ->
+          Loom.new(%{identity: "test"}, storage: {:mnesia, %{table: :loom_mnesia_corrupt}})
+        end
+
+      assert error.message =~ "corrupt_mnesia_store"
+      assert error.message =~ "LATEST.LOG"
+      assert error.message =~ "on_corrupt: :quarantine"
+      assert File.exists?(Path.join(dir, "LATEST.LOG"))
+    end)
+  end
+
+  test "Mnesia backend can quarantine a corrupt store and start a fresh loom" do
+    table = :"loom_mnesia_quarantine_#{System.unique_integer([:positive])}"
+
+    try do
+      with_mnesia_dir("loom_mnesia_quarantine", fn dir ->
+        File.write!(Path.join(dir, "LATEST.LOG"), "not an erlang disk log\n")
+        File.write!(Path.join(dir, "forensics.marker"), "preserve me\n")
+
+        loom =
+          Loom.new(%{identity: "test"},
+            storage: {:mnesia, %{table: table, on_corrupt: :quarantine}}
+          )
+
+        assert loom.storage_module == Cantrip.Loom.Storage.Mnesia
+        assert File.dir?(dir)
+        refute File.exists?(Path.join(dir, "forensics.marker"))
+
+        [quarantine_dir] = Path.wildcard(dir <> "-corrupt-*")
+        assert File.read!(Path.join(quarantine_dir, "LATEST.LOG")) == "not an erlang disk log\n"
+        assert File.read!(Path.join(quarantine_dir, "forensics.marker")) == "preserve me\n"
+      end)
+    after
+      try do
+        :mnesia.delete_table(table)
+      rescue
+        _ -> :ok
+      end
+    end
+  end
+
+  defp with_mnesia_dir(prefix, fun) do
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "#{prefix}_#{System.unique_integer([:positive])}"
+      )
+
+    keys = [:dir, :auto_repair]
+    old_env = Map.new(keys, &{&1, Application.fetch_env(:mnesia, &1)})
+
+    stop_mnesia()
+    File.rm_rf!(dir)
+    File.mkdir_p!(dir)
+
+    try do
+      Application.put_env(:mnesia, :dir, String.to_charlist(dir))
+      Application.put_env(:mnesia, :auto_repair, false)
+      fun.(dir)
+    after
+      stop_mnesia()
+      File.rm_rf!(dir)
+
+      dir
+      |> Path.dirname()
+      |> Path.join(Path.basename(dir) <> "-corrupt-*")
+      |> Path.wildcard()
+      |> Enum.each(&File.rm_rf!/1)
+
+      for {key, value} <- old_env do
+        case value do
+          {:ok, existing} -> Application.put_env(:mnesia, key, existing)
+          :error -> Application.delete_env(:mnesia, key)
+        end
+      end
+    end
+  end
+
+  defp stop_mnesia do
+    if Code.ensure_loaded?(:mnesia) and :mnesia.system_info(:is_running) == :yes do
+      :mnesia.stop()
+    end
+  rescue
+    _ -> :ok
+  catch
+    :exit, _ -> :ok
+  end
 end

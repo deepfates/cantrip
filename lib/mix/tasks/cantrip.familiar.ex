@@ -165,7 +165,7 @@ defmodule Mix.Tasks.Cantrip.Familiar do
         case :net_kernel.start([name, :longnames]) do
           {:ok, _} ->
             :erlang.set_cookie(node(), cookie)
-            configure_mnesia_dir!(workspace_root)
+            configure_mnesia_workspace!(workspace_root)
 
           {:error, {:already_started, _}} ->
             :ok
@@ -190,15 +190,17 @@ defmodule Mix.Tasks.Cantrip.Familiar do
       _named ->
         # Already named (someone launched with --sname/--name). Trust
         # their setup; just relocate Mnesia under .cantrip/.
-        configure_mnesia_dir!(workspace_root)
+        configure_mnesia_workspace!(workspace_root)
     end
   end
 
   # Point Mnesia at `.cantrip/mnesia/` for this workspace. Mnesia is
   # in `included_applications` (not `extra_applications`), so it's
-  # loaded but not yet started. Setting `:dir` before the adapter's
-  # lazy `:mnesia.start/0` is enough — no stop/restart cycle, no
-  # orphaned `Mnesia.<node>/` dir at cwd from a premature auto-start.
+  # loaded but not yet started. Setting `:dir` and related durability
+  # knobs before the adapter's lazy `:mnesia.start/0` is enough — no
+  # stop/restart cycle, no orphaned `Mnesia.<node>/` dir at cwd from a
+  # premature auto-start, and no repo-root `MnesiaCore.*` files if
+  # Mnesia fatals while recovering a transaction log.
   #
   # Verified empirically: after `mix run`, `Application.started_applications/0`
   # does not include `:mnesia`, and `:mnesia.system_info(:tables)`
@@ -207,11 +209,89 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   # started with the parent" concern doesn't apply here because
   # `Cantrip.Application.start/2` never calls `Application.ensure_*`
   # on Mnesia.
-  defp configure_mnesia_dir!(workspace_root) do
-    desired = Path.join([workspace_root, ".cantrip", "mnesia"]) |> String.to_charlist()
-    File.mkdir_p!(to_string(desired))
-    Application.put_env(:mnesia, :dir, desired)
+  @doc false
+  @spec configure_mnesia_workspace!(String.t()) :: :ok
+  def configure_mnesia_workspace!(workspace_root) when is_binary(workspace_root) do
+    env = mnesia_env_for_workspace(workspace_root)
+
+    env
+    |> Keyword.fetch!(:dir)
+    |> to_string()
+    |> File.mkdir_p!()
+
+    env
+    |> Keyword.fetch!(:core_dir)
+    |> to_string()
+    |> File.mkdir_p!()
+
+    ensure_mnesia_configurable!(env)
+
+    for {key, value} <- env do
+      Application.put_env(:mnesia, key, value)
+    end
+
     :ok
+  end
+
+  @doc false
+  @spec mnesia_env_for_workspace(String.t()) :: keyword()
+  def mnesia_env_for_workspace(workspace_root) when is_binary(workspace_root) do
+    mnesia_dir = Path.join([workspace_root, ".cantrip", "mnesia"])
+
+    [
+      dir: String.to_charlist(mnesia_dir),
+      core_dir: String.to_charlist(Path.join(mnesia_dir, "cores")),
+      auto_repair: true,
+      dc_dump_limit: 16,
+      dump_log_write_threshold: 100,
+      dump_log_time_threshold: 30_000
+    ]
+  end
+
+  defp ensure_mnesia_configurable!(env) do
+    if mnesia_running?() do
+      mismatches =
+        env
+        |> Enum.flat_map(fn {key, expected} ->
+          info_key = if key == :dir, do: :directory, else: key
+          actual = :mnesia.system_info(info_key)
+
+          if actual == expected do
+            []
+          else
+            [{key, expected, actual}]
+          end
+        end)
+
+      if mismatches != [] do
+        raise """
+        Mnesia is already running with workspace settings that do not match this Familiar.
+
+        #{format_mnesia_mismatches(mismatches)}
+
+        Restart the BEAM before launching the workspace Familiar, or opt out of
+        Mnesia with:
+
+          mix cantrip.familiar --loom-path .cantrip/familiar.jsonl
+        """
+      end
+    end
+  end
+
+  defp mnesia_running? do
+    Code.ensure_loaded?(:mnesia) and :mnesia.system_info(:is_running) == :yes
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
+  end
+
+  defp format_mnesia_mismatches(mismatches) do
+    mismatches
+    |> Enum.map(fn {key, expected, actual} ->
+      "  * #{key}: expected #{inspect(expected)}, got #{inspect(actual)}"
+    end)
+    |> Enum.join("\n")
   end
 
   # `System.cmd("epmd", ["-daemon"], ...)` raises `ErlangError` when
