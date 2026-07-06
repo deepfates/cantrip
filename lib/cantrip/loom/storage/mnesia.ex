@@ -34,7 +34,7 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     key = System.unique_integer([:positive, :monotonic])
     event = storage_event(%{type: :turn, turn: turn})
 
-    case call(mnesia, :transaction, [fn -> call(mnesia, :write, [{table, key, event}]) end]) do
+    case durable_transaction(mnesia, fn -> call(mnesia, :write, [{table, key, event}]) end) do
       {:atomic, :ok} -> {:ok, state}
       {:aborted, reason} -> {:error, reason}
       other -> {:error, other}
@@ -47,7 +47,7 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     key = System.unique_integer([:positive, :monotonic])
     event = storage_event(%{type: :reward, index: index, reward: reward})
 
-    case call(mnesia, :transaction, [fn -> call(mnesia, :write, [{table, key, event}]) end]) do
+    case durable_transaction(mnesia, fn -> call(mnesia, :write, [{table, key, event}]) end) do
       {:atomic, :ok} -> {:ok, state}
       {:aborted, reason} -> {:error, reason}
       other -> {:error, other}
@@ -60,7 +60,7 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     key = System.unique_integer([:positive, :monotonic])
     event = storage_event(event)
 
-    case call(mnesia, :transaction, [fn -> call(mnesia, :write, [{table, key, event}]) end]) do
+    case durable_transaction(mnesia, fn -> call(mnesia, :write, [{table, key, event}]) end) do
       {:atomic, :ok} -> {:ok, state}
       {:aborted, reason} -> {:error, reason}
       other -> {:error, other}
@@ -126,6 +126,14 @@ defmodule Cantrip.Loom.Storage.Mnesia do
 
       other ->
         {:error, other}
+    end
+  end
+
+  defp durable_transaction(mnesia, fun) when is_function(fun, 0) do
+    if function_exported?(mnesia, :sync_transaction, 1) do
+      call(mnesia, :sync_transaction, [fun])
+    else
+      call(mnesia, :transaction, [fun])
     end
   end
 

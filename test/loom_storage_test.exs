@@ -17,6 +17,16 @@ defmodule Cantrip.LoomStorageTest do
     def wait_for_tables(_tables, _timeout), do: :ok
   end
 
+  defmodule MnesiaSyncWrites do
+    def sync_transaction(fun) do
+      Process.put(:mnesia_sync_transaction_called, true)
+      {:atomic, fun.()}
+    end
+
+    def transaction(_fun), do: raise("append writes must use sync_transaction/1")
+    def write({_table, _key, _event}), do: :ok
+  end
+
   defmodule FailingStorage do
     @behaviour Cantrip.Loom.Storage
 
@@ -44,6 +54,14 @@ defmodule Cantrip.LoomStorageTest do
   test "mnesia init still accepts already_exists create_schema variants" do
     assert {:ok, %{table: :schema_exists, mnesia: MnesiaAlreadyExists}} =
              Cantrip.Loom.Storage.Mnesia.init(table: :schema_exists, mnesia: MnesiaAlreadyExists)
+  end
+
+  test "mnesia append writes use synchronous transactions when available" do
+    Process.delete(:mnesia_sync_transaction_called)
+
+    state = %{table: :sync_writes, mnesia: MnesiaSyncWrites}
+    assert {:ok, ^state} = Cantrip.Loom.Storage.Mnesia.append_event(state, %{type: :event})
+    assert Process.get(:mnesia_sync_transaction_called) == true
   end
 
   test "explicit malformed loom storage does not fall back to memory" do
