@@ -16,7 +16,8 @@ defmodule Cantrip.Loom.Storage.Mnesia do
       mnesia = Map.get(opts, :mnesia, :mnesia)
 
       case with_schema_lock(fn ->
-             with :ok <- ensure_mnesia_started(mnesia),
+             with :ok <- preflight_store(opts, mnesia),
+                  :ok <- ensure_mnesia_started(mnesia),
                   :ok <- ensure_table(table, mnesia) do
                {:ok, %{table: table, mnesia: mnesia}}
              end
@@ -143,6 +144,127 @@ defmodule Cantrip.Loom.Storage.Mnesia do
           end
         end
     end
+  end
+
+  defp preflight_store(opts, mnesia) do
+    case call(mnesia, :system_info, [:is_running]) do
+      :yes ->
+        :ok
+
+      _ ->
+        dir = mnesia_dir()
+
+        case corrupt_log_files(dir) do
+          [] ->
+            :ok
+
+          corrupt ->
+            maybe_quarantine_corrupt_store(dir, corrupt, opts)
+        end
+    end
+  rescue
+    _ -> :ok
+  catch
+    :exit, _ -> :ok
+  end
+
+  defp mnesia_dir do
+    case Application.get_env(:mnesia, :dir) do
+      nil -> ~c"Mnesia.#{node()}"
+      dir -> dir
+    end
+    |> to_string()
+  end
+
+  defp corrupt_log_files(dir) do
+    ["LATEST.LOG", "PREVIOUS.LOG"]
+    |> Enum.map(&Path.join(dir, &1))
+    |> Enum.filter(&File.regular?/1)
+    |> Enum.flat_map(fn path ->
+      case probe_log(path) do
+        :ok -> []
+        {:error, reason} -> [{path, reason}]
+      end
+    end)
+  end
+
+  defp probe_log(path) do
+    name = :"#{__MODULE__}.probe.#{System.unique_integer([:positive])}"
+
+    case :disk_log.open(name: name, file: String.to_charlist(path), mode: :read_only) do
+      {:ok, ^name} ->
+        :disk_log.close(name)
+        :ok
+
+      {:repaired, ^name, _recovered, _badbytes} ->
+        :disk_log.close(name)
+        :ok
+
+      {:error, {:need_repair, ^name}} ->
+        :disk_log.close(name)
+        :ok
+
+      {:error, {:not_a_log_file, _} = reason} ->
+        {:error, reason}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp maybe_quarantine_corrupt_store(dir, corrupt, opts) do
+    case Map.get(opts, :on_corrupt) || Map.get(opts, "on_corrupt") do
+      :quarantine ->
+        quarantine_corrupt_store(dir, corrupt)
+
+      "quarantine" ->
+        quarantine_corrupt_store(dir, corrupt)
+
+      _ ->
+        {:error,
+         {:corrupt_mnesia_store,
+          %{
+            dir: dir,
+            corrupt_logs: corrupt,
+            repair: "pass on_corrupt: :quarantine to move this store aside and start a fresh loom"
+          }}}
+    end
+  end
+
+  defp quarantine_corrupt_store(dir, corrupt) do
+    quarantine_dir = quarantine_dir(dir)
+    do_quarantine_corrupt_store(dir, quarantine_dir, corrupt)
+  end
+
+  defp do_quarantine_corrupt_store(dir, quarantine_dir, corrupt) do
+    with :ok <- File.mkdir_p!(Path.dirname(quarantine_dir)),
+         :ok <- File.rename(dir, quarantine_dir),
+         :ok <- File.mkdir_p(dir) do
+      :ok
+    else
+      {:error, reason} ->
+        {:error,
+         {:corrupt_mnesia_store_quarantine_failed,
+          %{dir: dir, quarantine_dir: quarantine_dir, corrupt_logs: corrupt, reason: reason}}}
+    end
+  rescue
+    e ->
+      {:error,
+       {:corrupt_mnesia_store_quarantine_failed,
+        %{
+          dir: dir,
+          quarantine_dir: quarantine_dir,
+          corrupt_logs: corrupt,
+          reason: Exception.message(e)
+        }}}
+  end
+
+  defp quarantine_dir(dir) do
+    stamp =
+      DateTime.utc_now()
+      |> Calendar.strftime("%Y%m%dT%H%M%SZ")
+
+    "#{dir}-corrupt-#{stamp}-#{System.unique_integer([:positive])}"
   end
 
   defp ensure_schema(mnesia) do

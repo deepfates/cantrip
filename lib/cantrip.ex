@@ -1513,7 +1513,13 @@ defmodule Cantrip do
   defp validate_mnesia_storage_opts(opts) when is_map(opts) or is_list(opts) do
     opts = opts |> normalize_input_map() |> prefer_atom_keys()
 
-    case NimbleOptions.validate(Map.to_list(opts), table: [type: :atom], mnesia: [type: :atom]) do
+    schema = [
+      table: [type: :atom],
+      mnesia: [type: :atom],
+      on_corrupt: [type: {:in, [:quarantine]}]
+    ]
+
+    case NimbleOptions.validate(Map.to_list(opts), schema) do
       {:ok, validated} -> {:ok, Map.new(validated)}
       {:error, %NimbleOptions.ValidationError{message: msg}} -> {:error, msg}
     end

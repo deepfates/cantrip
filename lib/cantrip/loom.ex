@@ -113,6 +113,10 @@ defmodule Cantrip.Loom do
           * The storage backend's prerequisites aren't met (e.g.
             disk path is unwritable, Mnesia schema not created on
             this node)
+          * A prior BEAM died while Mnesia was writing and left a
+            corrupt transaction log such as LATEST.LOG. Preserve the
+            old store for forensics and start fresh by passing
+            `on_corrupt: :quarantine` in the Mnesia loom options.
 
         If you want to allow falling back to in-memory loom, do not
         pass `:loom_storage` (or pass `nil`) when constructing the
