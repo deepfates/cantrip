@@ -116,14 +116,16 @@ defmodule Cantrip.CLI.RendererTest do
       assert IO.iodata_to_binary(output) =~ "The answer is 42"
     end
 
-    test "final_response at depth > 0 is suppressed" do
+    test "final_response at depth > 0 renders child done result on stderr" do
       state = Renderer.new()
 
       {output, device, _} =
         Renderer.render_event(state, {env(1), {:final_response, %{result: "child result"}}})
 
       assert device == :stderr
-      assert IO.iodata_to_binary(output) == ""
+      text = IO.iodata_to_binary(output)
+      assert text =~ "child done"
+      assert text =~ "child result"
     end
 
     test "final_response inspects non-string results" do
@@ -149,6 +151,82 @@ defmodule Cantrip.CLI.RendererTest do
       state = Renderer.new()
       {output, _, _} = Renderer.render_event(state, {:unknown_event, %{}})
       assert IO.iodata_to_binary(output) == ""
+    end
+
+    test "child_start identifies child, circle, batch index, and intent" do
+      state = Renderer.new()
+
+      event =
+        {env(),
+         {:child_start,
+          %{
+            depth: 1,
+            intent: "read notes.md",
+            child_id: "cantrip_child",
+            circle: :conversation,
+            batch_index: 0
+          }}}
+
+      {output, device, _} = Renderer.render_event(state, event)
+
+      assert device == :stderr
+      text = IO.iodata_to_binary(output)
+      assert text =~ "cast #1 cantrip_child (conversation)"
+      assert text =~ ~s|"read notes.md"|
+    end
+
+    test "child_end error is loud" do
+      state = Renderer.new()
+
+      {output, device, _} =
+        Renderer.render_event(state, {env(1), {:child_end, %{error: "boom"}}})
+
+      assert device == :stderr
+      text = IO.iodata_to_binary(output)
+      assert text =~ "✗"
+      assert text =~ "child error"
+      assert text =~ "boom"
+    end
+
+    test "cast tool_result shows child turn count" do
+      state = Renderer.new()
+
+      event =
+        {env(),
+         {:tool_result,
+          %{
+            gate: "cast",
+            result: "child answer",
+            is_error: false,
+            child_turn_count: 2,
+            child_id: "cantrip_child",
+            circle: :code
+          }}}
+
+      {output, device, _} = Renderer.render_event(state, event)
+
+      assert device == :stderr
+      text = IO.iodata_to_binary(output)
+      assert text =~ "cast cantrip_child (code)"
+      assert text =~ "child answer"
+      assert text =~ "2 child turns"
+    end
+
+    test "cast_batch tool_result errors render as child failures" do
+      state = Renderer.new()
+
+      event =
+        {env(),
+         {:tool_result,
+          %{gate: "cast_batch", result: "max_depth exceeded", is_error: true, batch_index: 1}}}
+
+      {output, device, _} = Renderer.render_event(state, event)
+
+      assert device == :stderr
+      text = IO.iodata_to_binary(output)
+      assert text =~ "✗"
+      assert text =~ "cast_batch #2"
+      assert text =~ "max_depth exceeded"
     end
   end
 

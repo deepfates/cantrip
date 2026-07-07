@@ -72,7 +72,8 @@ defmodule Cantrip.Event do
            gate: obs.gate,
            result: obs.result,
            is_error: obs.is_error,
-           tool_call_id: tool_call_id
+           tool_call_id: tool_call_id,
+           child_turn_count: child_turn_count(obs)
          }}
       ]
     end)
@@ -184,4 +185,8 @@ defmodule Cantrip.Event do
   defp args_summary("search", %{} = a), do: Map.get(a, "pattern", Map.get(a, :pattern))
   defp args_summary("mix", %{} = a), do: Map.get(a, "task", Map.get(a, :task))
   defp args_summary(_, _), do: nil
+
+  defp child_turn_count(%{child_turns: turns}) when is_list(turns), do: length(turns)
+  defp child_turn_count(%{"child_turns" => turns}) when is_list(turns), do: length(turns)
+  defp child_turn_count(_obs), do: 0
 end

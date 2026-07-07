@@ -77,6 +77,13 @@ defmodule Cantrip.CLI.Renderer do
     {[indent(d, line), "\n"], :stderr, state}
   end
 
+  def render_event(state, {%{depth: d}, {:tool_call, %{gate: gate} = meta}})
+      when gate in ["cast", "cast_batch"] do
+    label = child_tool_label(gate, meta)
+    line = ["  ", Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(), label]
+    {[indent(d, line), "\n"], :stderr, state}
+  end
+
   def render_event(state, {%{depth: d}, {:tool_call, %{gate: gate} = meta}}) do
     label =
       case meta[:args_summary] do
@@ -85,6 +92,35 @@ defmodule Cantrip.CLI.Renderer do
       end
 
     line = ["  ", Owl.Data.tag("▸ ", :cyan) |> Owl.Data.to_chardata(), label]
+    {[indent(d, line), "\n"], :stderr, state}
+  end
+
+  def render_event(
+        state,
+        {%{depth: d}, {:tool_result, %{gate: gate, result: result, is_error: true} = meta}}
+      )
+      when gate in ["cast", "cast_batch"] do
+    text = summarize(result)
+
+    line =
+      Owl.Data.tag(["  ✗ ", child_tool_label(gate, meta), ": ", text], :red)
+      |> Owl.Data.to_chardata()
+
+    {[indent(d, line), "\n"], :stderr, state}
+  end
+
+  def render_event(
+        state,
+        {%{depth: d}, {:tool_result, %{gate: gate, result: result, is_error: false} = meta}}
+      )
+      when gate in ["cast", "cast_batch"] do
+    text = summarize(result)
+    child_turns = child_turn_count(meta)
+
+    line =
+      Owl.Data.tag(["  ✓ ", child_tool_label(gate, meta), ": ", text, child_turns], :green)
+      |> Owl.Data.to_chardata()
+
     {[indent(d, line), "\n"], :stderr, state}
   end
 
@@ -125,15 +161,24 @@ defmodule Cantrip.CLI.Renderer do
     {[result_str, "\n"], :stdout, state}
   end
 
+  def render_event(state, {%{depth: d}, {:final_response, %{result: result}}}) when d > 0 do
+    line =
+      Owl.Data.tag(["  ✓ child done: ", summarize(result)], :green)
+      |> Owl.Data.to_chardata()
+
+    {[indent(d - 1, line), "\n"], :stderr, state}
+  end
+
   def render_event(state, {_, {:final_response, _}}), do: {"", :stderr, state}
 
   # -- Child delegation --
 
-  def render_event(state, {%{depth: d}, {:child_start, %{intent: intent}}}) do
+  def render_event(state, {%{depth: d}, {:child_start, %{intent: intent} = meta}}) do
     line = [
       "  ",
       Owl.Data.tag("▸ ", :magenta) |> Owl.Data.to_chardata(),
-      "cast: \"",
+      child_start_label(meta),
+      ": \"",
       to_string(intent),
       "\""
     ]
@@ -147,12 +192,14 @@ defmodule Cantrip.CLI.Renderer do
   end
 
   def render_event(state, {%{depth: d}, {:child_end, %{error: err}}}) do
-    line = Owl.Data.tag(["  ✗ cast: ", to_string(err)], :red) |> Owl.Data.to_chardata()
+    line = Owl.Data.tag(["  ✗ child error: ", to_string(err)], :red) |> Owl.Data.to_chardata()
     {[indent(d, line), "\n"], :stderr, state}
   end
 
   def render_event(state, {%{depth: d}, {:child_end, %{result: result}}}) do
-    line = Owl.Data.tag(["  ✓ cast: ", summarize(result)], :green) |> Owl.Data.to_chardata()
+    line =
+      Owl.Data.tag(["  ✓ child result: ", summarize(result)], :green) |> Owl.Data.to_chardata()
+
     {[indent(d, line), "\n"], :stderr, state}
   end
 
@@ -174,6 +221,46 @@ defmodule Cantrip.CLI.Renderer do
   defp indent(depth, content), do: [prefix(depth), content]
 
   defp prefix(depth), do: String.duplicate("  ", depth)
+
+  defp child_start_label(meta) do
+    ["cast", child_index(meta), child_subject(meta), child_circle(meta)]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" ")
+  end
+
+  defp child_tool_label(gate, meta) do
+    [gate, child_index(meta), child_subject(meta), child_circle(meta)]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" ")
+  end
+
+  defp child_index(%{index: index}) when is_integer(index), do: "##{index + 1}"
+  defp child_index(%{batch_index: index}) when is_integer(index), do: "##{index + 1}"
+  defp child_index(_meta), do: nil
+
+  defp child_subject(%{child_id: id}) when is_binary(id), do: id
+  defp child_subject(%{cantrip_id: id}) when is_binary(id), do: id
+  defp child_subject(_meta), do: nil
+
+  defp child_circle(%{circle: circle}) when is_atom(circle), do: "(#{circle})"
+  defp child_circle(%{circle: circle}) when is_binary(circle), do: "(#{circle})"
+  defp child_circle(%{medium: medium}) when is_atom(medium), do: "(#{medium})"
+  defp child_circle(%{medium: medium}) when is_binary(medium), do: "(#{medium})"
+  defp child_circle(_meta), do: nil
+
+  defp child_turn_count(%{child_turn_count: count}) when is_integer(count) do
+    " (#{count} child turn#{plural(count)})"
+  end
+
+  defp child_turn_count(%{child_turns: turns}) when is_list(turns) do
+    count = length(turns)
+    " (#{count} child turn#{plural(count)})"
+  end
+
+  defp child_turn_count(_meta), do: ""
+
+  defp plural(1), do: ""
+  defp plural(_), do: "s"
 
   # ── Result summarization ─────────────────────────────────────────────
 

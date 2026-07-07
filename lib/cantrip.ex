@@ -581,11 +581,14 @@ defmodule Cantrip do
       {:ok, normalized_items} ->
         payloads =
           normalized_items
+          |> Enum.with_index()
           |> Task.async_stream(
-            fn %{cantrip: cantrip, intent: intent} ->
+            fn {%{cantrip: cantrip, intent: intent}, index} ->
               cast(cantrip, intent,
                 parent_context: parent_context,
-                record_parent_observation?: false
+                record_parent_observation?: false,
+                parent_gate: "cast_batch",
+                batch_index: index
               )
             end,
             ordered: true,
@@ -858,7 +861,8 @@ defmodule Cantrip do
     entity_state = Map.get(parent_context, :entity_state)
     record_observation? = Keyword.get(opts, :record_parent_observation?, true)
     parent_gate = Keyword.get(opts, :parent_gate, "cast")
-    opts = Keyword.drop(opts, [:record_parent_observation?, :parent_gate])
+    batch_index = Keyword.get(opts, :batch_index)
+    opts = Keyword.drop(opts, [:record_parent_observation?, :parent_gate, :batch_index])
 
     case prepare_child_cast(cantrip, parent_context) do
       {:ok, transient_cantrip, depth} ->
@@ -870,7 +874,11 @@ defmodule Cantrip do
 
         emit_parent_event(
           entity_state,
-          {:child_start, %{depth: depth, intent: intent, node: node}}
+          {:child_start,
+           child_event_meta(transient_cantrip, depth, intent,
+             node: node,
+             batch_index: batch_index
+           )}
         )
 
         emit_child_start_telemetry(parent_context, depth)
@@ -881,7 +889,12 @@ defmodule Cantrip do
 
             emit_parent_event(
               entity_state,
-              {:child_end, %{depth: depth, result: value, node: node}}
+              {:child_end,
+               child_event_meta(transient_cantrip, depth, nil,
+                 result: value,
+                 node: node,
+                 batch_index: batch_index
+               )}
             )
 
             emit_child_stop_telemetry(parent_context, depth, :ok)
@@ -903,7 +916,12 @@ defmodule Cantrip do
 
             emit_parent_event(
               entity_state,
-              {:child_end, %{depth: depth, error: Cantrip.SafeFormat.inspect(reason), node: node}}
+              {:child_end,
+               child_event_meta(transient_cantrip, depth, nil,
+                 error: Cantrip.SafeFormat.inspect(reason),
+                 node: node,
+                 batch_index: batch_index
+               )}
             )
 
             emit_child_stop_telemetry(parent_context, depth, :error)
@@ -941,7 +959,8 @@ defmodule Cantrip do
     entity_state = Map.get(parent_context, :entity_state)
     record_observation? = Keyword.get(opts, :record_parent_observation?, true)
     parent_gate = Keyword.get(opts, :parent_gate, "cast")
-    opts = Keyword.drop(opts, [:record_parent_observation?, :parent_gate])
+    batch_index = Keyword.get(opts, :batch_index)
+    opts = Keyword.drop(opts, [:record_parent_observation?, :parent_gate, :batch_index])
 
     case prepare_child_cast(cantrip, parent_context) do
       {:ok, transient_cantrip, depth} ->
@@ -955,14 +974,28 @@ defmodule Cantrip do
           |> maybe_put_new(:stream_to, Map.get(parent_context, :stream_to))
           |> maybe_put_new(:stream_barrier?, Map.get(parent_context, :stream_barrier?))
 
-        emit_parent_event(entity_state, {:child_start, %{depth: depth, intent: intent}})
+        emit_parent_event(
+          entity_state,
+          {:child_start,
+           child_event_meta(transient_cantrip, depth, intent, batch_index: batch_index)}
+        )
+
         emit_child_start_telemetry(parent_context, depth)
 
         case run_cast(transient_cantrip, intent, cast_opts) do
           {:ok, value, next_cantrip, child_loom, meta} ->
             next_cantrip = restore_child_declared_wards(cantrip, next_cantrip)
             remember_parent_child_llm(parent_context, next_cantrip)
-            emit_parent_event(entity_state, {:child_end, %{depth: depth, result: value}})
+
+            emit_parent_event(
+              entity_state,
+              {:child_end,
+               child_event_meta(transient_cantrip, depth, nil,
+                 result: value,
+                 batch_index: batch_index
+               )}
+            )
+
             emit_child_stop_telemetry(parent_context, depth, :ok)
 
             if record_observation?,
@@ -983,7 +1016,11 @@ defmodule Cantrip do
 
             emit_parent_event(
               entity_state,
-              {:child_end, %{depth: depth, error: Cantrip.SafeFormat.inspect(reason)}}
+              {:child_end,
+               child_event_meta(transient_cantrip, depth, nil,
+                 error: Cantrip.SafeFormat.inspect(reason),
+                 batch_index: batch_index
+               )}
             )
 
             emit_child_stop_telemetry(parent_context, depth, :error)
@@ -1256,6 +1293,21 @@ defmodule Cantrip do
 
   defp maybe_put_new(opts, _key, nil), do: opts
   defp maybe_put_new(opts, key, value), do: Keyword.put_new(opts, key, value)
+
+  defp child_event_meta(%__MODULE__{} = cantrip, depth, intent, extras) do
+    %{
+      depth: depth,
+      intent: intent,
+      child_id: cantrip.id,
+      circle: cantrip.circle.type
+    }
+    |> drop_nil_values()
+    |> Map.merge(extras |> Map.new() |> drop_nil_values())
+  end
+
+  defp drop_nil_values(map) do
+    Map.reject(map, fn {_key, value} -> is_nil(value) end)
+  end
 
   defp normalize_parent_context(%{} = context) do
     Map.new(context, fn {k, v} ->
