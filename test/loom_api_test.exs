@@ -169,4 +169,46 @@ defmodule Cantrip.LoomAPITest do
     refute Map.has_key?(hd(parent_event.turn.observation), :child_turns)
     assert child_event.turn.utterance == child_turn.utterance
   end
+
+  test "bounded projections summarize code_state without changing durable turns" do
+    loom =
+      %{system_prompt: nil}
+      |> Cantrip.Loom.new()
+      |> Cantrip.Loom.append_intent("what happened?")
+      |> Cantrip.Loom.append_turn(%{
+        role: "turn",
+        utterance: %{content: "looked"},
+        observation: [],
+        code_state: %{
+          binding: [
+            huge: String.duplicate("x", 10_000),
+            kept: {:ok, :value}
+          ]
+        }
+      })
+
+    [raw_turn] = loom.turns
+    assert Map.has_key?(raw_turn, :code_state)
+
+    bounded_turn = Cantrip.Loom.bounded_turn(raw_turn, binding_preview_limit: 1)
+    refute Map.has_key?(bounded_turn, :code_state)
+
+    assert bounded_turn.code_state_summary == %{
+             binding_count: 2,
+             binding_preview: [:huge],
+             omitted_binding_count: 1
+           }
+
+    [bounded_from_loom] = Cantrip.Loom.bounded_turns(loom, binding_preview_limit: 1)
+    refute Map.has_key?(bounded_from_loom, :code_state)
+
+    transcript = Cantrip.Loom.bounded_transcript(loom, binding_preview_limit: 1)
+    assert Enum.map(transcript, & &1.role) == ["intent", "turn"]
+    turn_projection = Enum.find(transcript, &(&1.role == "turn"))
+    refute Map.has_key?(turn_projection, :code_state)
+    assert turn_projection.code_state_summary.binding_preview == [:huge]
+
+    [still_raw] = loom.turns
+    assert Map.has_key?(still_raw, :code_state)
+  end
 end

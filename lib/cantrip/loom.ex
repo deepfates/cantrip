@@ -55,6 +55,8 @@ defmodule Cantrip.Loom do
             storage_module: Memory,
             storage_state: %{}
 
+  @default_binding_preview_limit 20
+
   @type t :: %__MODULE__{
           identity: term(),
           schema_version: pos_integer(),
@@ -304,6 +306,78 @@ defmodule Cantrip.Loom do
       _ -> []
     end)
   end
+
+  @doc """
+  Inspection-safe projection of one turn.
+
+  Code and bash turns carry a full `:code_state` snapshot so replay and fork
+  can restore the medium. That snapshot can be large enough that inspecting a
+  raw turn is a poor IEx experience. This helper keeps the durable turn intact
+  and returns a bounded view with `:code_state` removed and
+  `:code_state_summary` added.
+
+  ## Options
+
+    * `:binding_preview_limit` - number of binding names to include in the
+      summary. Defaults to #{@default_binding_preview_limit}.
+  """
+  @spec bounded_turn(map(), keyword()) :: map()
+  def bounded_turn(%{} = turn, opts \\ []) when is_list(opts) do
+    case Map.fetch(turn, :code_state) do
+      {:ok, code_state} ->
+        turn
+        |> Map.delete(:code_state)
+        |> Map.put(:code_state_summary, summarize_code_state(code_state, opts))
+
+      :error ->
+        turn
+    end
+  end
+
+  @doc """
+  Inspection-safe projection of `loom.turns`.
+
+  Returns the same turn records as `loom.turns`, except each turn is passed
+  through `bounded_turn/2` so embedded medium state is summarized rather than
+  expanded into the inspected value.
+  """
+  @spec bounded_turns(t(), keyword()) :: [map()]
+  def bounded_turns(%__MODULE__{turns: turns}, opts \\ []) when is_list(opts) do
+    Enum.map(turns, &bounded_turn(&1, opts))
+  end
+
+  @doc """
+  Inspection-safe projection of `transcript/1`.
+
+  Intents are returned unchanged. Entity turns are passed through
+  `bounded_turn/2`, so this is the preferred IEx-readable conversation view
+  when turns may include large code-medium bindings.
+  """
+  @spec bounded_transcript(t(), keyword()) :: [map()]
+  def bounded_transcript(%__MODULE__{} = loom, opts \\ []) when is_list(opts) do
+    loom
+    |> transcript()
+    |> Enum.map(fn
+      %{role: "turn"} = turn -> bounded_turn(turn, opts)
+      record -> record
+    end)
+  end
+
+  defp summarize_code_state(code_state, opts) do
+    bindings = code_state_bindings(code_state)
+    limit = Keyword.get(opts, :binding_preview_limit, @default_binding_preview_limit)
+    names = Enum.map(bindings, fn {name, _value} -> name end)
+
+    %{
+      binding_count: length(bindings),
+      binding_preview: Enum.take(names, limit),
+      omitted_binding_count: max(length(bindings) - limit, 0)
+    }
+  end
+
+  defp code_state_bindings(%{binding: binding}) when is_list(binding), do: binding
+  defp code_state_bindings(%{"binding" => binding}) when is_list(binding), do: binding
+  defp code_state_bindings(_), do: []
 
   def append_executed_turn(%__MODULE__{} = loom, turn_attrs, observations, opts \\ []) do
     initial_turn_count = length(loom.turns)

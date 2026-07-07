@@ -143,11 +143,34 @@ defmodule Cantrip.FamiliarTest do
       assert prompt =~ "choose the answer shape"
       assert prompt =~ "speech-shaped task"
       assert prompt =~ "Code.fetch_docs"
+      assert prompt =~ "loom.intents"
       assert prompt =~ "loom.turns"
+      assert prompt =~ "Cantrip.Loom.transcript(loom)"
+      assert prompt =~ "Cantrip.Loom.bounded_turn"
+      assert prompt =~ "Cantrip.Loom.bounded_transcript"
+      assert prompt =~ ~s|role: "intent"|
+      assert prompt =~ ~s|role: "turn"|
+      assert prompt =~ "you: "
+      assert prompt =~ "me: "
       assert prompt =~ "human's project"
       assert prompt =~ "conversation child"
       assert prompt =~ "raw file"
       assert prompt =~ "specific child, medium, or batch"
+    end
+
+    test "code medium capability text teaches loom transcript and bounded inspection" do
+      llm = {FakeLLM, FakeLLM.new([])}
+      {:ok, cantrip} = Familiar.new(llm: llm)
+
+      capability_text = Cantrip.Medium.Registry.present(cantrip.circle).capability_text
+
+      assert capability_text =~ "loom.intents"
+      assert capability_text =~ "loom.turns"
+      assert capability_text =~ "Cantrip.Loom.transcript(loom)"
+      assert capability_text =~ "Cantrip.Loom.bounded_turn"
+      assert capability_text =~ "Cantrip.Loom.bounded_transcript"
+      assert capability_text =~ ~s|role: "intent"|
+      assert capability_text =~ ~s|role: "turn"|
     end
 
     test "respects custom max_turns" do

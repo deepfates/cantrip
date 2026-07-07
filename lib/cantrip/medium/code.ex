@@ -590,8 +590,28 @@ defmodule Cantrip.Medium.Code do
 
         keys = binding() |> Keyword.keys()
 
-    The durable path you took is in `loom.turns`. Each turn is a map with
-    utterance, observation, and metadata; compose with `Enum.*` to query it.
+    The durable conversation is in `loom`. Human or parent prompts are
+    `loom.intents`: maps with `role: "intent"` and
+    `utterance: %{content: text}`. Entity actions are `loom.turns`: maps with
+    `role: "turn"`, utterance, observation, metadata, and for code/bash turns
+    the full medium `code_state` needed for replay.
+
+    To read the conversation back chronologically, use
+    `Cantrip.Loom.transcript(loom)`:
+
+        loom
+        |> Cantrip.Loom.transcript()
+        |> Enum.map(fn
+          %{role: "intent", utterance: %{content: text}} -> "you: " <> text
+          %{role: "turn", utterance: %{content: c}} -> "me: " <> (c || "")
+        end)
+
+    Raw turns can be large because `:code_state` contains the full binding
+    snapshot. For IEx-readable inspection, use bounded projections:
+
+        Cantrip.Loom.bounded_turn(List.last(loom.turns))
+        Cantrip.Loom.bounded_turns(loom)
+        Cantrip.Loom.bounded_transcript(loom)
     """
   end
 
