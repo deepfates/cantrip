@@ -121,8 +121,31 @@ defmodule Cantrip.ACP.AgentHandler do
     end
   end
 
-  defp dispatch({:cancel, _notif}, _table) do
-    :ok
+  defp dispatch({:cancel, %ACP.CancelNotification{} = notif}, table) do
+    runtime = :ets.lookup_element(table, :runtime, 2)
+
+    case :ets.lookup(table, {:session, notif.session_id}) do
+      [{{:session, session_id}, session}] ->
+        if function_exported?(runtime, :cancel, 1) do
+          case runtime.cancel(session) do
+            {:ok, next_session} ->
+              :ets.insert(table, {{:session, session_id}, next_session})
+              :ok
+
+            {:error, reason, next_session} ->
+              :ets.insert(table, {{:session, session_id}, next_session})
+              {:error, %ACP.Error{code: -32_002, message: Cantrip.SafeFormat.inspect(reason)}}
+
+            {:error, reason} ->
+              {:error, %ACP.Error{code: -32_002, message: Cantrip.SafeFormat.inspect(reason)}}
+          end
+        else
+          :ok
+        end
+
+      [] ->
+        :ok
+    end
   end
 
   defp dispatch(_request, _table) do
@@ -143,9 +166,39 @@ defmodule Cantrip.ACP.AgentHandler do
     runtime = :ets.lookup_element(table, :runtime, 2)
     bridge = lookup_bridge(table, session_id)
 
+    with {:ok, session} <- prepare_prompt(runtime, table, session_id, session) do
+      prompt_prepared_runtime(runtime, table, session_id, bridge, session, text)
+    else
+      {:error, reason, next_session} ->
+        :ets.insert(table, {{:session, session_id}, next_session})
+        {:error, %ACP.Error{code: -32_002, message: Cantrip.SafeFormat.inspect(reason)}}
+    end
+  end
+
+  defp prepare_prompt(runtime, table, session_id, session) do
+    if function_exported?(runtime, :prepare_prompt, 1) do
+      case runtime.prepare_prompt(session) do
+        {:ok, next_session} ->
+          :ets.insert(table, {{:session, session_id}, next_session})
+          {:ok, next_session}
+
+        {:error, _reason, _next_session} = error ->
+          error
+      end
+    else
+      {:ok, session}
+    end
+  end
+
+  defp prompt_prepared_runtime(runtime, table, session_id, bridge, session, text) do
     case runtime.prompt(session, text) do
       {:ok, answer, next_session} ->
         handle_prompt_answer(table, session_id, bridge, answer, next_session)
+
+      {:cancelled, next_session} ->
+        if bridge, do: Cantrip.ACP.EventBridge.flush(bridge)
+        :ets.insert(table, {{:session, session_id}, next_session})
+        {:ok, %ACP.PromptResponse{stop_reason: :cancelled}}
 
       {:error, reason, next_session} ->
         if bridge, do: Cantrip.ACP.EventBridge.flush(bridge)

@@ -54,6 +54,22 @@ defmodule Cantrip.ACP.Runtime.Familiar do
   end
 
   @impl true
+  def prepare_prompt(%{cantrip: cantrip, entity_pid: nil} = session) do
+    opts =
+      case Map.get(session, :trace_id) do
+        trace_id when is_binary(trace_id) and trace_id != "" -> [trace_id: trace_id]
+        _ -> []
+      end
+
+    case Cantrip.summon(cantrip, opts) do
+      {:ok, pid} -> {:ok, %{session | entity_pid: pid}}
+      {:error, reason} -> {:error, Cantrip.SafeFormat.inspect(reason), session}
+    end
+  end
+
+  def prepare_prompt(session), do: {:ok, session}
+
+  @impl true
   def prompt(%{cantrip: cantrip, entity_pid: nil} = session, text) when is_binary(text) do
     opts = stream_opts(session)
 
@@ -69,7 +85,11 @@ defmodule Cantrip.ACP.Runtime.Familiar do
         end
 
       {:error, reason, next_cantrip} ->
-        {:error, Cantrip.SafeFormat.inspect(reason), %{session | cantrip: next_cantrip}}
+        if reason == :interrupted do
+          {:cancelled, %{session | cantrip: next_cantrip}}
+        else
+          {:error, Cantrip.SafeFormat.inspect(reason), %{session | cantrip: next_cantrip}}
+        end
     end
   end
 
@@ -87,8 +107,19 @@ defmodule Cantrip.ACP.Runtime.Familiar do
 
       {:error, reason} ->
         {:error, Cantrip.SafeFormat.inspect(reason), session}
+
+      {:error, reason, next_cantrip} when reason == :interrupted ->
+        {:cancelled, %{session | cantrip: next_cantrip}}
     end
   end
+
+  @impl true
+  def cancel(%{entity_pid: pid} = session) when is_pid(pid) do
+    :ok = Cantrip.interrupt(pid, :acp_cancel)
+    {:ok, session}
+  end
+
+  def cancel(session), do: {:ok, session}
 
   defp normalize_answer(nil), do: ""
 
