@@ -38,14 +38,17 @@ defmodule Cantrip.ACP.AgentStdioTest do
     assert %{"id" => 2, "result" => %{"sessionId" => session_id}} = session_resp
     assert is_binary(session_id)
 
-    # Prompt
+    # Prompt with non-ASCII text. Erlang Port-spawned BEAMs default stdio to
+    # latin1, so this exercises both inbound UTF-8 decoding and outbound JSON.
+    prompt_text = "hello “from Port” 🚀"
+
     send_json(port, %{
       "jsonrpc" => "2.0",
       "id" => 3,
       "method" => "session/prompt",
       "params" => %{
         "sessionId" => session_id,
-        "prompt" => [%{"type" => "text", "text" => "hello"}]
+        "prompt" => [%{"type" => "text", "text" => prompt_text}]
       }
     })
 
@@ -57,7 +60,11 @@ defmodule Cantrip.ACP.AgentStdioTest do
              "params" => %{
                "sessionId" => ^session_id,
                "update" => %{
-                 "sessionUpdate" => "agent_message_chunk"
+                 "sessionUpdate" => "agent_message_chunk",
+                 "content" => %{
+                   "type" => "text",
+                   "text" => "echo:hello “from Port” 🚀 — “ok” ✨"
+                 }
                }
              }
            } = update
@@ -80,23 +87,8 @@ defmodule Cantrip.ACP.AgentStdioTest do
     eval = """
     defmodule StubRuntime do
       def new_session(%{"cwd" => cwd}), do: {:ok, %{cwd: cwd, n: 0}}
-      def prompt(session, text), do: {:ok, "echo:" <> text, %{session | n: session.n + 1}}
+      def prompt(session, text), do: {:ok, "echo:" <> text <> " — “ok” ✨", %{session | n: session.n + 1}}
     end
-
-    {:ok, _apps} = Application.ensure_all_started(:cantrip)
-
-    table = Cantrip.ACP.AgentHandler.new(runtime: StubRuntime)
-    gl = Process.group_leader()
-
-    {:ok, conn} =
-      ACP.AgentSideConnection.start_link(
-        handler: Cantrip.ACP.AgentHandler,
-        handler_state: table,
-        input: gl,
-        output: gl
-      )
-
-    Cantrip.ACP.AgentHandler.set_connection(table, conn)
 
     # Watchdog: exit when the test parent dies so we never leak this BEAM.
     # Port.close from the test side does not deliver SIGTERM to the spawned
@@ -113,7 +105,7 @@ defmodule Cantrip.ACP.AgentStdioTest do
       System.halt(0)
     end)
 
-    Process.sleep(:infinity)
+    Cantrip.ACP.Server.run(runtime: StubRuntime)
     """
 
     args =
@@ -130,9 +122,13 @@ defmodule Cantrip.ACP.AgentStdioTest do
   defp recv_json(port) do
     receive do
       {^port, {:data, {:eol, line}}} ->
+        assert String.valid?(line)
+        refute String.contains?(line, "\\x{")
         Jason.decode!(line)
 
       {^port, {:data, {:noeol, line}}} ->
+        assert String.valid?(line)
+        refute String.contains?(line, "\\x{")
         Jason.decode!(line)
 
       {^port, {:exit_status, status}} ->

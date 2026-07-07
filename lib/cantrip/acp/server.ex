@@ -7,6 +7,7 @@ defmodule Cantrip.ACP.Server do
   """
 
   def run(opts \\ []) do
+    :ok = :io.setopts(:standard_io, encoding: :unicode)
     {:ok, _apps} = Application.ensure_all_started(:cantrip)
 
     runtime = Keyword.get(opts, :runtime, Cantrip.ACP.Runtime.Familiar)
