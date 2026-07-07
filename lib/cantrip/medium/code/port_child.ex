@@ -171,25 +171,28 @@ defmodule Cantrip.Medium.Code.PortChild do
   defp loop(state) do
     case read_frame() do
       {:ok, {:init, binding}} ->
-        write_frame(:ready)
-        loop(%{state | binding: persist_binding(binding)})
+        continue_after_write(write_frame(:ready), %{state | binding: persist_binding(binding)})
 
       {:ok, {:eval, ref, code, env}} when is_binary(code) and is_map(env) ->
         {next_state, response} = eval(code, state, env, ref)
-        write_frame(response)
-        loop(next_state)
+        continue_after_write(write_frame(response), next_state)
 
       {:ok, _other} ->
-        write_frame({:error, :unexpected_frame})
-        loop(state)
+        continue_after_write(write_frame({:error, :unexpected_frame}), state)
 
       :eof ->
         :ok
 
       {:error, reason} ->
-        write_frame({:error, reason})
-        loop(state)
+        continue_after_write(write_frame({:error, reason}), state)
     end
+  end
+
+  defp continue_after_write(:ok, state), do: loop(state)
+
+  defp continue_after_write({:error, reason}, _state) do
+    log_graceful_shutdown(reason)
+    :ok
   end
 
   defp eval(code, state, env, ref) do
@@ -855,6 +858,27 @@ defmodule Cantrip.Medium.Code.PortChild do
     payload = :erlang.term_to_binary(term)
     IO.binwrite(output, <<byte_size(payload)::32, payload::binary>>)
     :ok
+  rescue
+    e in ErlangError ->
+      case e.original do
+        :epipe -> {:error, :epipe}
+        reason -> {:error, {:erlang_error, reason}}
+      end
+
+    e ->
+      {:error, Cantrip.SafeFormat.exception(e)}
+  catch
+    :exit, reason ->
+      {:error, {:exit, reason}}
+  end
+
+  defp log_graceful_shutdown(reason) do
+    IO.puts(
+      :stderr,
+      "cantrip port child: parent port closed during write (#{inspect(reason)}); Goodbye."
+    )
+  rescue
+    _ -> :ok
   end
 
   defp protocol do

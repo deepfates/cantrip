@@ -157,6 +157,45 @@ defmodule PortCodeMediumTest do
     if tmp = Process.get(:cantrip_port_runner_tmp), do: File.rm_rf!(tmp)
   end
 
+  test "port child treats epipe during reply as graceful shutdown" do
+    tmp =
+      Path.join(System.tmp_dir!(), "cantrip_port_epipe_#{System.unique_integer([:positive])}")
+
+    Process.put(:cantrip_port_epipe_tmp, tmp)
+    File.mkdir_p!(tmp)
+
+    log_path = Path.join(tmp, "child-stderr.log")
+    runner_path = Path.join(tmp, "runner.sh")
+
+    File.write!(runner_path, """
+    #!/bin/sh
+    exec "$@" 2> #{log_path}
+    """)
+
+    File.chmod!(runner_path, 0o755)
+
+    before_dumps = repo_crash_dumps()
+    port = open_port_child(runner_path)
+    send_port_frame(port, {:init, []})
+
+    assert_receive {^port, {:data, payload}}, 5_000
+    assert :erlang.binary_to_term(payload) == :ready
+
+    ref = System.unique_integer([:positive, :monotonic])
+
+    send_port_frame(
+      port,
+      {:eval, ref, ~S[Process.sleep(200); done.("late")],
+       %{gate_names: ["done"], evaluator: :raw}}
+    )
+
+    Port.close(port)
+    assert eventually_contains?(log_path, "Goodbye.", 2_000)
+    assert repo_crash_dumps() == before_dumps
+  after
+    if tmp = Process.get(:cantrip_port_epipe_tmp), do: File.rm_rf!(tmp)
+  end
+
   test "child BEAM global state does not mutate the host BEAM" do
     key = {__MODULE__, :persistent_term_isolation}
     :persistent_term.erase(key)
@@ -618,5 +657,49 @@ defmodule PortCodeMediumTest do
   defp purge_module(module) do
     :code.purge(module)
     :code.delete(module)
+  end
+
+  defp open_port_child(runner_path) do
+    elixir = System.find_executable("elixir")
+
+    child_args =
+      Enum.flat_map(:code.get_path(), &["-pa", List.to_string(&1)]) ++
+        ["-e", "Cantrip.Medium.Code.PortChild.main()"]
+
+    Port.open({:spawn_executable, runner_path}, [
+      :binary,
+      :exit_status,
+      {:packet, 4},
+      args: [elixir | child_args]
+    ])
+  end
+
+  defp send_port_frame(port, term) do
+    Port.command(port, :erlang.term_to_binary(term))
+  end
+
+  defp eventually_contains?(path, expected, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    eventually_contains_until?(path, expected, deadline)
+  end
+
+  defp eventually_contains_until?(path, expected, deadline) do
+    if File.exists?(path) and String.contains?(File.read!(path), expected) do
+      true
+    else
+      if System.monotonic_time(:millisecond) >= deadline do
+        false
+      else
+        Process.sleep(25)
+        eventually_contains_until?(path, expected, deadline)
+      end
+    end
+  end
+
+  defp repo_crash_dumps do
+    File.cwd!()
+    |> Path.join("erl_crash.dump*")
+    |> Path.wildcard()
+    |> MapSet.new()
   end
 end
