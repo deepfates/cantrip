@@ -491,6 +491,18 @@ defmodule Cantrip do
   end
 
   @doc """
+  Creates a persistent entity without running an intent, with entity options.
+
+  This is primarily useful for hosts that need to attach runtime metadata such
+  as `:trace_id` before the first intent is sent.
+  """
+  @spec summon(t(), keyword()) :: {:ok, pid()} | {:error, term()}
+  def summon(%__MODULE__{} = cantrip, opts) when is_list(opts) do
+    spec = {EntityServer, [cantrip: cantrip, lazy: true] ++ opts}
+    DynamicSupervisor.start_child(Cantrip.EntitySupervisor, spec)
+  end
+
+  @doc """
   Creates a persistent entity and immediately runs the first intent.
 
   This is equivalent to `summon/1` followed by `send/2`. Options such as
@@ -530,6 +542,36 @@ defmodule Cantrip do
   @doc "Sends a new intent with per-call options, for example `stream_to: pid`."
   def send(pid, intent, opts) when is_pid(pid) and is_binary(intent) and is_list(opts) do
     EntityServer.send_intent(pid, intent, opts)
+  end
+
+  @doc """
+  Interrupts a persistent entity's active episode at the next safe turn boundary.
+
+  The entity process stays alive, its loom records the interruption, and queued
+  sends continue after the interrupted episode returns.
+  """
+  @spec interrupt(pid(), term()) :: :ok
+  def interrupt(pid, reason \\ :interrupt) when is_pid(pid) do
+    EntityServer.interrupt(pid, reason)
+  end
+
+  @doc """
+  Queues a steering message for delivery at the next turn boundary.
+
+  Steering does not end the active episode. The message is appended to the
+  entity's message history and loom as an intent before the next provider turn.
+  """
+  @spec steer(pid(), String.t()) :: :ok
+  def steer(pid, message) when is_pid(pid) and is_binary(message) do
+    EntityServer.steer(pid, message)
+  end
+
+  @doc """
+  Immediately terminates a persistent entity after recording and closing its loom.
+  """
+  @spec hard_stop(pid(), term()) :: :ok
+  def hard_stop(pid, reason \\ :hard_stop) when is_pid(pid) do
+    EntityServer.hard_stop(pid, reason)
   end
 
   @doc """

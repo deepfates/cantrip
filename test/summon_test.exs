@@ -140,7 +140,7 @@ defmodule Cantrip.SummonTest do
     assert state_after_second.code_state.port_session.port == first_port
   end
 
-  test "persistent entity mailbox stays responsive while an episode is running" do
+  test "persistent entity queues sends while an episode is running" do
     llm = {BlockingLLM, %{test_pid: self()}}
 
     {:ok, cantrip} =
@@ -155,15 +155,15 @@ defmodule Cantrip.SummonTest do
 
     assert_receive {:blocking_llm_started, query_pid, "slow"}, 200
 
-    started_at = System.monotonic_time(:millisecond)
-    assert {:error, "entity is already running", _cantrip} = Cantrip.send(pid, "second")
-    elapsed = System.monotonic_time(:millisecond) - started_at
-
-    assert elapsed < 200,
-           "second send should be rejected by the EntityServer mailbox, not wait for provider work"
+    queued = Task.async(fn -> Cantrip.send(pid, "second") end)
+    refute Task.yield(queued, 50)
 
     send(query_pid, {:release_blocking_llm, "slow"})
     assert {:ok, "released:slow", _cantrip, _loom, _meta} = Task.await(running, 500)
+
+    assert_receive {:blocking_llm_started, query_pid2, "second"}, 500
+    send(query_pid2, {:release_blocking_llm, "second"})
+    assert {:ok, "released:second", _cantrip, _loom, _meta} = Task.await(queued, 500)
   end
 
   test "send preserves the terminating turn's assistant message in state.messages" do

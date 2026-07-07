@@ -23,6 +23,9 @@ defmodule Cantrip.EntityServer do
             stream_barrier?: false,
             runner: nil,
             running: nil,
+            pending: :queue.new(),
+            controls: [],
+            stop_requested?: false,
             entity_started_at: nil,
             # The summary text from this turn's fold (if folding fired
             # in `prepare_request`). Threaded into the medium's runtime
@@ -47,6 +50,21 @@ defmodule Cantrip.EntityServer do
   @doc "Send with opts (e.g. stream_to: pid for per-call event delivery)."
   def send_intent(pid, intent, opts) when is_binary(intent) and is_list(opts) do
     GenServer.call(pid, {:send_intent, intent, opts}, :infinity)
+  end
+
+  @doc "Interrupt the active episode at the next safe turn boundary."
+  def interrupt(pid, reason \\ :interrupt) when is_pid(pid) do
+    GenServer.call(pid, {:interrupt, reason}, :infinity)
+  end
+
+  @doc "Steer the entity with a message delivered at the next turn boundary."
+  def steer(pid, message) when is_pid(pid) and is_binary(message) do
+    GenServer.call(pid, {:steer, message}, :infinity)
+  end
+
+  @doc "Terminate the entity immediately after appending a stop event and closing its loom."
+  def hard_stop(pid, reason \\ :hard_stop) when is_pid(pid) do
+    GenServer.call(pid, {:hard_stop, reason}, :infinity)
   end
 
   @impl true
@@ -119,25 +137,75 @@ defmodule Cantrip.EntityServer do
   @impl true
   def handle_call({:send_intent, intent, opts}, from, state) do
     if state.running do
-      {:reply, busy_reply(state), state}
+      {:noreply, enqueue_pending(state, from, intent, opts)}
     else
       start_send_intent_episode(state, from, intent, opts)
     end
   end
 
   @impl true
+  def handle_call({:interrupt, reason}, _from, %{running: nil} = state) do
+    event = control_event(:interrupted, reason, :idle)
+    {:reply, :ok, %{state | loom: Loom.append_event(state.loom, event)}}
+  end
+
+  def handle_call({:interrupt, reason}, _from, state) do
+    send_runner_control(state.runner, {:interrupt, reason})
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:steer, message}, _from, %{running: nil} = state) do
+    {:reply, :ok, append_boundary_steer(state, message)}
+  end
+
+  def handle_call({:steer, message}, _from, state) do
+    send_runner_control(state.runner, {:steer, message})
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:hard_stop, reason}, _from, state) do
+    state =
+      state
+      |> append_control_event(:hard_stopped, reason, running_kind(state))
+      |> close_loom()
+
+    stop_runner(state.runner, :kill)
+    reply_running(state, {:error, :hard_stopped, state.cantrip})
+    reply_pending(state.pending, {:error, :hard_stopped, state.cantrip})
+
+    {:stop, {:shutdown, reason}, :ok, %{state | running: nil, pending: :queue.new(), runner: nil}}
+  end
+
+  @impl true
   def handle_info(
         {:entity_episode_result, ref, {reply, final_state, stop?}},
-        %{running: %{ref: ref, from: from}, runner: runner}
+        %{running: %{ref: ref, from: from}, runner: runner} = state
       ) do
     GenServer.reply(from, reply)
 
-    final_state = %{final_state | running: nil, runner: runner}
+    pending = state.pending
 
-    if stop? do
-      {:stop, :normal, final_state}
-    else
-      {:noreply, final_state}
+    final_state = %{
+      final_state
+      | running: nil,
+        runner: runner,
+        pending: pending,
+        controls: [],
+        stop_requested?: false
+    }
+
+    cond do
+      stop? ->
+        final_state = close_loom(final_state)
+        {:stop, :normal, final_state}
+
+      pending_empty?(pending) ->
+        {:noreply, final_state}
+
+      true ->
+        start_next_pending(final_state)
     end
   end
 
@@ -148,6 +216,7 @@ defmodule Cantrip.EntityServer do
     state =
       state
       |> maybe_reply_runner_down(reason)
+      |> reply_all_pending_runner_down(reason)
       |> snapshot_runner_owned_state()
 
     case start_runner() do
@@ -214,6 +283,45 @@ defmodule Cantrip.EntityServer do
     )
   end
 
+  defp enqueue_pending(state, from, intent, opts) do
+    pending = :queue.in(%{from: from, intent: intent, opts: opts, queued?: true}, state.pending)
+    %{state | pending: pending}
+  end
+
+  defp start_next_pending(state) do
+    case :queue.out(state.pending) do
+      {{:value, %{from: from, intent: intent, opts: opts} = item}, pending} ->
+        state = %{state | pending: pending}
+
+        state =
+          if Map.get(item, :queued?),
+            do: append_control_event(state, :intent_queued, intent, :send_intent),
+            else: state
+
+        start_send_intent_episode(state, from, intent, opts)
+
+      {:empty, _pending} ->
+        {:noreply, state}
+    end
+  end
+
+  defp pending_empty?(pending), do: :queue.is_empty(pending)
+
+  defp reply_running(%{running: %{from: from}}, reply), do: GenServer.reply(from, reply)
+  defp reply_running(_state, _reply), do: :ok
+
+  defp reply_pending(pending, reply) do
+    pending
+    |> :queue.to_list()
+    |> Enum.each(fn %{from: from} -> GenServer.reply(from, reply) end)
+  end
+
+  defp reply_all_pending_runner_down(state, reason) do
+    reply = {:error, "entity run failed: #{Cantrip.SafeFormat.inspect(reason)}", state.cantrip}
+    reply_pending(state.pending, reply)
+    %{state | pending: :queue.new()}
+  end
+
   defp start_episode(%{running: nil, runner: %{pid: pid}} = state, from, kind, opts) do
     ref = make_ref()
 
@@ -259,7 +367,7 @@ defmodule Cantrip.EntityServer do
 
     case Cantrip.Telemetry.with_context(state.entity_id, state.trace_id, fn -> run_loop(state) end) do
       {:error, reason, final_state} ->
-        emit_entity_stop(final_state, :error)
+        emit_entity_stop(final_state, entity_error_stop_reason(reason))
         await_stream_barrier(final_state)
 
         final_state =
@@ -345,6 +453,16 @@ defmodule Cantrip.EntityServer do
   end
 
   defp stop_runner(_runner), do: :ok
+
+  defp stop_runner(%{pid: pid, monitor_ref: monitor_ref}, reason) when is_pid(pid) do
+    Process.demonitor(monitor_ref, [:flush])
+
+    if Process.alive?(pid) do
+      Process.exit(pid, reason)
+    end
+  end
+
+  defp stop_runner(_runner, _reason), do: :ok
 
   defp build_initial_messages(cantrip, intent, lazy) do
     cond do
@@ -535,25 +653,99 @@ defmodule Cantrip.EntityServer do
     next_messages =
       Cantrip.Turn.next_messages(state.messages, state.cantrip.circle.type, executed)
 
-    next_state = %{next_state | messages: next_messages}
+    next_state =
+      next_state
+      |> Map.put(:messages, next_messages)
+      |> apply_boundary_controls()
+      |> emit_boundary_heartbeat()
 
-    if terminated do
-      case Cantrip.Turn.final_response(
-             classified,
-             executed,
-             %{entity_id: state.entity_id, turns: next_state.turns},
-             usage
-           ) do
-        {:error, msg} ->
-          {:error, msg, next_state}
+    cond do
+      next_state.stop_requested? ->
+        interrupted(next_state)
 
-        {:ok, value, meta} ->
-          emit_event(state, {:final_response, %{result: value}})
-          {value, next_state, meta}
-      end
-    else
-      run_loop(next_state)
+      terminated ->
+        case Cantrip.Turn.final_response(
+               classified,
+               executed,
+               %{entity_id: state.entity_id, turns: next_state.turns},
+               usage
+             ) do
+          {:error, msg} ->
+            {:error, msg, next_state}
+
+          {:ok, value, meta} ->
+            emit_event(state, {:final_response, %{result: value}})
+            {value, next_state, meta}
+        end
+
+      true ->
+        run_loop(next_state)
     end
+  end
+
+  defp interrupted(state) do
+    state = append_control_event(state, :interrupted, :interrupt, :turn_boundary)
+    emit_event(state, {:final_response, %{result: nil, stop_reason: :cancelled}})
+
+    {:error, :interrupted, state}
+  end
+
+  defp apply_boundary_controls(state) do
+    state
+    |> collect_runner_controls()
+    |> deliver_steers()
+  end
+
+  defp collect_runner_controls(state) do
+    receive do
+      {:control, {:interrupt, reason}} ->
+        %{state | stop_requested?: true, controls: state.controls ++ [{:interrupt, reason}]}
+        |> collect_runner_controls()
+
+      {:control, {:steer, message}} ->
+        %{state | controls: state.controls ++ [{:steer, message}]}
+        |> collect_runner_controls()
+    after
+      0 -> state
+    end
+  end
+
+  defp deliver_steers(%{controls: []} = state), do: state
+
+  defp deliver_steers(state) do
+    Enum.reduce(state.controls, %{state | controls: []}, fn
+      {:interrupt, reason}, acc ->
+        append_control_event(acc, :interrupt_requested, reason, :turn_boundary)
+
+      {:steer, message}, acc ->
+        append_boundary_steer(acc, message)
+    end)
+  end
+
+  defp append_boundary_steer(state, message) do
+    messages =
+      if state.lazy do
+        initial_messages(state.cantrip.identity, state.cantrip.circle, message)
+      else
+        state.messages ++ [%{role: :user, content: message}]
+      end
+
+    loom =
+      state.loom
+      |> Loom.append_event(control_event(:steer_queued, message, :turn_boundary))
+      |> Loom.append_event(control_event(:steer_delivered, message, :turn_boundary))
+      |> Loom.append_intent(message, cantrip_id: state.cantrip.id, entity_id: state.entity_id)
+
+    %{state | messages: messages, loom: loom, lazy: false}
+  end
+
+  defp emit_boundary_heartbeat(state) do
+    emit_event(
+      state,
+      {:turn_boundary, %{turns: state.turns, queued_control_count: length(state.controls)}}
+    )
+
+    state
   end
 
   defp initial_messages(identity, circle, intent) do
@@ -743,6 +935,40 @@ defmodule Cantrip.EntityServer do
 
   defp restore_stream_opts(state, stream_to, stream_barrier?) do
     %{state | stream_to: stream_to, stream_barrier?: stream_barrier?}
+  end
+
+  defp send_runner_control(%{pid: pid}, control) when is_pid(pid) do
+    send(pid, {:control, control})
+    :ok
+  end
+
+  defp send_runner_control(_runner, _control), do: :ok
+
+  defp append_control_event(state, type, reason, kind) do
+    %{state | loom: Loom.append_event(state.loom, control_event(type, reason, kind))}
+  end
+
+  defp control_event(type, reason, kind) do
+    %{
+      type: type,
+      reason: control_reason(reason),
+      episode_kind: kind
+    }
+  end
+
+  defp control_reason(reason) when is_binary(reason), do: reason
+  defp control_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp control_reason(reason), do: Cantrip.SafeFormat.inspect(reason)
+
+  defp running_kind(%{running: %{kind: kind}}), do: kind
+  defp running_kind(_state), do: :idle
+
+  defp entity_error_stop_reason(:interrupted), do: :cancelled
+  defp entity_error_stop_reason(_reason), do: :error
+
+  defp close_loom(state) do
+    _ = Loom.close(state.loom)
+    state
   end
 
   defp emit_entity_stop(state, reason) do
