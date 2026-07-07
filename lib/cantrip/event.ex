@@ -59,6 +59,8 @@ defmodule Cantrip.Event do
     Enum.flat_map(observations, fn obs ->
       tool_call_id = obs[:tool_call_id] || mint_tool_call_id()
 
+      attribution = child_attribution(obs)
+
       [
         {:tool_call,
          %{
@@ -66,7 +68,8 @@ defmodule Cantrip.Event do
            tool_call_id: tool_call_id,
            kind: gate_kind(obs.gate),
            args_summary: args_summary(obs.gate, obs[:args])
-         }},
+         }
+         |> Map.merge(attribution)},
         {:tool_result,
          %{
            gate: obs.gate,
@@ -74,7 +77,8 @@ defmodule Cantrip.Event do
            is_error: obs.is_error,
            tool_call_id: tool_call_id,
            child_turn_count: child_turn_count(obs)
-         }}
+         }
+         |> Map.merge(attribution)}
       ]
     end)
   end
@@ -185,6 +189,12 @@ defmodule Cantrip.Event do
   defp args_summary("search", %{} = a), do: Map.get(a, "pattern", Map.get(a, :pattern))
   defp args_summary("mix", %{} = a), do: Map.get(a, "task", Map.get(a, :task))
   defp args_summary(_, _), do: nil
+
+  defp child_attribution(obs) do
+    obs
+    |> Map.take([:child_id, :circle, :node, :batch_index, :children, :failed_batch_index])
+    |> Map.reject(fn {_key, value} -> is_nil(value) or value == [] end)
+  end
 
   defp child_turn_count(%{child_turns: turns}) when is_list(turns), do: length(turns)
   defp child_turn_count(%{"child_turns" => turns}) when is_list(turns), do: length(turns)

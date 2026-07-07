@@ -1,6 +1,7 @@
 defmodule Cantrip.CLI.RendererTest do
   use ExUnit.Case, async: true
 
+  alias Cantrip.FakeLLM
   alias Cantrip.CLI.Renderer
 
   # Helper to wrap events in an envelope
@@ -227,6 +228,123 @@ defmodule Cantrip.CLI.RendererTest do
       assert text =~ "✗"
       assert text =~ "cast_batch #2"
       assert text =~ "max_depth exceeded"
+    end
+
+    test "real cast tool_result carries child attribution and renders it" do
+      child_llm = {FakeLLM, FakeLLM.new([%{code: ~s[done.("child answer")]}])}
+
+      parent_llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{
+             code: """
+             {:ok, child} = Cantrip.new(circle: %{type: :code, gates: [:done]})
+             {:ok, result, _child, _loom, _meta} = Cantrip.cast(child, "work")
+             done.(result)
+             """
+           }
+         ])}
+
+      {:ok, parent} =
+        Cantrip.new(
+          llm: parent_llm,
+          child_llm: child_llm,
+          circle: %{
+            type: :code,
+            gates: [:done],
+            wards: [%{max_turns: 5}, %{max_depth: 1}, %{sandbox: :unrestricted}]
+          }
+        )
+
+      assert {:ok, "child answer", _parent, _loom, _meta} =
+               Cantrip.cast(parent, "delegate", stream_to: self())
+
+      events = collect_stream_events()
+
+      assert {env, {:tool_result, meta}} =
+               Enum.find(events, fn
+                 {_env, {:tool_result, %{gate: "cast"}}} -> true
+                 _event -> false
+               end)
+
+      assert env.depth == 0
+      assert is_binary(meta.child_id)
+      assert meta.circle == :code
+      assert meta.child_turn_count == 1
+
+      {output, :stderr, _state} =
+        Renderer.render_event(Renderer.new(), {env, {:tool_result, meta}})
+
+      text = IO.iodata_to_binary(output)
+      assert text =~ "cast #{meta.child_id} (code)"
+      assert text =~ "child answer"
+      assert text =~ "1 child turn"
+    end
+
+    test "real cast_batch tool_result carries child attribution list and renders it" do
+      parent_llm =
+        {FakeLLM,
+         FakeLLM.new([
+           %{
+             code: """
+             children =
+               for label <- ["a", "b"] do
+                 child_llm = {Cantrip.FakeLLM, Cantrip.FakeLLM.new([%{code: ~s[done.("\#{label}")]}])}
+                 {:ok, child} = Cantrip.new(llm: child_llm, circle: %{type: :code, gates: [:done]})
+                 %{cantrip: child, intent: label}
+               end
+
+             {:ok, values, _children, _looms, _meta} = Cantrip.cast_batch(children)
+             done.(values)
+             """
+           }
+         ])}
+
+      {:ok, parent} =
+        Cantrip.new(
+          llm: parent_llm,
+          circle: %{
+            type: :code,
+            gates: [:done],
+            wards: [%{max_turns: 5}, %{max_depth: 1}, %{max_concurrent_children: 2}]
+          }
+        )
+
+      assert {:ok, ["a", "b"], _parent, _loom, _meta} =
+               Cantrip.cast(parent, "batch", stream_to: self())
+
+      events = collect_stream_events()
+
+      assert {env, {:tool_result, meta}} =
+               Enum.find(events, fn
+                 {_env, {:tool_result, %{gate: "cast_batch"}}} -> true
+                 _event -> false
+               end)
+
+      assert env.depth == 0
+
+      assert [%{child_id: first_id, circle: :code}, %{child_id: second_id, circle: :code}] =
+               meta.children
+
+      assert is_binary(first_id)
+      assert is_binary(second_id)
+      assert meta.child_turn_count == 2
+
+      {output, :stderr, _state} =
+        Renderer.render_event(Renderer.new(), {env, {:tool_result, meta}})
+
+      text = IO.iodata_to_binary(output)
+      assert text =~ "cast_batch #{first_id} (code), #{second_id} (code)"
+      assert text =~ ~s|["a", "b"]|
+      assert text =~ "2 child turns"
+    end
+  end
+
+  defp collect_stream_events(events \\ []) do
+    receive do
+      {:cantrip_event, event} -> collect_stream_events([event | events])
+    after
+      50 -> Enum.reverse(events)
     end
   end
 

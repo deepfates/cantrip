@@ -229,7 +229,7 @@ defmodule Cantrip.CLI.Renderer do
   end
 
   defp child_tool_label(gate, meta) do
-    [gate, child_index(meta), child_subject(meta), child_circle(meta)]
+    [gate, child_index(meta), child_subject(meta) || child_children(meta), child_circle(meta)]
     |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.join(" ")
   end
@@ -241,6 +241,26 @@ defmodule Cantrip.CLI.Renderer do
   defp child_subject(%{child_id: id}) when is_binary(id), do: id
   defp child_subject(%{cantrip_id: id}) when is_binary(id), do: id
   defp child_subject(_meta), do: nil
+
+  defp child_children(%{children: children}) when is_list(children) do
+    children
+    |> Enum.map(&child_descriptor/1)
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> case do
+      [] -> nil
+      labels -> Enum.join(labels, ", ")
+    end
+  end
+
+  defp child_children(_meta), do: nil
+
+  defp child_descriptor(%{} = child) do
+    [child_subject(child), child_circle(child)]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" ")
+  end
+
+  defp child_descriptor(_child), do: nil
 
   defp child_circle(%{circle: circle}) when is_atom(circle), do: "(#{circle})"
   defp child_circle(%{circle: circle}) when is_binary(circle), do: "(#{circle})"

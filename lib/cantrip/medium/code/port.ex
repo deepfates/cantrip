@@ -325,18 +325,24 @@ defmodule Cantrip.Medium.Code.Port do
            |> Keyword.put(:record_parent_observation?, false),
          {:ok, value, next_cantrip, loom, meta} <- Cantrip.cast(cantrip, intent, cast_opts) do
       {next_handle, state} = put_child_handle(state, next_cantrip, handle)
-      observation = %{gate: "cast", result: value, is_error: false, child_turns: loom.turns}
+
+      observation =
+        %{gate: "cast", result: value, is_error: false, child_turns: loom.turns}
+        |> Map.merge(child_observation_meta(cantrip, []))
+
       {{:ok, value, next_handle, loom, meta}, state, [observation]}
     else
       {:error, reason, next_cantrip} ->
         {next_handle, state} = put_child_handle(state, next_cantrip, handle)
 
-        observation = %{
-          gate: "cast",
-          result: Cantrip.SafeFormat.inspect(reason),
-          is_error: true,
-          child_turns: []
-        }
+        observation =
+          %{
+            gate: "cast",
+            result: Cantrip.SafeFormat.inspect(reason),
+            is_error: true,
+            child_turns: []
+          }
+          |> Map.merge(child_observation_meta(next_cantrip, []))
 
         {{:error, reason, next_handle}, state, [observation]}
 
@@ -353,31 +359,48 @@ defmodule Cantrip.Medium.Code.Port do
     with {:ok, normalized_items} <- resolve_batch_items(state, items),
          opts <- normalize_opts(opts),
          parent_context <- Map.get(runtime, :parent_context),
-         batch_opts = Keyword.put(opts, :parent_context, parent_context),
-         {:ok, values, next_cantrips, looms, meta} <-
-           Cantrip.cast_batch(normalized_items, batch_opts) do
-      {handles, state} =
-        Enum.zip(normalized_items, next_cantrips)
-        |> Enum.map_reduce(state, fn {%{handle: old_handle}, next_cantrip}, acc ->
-          put_child_handle(acc, next_cantrip, old_handle)
-        end)
+         batch_opts = Keyword.put(opts, :parent_context, parent_context) do
+      case Cantrip.cast_batch(normalized_items, batch_opts) do
+        {:ok, values, next_cantrips, looms, meta} ->
+          {handles, state} =
+            Enum.zip(normalized_items, next_cantrips)
+            |> Enum.map_reduce(state, fn {%{handle: old_handle}, next_cantrip}, acc ->
+              put_child_handle(acc, next_cantrip, old_handle)
+            end)
 
-      observation = %{
-        gate: "cast_batch",
-        result: values,
-        is_error: false,
-        child_turns: Enum.flat_map(looms, & &1.turns)
-      }
+          observation =
+            %{
+              gate: "cast_batch",
+              result: values,
+              is_error: false,
+              child_turns: Enum.flat_map(looms, & &1.turns)
+            }
+            |> Map.merge(cast_batch_observation_meta(normalized_items))
 
-      {{:ok, values, handles, looms, meta}, state, [observation]}
+          {{:ok, values, handles, looms, meta}, state, [observation]}
+
+        {:error, reason} ->
+          observation =
+            %{
+              gate: "cast_batch",
+              result: Cantrip.SafeFormat.inspect(reason),
+              is_error: true,
+              child_turns: []
+            }
+            |> Map.merge(cast_batch_observation_meta(normalized_items))
+
+          {{:error, reason}, state, [observation]}
+      end
     else
       {:error, reason} ->
-        observation = %{
-          gate: "cast_batch",
-          result: Cantrip.SafeFormat.inspect(reason),
-          is_error: true,
-          child_turns: []
-        }
+        observation =
+          %{
+            gate: "cast_batch",
+            result: Cantrip.SafeFormat.inspect(reason),
+            is_error: true,
+            child_turns: []
+          }
+          |> Map.merge(cast_batch_observation_meta([]))
 
         {{:error, reason}, state, [observation]}
     end
@@ -472,6 +495,37 @@ defmodule Cantrip.Medium.Code.Port do
     String.to_existing_atom(to_string(value))
   rescue
     ArgumentError -> value
+  end
+
+  defp child_observation_meta(%Cantrip{} = cantrip, extras) do
+    %{
+      child_id: cantrip.id,
+      circle: cantrip.circle.type
+    }
+    |> Map.merge(extras |> Map.new() |> drop_nil_values())
+  end
+
+  defp cast_batch_observation_meta(items) when is_list(items) do
+    children =
+      items
+      |> Enum.with_index()
+      |> Enum.flat_map(fn
+        {%{cantrip: %Cantrip{} = cantrip}, index} ->
+          [child_observation_meta(cantrip, batch_index: index)]
+
+        {_item, _index} ->
+          []
+      end)
+
+    case children do
+      [] -> %{}
+      [single] -> Map.merge(single, %{children: children})
+      _ -> %{children: children}
+    end
+  end
+
+  defp drop_nil_values(map) do
+    Map.reject(map, fn {_key, value} -> is_nil(value) end)
   end
 
   defp sanitize_observation(observation) when is_map(observation) do

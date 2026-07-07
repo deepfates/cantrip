@@ -611,7 +611,8 @@ defmodule Cantrip do
             "cast_batch",
             Cantrip.SafeFormat.inspect(reason),
             true,
-            []
+            [],
+            cast_batch_observation_meta(normalized_items, payloads)
           )
 
           {:error, reason}
@@ -620,7 +621,16 @@ defmodule Cantrip do
           next_cantrips = Enum.map(payloads, fn {:ok, _value, next, _loom, _meta} -> next end)
           looms = Enum.map(payloads, fn {:ok, _value, _next, loom, _meta} -> loom end)
           child_turns = Enum.flat_map(looms, & &1.turns)
-          push_parent_cast_observation(parent_context, "cast_batch", values, false, child_turns)
+
+          push_parent_cast_observation(
+            parent_context,
+            "cast_batch",
+            values,
+            false,
+            child_turns,
+            cast_batch_observation_meta(normalized_items, payloads)
+          )
+
           {:ok, values, next_cantrips, looms, %{count: length(values)}}
         end
 
@@ -630,7 +640,8 @@ defmodule Cantrip do
           "cast_batch",
           Cantrip.SafeFormat.inspect(reason),
           true,
-          []
+          [],
+          cast_batch_observation_meta(items, nil)
         )
 
         {:error, reason}
@@ -906,7 +917,11 @@ defmodule Cantrip do
                   parent_gate,
                   value,
                   false,
-                  child_loom.turns
+                  child_loom.turns,
+                  child_observation_meta(transient_cantrip,
+                    node: node,
+                    batch_index: batch_index
+                  )
                 )
 
             {:ok, value, next_cantrip, child_loom, meta}
@@ -933,7 +948,11 @@ defmodule Cantrip do
                   parent_gate,
                   Cantrip.SafeFormat.inspect(reason),
                   true,
-                  []
+                  [],
+                  child_observation_meta(transient_cantrip,
+                    node: node,
+                    batch_index: batch_index
+                  )
                 )
 
             {:error, reason, %{next_cantrip | node: node}}
@@ -947,7 +966,8 @@ defmodule Cantrip do
               parent_gate,
               Cantrip.SafeFormat.inspect(reason),
               true,
-              []
+              [],
+              child_observation_meta(cantrip, node: node, batch_index: batch_index)
             )
 
         {:error, reason, next_cantrip}
@@ -1005,7 +1025,8 @@ defmodule Cantrip do
                   parent_gate,
                   value,
                   false,
-                  child_loom.turns
+                  child_loom.turns,
+                  child_observation_meta(transient_cantrip, batch_index: batch_index)
                 )
 
             {:ok, value, next_cantrip, child_loom, meta}
@@ -1032,7 +1053,8 @@ defmodule Cantrip do
                   parent_gate,
                   Cantrip.SafeFormat.inspect(reason),
                   true,
-                  []
+                  [],
+                  child_observation_meta(transient_cantrip, batch_index: batch_index)
                 )
 
             {:error, reason, next_cantrip}
@@ -1046,7 +1068,8 @@ defmodule Cantrip do
               parent_gate,
               Cantrip.SafeFormat.inspect(reason),
               true,
-              []
+              [],
+              child_observation_meta(cantrip, batch_index: batch_index)
             )
 
         error
@@ -1404,14 +1427,59 @@ defmodule Cantrip do
     end
   end
 
-  defp push_parent_cast_observation(parent_context, gate, result, is_error, child_turns) do
+  defp push_parent_cast_observation(
+         parent_context,
+         gate,
+         result,
+         is_error,
+         child_turns,
+         metadata
+       ) do
     case parent_context && Map.get(parent_context, :observation_collector) do
       collector when is_pid(collector) ->
-        observation = %{gate: gate, result: result, is_error: is_error, child_turns: child_turns}
+        observation =
+          %{gate: gate, result: result, is_error: is_error, child_turns: child_turns}
+          |> Map.merge(metadata |> Map.new() |> drop_nil_values())
+
         Agent.update(collector, &(&1 ++ [observation]))
 
       _ ->
         :ok
+    end
+  end
+
+  defp child_observation_meta(%__MODULE__{} = cantrip, extras) do
+    %{
+      child_id: cantrip.id,
+      circle: cantrip.circle.type
+    }
+    |> Map.merge(extras |> Map.new() |> drop_nil_values())
+  end
+
+  defp cast_batch_observation_meta(items, payloads) when is_list(items) do
+    children =
+      items
+      |> Enum.with_index()
+      |> Enum.flat_map(fn
+        {%{cantrip: %__MODULE__{} = cantrip}, index} ->
+          [child_observation_meta(cantrip, batch_index: index)]
+
+        {_item, _index} ->
+          []
+      end)
+
+    failed_batch_index =
+      if is_list(payloads) do
+        Enum.find_index(payloads, &match?({:error, _, _}, &1))
+      end
+
+    base =
+      %{children: children, failed_batch_index: failed_batch_index}
+      |> drop_nil_values()
+
+    case children do
+      [single] -> Map.merge(single, base)
+      _ -> base
     end
   end
 
