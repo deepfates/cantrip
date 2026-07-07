@@ -14,6 +14,8 @@ defmodule Cantrip.Loom.Storage do
   @callback append_turn(storage_state(), map()) :: {:ok, storage_state()} | {:error, term()}
   @callback annotate_reward(storage_state(), non_neg_integer(), term()) ::
               {:ok, storage_state()} | {:error, term()}
+  @callback flush(storage_state()) :: {:ok, storage_state()} | {:error, term()}
+  @callback close(storage_state()) :: :ok | {:error, term()}
 
   @doc """
   Load prior persisted state into a freshly-initialized backend.
@@ -29,5 +31,5 @@ defmodule Cantrip.Loom.Storage do
   @callback load(storage_state()) ::
               {:ok, %{events: [map()], turns: [map()]}} | {:error, term()}
 
-  @optional_callbacks append_event: 2, load: 1
+  @optional_callbacks append_event: 2, load: 1, flush: 1, close: 1
 end

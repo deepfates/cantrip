@@ -190,9 +190,11 @@ defmodule Cantrip.Medium.Code.PortChild do
 
   defp continue_after_write(:ok, state), do: loop(state)
 
-  defp continue_after_write({:error, reason}, _state) do
-    log_graceful_shutdown(reason)
-    :ok
+  defp continue_after_write({:error, :epipe}, state) do
+    reason = {:shutdown, {:port_write_failed, :epipe}}
+    finalize_loom_for_shutdown(state)
+    log_graceful_shutdown(:epipe)
+    exit(reason)
   end
 
   defp eval(code, state, env, ref) do
@@ -275,6 +277,7 @@ defmodule Cantrip.Medium.Code.PortChild do
     next_state =
       state
       |> Map.put(:binding, persist_binding(binding))
+      |> put_current_loom(binding)
       |> Map.delete(:dune_session)
 
     {next_state, {:eval_result, ref, next_state.binding, value, terminated?}}
@@ -297,6 +300,7 @@ defmodule Cantrip.Medium.Code.PortChild do
             next_state =
               state
               |> Map.put(:binding, clean_bindings)
+              |> put_current_loom(next_session.bindings)
               |> Map.put(:dune_session, %{next_session | bindings: clean_bindings})
 
             {next_state, {:eval_result, ref, clean_bindings, value, terminated?}}
@@ -307,6 +311,7 @@ defmodule Cantrip.Medium.Code.PortChild do
             next_state =
               state
               |> Map.put(:binding, clean_bindings)
+              |> put_current_loom(session.bindings)
               |> Map.put(:dune_session, %{session | bindings: clean_bindings})
 
             {next_state, {:eval_error, ref, clean_bindings, reason}}
@@ -691,6 +696,13 @@ defmodule Cantrip.Medium.Code.PortChild do
     |> Enum.reject(fn {_k, v} -> transient_value?(v) end)
   end
 
+  defp put_current_loom(state, binding) do
+    case Keyword.get(normalize_binding(binding), :loom) do
+      %Cantrip.Loom{} = loom -> Map.put(state, :current_loom, loom)
+      _ -> state
+    end
+  end
+
   defp externalize_binding(binding) do
     Enum.map(binding, fn {key, value} -> {to_string(key), externalize_term(value)} end)
   end
@@ -862,20 +874,36 @@ defmodule Cantrip.Medium.Code.PortChild do
     e in ErlangError ->
       case e.original do
         :epipe -> {:error, :epipe}
-        reason -> {:error, {:erlang_error, reason}}
+        _reason -> reraise(e, __STACKTRACE__)
       end
-
-    e ->
-      {:error, Cantrip.SafeFormat.exception(e)}
-  catch
-    :exit, reason ->
-      {:error, {:exit, reason}}
   end
+
+  defp finalize_loom_for_shutdown(%{current_loom: %Cantrip.Loom{} = loom}) do
+    case Cantrip.Loom.close(loom) do
+      :ok -> :ok
+      {:error, reason} -> log_loom_close_error(reason)
+    end
+  rescue
+    e -> log_loom_close_error(Cantrip.SafeFormat.exception(e))
+  catch
+    :exit, reason -> log_loom_close_error({:exit, reason})
+  end
+
+  defp finalize_loom_for_shutdown(_state), do: :ok
 
   defp log_graceful_shutdown(reason) do
     IO.puts(
       :stderr,
       "cantrip port child: parent port closed during write (#{inspect(reason)}); Goodbye."
+    )
+  rescue
+    _ -> :ok
+  end
+
+  defp log_loom_close_error(reason) do
+    IO.puts(
+      :stderr,
+      "cantrip port child: loom close failed during epipe shutdown: #{inspect(reason)}"
     )
   rescue
     _ -> :ok

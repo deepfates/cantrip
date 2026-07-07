@@ -174,6 +174,15 @@ defmodule PortCodeMediumTest do
 
     File.chmod!(runner_path, 0o755)
 
+    loom_path = Path.join(tmp, "loom.terms")
+    lifecycle_path = Path.join(tmp, "loom-lifecycle.log")
+
+    storage =
+      {Cantrip.TestLifecycleLoomStorage, path: loom_path, lifecycle_path: lifecycle_path}
+
+    Code.ensure_loaded!(Cantrip.TestLifecycleLoomStorage)
+    loom = Cantrip.Loom.new(%{identity: "epipe-test"}, storage: storage)
+    sentinel = "turn-before-epipe-#{System.unique_integer([:positive])}"
     before_dumps = repo_crash_dumps()
     port = open_port_child(runner_path)
     send_port_frame(port, {:init, []})
@@ -185,12 +194,17 @@ defmodule PortCodeMediumTest do
 
     send_port_frame(
       port,
-      {:eval, ref, ~S[Process.sleep(200); done.("late")],
-       %{gate_names: ["done"], evaluator: :raw}}
+      {:eval, ref, epipe_loom_code(sentinel),
+       %{gate_names: ["done"], evaluator: :raw, loom: loom}}
     )
 
     Port.close(port)
     assert eventually_contains?(log_path, "Goodbye.", 2_000)
+    assert eventually_contains?(lifecycle_path, "close", 2_000)
+    assert File.read!(lifecycle_path) == "flush\nclose\n"
+
+    rehydrated = Cantrip.Loom.new(%{identity: "epipe-test"}, storage: storage)
+    assert List.last(rehydrated.turns).utterance.content == sentinel
     assert repo_crash_dumps() == before_dumps
   after
     if tmp = Process.get(:cantrip_port_epipe_tmp), do: File.rm_rf!(tmp)
@@ -676,6 +690,26 @@ defmodule PortCodeMediumTest do
 
   defp send_port_frame(port, term) do
     Port.command(port, :erlang.term_to_binary(term))
+  end
+
+  defp epipe_loom_code(sentinel) do
+    """
+    Code.ensure_loaded!(Cantrip.TestLifecycleLoomStorage)
+
+    loom =
+      Cantrip.Loom.append_turn(loom, %{
+        cantrip_id: "epipe-cantrip",
+        entity_id: "epipe-entity",
+        role: "turn",
+        utterance: %{content: #{inspect(sentinel)}},
+        observation: [%{gate: "done", result: "late", is_error: false}],
+        gate_calls: [],
+        metadata: %{source: "epipe-regression"}
+      })
+
+    Process.sleep(200)
+    done.("late")
+    """
   end
 
   defp eventually_contains?(path, expected, timeout_ms) do

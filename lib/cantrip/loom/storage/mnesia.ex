@@ -79,6 +79,22 @@ defmodule Cantrip.Loom.Storage.Mnesia do
     end
   end
 
+  @impl true
+  def flush(%{mnesia: mnesia} = state) do
+    case call(mnesia, :sync_log, []) do
+      :ok -> {:ok, state}
+      {:error, reason} -> {:error, reason}
+      other -> {:error, other}
+    end
+  rescue
+    e -> {:error, Cantrip.SafeFormat.exception(e)}
+  catch
+    :exit, reason -> {:error, {:exit, reason}}
+  end
+
+  @impl true
+  def close(_state), do: :ok
+
   defp classify_native(events) do
     {evts, trns} =
       Enum.reduce(events, {[], []}, fn stored_event, {evts_acc, trns_acc} ->

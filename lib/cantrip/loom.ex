@@ -416,6 +416,19 @@ defmodule Cantrip.Loom do
   end
 
   @doc """
+  Flush and close the loom's storage backend when it exposes lifecycle hooks.
+
+  Most built-in writes are synchronous, but this gives shutdown paths one
+  explicit place to force durable state before the process exits.
+  """
+  @spec close(t()) :: :ok | {:error, term()}
+  def close(%__MODULE__{storage_module: module, storage_state: storage_state}) do
+    with {:ok, storage_state} <- flush_storage(module, storage_state) do
+      close_storage(module, storage_state)
+    end
+  end
+
+  @doc """
   Branches `cantrip` from a prefix of `loom`.
 
   `from_turn` is the number of turns to keep from the source loom. Options must
@@ -505,6 +518,22 @@ defmodule Cantrip.Loom do
 
       true ->
         {:ok, storage_state}
+    end
+  end
+
+  defp flush_storage(module, storage_state) do
+    if function_exported?(module, :flush, 1) do
+      module.flush(storage_state)
+    else
+      {:ok, storage_state}
+    end
+  end
+
+  defp close_storage(module, storage_state) do
+    if function_exported?(module, :close, 1) do
+      module.close(storage_state)
+    else
+      :ok
     end
   end
 

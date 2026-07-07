@@ -18,6 +18,12 @@ defmodule Cantrip.Loom.Storage.Jsonl do
   def init(_), do: {:error, "jsonl storage requires a file path"}
 
   @impl true
+  def flush(state), do: {:ok, state}
+
+  @impl true
+  def close(_state), do: :ok
+
+  @impl true
   def append_turn(%{path: path} = state, turn) do
     append_jsonl(path, storage_event(%{type: :turn, turn: turn}))
     {:ok, state}
