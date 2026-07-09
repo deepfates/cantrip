@@ -2,7 +2,29 @@
 
 ## Unreleased
 
-Nothing yet.
+**New:**
+
+- Familiar interrupt and steering controls: an operator can interrupt an
+  in-flight cast and steer the entity mid-turn.
+- Loom transcript rendering and bounded turn inspection.
+
+**Fixed:**
+
+- Mnesia loom persistence hardened across the board: crash recovery, restart
+  persistence, and synchronous loom writes, so an entity reliably sees prior
+  turns after a process restart. Added a Familiar Mnesia restart persistence
+  test.
+- Port-child `:epipe` shutdown is handled gracefully: the graceful path is
+  narrowed to `:epipe`, the child exits `{:shutdown, ...}`, and a loom
+  flush/close lifecycle was added (round 2 per adversarial review).
+- Unicode stdio is forced for the ACP server.
+- Child cast tool results are attributed and surfaced in the renderer.
+- Whitespace is trimmed from environment-provided secrets.
+
+**Changed:**
+
+- CI runs live integration pre-merge on PRs, not only post-merge on `main`.
+- Package metadata points at `deepfates/cantrip`.
 
 ## 1.3.3 - 2026-05-29
 
