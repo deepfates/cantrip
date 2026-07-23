@@ -353,7 +353,7 @@ defmodule Cantrip.CLI.RendererTest do
       state = Renderer.new()
       event = {env(1), {:tool_call, %{gate: "read_file", tool_call_id: nil}}}
       {output, _, _} = Renderer.render_event(state, event)
-      text = IO.iodata_to_binary(output)
+      text = plain_text(output)
       # Depth 1 = 2 spaces prefix, then "  ▸ read_file"
       assert text =~ "    ▸"
     end
@@ -362,7 +362,7 @@ defmodule Cantrip.CLI.RendererTest do
       state = Renderer.new()
       event = {env(1), {:code, "done.(\"ok\")"}}
       {output, _, _} = Renderer.render_event(state, event)
-      text = IO.iodata_to_binary(output)
+      text = plain_text(output)
       assert text =~ "  ╷"
       assert text =~ "  │"
     end
@@ -373,5 +373,11 @@ defmodule Cantrip.CLI.RendererTest do
       {output, _, _} = Renderer.render_event(state, event)
       assert IO.iodata_to_binary(output) =~ "bash"
     end
+  end
+
+  defp plain_text(output) do
+    output
+    |> IO.iodata_to_binary()
+    |> String.replace(~r/\e\[[0-?]*[ -\/]*[@-~]/, "")
   end
 end

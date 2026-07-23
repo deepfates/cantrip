@@ -166,9 +166,10 @@ defmodule Cantrip.ACP.AgentHandler do
     runtime = :ets.lookup_element(table, :runtime, 2)
     bridge = lookup_bridge(table, session_id)
 
-    with {:ok, session} <- prepare_prompt(runtime, table, session_id, session) do
-      prompt_prepared_runtime(runtime, table, session_id, bridge, session, text)
-    else
+    case prepare_prompt(runtime, table, session_id, session) do
+      {:ok, session} ->
+        prompt_prepared_runtime(runtime, table, session_id, bridge, session, text)
+
       {:error, reason, next_session} ->
         :ets.insert(table, {{:session, session_id}, next_session})
         {:error, %ACP.Error{code: -32_002, message: Cantrip.SafeFormat.inspect(reason)}}
