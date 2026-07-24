@@ -104,7 +104,6 @@ defmodule Mix.Tasks.Cantrip.Familiar do
   end
 
   defp run_acp(_opts) do
-    IO.puts(:stderr, "Familiar ACP server starting on stdio...")
     Cantrip.ACP.Server.run(runtime: Cantrip.ACP.Runtime.Familiar)
   end
 

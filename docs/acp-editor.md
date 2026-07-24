@@ -55,9 +55,8 @@ source .env
 mix cantrip.familiar --acp
 ```
 
-You should see one stderr line: `Familiar ACP server starting on stdio...`
-and then silence — the server is waiting on stdin. Pipe a synthetic
-`initialize` request to confirm the response shape:
+The server stays silent while it waits on stdin. Pipe a synthetic `initialize`
+request to confirm the response shape:
 
 ```bash
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}' \
